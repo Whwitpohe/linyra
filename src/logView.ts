@@ -18,7 +18,8 @@ import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
-import { openWorkDiff } from "./uncommittedView";
+import { openWorkDiff, type Ask } from "./uncommittedView";
+import { activeProfiles, profileFilter, readProfiles, repoKey, resolveProfiles, type Profiles, type ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 
 const FILTER_KEY = "polylog.filter";
@@ -47,10 +48,13 @@ export interface LogDeps {
   changes: ChangesTree;
   /** Each ticked repository's uncommitted work (the Log keeps its scope in step). */
   uncommitted: UncommittedStore;
+  /** VS Code's prompts (shared with the Uncommitted view; the integration suite answers them). */
+  ask: Ask;
 }
 
 export interface LogSnapshot {
   repos: Repo[];
+  profiles: ResolvedProfile[];
   filter: FilterState;
   rows: Commit[];
   failures: RepoFailure[];
@@ -280,7 +284,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(forceMode = false): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, ...(forceMode ? { logMode: this.logMode } : {}) });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, profiles: this.resolvedProfiles(), ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**
@@ -945,6 +949,53 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.reload();
   }
 
+  /** polylog.profiles as written (lenient: malformed entries are skipped). */
+  private rawProfiles(): Profiles {
+    return readProfiles(vscode.workspace.getConfiguration("polylog").get("profiles"));
+  }
+
+  /** How each repository is named in polylog.profiles. */
+  private profileKeys(): { id: string; key: string }[] {
+    const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => ({ name: f.name, path: f.uri.fsPath }));
+    return this.repos.map((r) => ({ id: r.id, key: repoKey(r.root, folders, process.platform === "win32") }));
+  }
+
+  resolvedProfiles(): ResolvedProfile[] {
+    return resolveProfiles(this.rawProfiles(), this.profileKeys());
+  }
+
+  /** polylog.profiles changed (by Polylog or by hand): redraw the Repo List. */
+  profilesChanged(): void {
+    this.postInit();
+  }
+
+  /** The profile a right-click was on. */
+  private contextProfile(arg: unknown): ResolvedProfile | undefined {
+    const name = (arg as { profile?: unknown } | undefined)?.profile;
+    return typeof name === "string" ? this.resolvedProfiles().find((p) => p.name === name) : undefined;
+  }
+
+  /** Right-click a profile → Show This Profile (the same as clicking it). */
+  async profileShow(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    if (p) await this.setRepoFilter(profileFilter(p, this.repos.map((r) => r.id)));
+  }
+
+  /** ⋯ → Switch Profile…: All repositories, then each profile; works with the Repo List hidden. */
+  async profileSwitch(): Promise<void> {
+    const all = this.repos.map((r) => r.id);
+    const resolved = this.resolvedProfiles();
+    const active = activeProfiles(resolved, this.filter.repoIds, all);
+    const nameOf = new Map(this.repos.map((r) => [r.id, r.name]));
+    const items: vscode.QuickPickItem[] = [
+      { label: "All repositories", description: `${all.length} repositories`, detail: this.filter.repoIds === null ? "Current" : undefined },
+      ...resolved.map((p) => ({ label: p.name, description: p.ids.map((id) => nameOf.get(id)).join(", ") || "no repository found", detail: active.includes(p.name) ? "Current" : undefined })),
+    ];
+    const i = await this.deps.ask.pick(items, resolved.length > 0 ? "Switch profile" : "No profiles yet: tick some repositories, then Save Selection as Profile…");
+    if (i === undefined) return;
+    await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
+  }
+
   /** Right-click → Show Only: this repository's commits alone. */
   async repoShowOnly(arg: unknown): Promise<void> {
     const repo = this.contextRepo(arg);
@@ -1085,7 +1136,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   snapshot(): LogSnapshot {
     return {
-      repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
+      repos: this.repos, profiles: this.resolvedProfiles(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {

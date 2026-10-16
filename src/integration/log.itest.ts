@@ -1343,6 +1343,36 @@ describe("Polylog panel", () => {
     await send({ type: "refresh" });
   });
 
+  it("profiles: read from polylog.profiles, switched by Show and Switch Profile…, other filters kept", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    try {
+      await cfg.update("profiles", { backend: ["acme-api", "acme-libs", "acme-jobs"], web: ["acme-web"], bad: "acme-web" }, vscode.ConfigurationTarget.Workspace);
+      let s = await until("profiles resolved", (x) => x.profiles.length === 2);
+      assert.deepStrictEqual(s.profiles.map((p) => [p.name, p.ids, p.missing]), [
+        ["backend", [id("acme-api"), id("acme-libs")], ["acme-jobs"]],
+        ["web", [id("acme-web")], []],
+      ], "a malformed profile is skipped; a missing repository is reported, not an error");
+      // A filter set beforehand stays: a profile changes only the repositories.
+      await send({ type: "filter", filter: { ...s.filter, author: "dana" } });
+      await vscode.commands.executeCommand("polylog.profileShow", { webviewSection: "profile", profile: "backend" });
+      s = await until("backend ticked", (x) => x.filter.repoIds?.join() === [id("acme-api"), id("acme-libs")].join());
+      assert.strictEqual(s.filter.author, "dana", "Author kept");
+      await vscode.commands.executeCommand("polylog._itest.answer", "web");
+      await vscode.commands.executeCommand("polylog.profileSwitch");
+      await until("web ticked", (x) => x.filter.repoIds?.join() === id("acme-web"));
+      await vscode.commands.executeCommand("polylog._itest.answer", "All repositories");
+      await vscode.commands.executeCommand("polylog.profileSwitch");
+      await until("All again", (x) => x.filter.repoIds === null);
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
+      await send({ type: "filter", filter: ALL });
+    }
+    await until("no profiles, six rows again", (x) => x.profiles.length === 0 && x.rows.length === 6);
+  });
+
   it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");

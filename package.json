@@ -205,6 +205,16 @@
         "category": "Polylog"
       },
       {
+        "command": "polylog.profileSwitch",
+        "title": "Switch Profile…",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.profileShow",
+        "title": "Show This Profile",
+        "category": "Polylog"
+      },
+      {
         "command": "polylog.fetchAll",
         "title": "Fetch All Repositories",
         "category": "Polylog",
@@ -844,6 +854,10 @@
         {
           "command": "polylog.copyRelativePath",
           "when": "false"
+        },
+        {
+          "command": "polylog.profileShow",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -946,6 +960,11 @@
           "command": "polylog.uncommittedClose",
           "when": "view == polylog.uncommitted",
           "group": "navigation@9"
+        },
+        {
+          "command": "polylog.profileSwitch",
+          "when": "view == polylog.log",
+          "group": "2_profile@1"
         }
       ],
       "explorer/context": [
@@ -1101,6 +1120,11 @@
           "command": "polylog.repoExclude",
           "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
           "group": "4_exclude@1"
+        },
+        {
+          "command": "polylog.profileShow",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
+          "group": "0_profile@1"
         }
       ]
     },
@@ -1135,6 +1159,18 @@
           },
           "default": [],
           "description": "Glob patterns for repositories to leave out, matched against the repository folder name and its full path."
+        },
+        "polylog.profiles": {
+          "type": "object",
+          "scope": "window",
+          "default": {},
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "markdownDescription": "Named groups of repositories for the Repo List, e.g. `{ \"backend\": [\"acme-api\", \"acme-libs\"] }`. Each repository is its path relative to the workspace folder (`.` for the folder itself; in a multi-root workspace, the folder's name first). Saved from the Repo List; clicking a profile ticks its repositories and changes no other filter."
         },
         "polylog.blame": {
           "type": "boolean",
