@@ -215,6 +215,31 @@
         "category": "Polylog"
       },
       {
+        "command": "polylog.profileSave",
+        "title": "Save Selection as Profile…",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.profileUpdate",
+        "title": "Update to Current Selection",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.profileRename",
+        "title": "Rename…",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.profileDelete",
+        "title": "Delete",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.repoProfiles",
+        "title": "Profiles…",
+        "category": "Polylog"
+      },
+      {
         "command": "polylog.fetchAll",
         "title": "Fetch All Repositories",
         "category": "Polylog",
@@ -858,6 +883,22 @@
         {
           "command": "polylog.profileShow",
           "when": "false"
+        },
+        {
+          "command": "polylog.profileUpdate",
+          "when": "false"
+        },
+        {
+          "command": "polylog.profileRename",
+          "when": "false"
+        },
+        {
+          "command": "polylog.profileDelete",
+          "when": "false"
+        },
+        {
+          "command": "polylog.repoProfiles",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -965,6 +1006,11 @@
           "command": "polylog.profileSwitch",
           "when": "view == polylog.log",
           "group": "2_profile@1"
+        },
+        {
+          "command": "polylog.profileSave",
+          "when": "view == polylog.log",
+          "group": "2_profile@2"
         }
       ],
       "explorer/context": [
@@ -1125,6 +1171,31 @@
           "command": "polylog.profileShow",
           "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
           "group": "0_profile@1"
+        },
+        {
+          "command": "polylog.profileUpdate",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'profile' && updatable",
+          "group": "1_profileEdit@1"
+        },
+        {
+          "command": "polylog.profileRename",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
+          "group": "1_profileEdit@2"
+        },
+        {
+          "command": "polylog.profileDelete",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
+          "group": "1_profileEdit@3"
+        },
+        {
+          "command": "polylog.profileSave",
+          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repoList|repo|profile)$/",
+          "group": "9_profile@1"
+        },
+        {
+          "command": "polylog.repoProfiles",
+          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "group": "9_profile@2"
         }
       ]
     },

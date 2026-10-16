@@ -1373,6 +1373,53 @@ describe("Polylog panel", () => {
     await until("no profiles, six rows again", (x) => x.profiles.length === 0 && x.rows.length === 6);
   });
 
+  it("profiles: save the ticks, a repository's Profiles…, update, rename (refuses a taken name), delete asks", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    const saved = () => cfg.inspect<Record<string, string[]>>("profiles")?.workspaceValue;
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    try {
+      await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api"), id("acme-libs")] } });
+      await answer("backend");
+      await vscode.commands.executeCommand("polylog.profileSave");
+      await waitFor("backend saved", () => (saved()?.backend?.join() === "acme-api,acme-libs" ? true : undefined));
+      await until("backend resolved", (x) => x.profiles.some((p) => p.name === "backend"));
+      // A repository's Profiles…: add acme-web to backend and make a new profile with it.
+      await answer(JSON.stringify(["backend", "New profile with acme-web…"]));
+      await answer("web");
+      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await waitFor("memberships", () => (saved()?.backend?.join() === "acme-api,acme-libs,acme-web" && saved()?.web?.join() === "acme-web" ? true : undefined));
+      // ...and take it out again: unticked = removed.
+      await answer(JSON.stringify([]));
+      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await waitFor("removed", () => (saved()?.backend?.join() === "acme-api,acme-libs" && saved()?.web?.length === 0 ? true : undefined));
+      // Update to Current Selection.
+      await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api")] } });
+      await vscode.commands.executeCommand("polylog.profileUpdate", { webviewSection: "profile", profile: "backend" });
+      await waitFor("updated", () => (saved()?.backend?.join() === "acme-api" ? true : undefined));
+      // Rename to a taken name (any case) changes nothing; to a free one, renames.
+      await answer("WEB");
+      await vscode.commands.executeCommand("polylog.profileRename", { webviewSection: "profile", profile: "backend" });
+      assert.ok(saved()?.backend && !saved()?.WEB, "a taken name is refused");
+      await answer("api");
+      await vscode.commands.executeCommand("polylog.profileRename", { webviewSection: "profile", profile: "backend" });
+      await waitFor("renamed", () => (saved()?.api?.join() === "acme-api" && !saved()?.backend ? true : undefined));
+      // Delete asks; Cancel keeps it.
+      await answer("Cancel");
+      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "api" });
+      assert.ok(saved()?.api, "Cancel keeps it");
+      await answer("Delete");
+      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "api" });
+      await waitFor("deleted", () => (saved()?.api === undefined ? true : undefined));
+      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), 'Delete profile "api"?');
+    } finally {
+      await answer(undefined);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
+      await send({ type: "filter", filter: ALL });
+    }
+  });
+
   it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");

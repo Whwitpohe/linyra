@@ -19,7 +19,7 @@ import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo,
 import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
 import { openWorkDiff, type Ask } from "./uncommittedView";
-import { activeProfiles, profileFilter, readProfiles, repoKey, resolveProfiles, type Profiles, type ResolvedProfile } from "./profileModel";
+import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 
 const FILTER_KEY = "polylog.filter";
@@ -260,6 +260,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
+        return;
+      case "profileSave":
+        await this.profileSave();
         return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "scan depth");
@@ -994,6 +997,94 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const i = await this.deps.ask.pick(items, resolved.length > 0 ? "Switch profile" : "No profiles yet: tick some repositories, then Save Selection as Profile…");
     if (i === undefined) return;
     await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
+  }
+
+  /** Writes polylog.profiles to the workspace settings; false (with an error shown) if it could not. */
+  private async writeProfiles(next: Profiles): Promise<boolean> {
+    if (!vscode.workspace.workspaceFolders?.length) {
+      void vscode.window.showErrorMessage("Polylog: profiles are saved in the workspace settings; open a folder first.");
+      return false;
+    }
+    try {
+      await vscode.workspace.getConfiguration("polylog").update("profiles", next, vscode.ConfigurationTarget.Workspace);
+    } catch (e) {
+      void vscode.window.showErrorMessage(`Polylog could not save the profile: ${messageOf(e)}`);
+      return false;
+    }
+    this.postInit();
+    return true;
+  }
+
+  /** The ticked repositories as profile entries. */
+  private tickedKeys(): string[] {
+    const keyOf = new Map(this.profileKeys().map((k) => [k.id, k.key]));
+    return (this.filter.repoIds ?? this.repos.map((r) => r.id)).flatMap((id) => keyOf.get(id) ?? []);
+  }
+
+  /** ＋ Save as profile…, the Repo List's right-click, ⋯: the ticked repositories under a name. */
+  async profileSave(): Promise<void> {
+    const keys = this.tickedKeys();
+    if (keys.length === 0) return;
+    const current = this.rawProfiles();
+    const n = keys.length === 1 ? "1 repository" : `${keys.length} repositories`;
+    const name = await this.deps.ask.input(`Name for a profile of ${n}`, "backend", {
+      validate: (v) => {
+        if (!v.trim()) return undefined;
+        const taken = Object.keys(current).find((k) => k.toLowerCase() === v.trim().toLowerCase());
+        return taken === undefined ? undefined : { message: `"${taken}" exists: Enter replaces it with these ${n}.`, severity: vscode.InputBoxValidationSeverity.Warning };
+      },
+    });
+    if (!name?.trim()) return;
+    // Replacing keeps the existing spelling of the name.
+    const taken = Object.keys(current).find((k) => k.toLowerCase() === name.trim().toLowerCase());
+    await this.writeProfiles(saveProfile(current, taken ?? name, keys));
+  }
+
+  /** Right-click a profile → Update to Current Selection. */
+  async profileUpdate(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    const keys = this.tickedKeys();
+    if (p && keys.length > 0) await this.writeProfiles(saveProfile(this.rawProfiles(), p.name, keys));
+  }
+
+  /** Right-click a profile → Rename…: refuses a name that is taken (in any case). */
+  async profileRename(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    if (!p) return;
+    const current = this.rawProfiles();
+    const name = await this.deps.ask.input(`New name for profile "${p.name}"`, p.name, { value: p.name, validate: (v) => nameProblem(current, v, p.name) });
+    if (name === undefined || nameProblem(current, name, p.name) !== undefined || name.trim() === p.name) return;
+    await this.writeProfiles(renameProfile(current, p.name, name));
+  }
+
+  /** Right-click a profile → Delete: asks; the repositories stay as they are. */
+  async profileDelete(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    if (!p) return;
+    if (!(await this.deps.ask.warning(`Delete profile "${p.name}"?`, "Its repositories stay as they are; only the name goes.", "Delete"))) return;
+    await this.writeProfiles(deleteProfile(this.rawProfiles(), p.name));
+  }
+
+  /** Right-click a repository → Profiles…: tick the profiles it belongs to, or start a new one with it. */
+  async repoProfiles(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (!repo) return;
+    const key = this.profileKeys().find((k) => k.id === repo.id)?.key;
+    if (!key) return;
+    const current = this.rawProfiles();
+    const names = profileNames(current);
+    const items: vscode.QuickPickItem[] = [
+      ...names.map((n) => ({ label: n, description: current[n].length === 1 ? "1 repository" : `${current[n].length} repositories`, picked: current[n].includes(key) })),
+      { label: `New profile with ${repo.name}…`, picked: false },
+    ];
+    const chosen = await this.deps.ask.pickMany(items, `Profiles with ${repo.name}`);
+    if (chosen === undefined) return;
+    let next = setMembership(current, key, chosen.filter((i) => i < names.length).map((i) => names[i]));
+    if (chosen.includes(names.length)) {
+      const name = await this.deps.ask.input(`Name for a new profile with ${repo.name}`, "backend", { validate: (v) => (v.trim() ? nameProblem(next, v) : undefined) });
+      if (name !== undefined && nameProblem(next, name) === undefined) next = saveProfile(next, name, [key]);
+    }
+    await this.writeProfiles(next);
   }
 
   /** Right-click → Show Only: this repository's commits alone. */

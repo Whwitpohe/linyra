@@ -221,6 +221,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.repoCopyPath", (arg?: unknown) => log.repoCopyPath(arg)),
     vscode.commands.registerCommand("polylog.profileSwitch", () => log.profileSwitch()),
     vscode.commands.registerCommand("polylog.profileShow", (arg?: unknown) => log.profileShow(arg)),
+    vscode.commands.registerCommand("polylog.profileSave", () => log.profileSave()),
+    vscode.commands.registerCommand("polylog.profileUpdate", (arg?: unknown) => log.profileUpdate(arg)),
+    vscode.commands.registerCommand("polylog.profileRename", (arg?: unknown) => log.profileRename(arg)),
+    vscode.commands.registerCommand("polylog.profileDelete", (arg?: unknown) => log.profileDelete(arg)),
+    vscode.commands.registerCommand("polylog.repoProfiles", (arg?: unknown) => log.repoProfiles(arg)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),

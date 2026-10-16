@@ -67,4 +67,6 @@ export type WebviewMessage =
   | { type: "selectWork"; repoId: string }
   /** A suggestion box got focus for the first time: read its suggestions now, not at startup. */
   | { type: "wantSuggestions"; kind: "authors" | "branches" }
-  | { type: "openSettings" };
+  | { type: "openSettings" }
+  /** The Repo List's ＋ Save as profile… row. */
+  | { type: "profileSave" };
