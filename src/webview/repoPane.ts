@@ -1,15 +1,10 @@
 import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
-import { fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
+import { fuzzyMatch, isChecked, paneRows, pickOnly, toggleRepo, type PaneRow } from "./repoPaneModel";
+import { profileFilter, type ResolvedProfile } from "../profileModel";
 import { syncLabel, type AheadBehind } from "../upstream";
 import { accentOf, assignAccents } from "./view";
-
-interface Row {
-  /** null = the "All repositories" row. */
-  id: string | null;
-  name: string;
-}
 
 /**
  * The Repositories pane: a searchable, multi-pick list that edits the Log's
@@ -22,10 +17,13 @@ export class RepoPane {
   private readonly list = byId("repo-rows");
   private repos: readonly Repo[] = [];
   private repoIds: string[] | null = null;
-  private rows: Row[] = [];
+  private rows: PaneRow[] = [];
+  private profiles: readonly ResolvedProfile[] = [];
   private active = 0;
 
-  constructor(private readonly onChange: (repoIds: string[] | null) => void) {
+  constructor(private readonly onChange: (repoIds: string[] | null) => void, private readonly onSave: () => void) {
+    // Right-click the Repo List's empty area: Save Selection as Profile… (package.json webview/context).
+    this.list.dataset.vscodeContext = JSON.stringify({ webviewSection: "repoList", preventDefaultContextMenuItems: true });
     // A press on a box would focus its inner input, inside an aria-hidden element that the
     // re-render then destroys, leaving focus on <body> and the arrow keys dead. Keep focus on
     // the list; the click still ticks the box.
@@ -63,10 +61,10 @@ export class RepoPane {
     this.list.addEventListener("keydown", (e) => this.onKey(e));
   }
 
-  update(repos: readonly Repo[], repoIds: string[] | null): void {
+  update(repos: readonly Repo[], repoIds: string[] | null, profiles: readonly ResolvedProfile[] = []): void {
     // Every filter change comes here (each Search keystroke too): rebuild only when the
     // pane would look different.
-    const reposKey = repos.map((r) => `${r.id}\0${r.name}`).join("\n");
+    const reposKey = `${repos.map((r) => `${r.id}\0${r.name}`).join("\n")}\n${JSON.stringify(profiles)}`;
     const idsKey = repoIds === null ? null : repoIds.join("\n");
     if (reposKey === this.reposKey && idsKey === this.idsKey) return;
     if (reposKey !== this.reposKey) this.accents = assignAccents(repos);
@@ -74,6 +72,7 @@ export class RepoPane {
     this.idsKey = idsKey;
     this.repos = repos;
     this.repoIds = repoIds;
+    this.profiles = profiles;
     this.render();
   }
   private reposKey: string | undefined;
@@ -96,7 +95,9 @@ export class RepoPane {
     // A box ticks itself when clicked; the pane must be rebuilt even when the filter comes out
     // the same (All when all are shown, or the last repo), or the boxes stop telling the truth.
     this.idsKey = undefined;
-    if (row.id === null) this.onChange(null);
+    if (row.kind === "all") this.onChange(null);
+    else if (row.kind === "profile") this.onChange(profileFilter(row.profile, allIds));
+    else if (row.kind === "save") this.onSave();
     else this.onChange(toggle ? toggleRepo(this.repoIds, row.id, allIds) : pickOnly(row.id));
   }
 
@@ -158,14 +159,50 @@ export class RepoPane {
   }
 
   private render(reveal = true): void {
-    this.rows = [{ id: null, name: "All repositories" }, ...visibleRepos(this.repos, this.filterInput.value)];
+    this.rows = paneRows(this.repos, this.filterInput.value, this.profiles, this.repoIds);
     this.active = Math.min(this.active, this.rows.length - 1);
     const count = this.repoIds === null ? String(this.repos.length) : `${this.repoIds.length}/${this.repos.length}`;
     clear(this.list);
     this.rows.forEach((row, i) => {
-      const checked = row.id === null ? this.repoIds === null : isChecked(this.repoIds, row.id);
-      const accent = row.id === null ? null : accentOf(this.accents, row.id);
-      const ab = row.id === null ? undefined : this.sync[row.id];
+      const rowClass = (extra: string) => `${i === this.active ? "repo-row active" : "repo-row"}${extra}`;
+      if (row.kind === "profile") {
+        const p = row.profile;
+        const names = p.ids.map((id) => this.repos.find((r) => r.id === id)?.name ?? id).join(", ");
+        const missing = p.missing.length > 0 ? `\n${p.missing.length} not in this workspace: ${p.missing.join(", ")} (skipped)` : "";
+        this.list.append(h("div", {
+          class: rowClass(` profile-row${row.active ? " current" : ""}`),
+          role: "option", id: `repo-row-${i}`, "aria-selected": String(row.active), "data-row": String(i),
+          title: `${p.name}: ${names || "no repository found"}${missing}`,
+          "aria-label": `Profile ${p.name}, ${p.ids.length} repositories${p.missing.length ? `, ${p.missing.length} not found` : ""}`,
+          // Right-click a profile: Show, Update, Rename, Delete (package.json webview/context).
+          "data-vscode-context": JSON.stringify({ webviewSection: "profile", profile: p.name, updatable: !(row.active && p.missing.length === 0), preventDefaultContextMenuItems: true }),
+        }, [
+          h("span", { class: "profile-icon", "aria-hidden": "true" }),
+          h("span", { class: "repo-name" }, [p.name]),
+          p.missing.length > 0 ? h("span", { class: "profile-missing", "aria-hidden": "true" }, ["⚠"]) : null,
+          h("span", { class: "repo-count" }, [String(p.ids.length)]),
+        ]));
+        return;
+      }
+      if (row.kind === "save") {
+        this.list.append(h("div", {
+          class: rowClass(" save-row"),
+          role: "option", id: `repo-row-${i}`, "aria-selected": "false", "data-row": String(i),
+          title: "Save the ticked repositories as a profile",
+          "aria-label": `Save ${row.count} ticked repositories as a profile`,
+          "data-vscode-context": JSON.stringify({ webviewSection: "repoList", preventDefaultContextMenuItems: true }),
+        }, [h("span", { class: "save-icon", "aria-hidden": "true" }, ["+"]), h("span", { class: "repo-name" }, ["Save as profile…"]), h("span", { class: "repo-count" }, [String(row.count)])]));
+        return;
+      }
+      // A line between All, the profiles and the save row, and the repositories.
+      if (row.kind === "repo" && i > 0 && this.rows[i - 1].kind !== "repo" && this.rows.some((r) => r.kind === "profile" || r.kind === "save")) {
+        this.list.append(h("div", { class: "repo-divider", role: "presentation" }));
+      }
+      const id = row.kind === "repo" ? row.id : null;
+      const name = row.kind === "repo" ? row.name : "All repositories";
+      const checked = id === null ? this.repoIds === null : isChecked(this.repoIds, id);
+      const accent = id === null ? null : accentOf(this.accents, id);
+      const ab = id === null ? undefined : this.sync[id];
       const badge = ab ? syncLabel(ab) : null;
       // VS Code Elements' checkbox, for VS Code's own box, tick and hover. Presentational:
       // the row is the listbox option and handles the click and the keyboard.
@@ -175,28 +212,28 @@ export class RepoPane {
       box.tabIndex = -1;
       box.checked = checked;
       // "All repositories" shows a dash while only some are picked.
-      box.indeterminate = row.id === null && this.repoIds !== null && this.repoIds.length > 0;
+      box.indeterminate = id === null && this.repoIds !== null && this.repoIds.length > 0;
       this.list.append(h("div", {
-        class: i === this.active ? "repo-row active" : "repo-row",
+        class: rowClass(""),
         role: "option",
         id: `repo-row-${i}`,
         "aria-selected": String(checked),
         "data-row": String(i),
-        title: row.id ?? "Show commits from every repository",
+        title: id ?? "Show commits from every repository",
         // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
-        "aria-label": row.id === null ? `${row.name}, ${count}` : badge ? `${row.name}, ${badge.title}` : row.name,
+        "aria-label": id === null ? `${name}, ${count}` : badge ? `${name}, ${badge.title}` : name,
         // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
         // behind: the menu offers Pull (package.json webview/context).
-        "data-vscode-context": JSON.stringify(row.id === null ? { preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: row.id, behind: (ab?.behind ?? 0) > 0, preventDefaultContextMenuItems: true }),
+        "data-vscode-context": JSON.stringify(id === null ? { webviewSection: "repoList", preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: id, behind: (ab?.behind ?? 0) > 0, preventDefaultContextMenuItems: true }),
       }, [
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
-        h("span", { class: "repo-name", "data-name": row.id === null ? undefined : row.name }, row.id === null ? [row.name] : this.highlighted(row.name)),
-        row.id === null ? h("span", { class: "repo-count" }, [count]) : null,
+        h("span", { class: "repo-name", "data-name": id === null ? undefined : name }, id === null ? [name] : this.highlighted(name)),
+        id === null ? h("span", { class: "repo-count" }, [count]) : null,
         badge ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [badge.text]) : null,
       ]));
     });
-    if (this.rows.length === 1 && this.repos.length > 0) this.list.append(h("p", { class: "hint" }, ["No repositories match."]));
+    if (this.rows.every((r) => r.kind !== "repo") && this.repos.length > 0 && this.filterInput.value.trim()) this.list.append(h("p", { class: "hint" }, ["No repositories match."]));
     this.fitNames();
     this.list.setAttribute("aria-activedescendant", `repo-row-${this.active}`);
     if (reveal) this.list.querySelector(".repo-row.active")?.scrollIntoView({ block: "nearest" });

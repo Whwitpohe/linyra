@@ -2,6 +2,9 @@
 // (null = every repo); git does the filtering. Narrowing the pane's own list by
 // name is UI, not commit filtering.
 
+import { activeProfiles, showSaveRow, type ResolvedProfile } from "../profileModel";
+import type { Repo } from "../types";
+
 export const DEFAULT_REPO_PANE_WIDTH = 190;
 const MIN_WIDTH = 120;
 const MAX_WIDTH = 480;
@@ -106,4 +109,24 @@ export class PaneWidth {
     this.shown = clampPaneWidth(this.wanted, total);
     return this.shown;
   }
+}
+
+export type PaneRow =
+  | { kind: "all" }
+  | { kind: "profile"; profile: ResolvedProfile; active: boolean }
+  | { kind: "save"; count: number }
+  | { kind: "repo"; id: string; name: string };
+
+/**
+ * The Repo List's rows: All, the profiles and the ＋ Save as profile… row (not while searching
+ * repositories by name: the search is for repositories), then the repositories.
+ */
+export function paneRows(repos: readonly Repo[], query: string, profiles: readonly ResolvedProfile[], repoIds: readonly string[] | null): PaneRow[] {
+  const repoRows: PaneRow[] = visibleRepos(repos, query).map((r) => ({ kind: "repo", id: r.id, name: r.name }));
+  if (query.trim()) return [{ kind: "all" }, ...repoRows];
+  const allIds = repos.map((r) => r.id);
+  const active = activeProfiles(profiles, repoIds, allIds);
+  const rows: PaneRow[] = [{ kind: "all" }, ...profiles.map((profile): PaneRow => ({ kind: "profile", profile, active: active.includes(profile.name) }))];
+  if (showSaveRow(profiles, repoIds, allIds)) rows.push({ kind: "save", count: repoIds!.length });
+  return [...rows, ...repoRows];
 }
