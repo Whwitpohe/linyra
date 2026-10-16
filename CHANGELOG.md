@@ -7,6 +7,32 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.2.0] — 2026-10-16
+
+### Added
+
+- **Profiles in the Repo List: named groups of repositories.** Tick the repositories you work
+  on together, click **＋ Save as profile…** (it appears as soon as the ticks are neither All
+  nor a saved profile) and name them, e.g. `backend`. Clicking the profile ticks exactly
+  those repositories again. Search, Author, Branch, Date and Path stay as they are: a profile
+  only chooses which repositories `git log` runs in.
+- **Profiles live in the workspace setting `polylog.profiles`**, one list per name, each
+  repository as its path relative to the workspace folder (in a multi-root workspace, the
+  folder's name first). Edit it by hand or share it with the workspace; the Repo List
+  redraws, and a repository not in this workspace is skipped and flagged with ⚠.
+- **Manage them where you use them.** Right-click a profile for **Show This Profile**,
+  **Update to Current Selection**, **Rename…** and **Delete** (it asks first). Right-click a
+  repository, in the Repo List or on its rows in the Log, for **Profiles…**: a checklist of
+  the profiles it is in, plus **New profile with it…**.
+- **Switch Profile…** and **Save Selection as Profile…** in the Log's ⋯ menu and the Command
+  Palette; switching works with the Repo List hidden.
+
+### Notes
+
+- Profiles kept in your User settings are listed too, but Polylog only ever writes the
+  workspace's own profiles and the ones you just changed, so they never end up in a shared
+  workspace file. Rename or delete those in your User settings.
+
 ## [1.1.0] — 2026-10-16
 
 ### Added
