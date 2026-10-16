@@ -999,6 +999,32 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
   }
 
+  /** The workspace's own polylog.profiles (the listed ones also merge in the User settings' ones). */
+  private ownProfiles(): Profiles {
+    return readProfiles(vscode.workspace.getConfiguration("polylog").inspect("profiles")?.workspaceValue);
+  }
+
+  /**
+   * An edit of the listed profiles, written to the workspace: its own profiles plus the ones this
+   * edit changed, never a User-level profile it did not touch (the workspace file may be shared).
+   * Nothing changed: nothing written (no settings.json created for a no-op).
+   */
+  private async writeChanges(before: Profiles, after: Profiles): Promise<void> {
+    const own = this.ownProfiles();
+    const out: Profiles = {};
+    for (const [name, keys] of Object.entries(after)) {
+      if (name in own || JSON.stringify(keys) !== JSON.stringify(before[name])) out[name] = keys;
+    }
+    if (JSON.stringify(out) !== JSON.stringify(own)) await this.writeProfiles(out);
+  }
+
+  /** A profile from the User settings cannot be renamed or deleted from a workspace: say where it is. */
+  private userLevel(name: string): boolean {
+    if (name in this.ownProfiles()) return false;
+    void vscode.window.showInformationMessage(`Polylog: "${name}" is in your User settings (polylog.profiles); change it there.`);
+    return true;
+  }
+
   /** Writes polylog.profiles to the workspace settings; false (with an error shown) if it could not. */
   private async writeProfiles(next: Profiles): Promise<boolean> {
     if (!vscode.workspace.workspaceFolders?.length) {
@@ -1037,32 +1063,35 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!name?.trim()) return;
     // Replacing keeps the existing spelling of the name.
     const taken = Object.keys(current).find((k) => k.toLowerCase() === name.trim().toLowerCase());
-    await this.writeProfiles(saveProfile(current, taken ?? name, keys));
+    await this.writeChanges(current, saveProfile(current, taken ?? name, keys));
   }
 
   /** Right-click a profile → Update to Current Selection. */
   async profileUpdate(arg: unknown): Promise<void> {
     const p = this.contextProfile(arg);
     const keys = this.tickedKeys();
-    if (p && keys.length > 0) await this.writeProfiles(saveProfile(this.rawProfiles(), p.name, keys));
+    if (!p || keys.length === 0) return;
+    const current = this.rawProfiles();
+    await this.writeChanges(current, saveProfile(current, p.name, keys));
   }
 
   /** Right-click a profile → Rename…: refuses a name that is taken (in any case). */
   async profileRename(arg: unknown): Promise<void> {
     const p = this.contextProfile(arg);
-    if (!p) return;
+    if (!p || this.userLevel(p.name)) return;
     const current = this.rawProfiles();
     const name = await this.deps.ask.input(`New name for profile "${p.name}"`, p.name, { value: p.name, validate: (v) => nameProblem(current, v, p.name) });
     if (name === undefined || nameProblem(current, name, p.name) !== undefined || name.trim() === p.name) return;
-    await this.writeProfiles(renameProfile(current, p.name, name));
+    await this.writeChanges(current, renameProfile(current, p.name, name));
   }
 
   /** Right-click a profile → Delete: asks; the repositories stay as they are. */
   async profileDelete(arg: unknown): Promise<void> {
     const p = this.contextProfile(arg);
-    if (!p) return;
+    if (!p || this.userLevel(p.name)) return;
     if (!(await this.deps.ask.warning(`Delete profile "${p.name}"?`, "Its repositories stay as they are; only the name goes.", "Delete"))) return;
-    await this.writeProfiles(deleteProfile(this.rawProfiles(), p.name));
+    const current = this.rawProfiles();
+    await this.writeChanges(current, deleteProfile(current, p.name));
   }
 
   /** Right-click a repository → Profiles…: tick the profiles it belongs to, or start a new one with it. */
@@ -1084,7 +1113,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const name = await this.deps.ask.input(`Name for a new profile with ${repo.name}`, "backend", { validate: (v) => (v.trim() ? nameProblem(next, v) : undefined) });
       if (name !== undefined && nameProblem(next, name) === undefined) next = saveProfile(next, name, [key]);
     }
-    await this.writeProfiles(next);
+    await this.writeChanges(current, next);
   }
 
   /** Right-click → Show Only: this repository's commits alone. */

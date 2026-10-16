@@ -1420,6 +1420,39 @@ describe("Polylog panel", () => {
     }
   });
 
+  it("profiles: a write never copies User-level profiles into the workspace; Profiles… with no change writes nothing", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    const ws = () => vscode.workspace.getConfiguration("polylog").inspect<Record<string, string[]>>("profiles")?.workspaceValue;
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    try {
+      await cfg.update("profiles", { personal: ["acme-web"] }, vscode.ConfigurationTarget.Global);
+      await until("the User profile is listed", (x) => x.profiles.some((p) => p.name === "personal"));
+      // Accepting Profiles… unchanged writes no workspace setting at all.
+      await answer(JSON.stringify(["personal"]));
+      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      assert.strictEqual(ws(), undefined, "nothing changed: nothing written");
+      // Saving a workspace profile writes only it.
+      await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api")] } });
+      await answer("backend");
+      await vscode.commands.executeCommand("polylog.profileSave");
+      await waitFor("backend saved", () => (ws()?.backend ? true : undefined));
+      assert.deepStrictEqual(ws(), { backend: ["acme-api"] }, "the User profile is not copied into the workspace");
+      // Deleting a User-level profile from here leaves both scopes as they were.
+      await answer("Delete");
+      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "personal" });
+      assert.deepStrictEqual(ws(), { backend: ["acme-api"] });
+      assert.deepStrictEqual(cfg.inspect<Record<string, string[]>>("profiles")?.globalValue, { personal: ["acme-web"] });
+    } finally {
+      await answer(undefined);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Global);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
+      await send({ type: "filter", filter: ALL });
+    }
+    await until("no profiles, six rows again", (x) => x.profiles.length === 0 && x.rows.length === 6);
+  });
+
   it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");
