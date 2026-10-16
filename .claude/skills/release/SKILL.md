@@ -92,7 +92,7 @@ This bumps `package.json` and `package-lock.json` without npm's own commit or ta
 npm run bundle          # what vscode:prepublish runs (plus check:denylist)
 ```
 
-Confirm that `out/extension.js`, `out/webview.js` and `out/webview.css` exist.
+Confirm that `out/extension.js`, `out/webview.js`, `out/webview.css`, `out/compare.js` and `out/compare.css` exist.
 
 ### 5. Publish auth, before committing
 
@@ -111,7 +111,7 @@ vsce verify-pat lntvan166
 Summarize:
 - the version and the CHANGELOG section;
 - that the suite, bundle and auth are green;
-- the package contents, from `vsce ls`: 10 files (`package.json`, README, LICENSE, CHANGELOG, `ThirdPartyNotices.txt`, `media/polylog.svg`, `media/icon.png`, `out/extension.js`, `out/webview.js`, `out/webview.css`). `vsce package` reports 12, because it adds `[Content_Types].xml` and `extension.vsixmanifest`.
+- the package contents, from `vsce ls`: 13 files (`package.json`, README, LICENSE, CHANGELOG, `ThirdPartyNotices.txt`, `media/polylog.svg`, `media/icon.png`, `media/compare.svg`, `out/extension.js`, `out/webview.js`, `out/webview.css`, `out/compare.js`, `out/compare.css`). `vsce package` reports 15, because it adds `[Content_Types].xml` and `extension.vsixmanifest`.
 
 Then ask for explicit confirmation. Neither registry has an undo.
 
@@ -157,7 +157,7 @@ vsce publish --packagePath polylog-git-X.Y.Z.vsix      # VS Code Marketplace
 ovsx publish polylog-git-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
 ```
 
-- **Expected package: 12 files, about 80 KB, as `vsce package` counts them** (10 from the allowlist plus two manifests). Hundreds of KB means media or `node_modules` crept in; fix `.vscodeignore` first.
+- **Expected package: 15 files, about 135 KB, as `vsce package` counts them** (13 from the allowlist plus two manifests; v1.2.0 was 133 KB). Hundreds of KB means media or `node_modules` crept in; fix `.vscodeignore` first.
 - Both registries index **after** the CLI reports success: Open VSX in about 1–2 minutes, the Marketplace in about 3–5. Poll rather than reading once:
 
 ```bash
