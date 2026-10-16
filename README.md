@@ -120,13 +120,18 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   - **The Uncommitted view** (in the Polylog side bar, like Source Control: its button in the
     Log toolbar shows it, and hides it again): one
     row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
-    files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
-    first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source
-    Control stays in step. Each file opens the diff Source Control would.
+    files under folders. Hover for **Stage**, **Unstage**, **Discard** (a file, a folder, a
+    group, staged or not; it always asks first) and, on a repository, **Commit…**; right-click
+    a repository for **Stage All**, **Unstage All** and **Discard All Changes** (everything in
+    it, back to the last commit). All
+    through VS Code's own Git, so Source Control stays in step. Each file opens the diff Source Control would.
   - **Commits | Uncommitted**, the switch at the top of the Log: its badge counts your
     uncommitted files. The Uncommitted side lists the repositories with work (files, a
     change meter, staged and new tags, when last edited); click one to review its files in
-    the Changes tree.
+    the Changes tree. Right-click a row, or the Changes tree, for **Commit…**, **Stage All**, **Unstage
+    All** and **Discard All Changes**; right-click a file or folder there to **Stage**,
+    **Unstage** or **Discard** it. Ctrl/Shift-click to act on several rows at once (one
+    prompt, even across repositories).
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
 - **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog

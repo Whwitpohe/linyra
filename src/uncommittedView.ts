@@ -5,11 +5,13 @@ import { errorLine } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { commitCount, commitStep, describeUncommitted, diffFor, discardPlan, discardPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
 interface Target { repoId: string; group?: Group; path?: string }
+/** What an action takes in one repository: its files, those of them from the Staged group, and whether it is one file. */
+interface Pick { work: RepoWork; files: FileChange[]; staged: FileChange[]; one: boolean }
 
 /** The accent each repository's chip has in the Log, as a theme color id (webview/styles.css). */
 const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
@@ -21,7 +23,7 @@ function gitMessage(e: unknown): string {
   // Put in a sentence that ends with its own period.
   return text.replace(/[.\s]+$/, "");
 }
-const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * VS Code's prompts, in one place: the integration suite answers them through a queue
@@ -102,7 +104,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   }
 
   constructor(private readonly deps: UncommittedViewDeps) {
-    this.view = vscode.window.createTreeView("polylog.uncommitted", { treeDataProvider: this, showCollapseAll: true });
+    this.view = vscode.window.createTreeView("polylog.uncommitted", { treeDataProvider: this, showCollapseAll: true, canSelectMany: true });
     this.disposables.push(this.view, deps.store.onDidChange(() => this.render()));
     this.render();
   }
@@ -165,8 +167,13 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     item.id = n.id;
     item.description = n.description;
     item.tooltip = n.tooltip;
-    // A repository with commits to pull also offers Pull (".behind").
-    item.contextValue = n.kind === "repo" && this.deps.behind(n.repoId) ? `${n.contextValue}.behind` : n.contextValue;
+    // A repository row: Stage All (".hasChanges"), Unstage All (".hasStaged"), and Pull when behind (".behind", last).
+    if (n.kind === "repo") {
+      const w = this.deps.store.get(n.repoId);
+      item.contextValue = `${n.contextValue}${w?.staged.length ? ".hasStaged" : ""}${w?.changes.length ? ".hasChanges" : ""}${this.deps.behind(n.repoId) ? ".behind" : ""}`;
+    } else {
+      item.contextValue = n.contextValue;
+    }
     if (n.kind === "repo") {
       const accent = this.deps.accents().get(n.repoId) ?? 0;
       item.iconPath = new vscode.ThemeIcon("repo", new vscode.ThemeColor(ACCENT_COLORS[accent % ACCENT_COLORS.length]));
@@ -182,7 +189,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   }
 
   /** The files a target means: one file, or every file of a group (or of the whole repository). */
-  private resolve(arg: unknown): { work: RepoWork; group: Group | undefined; files: FileChange[]; one: boolean } | undefined {
+  private resolve(arg: unknown): Pick | undefined {
     const t = arg as Partial<Target> | undefined;
     if (!t || typeof t.repoId !== "string") return undefined;
     const work = this.deps.store.get(t.repoId);
@@ -191,36 +198,66 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     const list = group === "staged" ? work.staged : group === "changes" ? work.changes : [...work.staged, ...work.changes];
     // A folder row stands for every file under it.
     const files = typeof t.path === "string" ? list.filter((f) => f.path === t.path || f.path.startsWith(`${t.path}/`)) : list;
-    return { work, group, files, one: files.length === 1 && files[0].path === t.path };
+    // Staged rows (the Staged group, or a whole repository) lose their staged change too on Discard.
+    const staged = group === "changes" ? [] : files.filter((f) => work.staged.includes(f));
+    // A file staged and changed again is in both groups: still one file.
+    return { work, files, staged, one: files.length > 0 && files.every((f) => f.path === t.path) };
   }
 
-  private async act(arg: unknown, verb: string, run: (root: string, paths: string[]) => Promise<void>, resolved?: ReturnType<UncommittedView["resolve"]>): Promise<void> {
-    // A confirmed action runs on the files the prompt listed, not on what is there after it closed.
-    const r = resolved ?? this.resolve(arg);
-    if (!r || r.files.length === 0 || !r.work.canStage) return;
-    try {
-      await run(r.work.root, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
-    } catch (e) {
-      this.showError(`Polylog could not ${verb} ${r.one ? r.files[0].path : plural(r.files.length, "file")} in ${r.work.name}: ${gitMessage(e)}.`);
+  /**
+   * The rows an action takes: the one right-clicked, or every selected row when it is among
+   * them (VS Code passes the selection too). Merged by repository; only where VS Code's Git can act.
+   */
+  private picks(arg: unknown, many?: unknown): Pick[] {
+    const rows = Array.isArray(many) && many.length > 1 ? many : [arg];
+    const byRepo = new Map<string, Pick>();
+    for (const row of rows) {
+      const r = this.resolve(row);
+      if (!r || r.files.length === 0 || !r.work.canStage) continue;
+      const had = byRepo.get(r.work.repoId);
+      if (!had) {
+        byRepo.set(r.work.repoId, r);
+        continue;
+      }
+      const add = (into: FileChange[], from: FileChange[]) => [...into, ...from.filter((f) => !into.includes(f))];
+      const files = add(had.files, r.files);
+      byRepo.set(r.work.repoId, { work: had.work, files, staged: add(had.staged, r.staged), one: new Set(files.map((f) => f.path)).size === 1 });
     }
-    await this.deps.store.readRepo(r.work.repoId);
+    return [...byRepo.values()];
   }
 
-  stage(arg: unknown): Promise<void> {
-    return this.act(arg, "stage", (root, paths) => this.deps.discovery.stage(root, paths));
+  private async act(picks: readonly Pick[], verb: string, run: (r: Pick, paths: string[]) => Promise<void>): Promise<void> {
+    // A confirmed action runs on the files the prompt listed, not on what is there after it closed.
+    for (const r of picks) {
+      try {
+        await run(r, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
+      } catch (e) {
+        this.showError(`Polylog could not ${verb} ${r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file")} in ${r.work.name}: ${gitMessage(e)}.`);
+      }
+    }
+    await Promise.all(picks.map((r) => this.deps.store.readRepo(r.work.repoId)));
   }
 
-  unstage(arg: unknown): Promise<void> {
-    return this.act(arg, "unstage", (root, paths) => this.deps.discovery.unstage(root, paths));
+  stage(arg: unknown, many?: unknown): Promise<void> {
+    return this.act(this.picks(arg, many), "stage", (r, paths) => this.deps.discovery.stage(r.work.root, paths));
   }
 
-  async discard(arg: unknown): Promise<void> {
-    const r = this.resolve(arg);
-    if (!r || r.files.length === 0 || !r.work.canStage) return;
-    const p = discardPrompt(r.work.name, r.files, r.one);
+  unstage(arg: unknown, many?: unknown): Promise<void> {
+    return this.act(this.picks(arg, many), "unstage", (r, paths) => this.deps.discovery.unstage(r.work.root, paths));
+  }
+
+  /** A file, a folder, a group, a repository row (all of its work), or several selected rows. Always asks, once. */
+  async discard(arg: unknown, many?: unknown): Promise<void> {
+    const picks = this.picks(arg, many);
+    if (picks.length === 0) return;
+    const p = picks.length === 1
+      ? discardPrompt(picks[0].work.name, picks[0].files, picks[0].one, picks[0].staged)
+      : discardPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
-    const untracked = r.files.filter((f) => f.untracked).map((f) => f.path);
-    await this.act(arg, "discard", (root, paths) => this.deps.discovery.discard(root, paths, untracked), r);
+    await this.act(picks, "discard", (r) => {
+      const plan = discardPlan(r.files, r.staged);
+      return this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
+    });
   }
 
   /** ✓ on a repository: its staged files, or (nothing staged) as VS Code's own commit does. */

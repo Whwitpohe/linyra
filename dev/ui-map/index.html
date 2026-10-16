@@ -240,7 +240,7 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">13</i><b>Branch box</b><span>Read each repository on this branch (falls back to its current branch).</span></div>
     <div class="g"><i class="num">14</i><b>Date range</b><span>24 hours, 7 days, 30 days, all time, or custom.</span></div>
     <div class="g"><i class="num">15</i><b>Refresh button</b><span>Reads every repository again.</span></div>
-    <div class="g"><i class="num">16</i><b>Commits | Uncommitted switch</b><span>At the top of the Log. Its badge counts the uncommitted files in the ticked repositories. Uncommitted shows one Uncommitted list row per repository with work (files, change meter, staged/new tags, when edited); clicking one shows its files in the Changes view.</span></div>
+    <div class="g"><i class="num">16</i><b>Commits | Uncommitted switch</b><span>At the top of the Log. Its badge counts the uncommitted files in the ticked repositories. Uncommitted shows one Uncommitted list row per repository with work (files, change meter, staged/new tags, when edited); clicking one shows its files in the Changes view. Right-click a row or the Changes view root for Commit…, Stage All, Unstage All and Discard All Changes; a file or folder there for Stage, Unstage and Discard. Several selected rows act together.</span></div>
     <div class="g"><i class="num">17</i><b>Commit row</b><span>Repo chip, subject, author, date. Click: its files go to the Changes view. Right-click: the Commit menu.</span></div>
     <div class="g"><i class="num">18</i><b>Load more</b><span>The next page of commits.</span></div>
     <div class="g"><i class="num">19</i><b>Log footer</b><span>Sort order, the branch in use, and how many commits are listed.</span></div>
@@ -326,7 +326,7 @@ section { display: grid; gap: 16px; }
     </div>
   </div>
   <div class="gloss">
-    <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>In the Polylog side bar (the Polylog icon in the Activity Bar, like Source Control): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository; − Unstage; ↶ Discard (asks first) and + Stage. Each file opens the diff Source Control would.</span></div>
+    <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>In the Polylog side bar (the Polylog icon in the Activity Bar, like Source Control): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>In the Changes view's title: the selected commit's whole tree, like the Explorer; folders holding changes open, others read when opened.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository of the Uncommitted view. A file staged and changed again is in both.</span></div>
     <div class="g"><i class="num">28</i><b>Polylog Compare tab</b><span>A panel tab next to Polylog (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>

@@ -135,14 +135,19 @@ export class RepoDiscovery implements vscode.Disposable {
     await r.revert!(this.abs(root, paths));
   }
 
-  /** Discard working-tree changes (untracked files are deleted), through VS Code's Git. */
   /**
    * Discard, through VS Code's Git (its paths spelled from its own root: it matches them as URIs).
-   * New files it does not list (git.untrackedChanges "hidden") it skips without a word: the user
-   * confirmed them, so they are deleted here.
+   * `unstage` are unstaged first, so the working tree goes back to the last commit. New files it
+   * does not list (git.untrackedChanges "hidden") it skips without a word: the user confirmed
+   * them, so they are deleted here.
    */
-  async discard(root: string, paths: string[], untracked: readonly string[] = []): Promise<void> {
-    const r = await this.gitRepoFor(root);
+  async discard(root: string, paths: string[], untracked: readonly string[] = [], unstage: readonly string[] = []): Promise<void> {
+    let r = await this.gitRepoFor(root);
+    if (unstage.length > 0) {
+      await r.revert!(this.abs(r.rootUri.fsPath, unstage));
+      // Its Changes group must now hold what was staged, or clean skips those files.
+      r = await this.gitRepoFor(root);
+    }
     await r.clean!(this.abs(r.rootUri.fsPath, paths));
     for (const p of untracked) await fs.rm(path.join(r.rootUri.fsPath, ...p.split("/")), { force: true });
   }

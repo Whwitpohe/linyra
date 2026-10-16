@@ -65,9 +65,9 @@ function reload(): void {
 const WORK = {
   type: "uncommitted" as const, known: true, totals: { files: 5, repos: 3, added: 24, deleted: 5 },
   rows: [
-    { repoId: "/work/acme-web", preview: "3 files · notes.md, src/app.ts, src/new.ts", meter: { added: 1, modified: 2, deleted: 0 }, tags: ["1 staged", "1 new"], edited: "edited 2m ago" },
-    { repoId: "/work/acme-api", preview: "1 file · upload/upload.go", meter: { added: 0, modified: 1, deleted: 0 }, tags: [], edited: "edited 1h ago" },
-    { repoId: "/work/acme-libs", preview: "1 file · ui/Button.tsx", meter: { added: 0, modified: 0, deleted: 1 }, tags: ["all staged"], edited: "edited 3h ago" },
+    { repoId: "/work/acme-web", preview: "3 files · notes.md, src/app.ts, src/new.ts", meter: { added: 1, modified: 2, deleted: 0 }, tags: ["1 staged", "1 new"], edited: "edited 2m ago", canStage: true, hasStaged: false, hasChanges: true },
+    { repoId: "/work/acme-api", preview: "1 file · upload/upload.go", meter: { added: 0, modified: 1, deleted: 0 }, tags: [], edited: "edited 1h ago", canStage: true, hasStaged: false, hasChanges: true },
+    { repoId: "/work/acme-libs", preview: "1 file · ui/Button.tsx", meter: { added: 0, modified: 0, deleted: 1 }, tags: ["all staged"], edited: "edited 3h ago", canStage: true, hasStaged: false, hasChanges: true },
   ],
 };
 

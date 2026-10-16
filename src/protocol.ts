@@ -31,6 +31,11 @@ export interface WorkRow {
   tags: string[];
   /** "edited 2m ago", or "" */
   edited: string;
+  /** VS Code's Git has the repository open: its menu offers Commit…, Stage/Unstage All and Discard All Changes. */
+  canStage: boolean;
+  /** Something is staged (Unstage All), something is not (Stage All). */
+  hasStaged: boolean;
+  hasChanges: boolean;
 }
 
 /** Extension host → webview. */

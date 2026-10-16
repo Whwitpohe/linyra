@@ -60,7 +60,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   constructor(private readonly runInRepo?: RunInRepo, allFiles = false, private readonly concurrency: () => number = () => 16) {
     this.reads = new Limiter(concurrency());
     this.allFiles = allFiles;
-    this.view = vscode.window.createTreeView("polylog.changes", { treeDataProvider: this, showCollapseAll: true });
+    this.view = vscode.window.createTreeView("polylog.changes", { treeDataProvider: this, showCollapseAll: true, canSelectMany: true });
     this.render();
   }
 
@@ -245,6 +245,15 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     return this.fetched(node.children);
   }
 
+  /** Uncommitted work under a folder ("" for all of it): ".staged" if part is staged, ".changed" if part is not. */
+  private workFlags(folder: string): string {
+    const s = this.state;
+    const under = (s?.files ?? []).filter((f) => folder === "" || f.path.startsWith(`${folder}/`));
+    const staged = under.some((f) => s?.stagedPaths?.includes(f.path));
+    const changed = under.some((f) => !f.staged);
+    return `${staged ? ".staged" : ""}${changed ? ".changed" : ""}`;
+  }
+
   getTreeItem(node: NodeDesc): vscode.TreeItem {
     // All Files: folders holding changes open, the others wait to be opened (and read).
     const closed = node.kind === "folder" && node.changedCount === 0;
@@ -255,7 +264,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (node.kind === "commit") {
       // A commit, or uncommitted work: different icons, so the root row says which at a glance.
       item.iconPath = new vscode.ThemeIcon(this.state?.commit.sha === UNCOMMITTED ? "diff-modified" : "git-commit");
-      item.contextValue = "commit";
+      // Uncommitted work has no SHA or message to copy; it can be discarded instead.
+      item.contextValue = this.state?.commit.sha !== UNCOMMITTED ? "commit" : this.state.discardable ? `uncommitted.discardable${this.workFlags("")}` : "uncommitted";
       return item;
     }
     // resourceUri lets the file-icon theme pick icons from the name. A private
@@ -263,8 +273,17 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     // for today's files are not painted onto a historical commit.
     item.resourceUri = this.uriFor(node.path, node.kind === "file" ? node.owner : undefined);
     item.iconPath = node.kind === "folder" ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
+    // A folder: Copy Path; on uncommitted work also Stage, Unstage and Discard for every file under it.
+    if (node.kind === "folder") item.contextValue = this.state?.commit.sha === UNCOMMITTED && this.state.discardable ? `folder.discardable${this.workFlags(node.path)}` : "folder";
     // A deleted file has no working-tree copy to open: "fileDeleted" drops Open File from its menu.
-    if (node.kind === "file") item.contextValue = node.file.status === "D" ? "fileDeleted" : "file";
+    if (node.kind === "file") {
+      // Uncommitted: .staged when part of it is staged (Unstage), .changed when part is not (Stage).
+      const s = this.state;
+      const work = s?.discardable && !node.unchanged
+        ? `.discardable${s.stagedPaths?.includes(node.path) ? ".staged" : ""}${node.file.staged ? "" : ".changed"}`
+        : "";
+      item.contextValue = `${node.file.status === "D" ? "fileDeleted" : "file"}${work}`;
+    }
     if (node.kind === "file" && node.unchanged) {
       // Not changed by the commit: the file as it was then, read-only.
       item.command = { command: "polylog.openRevision", title: "Open File at Commit", arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };

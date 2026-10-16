@@ -15,6 +15,10 @@ export interface ChangesState {
   error?: string;
   /** File history: the file to highlight in the tree. */
   focusPath?: string;
+  /** Uncommitted work VS Code's Git can change: its rows offer Discard, Stage, Unstage, Commit. */
+  discardable?: boolean;
+  /** Uncommitted work: the paths with a staged change (their rows offer Unstage). */
+  stagedPaths?: readonly string[];
 }
 
 /** Which repository and revision a file node belongs to, for opening its diff. */
