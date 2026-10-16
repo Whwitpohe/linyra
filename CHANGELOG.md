@@ -7,6 +7,48 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.1.0] — 2026-10-16
+
+### Added
+
+- **Discard All Changes on a repository.** Right-click a repository in the Uncommitted view,
+  on the Log's Uncommitted side, or at the top of the Changes view: everything in it goes back
+  to the last commit. Staged changes are unstaged first, and new files are deleted, staged or
+  not. It always asks first, and acts on exactly the files it listed.
+- **Discard staged files and folders too.** Discard was offered only on unstaged files; it is
+  now on staged files, the Staged group and folders, and takes the staged change as well.
+- **Act on uncommitted work from the Log.** On the Log's Uncommitted side, right-click a
+  repository, or the Changes view, for **Commit…**, **Stage All**, **Unstage All** and
+  **Discard All Changes**; right-click a file or folder there to **Stage**, **Unstage** or
+  **Discard** it. Before, that side was review only.
+- **Select several rows at once.** Ctrl/Shift-click files or folders in the Uncommitted and
+  Changes views, then Stage, Unstage or Discard them together: one prompt, even when they
+  are in different repositories.
+- **Stage All and Unstage All** on a repository in the Uncommitted view.
+- **Copy Path and Copy Relative Path** on file and folder rows in the Changes, Uncommitted
+  and Compare views.
+- **Commit actions wherever a commit is shown.** Copy Commit ID, Copy Message and Open on
+  Remote on the commit at the top of the Changes view and on Compare's commit rows, as on the
+  Log's.
+- **File History and Open File on Compare's files**, and an inline **Open File** button on the
+  Uncommitted view's files, as in Source Control.
+- **Exclude from Polylog and Show All Repositories** on repository menus in the Uncommitted
+  view and Compare, as in the Log.
+
+### Changed
+
+- **"Copy SHA" is now "Copy Commit ID"** everywhere, one name for one action.
+- **The Command Palette lists only what can run now**: Compare's commands while Compare is
+  open, Refresh Uncommitted while its view is shown, Show Only and Pull Repositories Behind
+  when one is behind, and only the toggle that applies.
+
+### Fixed
+
+- **Folders in the Uncommitted view have a menu.** Stage, Unstage and Discard worked on a
+  folder but were never offered.
+- **Deleted files no longer offer Open File**, which could only fail: there is nothing in the
+  workspace to open.
+
 ## [1.0.1] — 2026-10-02
 
 ### Fixed
