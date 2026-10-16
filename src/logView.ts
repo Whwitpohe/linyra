@@ -1262,7 +1262,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return this.deps.uncommitted.works()
       .filter((w) => distinctPaths(w).length > 0)
       .sort((a, b) => (b.editedAt ?? -Infinity) - (a.editedAt ?? -Infinity))
-      .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), meter: meter(w), tags: tags(w), edited: editedLabel(now, w.editedAt) }));
+      .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), meter: meter(w), tags: tags(w), edited: editedLabel(now, w.editedAt), canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
   }
 
   private postUncommitted(): void {
@@ -1287,7 +1287,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     for (const f of work.changes) byPath.set(f.path, { ...f, staged: false });
     const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ ...f, staged: staged.has(f.path) && !work.changes.some((c) => c.path === f.path) }));
     const commit: Commit = { repoId: repo.id, sha: UNCOMMITTED, time: Math.floor(Date.now() / 1000), author: "", email: "", subject: "Uncommitted changes", parents: work.head ? [work.head] : [] };
-    this.deps.changes.set({ commit, repoRoot: repo.root, repoName: repo.name, status: "ready", message: "", files });
+    this.deps.changes.set({ commit, repoRoot: repo.root, repoName: repo.name, status: "ready", message: "", files, discardable: work.canStage, stagedPaths: [...staged] });
   }
 
   /** All Files: a file the commit did not change, opened read-only as it was at that commit. */

@@ -287,8 +287,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         item.command = node.commit
           ? { command: "polylog.openDiff", title: "Open Diff", arguments: [{ repoId: node.repoId, sha: node.commit.sha, parent: node.commit.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status } satisfies OpenDiffArgs] }
           : { command: "polylog.compareOpenFile", title: "Open Diff", arguments: [{ side: this.side, repoId: node.repoId, path: node.file.path }] };
-        // Files mode: right-click offers Changes since the split.
-        if (!node.commit) item.contextValue = "compareFile";
+        // Files mode adds Changes since the split; a deleted file has nothing to open in the workspace.
+        item.contextValue = `${node.commit ? "compareCommitFile" : "compareFile"}${node.file.status === "D" ? ".deleted" : ""}`;
         return item;
       }
       case "commit": {
@@ -297,6 +297,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         item.description = `${node.commit.author} · ${node.commit.sha.slice(0, 7)}`;
         item.tooltip = `${node.commit.subject}\n${node.commit.author} · ${new Date(node.commit.time * 1000).toLocaleString()}`;
         item.iconPath = new vscode.ThemeIcon("git-commit");
+        item.contextValue = "compareCommit";
         return item;
       }
       case "more": {

@@ -39,8 +39,8 @@ export class WorkList {
       const on = r.repoId === this.selected;
       this.root.append(h("div", {
         class: "work-row", role: "option", id: `work-${rows.indexOf(r)}`, "aria-selected": String(on), "data-repo": r.repoId,
-        // Right-click: the repository's menu (Pull, Show Only…), as on its commits.
-        "data-vscode-context": JSON.stringify({ webviewSection: "uncommitted", repoId: r.repoId, behind: behind.has(r.repoId), preventDefaultContextMenuItems: true }),
+        // Right-click: the repository's menu (Pull, Show Only…), as on its commits, and Discard All Changes.
+        "data-vscode-context": JSON.stringify({ webviewSection: "uncommitted", repoId: r.repoId, behind: behind.has(r.repoId), canStage: r.canStage, hasStaged: r.hasStaged, hasChanges: r.hasChanges, preventDefaultContextMenuItems: true }),
       }, [
         h("span", { class: `chip accent-${accentOf(accents, r.repoId)}`, title: name }, [name]),
         h("span", { class: "work-what" }, [

@@ -133,7 +133,7 @@
       },
       {
         "command": "polylog.copySha",
-        "title": "Copy SHA",
+        "title": "Copy Commit ID",
         "category": "Polylog"
       },
       {
@@ -163,6 +163,16 @@
         "title": "Open File",
         "category": "Polylog",
         "icon": "$(go-to-file)"
+      },
+      {
+        "command": "polylog.copyFilePath",
+        "title": "Copy Path",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Polylog"
       },
       {
         "command": "polylog.repoShowOnly",
@@ -260,14 +270,32 @@
         "icon": "$(add)"
       },
       {
+        "command": "polylog.stageAll",
+        "title": "Stage All Changes",
+        "category": "Polylog",
+        "icon": "$(add)"
+      },
+      {
         "command": "polylog.unstage",
         "title": "Unstage Changes",
         "category": "Polylog",
         "icon": "$(remove)"
       },
       {
+        "command": "polylog.unstageAll",
+        "title": "Unstage All Changes",
+        "category": "Polylog",
+        "icon": "$(remove)"
+      },
+      {
         "command": "polylog.discard",
         "title": "Discard Changes",
+        "category": "Polylog",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "polylog.discardAll",
+        "title": "Discard All Changes",
         "category": "Polylog",
         "icon": "$(discard)"
       },
@@ -407,18 +435,8 @@
     "menus": {
       "view/item/context": [
         {
-          "command": "polylog.copySha",
-          "when": "view == polylog.changes && viewItem == commit",
-          "group": "copy@1"
-        },
-        {
-          "command": "polylog.copyMessage",
-          "when": "view == polylog.changes && viewItem == commit",
-          "group": "copy@2"
-        },
-        {
           "command": "polylog.openWorkingFile",
-          "when": "view == polylog.changes && viewItem == file",
+          "when": "view == polylog.changes && viewItem =~ /^file(\\.|$)/",
           "group": "1_open@1"
         },
         {
@@ -427,23 +445,48 @@
           "group": "2_history@1"
         },
         {
+          "command": "polylog.discard",
+          "when": "view == polylog.changes && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "group": "3_modification@3"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "view == polylog.changes && viewItem =~ /^file(Deleted)?\\.discardable.*\\.changed$/",
+          "group": "3_modification@1"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "view == polylog.changes && viewItem =~ /^file(Deleted)?\\.discardable\\.staged/",
+          "group": "3_modification@2"
+        },
+        {
+          "command": "polylog.commitRepo",
+          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable/",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "polylog.discardAll",
+          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable/",
+          "group": "1_modification@5"
+        },
+        {
           "command": "polylog.commitRepo",
           "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
           "group": "inline@1"
         },
         {
           "command": "polylog.discard",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
           "group": "inline@1"
         },
         {
           "command": "polylog.stage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
           "group": "inline@2"
         },
         {
           "command": "polylog.unstage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.staged$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
           "group": "inline@2"
         },
         {
@@ -453,18 +496,23 @@
         },
         {
           "command": "polylog.stage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
           "group": "1_modification@2"
         },
         {
           "command": "polylog.unstage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.staged$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
           "group": "1_modification@2"
         },
         {
           "command": "polylog.discard",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
           "group": "1_modification@3"
+        },
+        {
+          "command": "polylog.discardAll",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
+          "group": "1_modification@2"
         },
         {
           "command": "polylog.repoPull",
@@ -493,18 +541,103 @@
         },
         {
           "command": "polylog.openWorkingFile",
-          "when": "view == polylog.uncommitted && viewItem =~ /^file\\./",
+          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
           "group": "2_open@1"
         },
         {
           "command": "polylog.fileHistory",
-          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.readonly)?$/",
+          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.deleted)?(\\.readonly)?$/",
           "group": "3_history@1"
         },
         {
           "command": "polylog.compareOpenSinceSplit",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareFile",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compareFile/",
           "group": "1_open@1"
+        },
+        {
+          "command": "polylog.commitCopySha",
+          "when": "view == polylog.changes && viewItem == commit || (view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareCommit",
+          "group": "0_commit@1"
+        },
+        {
+          "command": "polylog.commitCopyMessage",
+          "when": "view == polylog.changes && viewItem == commit || (view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareCommit",
+          "group": "0_commit@2"
+        },
+        {
+          "command": "polylog.commitOpenOnRemote",
+          "when": "view == polylog.changes && viewItem == commit || (view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareCommit",
+          "group": "0_commit@3"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File$/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File/",
+          "group": "2_history@1"
+        },
+        {
+          "command": "polylog.copyFilePath",
+          "when": "(view == polylog.changes && viewItem =~ /^(file|folder)/) || (view == polylog.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File/)",
+          "group": "8_copy@1"
+        },
+        {
+          "command": "polylog.copyRelativePath",
+          "when": "(view == polylog.changes && viewItem =~ /^(file|folder)/) || (view == polylog.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File/)",
+          "group": "8_copy@2"
+        },
+        {
+          "command": "polylog.stageAll",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasChanges/",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "polylog.unstageAll",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasStaged/",
+          "group": "1_modification@4"
+        },
+        {
+          "command": "polylog.repoShowAll",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./ && polylog.repoFiltered",
+          "group": "5_filter@3"
+        },
+        {
+          "command": "polylog.repoExclude",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "group": "8_exclude@1"
+        },
+        {
+          "command": "polylog.stageAll",
+          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "polylog.unstageAll",
+          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable\\.staged/",
+          "group": "1_modification@4"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "view == polylog.changes && viewItem =~ /^folder\\.discardable.*\\.changed/",
+          "group": "3_modification@1"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "view == polylog.changes && viewItem =~ /^folder\\.discardable\\.staged/",
+          "group": "3_modification@2"
+        },
+        {
+          "command": "polylog.discard",
+          "when": "view == polylog.changes && viewItem =~ /^folder\\.discardable/",
+          "group": "3_modification@3"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
+          "group": "inline@0"
         }
       ],
       "commandPalette": [
@@ -585,6 +718,10 @@
           "when": "false"
         },
         {
+          "command": "polylog.discardAll",
+          "when": "false"
+        },
+        {
           "command": "polylog.commitRepo",
           "when": "false"
         },
@@ -646,6 +783,66 @@
         },
         {
           "command": "polylog.compareOpenSinceSplit",
+          "when": "false"
+        },
+        {
+          "command": "polylog.comparePick",
+          "when": "polylog.compareShown"
+        },
+        {
+          "command": "polylog.compareHideSame",
+          "when": "polylog.compareShown && polylog.compareMode != commits && !polylog.compareHideSame"
+        },
+        {
+          "command": "polylog.compareShowSame",
+          "when": "polylog.compareShown && polylog.compareMode != commits && polylog.compareHideSame"
+        },
+        {
+          "command": "polylog.compareClose",
+          "when": "polylog.compareShown"
+        },
+        {
+          "command": "polylog.refreshUncommitted",
+          "when": "polylog.uncommittedShown"
+        },
+        {
+          "command": "polylog.showRepos",
+          "when": "polylog.hideRepos"
+        },
+        {
+          "command": "polylog.hideRepos",
+          "when": "!polylog.hideRepos"
+        },
+        {
+          "command": "polylog.showBehind",
+          "when": "polylog.anyBehind"
+        },
+        {
+          "command": "polylog.pullAllBehind",
+          "when": "polylog.anyBehind && !polylog.fetching"
+        },
+        {
+          "command": "polylog.changesShowAll",
+          "when": "!polylog.changesAllFiles"
+        },
+        {
+          "command": "polylog.changesShowChanged",
+          "when": "polylog.changesAllFiles"
+        },
+        {
+          "command": "polylog.stageAll",
+          "when": "false"
+        },
+        {
+          "command": "polylog.unstageAll",
+          "when": "false"
+        },
+        {
+          "command": "polylog.copyFilePath",
+          "when": "false"
+        },
+        {
+          "command": "polylog.copyRelativePath",
           "when": "false"
         }
       ],
@@ -811,6 +1008,26 @@
           "group": "0_sync@1"
         },
         {
+          "command": "polylog.commitRepo",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage",
+          "group": "0_modification@1"
+        },
+        {
+          "command": "polylog.stageAll",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage && hasChanges",
+          "group": "0_modification@2"
+        },
+        {
+          "command": "polylog.unstageAll",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage && hasStaged",
+          "group": "0_modification@3"
+        },
+        {
+          "command": "polylog.discardAll",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage",
+          "group": "0_modification@4"
+        },
+        {
           "command": "polylog.repoShowOnly",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "1_filter@1"
@@ -874,6 +1091,16 @@
           "command": "polylog.repoCopyPath",
           "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
           "group": "3_copy@1"
+        },
+        {
+          "command": "polylog.repoShowAll",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo' && polylog.repoFiltered",
+          "group": "1_filter@3"
+        },
+        {
+          "command": "polylog.repoExclude",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "4_exclude@1"
         }
       ]
     },

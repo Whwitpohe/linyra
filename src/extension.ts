@@ -1,5 +1,7 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
+import { UNCOMMITTED } from "./types";
 import { validPair } from "./compareModel";
 import type { ReposWebview } from "./compareProtocol";
 import { CompareRepos } from "./compareRepos";
@@ -42,6 +44,43 @@ export function activate(context: vscode.ExtensionContext): void {
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
   });
   const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted });
+  /** A commit row's right-click: the Log's { repoId, sha }, a Compare commit row, or the Changes view's root. */
+  const commitArg = (arg: unknown): unknown => {
+    const n = arg as { kind?: unknown; repoId?: unknown; commit?: { sha?: unknown } } | undefined;
+    if (!n || typeof n !== "object" || n.kind !== "commit") return arg;
+    if (typeof n.repoId === "string" && typeof n.commit?.sha === "string") return { repoId: n.repoId, sha: n.commit.sha };
+    const s = changes.current();
+    return s && s.commit.sha !== UNCOMMITTED ? { repoId: s.commit.repoId, sha: s.commit.sha } : undefined;
+  };
+  /** A file or folder row of any Polylog tree (Changes, Uncommitted, Compare): its repository and repo-relative path. */
+  const fileRow = (arg: unknown): { root: string; path: string } | undefined => {
+    const n = arg as { kind?: unknown; repoId?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
+    if (!n || typeof n !== "object" || (n.kind !== "file" && n.kind !== "folder") || typeof n.path !== "string") return undefined;
+    const repoId = typeof n.repoId === "string" ? n.repoId : typeof n.owner?.repoId === "string" ? n.owner.repoId : changes.current()?.commit.repoId;
+    const repo = log.repoList.find((r) => r.id === repoId);
+    return repo ? { root: repo.root, path: n.path } : undefined;
+  };
+  /** A Compare file row, as the file in the workspace (File History and Open File take a file: URI). */
+  const compareFile = (arg: unknown): unknown => {
+    const side = (arg as { side?: unknown } | undefined)?.side;
+    const f = side === "left" || side === "right" ? fileRow(arg) : undefined;
+    return f ? vscode.Uri.file(path.join(f.root, ...f.path.split("/"))) : arg;
+  };
+  /** A right-click in the Changes view on uncommitted work: its repository, and the file if on one. */
+  const changesTarget = (arg: unknown): { repoId: string; path?: string } | undefined => {
+    const n = arg as { kind?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
+    const s = changes.current();
+    if (!n || typeof n !== "object" || s?.commit.sha !== UNCOMMITTED) return undefined;
+    if (n.kind === "commit") return { repoId: s.commit.repoId };
+    // A folder stands for every file under it.
+    return (n.kind === "file" || n.kind === "folder") && typeof n.path === "string" ? { repoId: typeof n.owner?.repoId === "string" ? n.owner.repoId : s.commit.repoId, path: n.path } : undefined;
+  };
+  /** A Changes view row on the Uncommitted side, as the Uncommitted view's row of that group; other rows as they are. */
+  const inGroup = (arg: unknown, group: "staged" | "changes"): unknown => {
+    const t = changesTarget(arg);
+    return t ? { ...t, group } : arg;
+  };
+  const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (arg as { repoId?: unknown } | undefined)?.repoId;
   const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id) });
   const compare = new CompareStore({
     run: (root, args, signal) => log.countedRun(root, args, signal),
@@ -83,8 +122,16 @@ export function activate(context: vscode.ExtensionContext): void {
     discovery,
     changes,
     vscode.window.registerFileDecorationProvider(changes),
-    vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(arg)),
-    vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(arg)),
+    vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
+    vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
+    vscode.commands.registerCommand("polylog.copyFilePath", async (arg?: unknown) => {
+      const f = fileRow(arg);
+      if (f) await vscode.env.clipboard.writeText(path.join(f.root, ...f.path.split("/")));
+    }),
+    vscode.commands.registerCommand("polylog.copyRelativePath", async (arg?: unknown) => {
+      const f = fileRow(arg);
+      if (f) await vscode.env.clipboard.writeText(f.path);
+    }),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("polylog.excludeRepos") || e.affectsConfiguration("polylog.scanDepth")) void log.reposSettingChanged();
@@ -140,10 +187,16 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", false);
     }),
     vscode.commands.registerCommand("polylog.refreshUncommitted", () => uncommitted.readAll(true)),
-    vscode.commands.registerCommand("polylog.stage", (arg?: unknown) => uncommittedView.stage(arg)),
-    vscode.commands.registerCommand("polylog.unstage", (arg?: unknown) => uncommittedView.unstage(arg)),
-    vscode.commands.registerCommand("polylog.discard", (arg?: unknown) => uncommittedView.discard(arg)),
-    vscode.commands.registerCommand("polylog.commitRepo", (arg?: unknown) => uncommittedView.commit(arg)),
+    // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
+    // `many` is the selection when the right-clicked row is in it.
+    vscode.commands.registerCommand("polylog.stage", (arg?: unknown, many?: unknown[]) => uncommittedView.stage(inGroup(arg, "changes"), many?.map((m) => inGroup(m, "changes")))),
+    vscode.commands.registerCommand("polylog.unstage", (arg?: unknown, many?: unknown[]) => uncommittedView.unstage(inGroup(arg, "staged"), many?.map((m) => inGroup(m, "staged")))),
+    vscode.commands.registerCommand("polylog.discard", (arg?: unknown, many?: unknown[]) => uncommittedView.discard(changesTarget(arg) ?? arg, many?.map((m) => changesTarget(m) ?? m))),
+    // A repository row (the Uncommitted view, the Log's Uncommitted side, or the Changes view's root): every file it lists.
+    vscode.commands.registerCommand("polylog.discardAll", (arg?: unknown) => uncommittedView.discard({ repoId: repoOf(arg) })),
+    vscode.commands.registerCommand("polylog.stageAll", (arg?: unknown) => uncommittedView.stage({ repoId: repoOf(arg), group: "changes" })),
+    vscode.commands.registerCommand("polylog.unstageAll", (arg?: unknown) => uncommittedView.unstage({ repoId: repoOf(arg), group: "staged" })),
+    vscode.commands.registerCommand("polylog.commitRepo", (arg?: unknown) => uncommittedView.commit(changesTarget(arg) ?? arg)),
     vscode.commands.registerCommand("polylog.openUncommittedDiff", (arg?: unknown) => uncommittedView.openDiff(arg)),
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
@@ -151,9 +204,9 @@ export function activate(context: vscode.ExtensionContext): void {
     // The spinning button while Fetch All runs: already fetching, nothing more to do.
     vscode.commands.registerCommand("polylog.fetching", () => undefined),
     // Right-click a commit row in the Log.
-    vscode.commands.registerCommand("polylog.commitCopySha", (arg?: unknown) => log.commitCopySha(arg)),
-    vscode.commands.registerCommand("polylog.commitCopyMessage", (arg?: unknown) => log.commitCopyMessage(arg)),
-    vscode.commands.registerCommand("polylog.commitOpenOnRemote", (arg?: unknown) => log.commitOpenOnRemote(arg)),
+    vscode.commands.registerCommand("polylog.commitCopySha", (arg?: unknown) => log.commitCopySha(commitArg(arg))),
+    vscode.commands.registerCommand("polylog.commitCopyMessage", (arg?: unknown) => log.commitCopyMessage(commitArg(arg))),
+    vscode.commands.registerCommand("polylog.commitOpenOnRemote", (arg?: unknown) => log.commitOpenOnRemote(commitArg(arg))),
     vscode.commands.registerCommand("polylog.showBehind", () => log.showBehind()),
     vscode.commands.registerCommand("polylog.pullAllBehind", () => log.pullAllBehind()),
     vscode.commands.registerCommand("polylog.fetchAndPullAll", () => log.fetchAndPullAll()),

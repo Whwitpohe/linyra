@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
+import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, discardPlan, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -42,6 +42,15 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   assert.deepStrictEqual(discardPrompt("acme-web", [f("src/app.ts", "M")], true), { message: 'Discard changes in "src/app.ts"?', detail: "This can't be undone.", button: "Discard File" });
   assert.strictEqual(discardPrompt("acme-web", [f("src/new.ts", "A", 0, 0, { untracked: true })], true).detail, "This can't be undone. This deletes the new file.");
   assert.deepStrictEqual(discardPrompt("acme-web", web.changes, false), { message: "Discard changes in 3 files in acme-web?", detail: "This can't be undone. 1 new file will be deleted.", button: "Discard All" });
+  // The whole repository: notes.md is in both groups and counts once; its staged change goes too.
+  assert.deepStrictEqual(discardPrompt("acme-web", [...web.staged, ...web.changes], false, web.staged), { message: "Discard changes in 3 files in acme-web?", detail: "This can't be undone. Staged changes are discarded too. 1 new file will be deleted.", button: "Discard All" });
+  // A staged new file is deleted; a staged rename unstages both names and deletes the new one.
+  const added = f("src/added.ts", "A");
+  assert.strictEqual(discardPrompt("acme-web", [added], true, [added]).detail, "This can't be undone. Staged changes are discarded too. This deletes the new file.");
+  const moved = f("src/b.ts", "R", 0, 0, { oldPath: "src/a.ts" });
+  assert.deepStrictEqual(discardPlan([moved, ...web.changes], [moved]), { paths: ["src/b.ts", "src/a.ts", "src/app.ts", "src/new.ts", "notes.md"], unstage: ["src/b.ts", "src/a.ts"], remove: ["src/b.ts", "src/new.ts"] });
+  // Only the Changes half of a staged new file: it is restored to the index, not deleted.
+  assert.deepStrictEqual(discardPlan([added], []).remove, []);
   assert.strictEqual(commitStep(1, 3, false), "message");
   assert.strictEqual(commitStep(0, 3, true), "commitAll", "git.enableSmartCommit: commit everything without asking");
   assert.strictEqual(commitStep(0, 3, false), "askStageAll");
@@ -55,6 +64,8 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   const groups = d.roots[0].children;
   assert.deepStrictEqual(groups.map((g) => [g.label, g.description, g.contextValue]), [["Staged", "1", "group.staged"], ["Changes", "3", "group.changes"]]);
   const src = groups[1].children.find((n) => n.label === "src")!;
+  assert.strictEqual(src.contextValue, "folder.changes", "a folder offers Stage and Discard for every file under it");
+  assert.strictEqual(describeUncommitted([{ ...web, staged: [], changes: [f("gone.ts", "D", 0, 4)] }]).roots[0].children[0].children[0].contextValue, "file.changes.deleted", "a deleted file: no Open File");
   assert.deepStrictEqual(src.children.map((n) => [n.label, n.description, n.contextValue]), [["app.ts", "+3 −1", "file.changes"], ["new.ts", "new", "file.changes.untracked"]]);
   assert.ok(files(d.roots[1]).every((n) => n.contextValue.endsWith(".readonly")), "no Stage/Discard on a repository vscode.git has not opened");
   assert.ok(d.roots[1].children.every((g) => g.contextValue.endsWith(".readonly")));

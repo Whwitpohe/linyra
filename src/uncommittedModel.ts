@@ -87,11 +87,29 @@ export function diffFor(group: Group, f: FileChange, alsoStaged: boolean): { lef
   return { left: alsoStaged ? "index" : "head", right: f.status === "D" ? "empty" : "worktree" };
 }
 
-export function discardPrompt(repoName: string, files: readonly FileChange[], one: boolean): { message: string; detail: string; button: string } {
-  const news = files.filter((f) => f.untracked).length;
-  const message = one ? `Discard changes in "${files[0].path}"?` : `Discard changes in ${plural(files.length, "file")} in ${repoName}?`;
+/**
+ * What Discard does to the files it listed. `staged` are the listed files taken from the Staged
+ * group: they are unstaged first. A file new to the index (added, or a rename's or copy's new
+ * name) is then untracked, so it is deleted, like a new file never staged.
+ */
+export function discardPlan(files: readonly FileChange[], staged: readonly FileChange[]): { paths: string[]; unstage: string[]; remove: string[] } {
+  const both = (f: FileChange) => (f.oldPath ? [f.path, f.oldPath] : [f.path]);
+  const isNew = (f: FileChange) => f.untracked === true || (staged.includes(f) && (f.status === "A" || f.status === "R" || f.status === "C"));
+  return {
+    paths: [...new Set(files.flatMap(both))],
+    unstage: [...new Set(staged.flatMap(both))],
+    remove: [...new Set(files.filter(isNew).map((f) => f.path))],
+  };
+}
+
+export function discardPrompt(repoName: string, files: readonly FileChange[], one: boolean, staged: readonly FileChange[] = []): { message: string; detail: string; button: string } {
+  // A file staged and changed again is listed in both groups: count it once.
+  const n = new Set(files.map((f) => f.path)).size;
+  const news = discardPlan(files, staged).remove.length;
+  const message = one ? `Discard changes in "${files[0].path}"?` : `Discard changes in ${plural(n, "file")} in ${repoName}?`;
   let extra = "";
-  if (news > 0) extra = one || news === files.length ? (news === 1 ? " This deletes the new file." : " This deletes the new files.") : ` ${plural(news, "new file")} will be deleted.`;
+  if (staged.length > 0) extra += " Staged changes are discarded too.";
+  if (news > 0) extra += one || news === n ? (news === 1 ? " This deletes the new file." : " This deletes the new files.") : ` ${plural(news, "new file")} will be deleted.`;
   return { message, detail: `This can't be undone.${extra}`, button: one ? "Discard File" : "Discard All" };
 }
 
@@ -116,7 +134,7 @@ export interface UNode {
   label: string;
   description: string;
   tooltip: string;
-  /** Menus key off it: repo.stageable|readonly, group.staged|changes[.readonly], file.staged|changes[.untracked][.readonly]. */
+  /** Menus key off it: repo.stageable|readonly, group|folder.staged|changes[.readonly], file.staged|changes[.untracked|.deleted][.readonly]. */
   contextValue: string;
   repoId: string;
   group?: Group;
@@ -137,12 +155,12 @@ function describeTree(nodes: readonly TreeNode[], parent: string, base: string, 
   return nodes.map((n): UNode => {
     if (n.kind === "folder") {
       const path = parent ? `${parent}/${n.name}` : n.name;
-      return { kind: "folder", id: `${base}/d:${path}`, label: n.name, description: String(n.count), tooltip: path, contextValue: "folder", repoId: w.repoId, group, path, children: describeTree(n.children, path, base, w, group) };
+      return { kind: "folder", id: `${base}/d:${path}`, label: n.name, description: String(n.count), tooltip: path, contextValue: `folder.${group}${ro}`, repoId: w.repoId, group, path, children: describeTree(n.children, path, base, w, group) };
     }
     const f = n.file;
     return {
       kind: "file", id: `${base}/f:${f.path}`, label: n.name, description: fileStat(f), tooltip: f.oldPath ? `${f.oldPath} → ${f.path}` : f.path,
-      contextValue: `file.${group}${f.untracked ? ".untracked" : ""}${ro}`, repoId: w.repoId, group, path: f.path, file: f, children: [],
+      contextValue: `file.${group}${f.untracked ? ".untracked" : f.status === "D" ? ".deleted" : ""}${ro}`, repoId: w.repoId, group, path: f.path, file: f, children: [],
     };
   });
 }

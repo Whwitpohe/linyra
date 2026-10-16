@@ -590,6 +590,108 @@ describe("Polylog panel", () => {
     await send({ type: "refresh" });
   });
 
+  it("Discard a staged file, and Discard All Changes on a repository: back to the last commit", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
+    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("polylog._itest.uncommitted");
+    const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
+    const at = (f: string) => path.join(web.root, f);
+    const committed = git("show", "HEAD:client.ts");
+    // An earlier test's error stays as the last one shown; Discard must not add its own.
+    const errorBefore = (await view()).lastError;
+    try {
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      // One staged file: its staged change and its working-tree change both go.
+      fs.writeFileSync(at("client.ts"), "export const ok = 1;\n");
+      git("add", "client.ts");
+      fs.writeFileSync(at("client.ts"), "export const ok = 2;\n");
+      await send({ type: "refresh" });
+      await seen("client.ts staged and changed", (i) => i.includes("  Staged | 1") && i.includes("  Changes | 1"));
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard File");
+      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "staged", path: "client.ts" });
+      await waitFor("client.ts restored", () => (fs.readFileSync(at("client.ts"), "utf8") === `${committed}\n` ? true : undefined));
+      assert.strictEqual(git("status", "--porcelain"), "", "nothing staged, nothing changed");
+
+      // The whole repository: a staged edit, a staged new file, an edit, an untracked file.
+      fs.writeFileSync(at("client.ts"), "export const ok = 3;\n");
+      fs.writeFileSync(at("added.ts"), "export {};\n");
+      git("add", "client.ts", "added.ts");
+      fs.writeFileSync(at("CHANGELOG.md"), "- edited\n");
+      fs.writeFileSync(at("loose.md"), "x\n");
+      await send({ type: "refresh" });
+      await seen("four files", (i) => i.includes("acme-web | 4 files [repo.stageable]"));
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("polylog.discardAll", { repoId: web.id });
+      await waitFor("acme-web clean", () => (git("status", "--porcelain") === "" ? true : undefined));
+      assert.ok(!fs.existsSync(at("added.ts")) && !fs.existsSync(at("loose.md")), "new files deleted, staged or not");
+      await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
+      assert.strictEqual((await view()).lastError, errorBefore, "no error from Discard");
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      git("reset", "-q", "--hard");
+      git("clean", "-fdq");
+    }
+    await send({ type: "refresh" });
+  });
+
+  it("the Changes view on the Uncommitted side: Discard a file (staged and edited: one file), Discard All Changes on its root", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const api = s0.repos.find((r) => r.name === "acme-api")!;
+    const cp = require("child_process") as typeof import("child_process");
+    const git = (root: string, ...args: string[]) => cp.execFileSync("git", args, { cwd: root }).toString().trim();
+    const at = (f: string) => path.join(api.root, f);
+    const committed = git(api.root, "show", "HEAD:upload.go");
+    try {
+      fs.writeFileSync(at("upload.go"), "staged\n");
+      git(api.root, "add", "upload.go");
+      fs.writeFileSync(at("upload.go"), "edited again\n");
+      fs.writeFileSync(at("notes.md"), "n\n");
+      await send({ type: "refresh" });
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("the Uncommitted side", (x) => x.logMode === "uncommitted");
+      await send({ type: "selectWork", repoId: api.id });
+      await until("acme-api's files in the Changes view", (x) => x.changes.items[0]?.startsWith("acme-api | 2 files") === true);
+      // Stage and Unstage from a Changes view row: each takes its own half of the file.
+      const node = (p: string) => ({ kind: "file", path: p, owner: { repoId: api.id, sha: UNCOMMITTED, parent: null } });
+      await vscode.commands.executeCommand("polylog.stage", node("notes.md"));
+      await waitFor("notes.md staged", () => (git(api.root, "diff", "--cached", "--name-only").split("\n").includes("notes.md") ? true : undefined));
+      await vscode.commands.executeCommand("polylog.unstage", node("upload.go"));
+      await waitFor("upload.go unstaged", () => (git(api.root, "diff", "--cached", "--name-only") === "notes.md" ? true : undefined));
+      assert.strictEqual(fs.readFileSync(at("upload.go"), "utf8"), "edited again\n", "Unstage keeps the working-tree edit");
+      await vscode.commands.executeCommand("polylog.unstage", node("notes.md"));
+      await waitFor("nothing staged", () => (git(api.root, "diff", "--cached", "--name-only") === "" ? true : undefined));
+      git(api.root, "add", "upload.go");
+      fs.writeFileSync(at("upload.go"), "edited again, after staging\n");
+      await send({ type: "refresh" });
+      await until("upload.go staged and edited again", (x) => {
+        const w = x.uncommitted.find((u) => u.repoId === api.id);
+        return w !== undefined && w.staged.includes("upload.go") && w.changes.includes("upload.go");
+      });
+      // A file node as the Changes view passes it: staged and edited again is still "Discard File".
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard File");
+      await vscode.commands.executeCommand("polylog.discard", { kind: "file", path: "upload.go", owner: { repoId: api.id, sha: UNCOMMITTED, parent: null } });
+      await waitFor("upload.go restored", () => (fs.readFileSync(at("upload.go"), "utf8") === `${committed}\n` ? true : undefined));
+      assert.strictEqual(git(api.root, "status", "--porcelain"), "?? notes.md", "only the other file is left");
+      // The root row: everything in the repository.
+      await until("acme-api down to one file", (x) => x.changes.items[0]?.startsWith("acme-api | 1 file") === true);
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("polylog.discardAll", { kind: "commit" });
+      await waitFor("acme-api clean", () => (git(api.root, "status", "--porcelain") === "" ? true : undefined));
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      git(api.root, "reset", "-q", "--hard");
+      git(api.root, "clean", "-fdq");
+      await send({ type: "logMode", mode: "commits" });
+    }
+    await send({ type: "refresh" });
+  });
+
   it("bad input is ignored, not thrown: a null message, a malformed File History URI, a ../ diff path, a foreign revision", async () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const c = bySubject(s0, "feat: add retry");
@@ -999,7 +1101,10 @@ describe("Polylog panel", () => {
     git("update-ref", "refs/heads/polylog-up", theirs);
     git("branch", "--set-upstream-to=polylog-up", branch);
     try {
-      // No Refresh: VS Code's Git sees the new upstream and reports it; that repo is read again.
+      // No Refresh: VS Code's Git reports the new upstream; that repo is read again. Its file
+      // watcher may not see a .git/config change on every runner, so ask it to look (its own status).
+      const api = (vscode.extensions.getExtension("vscode.git")!.exports as { getAPI(v: 1): { getRepository(u: vscode.Uri): { status(): Promise<void> } | null } }).getAPI(1);
+      await api.getRepository(vscode.Uri.file(web.root))?.status();
       const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
       assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
       assert.ok(Object.keys(s.sync).every((id) => id === web.id), "repositories without an upstream show nothing");
@@ -1137,6 +1242,105 @@ describe("Polylog panel", () => {
     });
     assert.match(editor.document.uri.fsPath, /acme-web[\\/]client\.ts$/);
     await closeEditors();
+  });
+
+  it("menu parity: commit actions from the Changes root and a Compare row, Copy Path, File History from Compare, Stage/Unstage All", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const c = bySubject(s0, "fix: guard nil");
+    const clip = async () => vscode.env.clipboard.readText();
+    // The Changes view's root row (a commit): Copy Commit ID and Copy Message, as on the Log's row.
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await until("the tree for that commit", (x) => x.changes.items.some((i) => i.includes("client.ts")));
+    await vscode.commands.executeCommand("polylog.commitCopySha", { kind: "commit" });
+    assert.strictEqual(await clip(), c.sha);
+    await vscode.commands.executeCommand("polylog.commitCopyMessage", { kind: "commit" });
+    assert.strictEqual(await clip(), "fix: guard nil response");
+    // A Compare commit row passes its node: { kind, repoId, commit }.
+    await vscode.env.clipboard.writeText("");
+    await vscode.commands.executeCommand("polylog.commitCopySha", { kind: "commit", id: "x", repoId: c.repoId, commit: { sha: c.sha } });
+    assert.strictEqual(await clip(), c.sha);
+    // Copy Path and Copy Relative Path from a Changes file row.
+    await vscode.commands.executeCommand("polylog.copyRelativePath", { kind: "file", path: "client.ts" });
+    assert.strictEqual(await clip(), "client.ts");
+    await vscode.commands.executeCommand("polylog.copyFilePath", { kind: "file", path: "client.ts" });
+    assert.strictEqual(await clip(), path.join(web.root, "client.ts"));
+    // File History from a Compare file row (it has a side).
+    await vscode.commands.executeCommand("polylog.fileHistory", { kind: "file", id: "x", repoId: web.id, side: "left", path: "client.ts", name: "client.ts", file: { path: "client.ts", added: 1, deleted: 0 }, both: false });
+    await until("File History from Compare", (x) => x.history?.path === "client.ts");
+    await send({ type: "exitHistory" });
+    await until("history closed", (x) => x.history === null);
+    // Stage All and Unstage All on an Uncommitted view repository row.
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
+    try {
+      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 9;\n");
+      fs.writeFileSync(path.join(web.root, "extra.md"), "x\n");
+      await send({ type: "refresh" });
+      await until("two changed files", (x) => x.uncommitted.find((u) => u.repoId === web.id)?.changes.length === 2);
+      await vscode.commands.executeCommand("polylog.stageAll", { kind: "repo", repoId: web.id });
+      await waitFor("both staged", () => (git("diff", "--cached", "--name-only").split("\n").sort().join(",") === "client.ts,extra.md" ? true : undefined));
+      await until("both staged in the store", (x) => x.uncommitted.find((u) => u.repoId === web.id)?.staged.length === 2);
+      await vscode.commands.executeCommand("polylog.unstageAll", { kind: "repo", repoId: web.id });
+      await waitFor("nothing staged", () => (git("diff", "--cached", "--name-only") === "" ? true : undefined));
+    } finally {
+      git("reset", "-q", "--hard");
+      git("clean", "-fdq");
+    }
+    await send({ type: "refresh" });
+  });
+
+  it("several selected rows: one Stage, one Discard prompt across repositories; a Changes view folder stages its files", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const api = s0.repos.find((r) => r.name === "acme-api")!;
+    const git = (root: string, ...args: string[]) => cp.execFileSync("git", args, { cwd: root }).toString().trim();
+    const work = (x: LogSnapshot, id: string) => x.uncommitted.find((u) => u.repoId === id);
+    const row = (repoId: string, p: string) => ({ kind: "file", repoId, group: "changes", path: p });
+    try {
+      fs.mkdirSync(path.join(web.root, "docs"), { recursive: true });
+      fs.writeFileSync(path.join(web.root, "docs", "a.md"), "a\n");
+      fs.writeFileSync(path.join(web.root, "docs", "b.md"), "b\n");
+      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 7;\n");
+      fs.writeFileSync(path.join(api.root, "upload.go"), "changed\n");
+      await send({ type: "refresh" });
+      await until("work in both", (x) => work(x, web.id)?.changes.length === 3 && work(x, api.id)?.changes.length === 1);
+      // Stage two selected rows: the right-clicked one and the rest of the selection.
+      await vscode.commands.executeCommand("polylog.stage", row(web.id, "docs/a.md"), [row(web.id, "docs/a.md"), row(web.id, "client.ts")]);
+      await waitFor("two staged", () => (git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "client.ts,docs/a.md" ? true : undefined));
+      git(web.root, "reset", "-q");
+      await send({ type: "refresh" });
+      await until("nothing staged in the store", (x) => work(x, web.id)?.staged.length === 0);
+      // A Changes view folder on the Uncommitted side: Stage takes every file under it.
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("the Uncommitted side", (x) => x.logMode === "uncommitted");
+      await send({ type: "selectWork", repoId: web.id });
+      await until("acme-web in the Changes view", (x) => x.changes.items[0]?.startsWith("acme-web") === true);
+      await vscode.commands.executeCommand("polylog.stage", { kind: "folder", path: "docs" });
+      await waitFor("docs staged", () => (git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "docs/a.md,docs/b.md" ? true : undefined));
+      await send({ type: "logMode", mode: "commits" });
+      await send({ type: "refresh" });
+      await until("docs staged in the store", (x) => work(x, web.id)?.staged.length === 2);
+      // Discard rows of two repositories: one prompt for all of them.
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("polylog.discard", row(web.id, "client.ts"), [row(web.id, "client.ts"), row(api.id, "upload.go")]);
+      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), "Discard changes in 2 files in 2 repositories?");
+      await waitFor("both restored", () => (git(web.root, "status", "--porcelain", "--", "client.ts") === "" && git(api.root, "status", "--porcelain") === "" ? true : undefined));
+      assert.strictEqual(git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(","), "docs/a.md,docs/b.md", "rows not selected are left alone");
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await send({ type: "logMode", mode: "commits" });
+      for (const r of [web, api]) {
+        git(r.root, "reset", "-q", "--hard");
+        git(r.root, "clean", "-fdq");
+      }
+    }
+    await send({ type: "refresh" });
   });
 
   it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
@@ -1661,7 +1865,7 @@ describe("Polylog panel", () => {
       assert.strictEqual((await vscode.workspace.openTextDocument(since.original)).getText(), "");
       assert.strictEqual((await vscode.workspace.openTextDocument(since.modified)).getText(), "package timeout\n");
       const items = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
-      assert.ok(items.some((m) => m.command === "polylog.compareOpenSinceSplit" && m.when.includes("viewItem == compareFile")));
+      assert.ok(items.some((m) => m.command === "polylog.compareOpenSinceSplit" && m.when.includes("viewItem =~ /^compareFile/")));
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       // Another repository: both sides follow; a file of the old one no longer opens.
       await select(roots["acme-web"]);
