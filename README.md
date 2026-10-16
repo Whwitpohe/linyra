@@ -86,6 +86,13 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     range.
 - **Repositories pane.** Pick which repositories to show, with fuzzy search and
   multi-select. Toggle it with **Group by Repository** in the Log's title bar.
+  - **Profiles.** Save the ticked repositories under a name (**＋ Save as profile…** appears
+    as soon as you pick some, or right-click the Repo List), then click the profile to tick
+    exactly those repositories again. Your other filters stay as they are. Profiles live in
+    the workspace setting `polylog.profiles`, one list of repository paths per name, so you
+    can edit them by hand or share them. Right-click a repository for **Profiles…**, a
+    profile for **Update to Current Selection**, **Rename…** and **Delete**; **⋯ → Switch
+    Profile…** works with the Repo List hidden.
   - **↓3 ↑2** beside a name: commits on its upstream you haven't pulled, and commits you
     haven't pushed, as of the last fetch. **Fetch All** (the cloud in the Log's toolbar)
     runs `git fetch` in every repository, a few at a time, and never prompts for

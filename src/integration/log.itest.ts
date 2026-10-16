@@ -1343,6 +1343,116 @@ describe("Polylog panel", () => {
     await send({ type: "refresh" });
   });
 
+  it("profiles: read from polylog.profiles, switched by Show and Switch Profile…, other filters kept", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    try {
+      await cfg.update("profiles", { backend: ["acme-api", "acme-libs", "acme-jobs"], web: ["acme-web"], bad: "acme-web" }, vscode.ConfigurationTarget.Workspace);
+      let s = await until("profiles resolved", (x) => x.profiles.length === 2);
+      assert.deepStrictEqual(s.profiles.map((p) => [p.name, p.ids, p.missing]), [
+        ["backend", [id("acme-api"), id("acme-libs")], ["acme-jobs"]],
+        ["web", [id("acme-web")], []],
+      ], "a malformed profile is skipped; a missing repository is reported, not an error");
+      // A filter set beforehand stays: a profile changes only the repositories.
+      await send({ type: "filter", filter: { ...s.filter, author: "dana" } });
+      await vscode.commands.executeCommand("polylog.profileShow", { webviewSection: "profile", profile: "backend" });
+      s = await until("backend ticked", (x) => x.filter.repoIds?.join() === [id("acme-api"), id("acme-libs")].join());
+      assert.strictEqual(s.filter.author, "dana", "Author kept");
+      await vscode.commands.executeCommand("polylog._itest.answer", "web");
+      await vscode.commands.executeCommand("polylog.profileSwitch");
+      await until("web ticked", (x) => x.filter.repoIds?.join() === id("acme-web"));
+      await vscode.commands.executeCommand("polylog._itest.answer", "All repositories");
+      await vscode.commands.executeCommand("polylog.profileSwitch");
+      await until("All again", (x) => x.filter.repoIds === null);
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
+      await send({ type: "filter", filter: ALL });
+    }
+    await until("no profiles, six rows again", (x) => x.profiles.length === 0 && x.rows.length === 6);
+  });
+
+  it("profiles: save the ticks, a repository's Profiles…, update, rename (refuses a taken name), delete asks", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    const saved = () => cfg.inspect<Record<string, string[]>>("profiles")?.workspaceValue;
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    try {
+      await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api"), id("acme-libs")] } });
+      await answer("backend");
+      await vscode.commands.executeCommand("polylog.profileSave");
+      await waitFor("backend saved", () => (saved()?.backend?.join() === "acme-api,acme-libs" ? true : undefined));
+      await until("backend resolved", (x) => x.profiles.some((p) => p.name === "backend"));
+      // A repository's Profiles…: add acme-web to backend and make a new profile with it.
+      await answer(JSON.stringify(["backend", "New profile with acme-web…"]));
+      await answer("web");
+      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await waitFor("memberships", () => (saved()?.backend?.join() === "acme-api,acme-libs,acme-web" && saved()?.web?.join() === "acme-web" ? true : undefined));
+      // ...and take it out again: unticked = removed.
+      await answer(JSON.stringify([]));
+      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await waitFor("removed", () => (saved()?.backend?.join() === "acme-api,acme-libs" && saved()?.web?.length === 0 ? true : undefined));
+      // Update to Current Selection.
+      await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api")] } });
+      await vscode.commands.executeCommand("polylog.profileUpdate", { webviewSection: "profile", profile: "backend" });
+      await waitFor("updated", () => (saved()?.backend?.join() === "acme-api" ? true : undefined));
+      // Rename to a taken name (any case) changes nothing; to a free one, renames.
+      await answer("WEB");
+      await vscode.commands.executeCommand("polylog.profileRename", { webviewSection: "profile", profile: "backend" });
+      assert.ok(saved()?.backend && !saved()?.WEB, "a taken name is refused");
+      await answer("api");
+      await vscode.commands.executeCommand("polylog.profileRename", { webviewSection: "profile", profile: "backend" });
+      await waitFor("renamed", () => (saved()?.api?.join() === "acme-api" && !saved()?.backend ? true : undefined));
+      // Delete asks; Cancel keeps it.
+      await answer("Cancel");
+      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "api" });
+      assert.ok(saved()?.api, "Cancel keeps it");
+      await answer("Delete");
+      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "api" });
+      await waitFor("deleted", () => (saved()?.api === undefined ? true : undefined));
+      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), 'Delete profile "api"?');
+    } finally {
+      await answer(undefined);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
+      await send({ type: "filter", filter: ALL });
+    }
+  });
+
+  it("profiles: a write never copies User-level profiles into the workspace; Profiles… with no change writes nothing", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    const ws = () => vscode.workspace.getConfiguration("polylog").inspect<Record<string, string[]>>("profiles")?.workspaceValue;
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    try {
+      await cfg.update("profiles", { personal: ["acme-web"] }, vscode.ConfigurationTarget.Global);
+      await until("the User profile is listed", (x) => x.profiles.some((p) => p.name === "personal"));
+      // Accepting Profiles… unchanged writes no workspace setting at all.
+      await answer(JSON.stringify(["personal"]));
+      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      assert.strictEqual(ws(), undefined, "nothing changed: nothing written");
+      // Saving a workspace profile writes only it.
+      await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api")] } });
+      await answer("backend");
+      await vscode.commands.executeCommand("polylog.profileSave");
+      await waitFor("backend saved", () => (ws()?.backend ? true : undefined));
+      assert.deepStrictEqual(ws(), { backend: ["acme-api"] }, "the User profile is not copied into the workspace");
+      // Deleting a User-level profile from here leaves both scopes as they were.
+      await answer("Delete");
+      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "personal" });
+      assert.deepStrictEqual(ws(), { backend: ["acme-api"] });
+      assert.deepStrictEqual(cfg.inspect<Record<string, string[]>>("profiles")?.globalValue, { personal: ["acme-web"] });
+    } finally {
+      await answer(undefined);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Global);
+      await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
+      await send({ type: "filter", filter: ALL });
+    }
+    await until("no profiles, six rows again", (x) => x.profiles.length === 0 && x.rows.length === 6);
+  });
+
   it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");

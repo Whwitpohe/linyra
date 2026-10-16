@@ -75,10 +75,10 @@ let logMode: "commits" | "uncommitted" = "commits";
 
 function handle(m: WebviewMessage): void {
   switch (m.type) {
-    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history, logMode: (logMode = "commits") }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); reload(); return;
     case "logMode": logMode = m.mode; console.info(`[harness] ${m.type}`, m); return;
     case "selectWork": console.info(`[harness] ${m.type}`, m); return;
-    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history, logMode }, 0); reload(); return;
+    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history, logMode, profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); reload(); return;
     case "layout": console.info("[harness] layout", m); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;

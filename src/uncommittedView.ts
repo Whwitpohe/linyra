@@ -55,14 +55,40 @@ export class Ask {
     return (await vscode.window.showWarningMessage(message, { modal: true, detail }, button)) === button;
   }
 
-  async input(prompt: string, placeHolder: string): Promise<string | undefined> {
+  async input(prompt: string, placeHolder: string, opts: { value?: string; validate?: (v: string) => string | vscode.InputBoxValidationMessage | undefined } = {}): Promise<string | undefined> {
     this.asked++;
     if (this.testing && this.answers.length > 0) {
       const a = this.answers.shift();
       return a === "Cancel" ? undefined : a;
     }
-    return vscode.window.showInputBox({ prompt, placeHolder, ignoreFocusOut: true });
+    return vscode.window.showInputBox({ prompt, placeHolder, value: opts.value, validateInput: opts.validate, ignoreFocusOut: true });
   }
+
+  /** One item; its index. Testing: the queued answer is the item's label. */
+  async pick(items: readonly vscode.QuickPickItem[], placeHolder: string): Promise<number | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const answer = this.answers.shift();
+      const i = items.findIndex((x) => x.label === answer);
+      return i < 0 ? undefined : i;
+    }
+    const chosen = await vscode.window.showQuickPick([...items], { placeHolder });
+    return chosen ? items.indexOf(chosen) : undefined;
+  }
+
+  /** Ticked items (those with `picked` start ticked); their indexes. Testing: a JSON array of labels. */
+  async pickMany(items: readonly vscode.QuickPickItem[], placeHolder: string): Promise<number[] | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const a = this.answers.shift();
+      if (a === undefined || a === "Cancel") return undefined;
+      const labels = JSON.parse(a) as string[];
+      return items.flatMap((x, i) => (labels.includes(x.label) ? [i] : []));
+    }
+    const chosen = await vscode.window.showQuickPick([...items], { placeHolder, canPickMany: true });
+    return chosen ? chosen.map((c) => items.indexOf(c)) : undefined;
+  }
+
 }
 
 export interface UncommittedViewDeps {
@@ -74,6 +100,8 @@ export interface UncommittedViewDeps {
   committed(): void;
   /** The repository has commits to pull (its row offers Pull). */
   behind(repoId: string): boolean;
+  /** VS Code's prompts, shared with the Log (one queue for the integration suite). */
+  ask: Ask;
 }
 
 /** The native Uncommitted view: a thin adapter from uncommittedModel's descriptors to TreeItems. */
@@ -89,7 +117,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   private parents = new Map<UNode, UNode>();
   private message: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
-  readonly ask = new Ask();
+  readonly ask: Ask;
   /** The last error shown (integration test seam). */
   private lastError: string | undefined;
 
@@ -104,6 +132,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   }
 
   constructor(private readonly deps: UncommittedViewDeps) {
+    this.ask = deps.ask;
     this.view = vscode.window.createTreeView("polylog.uncommitted", { treeDataProvider: this, showCollapseAll: true, canSelectMany: true });
     this.disposables.push(this.view, deps.store.onDidChange(() => this.render()));
     this.render();

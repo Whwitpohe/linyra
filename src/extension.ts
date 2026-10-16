@@ -17,7 +17,7 @@ import { SCHEME } from "./revisionUri";
 import { BlameView } from "./blameView";
 import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
-import { UncommittedView } from "./uncommittedView";
+import { Ask, UncommittedView } from "./uncommittedView";
 import { assignAccents } from "./webview/view";
 
 const UNCOMMITTED_SHOWN = "polylog.uncommitted.shown";
@@ -43,7 +43,8 @@ export function activate(context: vscode.ExtensionContext): void {
     canStage: (root) => discovery.vsCodeGitHas(root),
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
   });
-  const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted });
+  const ask = new Ask();
+  const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted, ask });
   /** A commit row's right-click: the Log's { repoId, sha }, a Compare commit row, or the Changes view's root. */
   const commitArg = (arg: unknown): unknown => {
     const n = arg as { kind?: unknown; repoId?: unknown; commit?: { sha?: unknown } } | undefined;
@@ -81,7 +82,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return t ? { ...t, group } : arg;
   };
   const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (arg as { repoId?: unknown } | undefined)?.repoId;
-  const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id) });
+  const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id), ask });
   const compare = new CompareStore({
     run: (root, args, signal) => log.countedRun(root, args, signal),
     concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16))),
@@ -135,6 +136,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("polylog.excludeRepos") || e.affectsConfiguration("polylog.scanDepth")) void log.reposSettingChanged();
+      if (e.affectsConfiguration("polylog.profiles")) log.profilesChanged();
     }),
     // Uncommitted changes follow the working tree: VS Code's Git reporting a change in a
     // repository, or a save. Only that repository is read again.
@@ -217,6 +219,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.repoExclude", (arg?: unknown) => log.repoExclude(arg)),
     vscode.commands.registerCommand("polylog.repoOpenFolder", (arg?: unknown) => log.repoOpenFolder(arg)),
     vscode.commands.registerCommand("polylog.repoCopyPath", (arg?: unknown) => log.repoCopyPath(arg)),
+    vscode.commands.registerCommand("polylog.profileSwitch", () => log.profileSwitch()),
+    vscode.commands.registerCommand("polylog.profileShow", (arg?: unknown) => log.profileShow(arg)),
+    vscode.commands.registerCommand("polylog.profileSave", () => log.profileSave()),
+    vscode.commands.registerCommand("polylog.profileUpdate", (arg?: unknown) => log.profileUpdate(arg)),
+    vscode.commands.registerCommand("polylog.profileRename", (arg?: unknown) => log.profileRename(arg)),
+    vscode.commands.registerCommand("polylog.profileDelete", (arg?: unknown) => log.profileDelete(arg)),
+    vscode.commands.registerCommand("polylog.repoProfiles", (arg?: unknown) => log.repoProfiles(arg)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),

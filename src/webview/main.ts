@@ -1,4 +1,5 @@
 import "./styles.css";
+import type { ResolvedProfile } from "../profileModel";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
@@ -23,6 +24,7 @@ const SKELETON_DELAY_MS = 150;
 
 const state = {
   repos: [] as Repo[],
+  profiles: [] as ResolvedProfile[],
   filter: DEFAULT_FILTER as FilterState,
   history: null as { repoName: string; path: string } | null,
   rows: [] as Commit[],
@@ -47,7 +49,7 @@ const notices = new NoticeBar(byId("notices"), () => {
 });
 const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
-const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
+const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }), () => post({ type: "profileSave" }));
 const appEl = byId("app");
 /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
 let mode: "commits" | "uncommitted" = "commits";
@@ -126,7 +128,8 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.filter = m.filter;
       filters.setMe(m.hasMe);
       filters.update(m.filter);
-      repoPane.update(m.repos, m.filter.repoIds);
+      state.profiles = m.profiles;
+      repoPane.update(m.repos, m.filter.repoIds, m.profiles);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       // Only when the host changed the switch: a late init must not undo the user's click.
       if (m.logMode !== undefined && m.logMode !== mode) setMode(m.logMode);
@@ -233,7 +236,7 @@ function openFirstFile(): void {
 function setFilter(f: FilterState): void {
   state.filter = f;
   filters.update(f);
-  repoPane.update(state.repos, f.repoIds);
+  repoPane.update(state.repos, f.repoIds, state.profiles);
   post({ type: "filter", filter: f });
   render();
 }

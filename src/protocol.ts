@@ -1,3 +1,4 @@
+import type { ResolvedProfile } from "./profileModel";
 import type { FilterState } from "./filterModel";
 import type { BranchUse } from "./logQuery";
 import type { Commit, Repo, RepoFailure } from "./types";
@@ -40,7 +41,7 @@ export interface WorkRow {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted" }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
   | { type: "loading" }
   /** The uncommitted work behind the Log's switch. `known`: every repository was read (the badge shows a number). */
   | { type: "uncommitted"; known: boolean; totals: { files: number; repos: number; added: number; deleted: number }; rows: WorkRow[] }
@@ -66,4 +67,6 @@ export type WebviewMessage =
   | { type: "selectWork"; repoId: string }
   /** A suggestion box got focus for the first time: read its suggestions now, not at startup. */
   | { type: "wantSuggestions"; kind: "authors" | "branches" }
-  | { type: "openSettings" };
+  | { type: "openSettings" }
+  /** The Repo List's ＋ Save as profile… row. */
+  | { type: "profileSave" };

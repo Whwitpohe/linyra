@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, PaneWidth, fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
+import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, PaneWidth, fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos, paneRows, type PaneRow } from "./repoPaneModel";
 
 const all = ["/ws/acme-api", "/ws/acme-libs", "/ws/acme-web"];
 const repos = all.map((id) => ({ id, name: id.slice(4) }));
@@ -55,4 +55,15 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.strictEqual(w.set(40, 1400), 120, "a drag is still clamped");
   assert.strictEqual(w.fit(1400), 120, "and what it clamped to is what the user chose");
   console.log("ok - resizing never forgets the pane width the user chose");
+}
+{
+  const repos = [{ id: "/ws/acme-web", name: "acme-web", root: "/ws/acme-web" }, { id: "/ws/acme-api", name: "acme-api", root: "/ws/acme-api" }, { id: "/ws/acme-libs", name: "acme-libs", root: "/ws/acme-libs" }];
+  const backend = { name: "backend", ids: ["/ws/acme-api", "/ws/acme-libs"], missing: [] };
+  const kinds = (rows: PaneRow[]) => rows.map((r) => (r.kind === "profile" ? `profile:${r.profile.name}${r.active ? "*" : ""}` : r.kind === "save" ? `save:${r.count}` : r.kind === "repo" ? r.name : "all"));
+  assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], null)), ["all", "profile:backend", "acme-web", "acme-api", "acme-libs"]);
+  assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], backend.ids)), ["all", "profile:backend*", "acme-web", "acme-api", "acme-libs"], "active: the ticks are the profile");
+  assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], ["/ws/acme-web"])), ["all", "profile:backend", "save:1", "acme-web", "acme-api", "acme-libs"], "a new selection can be saved");
+  assert.deepStrictEqual(kinds(paneRows(repos, "", [], ["/ws/acme-web"])), ["all", "save:1", "acme-web", "acme-api", "acme-libs"], "the way in with no profiles yet");
+  assert.deepStrictEqual(kinds(paneRows(repos, "api", [backend], ["/ws/acme-web"])), ["all", "acme-api"], "searching repositories hides profiles");
+  console.log("ok - paneRows: All, profiles, the save row, repositories");
 }

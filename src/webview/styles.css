@@ -74,6 +74,17 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .repo-check { flex: none; }
 .repo-dot { width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--accent); }
 .repo-dot.all { background: transparent; border: 1px solid var(--vscode-descriptionForeground); }
+/* Profiles: a small list glyph drawn with the text color (no icon font). */
+.profile-icon { width: 10px; height: 9px; flex: none; background: linear-gradient(currentColor 0 0) 0 0 / 100% 1px no-repeat, linear-gradient(currentColor 0 0) 0 4px / 100% 1px no-repeat, linear-gradient(currentColor 0 0) 0 8px / 100% 1px no-repeat; opacity: .8; }
+.profile-row.current { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, inherit); }
+/* A profile not in use is not "unticked": its name keeps the normal color. */
+.repo-row.profile-row .repo-name { color: var(--vscode-foreground); }
+.profile-missing { color: var(--vscode-editorWarning-foreground); }
+.save-row { color: var(--vscode-descriptionForeground); }
+.save-row:hover { color: var(--vscode-foreground); }
+.save-icon { width: 10px; text-align: center; flex: none; }
+.repo-divider { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); margin: 4px 10px; }
+body.vscode-high-contrast .profile-row.current { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 .repo-name { overflow: hidden; text-overflow: ellipsis; }
 .repo-name .hit { color: var(--vscode-list-highlightForeground); font-weight: 600; }
 

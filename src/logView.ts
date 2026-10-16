@@ -18,7 +18,8 @@ import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
-import { openWorkDiff } from "./uncommittedView";
+import { openWorkDiff, type Ask } from "./uncommittedView";
+import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 
 const FILTER_KEY = "polylog.filter";
@@ -47,10 +48,13 @@ export interface LogDeps {
   changes: ChangesTree;
   /** Each ticked repository's uncommitted work (the Log keeps its scope in step). */
   uncommitted: UncommittedStore;
+  /** VS Code's prompts (shared with the Uncommitted view; the integration suite answers them). */
+  ask: Ask;
 }
 
 export interface LogSnapshot {
   repos: Repo[];
+  profiles: ResolvedProfile[];
   filter: FilterState;
   rows: Commit[];
   failures: RepoFailure[];
@@ -257,6 +261,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
         return;
+      case "profileSave":
+        await this.profileSave();
+        return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "scan depth");
         return;
@@ -280,7 +287,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(forceMode = false): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, ...(forceMode ? { logMode: this.logMode } : {}) });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, profiles: this.resolvedProfiles(), ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**
@@ -945,6 +952,170 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.reload();
   }
 
+  /** polylog.profiles as written (lenient: malformed entries are skipped). */
+  private rawProfiles(): Profiles {
+    return readProfiles(vscode.workspace.getConfiguration("polylog").get("profiles"));
+  }
+
+  /** How each repository is named in polylog.profiles. */
+  private profileKeys(): { id: string; key: string }[] {
+    const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => ({ name: f.name, path: f.uri.fsPath }));
+    return this.repos.map((r) => ({ id: r.id, key: repoKey(r.root, folders, process.platform === "win32") }));
+  }
+
+  resolvedProfiles(): ResolvedProfile[] {
+    return resolveProfiles(this.rawProfiles(), this.profileKeys());
+  }
+
+  /** polylog.profiles changed (by Polylog or by hand): redraw the Repo List. */
+  profilesChanged(): void {
+    this.postInit();
+  }
+
+  /** The profile a right-click was on. */
+  private contextProfile(arg: unknown): ResolvedProfile | undefined {
+    const name = (arg as { profile?: unknown } | undefined)?.profile;
+    return typeof name === "string" ? this.resolvedProfiles().find((p) => p.name === name) : undefined;
+  }
+
+  /** Right-click a profile → Show This Profile (the same as clicking it). */
+  async profileShow(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    if (p) await this.setRepoFilter(profileFilter(p, this.repos.map((r) => r.id)));
+  }
+
+  /** ⋯ → Switch Profile…: All repositories, then each profile; works with the Repo List hidden. */
+  async profileSwitch(): Promise<void> {
+    const all = this.repos.map((r) => r.id);
+    const resolved = this.resolvedProfiles();
+    const active = activeProfiles(resolved, this.filter.repoIds, all);
+    const nameOf = new Map(this.repos.map((r) => [r.id, r.name]));
+    const items: vscode.QuickPickItem[] = [
+      { label: "All repositories", description: `${all.length} repositories`, detail: this.filter.repoIds === null ? "Current" : undefined },
+      ...resolved.map((p) => ({ label: p.name, description: p.ids.map((id) => nameOf.get(id)).join(", ") || "no repository found", detail: active.includes(p.name) ? "Current" : undefined })),
+    ];
+    const i = await this.deps.ask.pick(items, resolved.length > 0 ? "Switch profile" : "No profiles yet: tick some repositories, then Save Selection as Profile…");
+    if (i === undefined) return;
+    await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
+  }
+
+  /** The workspace's own polylog.profiles (the listed ones also merge in the User settings' ones). */
+  private ownProfiles(): Profiles {
+    return readProfiles(vscode.workspace.getConfiguration("polylog").inspect("profiles")?.workspaceValue);
+  }
+
+  /**
+   * An edit of the listed profiles, written to the workspace: its own profiles plus the ones this
+   * edit changed, never a User-level profile it did not touch (the workspace file may be shared).
+   * Nothing changed: nothing written (no settings.json created for a no-op).
+   */
+  private async writeChanges(before: Profiles, after: Profiles): Promise<void> {
+    const own = this.ownProfiles();
+    const out: Profiles = {};
+    for (const [name, keys] of Object.entries(after)) {
+      if (name in own || JSON.stringify(keys) !== JSON.stringify(before[name])) out[name] = keys;
+    }
+    if (JSON.stringify(out) !== JSON.stringify(own)) await this.writeProfiles(out);
+  }
+
+  /** A profile from the User settings cannot be renamed or deleted from a workspace: say where it is. */
+  private userLevel(name: string): boolean {
+    if (name in this.ownProfiles()) return false;
+    void vscode.window.showInformationMessage(`Polylog: "${name}" is in your User settings (polylog.profiles); change it there.`);
+    return true;
+  }
+
+  /** Writes polylog.profiles to the workspace settings; false (with an error shown) if it could not. */
+  private async writeProfiles(next: Profiles): Promise<boolean> {
+    if (!vscode.workspace.workspaceFolders?.length) {
+      void vscode.window.showErrorMessage("Polylog: profiles are saved in the workspace settings; open a folder first.");
+      return false;
+    }
+    try {
+      await vscode.workspace.getConfiguration("polylog").update("profiles", next, vscode.ConfigurationTarget.Workspace);
+    } catch (e) {
+      void vscode.window.showErrorMessage(`Polylog could not save the profile: ${messageOf(e)}`);
+      return false;
+    }
+    this.postInit();
+    return true;
+  }
+
+  /** The ticked repositories as profile entries. */
+  private tickedKeys(): string[] {
+    const keyOf = new Map(this.profileKeys().map((k) => [k.id, k.key]));
+    return (this.filter.repoIds ?? this.repos.map((r) => r.id)).flatMap((id) => keyOf.get(id) ?? []);
+  }
+
+  /** ＋ Save as profile…, the Repo List's right-click, ⋯: the ticked repositories under a name. */
+  async profileSave(): Promise<void> {
+    const keys = this.tickedKeys();
+    if (keys.length === 0) return;
+    const current = this.rawProfiles();
+    const n = keys.length === 1 ? "1 repository" : `${keys.length} repositories`;
+    const name = await this.deps.ask.input(`Name for a profile of ${n}`, "backend", {
+      validate: (v) => {
+        if (!v.trim()) return undefined;
+        const taken = Object.keys(current).find((k) => k.toLowerCase() === v.trim().toLowerCase());
+        return taken === undefined ? undefined : { message: `"${taken}" exists: Enter replaces it with these ${n}.`, severity: vscode.InputBoxValidationSeverity.Warning };
+      },
+    });
+    if (!name?.trim()) return;
+    // Replacing keeps the existing spelling of the name.
+    const taken = Object.keys(current).find((k) => k.toLowerCase() === name.trim().toLowerCase());
+    await this.writeChanges(current, saveProfile(current, taken ?? name, keys));
+  }
+
+  /** Right-click a profile → Update to Current Selection. */
+  async profileUpdate(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    const keys = this.tickedKeys();
+    if (!p || keys.length === 0) return;
+    const current = this.rawProfiles();
+    await this.writeChanges(current, saveProfile(current, p.name, keys));
+  }
+
+  /** Right-click a profile → Rename…: refuses a name that is taken (in any case). */
+  async profileRename(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    if (!p || this.userLevel(p.name)) return;
+    const current = this.rawProfiles();
+    const name = await this.deps.ask.input(`New name for profile "${p.name}"`, p.name, { value: p.name, validate: (v) => nameProblem(current, v, p.name) });
+    if (name === undefined || nameProblem(current, name, p.name) !== undefined || name.trim() === p.name) return;
+    await this.writeChanges(current, renameProfile(current, p.name, name));
+  }
+
+  /** Right-click a profile → Delete: asks; the repositories stay as they are. */
+  async profileDelete(arg: unknown): Promise<void> {
+    const p = this.contextProfile(arg);
+    if (!p || this.userLevel(p.name)) return;
+    if (!(await this.deps.ask.warning(`Delete profile "${p.name}"?`, "Its repositories stay as they are; only the name goes.", "Delete"))) return;
+    const current = this.rawProfiles();
+    await this.writeChanges(current, deleteProfile(current, p.name));
+  }
+
+  /** Right-click a repository → Profiles…: tick the profiles it belongs to, or start a new one with it. */
+  async repoProfiles(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (!repo) return;
+    const key = this.profileKeys().find((k) => k.id === repo.id)?.key;
+    if (!key) return;
+    const current = this.rawProfiles();
+    const names = profileNames(current);
+    const items: vscode.QuickPickItem[] = [
+      ...names.map((n) => ({ label: n, description: current[n].length === 1 ? "1 repository" : `${current[n].length} repositories`, picked: current[n].includes(key) })),
+      { label: `New profile with ${repo.name}…`, picked: false },
+    ];
+    const chosen = await this.deps.ask.pickMany(items, `Profiles with ${repo.name}`);
+    if (chosen === undefined) return;
+    let next = setMembership(current, key, chosen.filter((i) => i < names.length).map((i) => names[i]));
+    if (chosen.includes(names.length)) {
+      const name = await this.deps.ask.input(`Name for a new profile with ${repo.name}`, "backend", { validate: (v) => (v.trim() ? nameProblem(next, v) : undefined) });
+      if (name !== undefined && nameProblem(next, name) === undefined) next = saveProfile(next, name, [key]);
+    }
+    await this.writeChanges(current, next);
+  }
+
   /** Right-click → Show Only: this repository's commits alone. */
   async repoShowOnly(arg: unknown): Promise<void> {
     const repo = this.contextRepo(arg);
@@ -1085,7 +1256,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   snapshot(): LogSnapshot {
     return {
-      repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
+      repos: this.repos, profiles: this.resolvedProfiles(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {
