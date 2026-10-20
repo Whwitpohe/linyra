@@ -33,6 +33,9 @@ export async function leftSide(run: RunGit, root: string, last: string, path: st
     if (signal.aborted) throw e;
     return "";
   });
+  const right = text;
+  /** Each step's file before and after its commit, newest first: checked again at the end. */
+  const steps: { before: string; after: string }[] = [];
   let current = path;
   // The revision `text` stands for: renames between it and the next commit are followed back.
   let state = last;
@@ -50,15 +53,26 @@ export async function leftSide(run: RunGit, root: string, last: string, path: st
       }
     }
     state = commit.parents[0] ?? state;
-    if (!change) continue; // this commit did not touch the file
+    // The range log says this commit touched the file: not finding it means the path was lost.
+    if (!change) return { kind: "fallback", reason: "conflict" };
     const [after, before] = await Promise.all([blob(change.newBlob), blob(change.oldBlob)]);
     const why = unmergeable(text) ?? unmergeable(after) ?? unmergeable(before);
     if (why) return { kind: "fallback", reason: why };
     const merged = merge3(after, text, before);
-    if (!merged.ok) return { kind: "fallback", reason: "conflict" };
+    if (!merged.ok) return { kind: "fallback", reason: merged.tooLarge ? "too large" : "conflict" };
     text = merged.text;
+    steps.push({ before, after });
     current = change.oldPath ?? current;
   }
+  // The guard: the selected changes put back onto the left side must give the right side
+  // exactly. Where the line alignment made them come apart, show the plain diff instead.
+  let check = text;
+  for (const s of [...steps].reverse()) {
+    const r = merge3(s.before, check, s.after);
+    if (!r.ok) return { kind: "fallback", reason: "conflict" };
+    check = r.text;
+  }
+  if (check !== right) return { kind: "fallback", reason: "conflict" };
   return { kind: "text", text };
 }
 

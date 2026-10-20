@@ -82,13 +82,15 @@ export function parseRangeLog(stdout: string): RangeCommit[] {
 }
 
 interface Acc {
+  /** Where the file is now, as the range goes on (unselected renames too). */
   path: string;
+  /** Its path after the newest selected commit that touched it: the path shown. */
+  shownPath: string;
   beforePath: string;
   beforeRef: string | null;
   first: RawChange;
   last: RawChange;
   shas: string[];
-  renamed: boolean;
   /** Unselected commits since the last selected one; they count once another selected commit follows. */
   pending: string[];
   included: string[];
@@ -101,7 +103,7 @@ function netStatus(a: Acc): ChangeStatus | null {
   if (first === "A") return "A";
   if (last === "D") return "D";
   if (first === "D") return "M";
-  return a.renamed ? "R" : "M";
+  return a.shownPath !== a.beforePath ? "R" : "M";
 }
 
 /** The commits in `log` that `sha` descends from, itself included. */
@@ -128,16 +130,14 @@ export function combineRepo(selected: ReadonlySet<string>, log: readonly RangeCo
       let acc = byPath.get(was);
       if (!acc) {
         if (!mine) continue; // not (yet) a file of the selection
-        acc = { path: change.path, beforePath: was, beforeRef: c.parents[0] ?? null, first: change, last: change, shas: [], renamed: false, pending: [], included: [] };
+        acc = { path: change.path, shownPath: change.path, beforePath: was, beforeRef: c.parents[0] ?? null, first: change, last: change, shas: [], pending: [], included: [] };
         all.push(acc);
       }
-      if (change.oldPath !== undefined && change.oldPath !== change.path) {
-        byPath.delete(change.oldPath);
-        acc.renamed = true;
-      }
+      if (change.oldPath !== undefined && change.oldPath !== change.path) byPath.delete(change.oldPath);
       acc.path = change.path;
       byPath.set(change.path, acc);
       if (mine) {
+        acc.shownPath = change.path;
         acc.shas.push(c.sha);
         acc.last = change;
         acc.included.push(...acc.pending);
@@ -156,12 +156,12 @@ export function combineRepo(selected: ReadonlySet<string>, log: readonly RangeCo
     // Only commits `last` descends from reach its version of the file.
     const included = a.included.filter((s) => before.has(s));
     const fast = included.length === 0 && a.shas.every((s) => before.has(s));
-    if (status === null || (fast && a.first.oldBlob === a.last.newBlob && a.beforePath === a.path)) {
-      noNetChange.push(a.path);
+    if (status === null || (fast && a.first.oldBlob === a.last.newBlob && a.beforePath === a.shownPath)) {
+      noNetChange.push(a.shownPath);
       continue;
     }
-    const f: CombinedFile = { path: a.path, status, shas: a.shas, last, beforeRef: a.beforeRef, beforePath: a.beforePath, included, fast };
-    files.push(a.renamed && a.beforePath !== a.path ? { ...f, oldPath: a.beforePath } : f);
+    const f: CombinedFile = { path: a.shownPath, status, shas: a.shas, last, beforeRef: a.beforeRef, beforePath: a.beforePath, included, fast };
+    files.push(a.beforePath !== a.shownPath ? { ...f, oldPath: a.beforePath } : f);
   }
   return { files, noNetChange };
 }

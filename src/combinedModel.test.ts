@@ -108,3 +108,17 @@ const example: RangeCommit[] = [
   assert.deepStrictEqual([f.included, f.fast], [[], false]);
   console.log("ok - selected commits on two branches take the slow path");
 }
+
+{
+  // Renamed by an unselected commit after the last selected one that touched it: the file is
+  // shown at the path that commit left it, not where it moved later.
+  const log: RangeCommit[] = [
+    { sha: "c", parents: ["u"], changes: [ch("M", "x.ts", blob(5), blob(6))] },
+    { sha: "u", parents: ["a"], changes: [ch("R", "new.ts", blob(2), blob(2), "old.ts")] },
+    { sha: "a", parents: ["p"], changes: [ch("M", "old.ts", blob(1), blob(2))] },
+  ];
+  const f = byPath(combineRepo(new Set(["a", "c"]), log).files);
+  assert.deepStrictEqual(Object.keys(f).sort(), ["old.ts", "x.ts"]);
+  assert.deepStrictEqual([f["old.ts"].status, f["old.ts"].last, f["old.ts"].oldPath, f["old.ts"].fast], ["M", "a", undefined, true]);
+  console.log("ok - a later unselected rename does not move the file");
+}

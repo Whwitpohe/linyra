@@ -198,19 +198,21 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
 
 /** New rows for the list, keeping the selected commit (and the scroll) when it is still listed. */
 function replaceRows(rows: Commit[]): void {
+  let prevKey = state.rows[state.selected] ? commitKey(state.rows[state.selected]) : null;
   if (state.selection.keys.length > 1) {
     // Combined Changes: the host keeps the commits still listed too, and re-reads what is left.
-    const kept = keepListed(state.selection, rows.map(commitKey));
-    if (kept.keys.length > 1) {
+    const left = keepListed(state.selection, rows.map(commitKey));
+    if (left.keys.length > 1) {
       state.rows = rows;
-      state.selection = kept;
-      state.selected = rows.findIndex((c) => commitKey(c) === kept.focus);
+      state.selection = left;
+      state.selected = rows.findIndex((c) => commitKey(c) === left.focus);
       return;
     }
+    // One left: it stays selected, focused or not.
+    if (left.focus !== null) prevKey = left.focus;
   }
-  const prev = state.rows[state.selected];
-  const next = reselect(prev ? commitKey(prev) : null, rows);
-  const kept = prev !== undefined && next >= 0 && commitKey(rows[next]) === commitKey(prev);
+  const next = reselect(prevKey, rows);
+  const kept = prevKey !== null && next >= 0 && commitKey(rows[next]) === prevKey;
   state.rows = rows;
   if (!kept) list.resetScroll();
   select(next, false);
@@ -245,7 +247,8 @@ function gesture(index: number, how: Gesture): void {
   const { next, overLimit } = applyGesture(state.selection, g, order);
   state.overLimit = overLimit;
   if (overLimit) return render();
-  if (next.keys.length <= 1) return select(index);
+  // Back to one commit: the one left, not necessarily the row clicked (Ctrl-click removes it).
+  if (next.keys.length <= 1) return select(order.indexOf(next.focus ?? key));
   state.selection = next;
   state.selected = order.indexOf(next.focus ?? key);
   selectedKey = null; // a plain click on any of them is a new selection

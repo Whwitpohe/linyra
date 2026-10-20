@@ -113,10 +113,14 @@ objects into the user's `.git`, and that breaks the anti-goal. The inputs are re
 <sha>:<path>`, and nothing is cached: the content provider reads and merges each time VS Code asks
 (constraint 1).
 
-**Clean versus conflict follows `git merge-file` exactly (my call).** Changes on adjacent lines,
+**Clean versus conflict follows `git merge-file`'s rule (my call).** Changes on adjacent lines,
 with no unchanged line between them, count as a conflict. This is the conservative choice, and it
 serves the anti-goal. Unit tests use `git merge-file -p` as an oracle, run on temp files in a
-scratch directory and never in the user's repository.
+scratch directory and never in the user's repository. Line alignment (Myers, not xdiff's
+heuristics) can still differ from git on repeated lines. So a **round-trip guard** backs it up:
+the selected changes put back onto the computed left side must reproduce the right side byte
+for byte, or the file takes the fallback. A diff over 2,000 edited lines also falls back, as
+"too large", to keep the merge short on the extension host.
 
 **Limits (my call):** binary files, and files over **1 MB or 20,000 lines** on any side, skip the
 merge and take the fallback. Their title is labeled "binary" or "too large" instead of naming

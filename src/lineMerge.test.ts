@@ -85,3 +85,15 @@ const text = (lines: string[]) => lines.map((l) => `${l}\n`).join("");
   }
   console.log(`ok - agrees with git merge-file on ${cases.length} cases`);
 }
+{
+  // A file rewritten wholesale on one side: refused quickly instead of a quadratic diff on the host.
+  const n = 6000;
+  const base = Array.from({ length: n }, (_, i) => `line ${i}\n`).join("");
+  const ours = Array.from({ length: n }, (_, i) => `other ${i}\n`).join("");
+  const start = Date.now();
+  const r = merge3(base, ours, base);
+  const ms = Date.now() - start;
+  assert.ok(ms < 1500, `took ${ms} ms`);
+  assert.deepStrictEqual(r, { ok: false, tooLarge: true });
+  console.log(`ok - a huge rewrite is refused as too large (${ms} ms)`);
+}
