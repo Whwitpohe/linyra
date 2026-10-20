@@ -132,6 +132,17 @@
         "category": "Polylog"
       },
       {
+        "command": "polylog.openCombinedDiff",
+        "title": "Open Diff",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.clearSelection",
+        "title": "Clear Selection",
+        "category": "Polylog",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "polylog.copySha",
         "title": "Copy Commit ID",
         "category": "Polylog"
@@ -681,6 +692,14 @@
           "when": "false"
         },
         {
+          "command": "polylog.openCombinedDiff",
+          "when": "false"
+        },
+        {
+          "command": "polylog.clearSelection",
+          "when": "false"
+        },
+        {
           "command": "polylog.copySha",
           "when": "false"
         },
@@ -858,11 +877,11 @@
         },
         {
           "command": "polylog.changesShowAll",
-          "when": "!polylog.changesAllFiles"
+          "when": "!polylog.changesAllFiles && !polylog.combined"
         },
         {
           "command": "polylog.changesShowChanged",
-          "when": "polylog.changesAllFiles"
+          "when": "polylog.changesAllFiles && !polylog.combined"
         },
         {
           "command": "polylog.stageAll",
@@ -963,13 +982,18 @@
           "group": "navigation@1"
         },
         {
+          "command": "polylog.clearSelection",
+          "when": "view == polylog.changes && polylog.combined",
+          "group": "navigation@0"
+        },
+        {
           "command": "polylog.changesShowAll",
-          "when": "view == polylog.changes && !polylog.changesAllFiles",
+          "when": "view == polylog.changes && !polylog.changesAllFiles && !polylog.combined",
           "group": "navigation@1"
         },
         {
           "command": "polylog.changesShowChanged",
-          "when": "view == polylog.changes && polylog.changesAllFiles",
+          "when": "view == polylog.changes && polylog.changesAllFiles && !polylog.combined",
           "group": "navigation@1"
         },
         {

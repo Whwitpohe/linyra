@@ -49,7 +49,15 @@ export type HostMessage =
   /** Each repository's distance from its upstream (only those ahead or behind). */
   | { type: "sync"; byRepo: Record<string, { ahead: number; behind: number }> }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
-  | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] };
+  | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] }
+  /** Combined Changes: the host changed the Commit list's selection (Clear Selection). */
+  | { type: "setSelection"; items: CommitRef[]; focus: CommitRef };
+
+/** One commit of the Commit list. */
+export interface CommitRef {
+  repoId: string;
+  sha: string;
+}
 
 /** Webview → extension host. Every field is untrusted until validated. */
 export type WebviewMessage =
@@ -58,6 +66,8 @@ export type WebviewMessage =
   | { type: "loadMore" }
   | { type: "refresh" }
   | { type: "select"; repoId: string; sha: string }
+  /** Combined Changes: two or more commits selected (Ctrl/⌘ or Shift). */
+  | { type: "selectMany"; items: CommitRef[]; focus: CommitRef }
   | { type: "openFirst"; repoId: string; sha: string }
   | { type: "layout"; repoPaneWidth: number }
   | { type: "exitHistory" }

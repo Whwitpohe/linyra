@@ -9,8 +9,8 @@ const byPath = <T extends { path: string }>(files: T[]): Record<string, T> => Ob
 
 {
   assert.deepStrictEqual(mergeBaseArgs(["c", "a"]), ["merge-base", "--octopus", "c", "a"]);
-  assert.deepStrictEqual(rangeLogArgs(["c", "a"], ["p"]), ["log", "--topo-order", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P", "c", "a", "--not", "p"]);
-  assert.deepStrictEqual(rangeLogArgs(["c"], []), ["log", "--topo-order", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P", "c"]);
+  assert.deepStrictEqual(rangeLogArgs(["c", "a"], ["p"]), ["log", "--topo-order", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P%x1f%s", "c", "a", "--not", "p"]);
+  assert.deepStrictEqual(rangeLogArgs(["c"], []), ["log", "--topo-order", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P%x1f%s", "c"]);
   console.log("ok - range log args; a root commit has no --not");
 }
 
@@ -20,11 +20,11 @@ const byPath = <T extends { path: string }>(files: T[]): Record<string, T> => Ob
   const P1 = "e".repeat(40);
   const P2 = "f".repeat(40);
   const out =
-    `\x1e${M} ${P1} ${P2}\0\n:100644 100644 ${blob(1)} ${blob(2)} M\0src/a.ts\0` +
+    `\x1e${M} ${P1} ${P2}\x1fMerge branch 'fix'\0\n:100644 100644 ${blob(1)} ${blob(2)} M\0src/a.ts\0` +
     `\x1e${C} ${P1}\0\n:100644 100644 ${blob(3)} ${blob(3)} R100\0old name.ts\0new name.ts\0:000000 100644 ${Z} ${blob(4)} A\0b.ts\0` +
     `\x1e${P1}\0\n`;
   assert.deepStrictEqual(parseRangeLog(out), [
-    { sha: M, parents: [P1, P2], changes: [ch("M", "src/a.ts", blob(1), blob(2))] },
+    { sha: M, parents: [P1, P2], subject: "Merge branch 'fix'", changes: [ch("M", "src/a.ts", blob(1), blob(2))] },
     { sha: C, parents: [P1], changes: [ch("R", "new name.ts", blob(3), blob(3), "old name.ts"), ch("A", "b.ts", Z, blob(4))] },
     { sha: P1, parents: [], changes: [] },
   ]);

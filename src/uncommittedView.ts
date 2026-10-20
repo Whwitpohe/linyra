@@ -7,14 +7,13 @@ import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
 import { commitCount, commitStep, describeUncommitted, diffFor, discardPlan, discardPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
+import { ACCENT_COLORS } from "./webview/view";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
 interface Target { repoId: string; group?: Group; path?: string }
 /** What an action takes in one repository: its files, those of them from the Staged group, and whether it is one file. */
 interface Pick { work: RepoWork; files: FileChange[]; staged: FileChange[]; one: boolean }
 
-/** The accent each repository's chip has in the Log, as a theme color id (webview/styles.css). */
-const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
 const TREE_SCHEME = "polylog-tree";
 /** vscode.git's errors say "Failed to execute git"; git's own words are in their stderr. */
 function gitMessage(e: unknown): string {

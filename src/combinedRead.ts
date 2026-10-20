@@ -1,9 +1,10 @@
 // Combined Changes' left side: the file after the newest selected commit, with the selected
 // commits' changes taken back out, newest first, by a three-way merge in memory. Reads blobs
 // only; nothing is written to the repository and nothing is kept.
-import { parseRangeLog } from "./combinedModel";
+import { combineRepo, mergeBaseArgs, parseRangeLog, rangeLogArgs, type CombinedFile } from "./combinedModel";
 import { merge3 } from "./lineMerge";
 import type { RunGit } from "./logQuery";
+import { runPool } from "./pool";
 
 export const MERGE_LIMIT = { bytes: 1_000_000, lines: 20_000 };
 
@@ -13,7 +14,7 @@ const NO_BLOB = /^0+$/;
 
 /** One commit's changed files, with blob ids (merges: against their first parent; a root commit: everything added). */
 export function showArgs(sha: string): string[] {
-  return ["show", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P", sha];
+  return ["show", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P%x1f%s", sha];
 }
 
 /** Why a text can't go through the merge, if it can't: git's binary test, or the size limit. */
@@ -59,4 +60,52 @@ export async function leftSide(run: RunGit, root: string, last: string, path: st
     current = change.oldPath ?? current;
   }
   return { kind: "text", text };
+}
+
+/** One repository's Combined Changes: its files, how each diff opens, and what cancelled out. */
+export interface RepoRead {
+  files: (CombinedFile & { mode: "fast" | "merge" | "fallback"; reason?: "conflict" | "binary" | "too large" })[];
+  noNetChange: string[];
+  /** Subjects of the unselected commits in range (the ⚠ tooltip names them). */
+  subjects: Record<string, string>;
+}
+
+/** The files that may conflict are merged a few at a time: each is a handful of git reads. */
+const SLOW_FILES_AT_ONCE = 4;
+
+export async function readCombined(run: RunGit, root: string, selected: readonly { sha: string; parents: readonly string[] }[], signal: AbortSignal): Promise<RepoRead> {
+  const shas = selected.map((s) => s.sha);
+  // The range starts below the commit every selected one descends from (none: unrelated histories).
+  const base = (await run(root, mergeBaseArgs(shas), signal).catch((e: unknown) => {
+    if (signal.aborted) throw e;
+    return "";
+  })).trim();
+  const baseCommit = selected.find((s) => s.sha === base);
+  const exclude = base === "" ? [] : baseCommit ? [...baseCommit.parents] : [base];
+  const log = parseRangeLog(await run(root, rangeLogArgs(shas, exclude), signal));
+  const chosen = new Set(shas);
+  const { files, noNetChange } = combineRepo(chosen, log);
+  const subjects: Record<string, string> = {};
+  for (const c of log) if (!chosen.has(c.sha) && c.subject !== undefined) subjects[c.sha] = c.subject;
+  const slow = files.filter((f) => !f.fast);
+  const settled = await runPool(slow, SLOW_FILES_AT_ONCE, async (f, inner) => {
+    const left = await leftSide(run, root, f.last, f.path, [...f.shas].reverse(), inner);
+    if (left.kind === "fallback") return { mode: "fallback" as const, reason: left.reason };
+    const right = await run(root, ["show", `${f.last}:${f.path}`], inner).catch((e: unknown) => {
+      if (inner.aborted) throw e;
+      return "";
+    });
+    return { mode: left.text === right ? ("none" as const) : ("merge" as const) };
+  }, signal);
+  const failed = settled.find((r) => r.status === "rejected");
+  if (failed) throw failed.reason;
+  const how = new Map(slow.map((f, i) => [f, (settled[i] as PromiseFulfilledResult<{ mode: "fallback" | "merge" | "none"; reason?: "conflict" | "binary" | "too large" }>).value]));
+  const out: RepoRead["files"] = [];
+  for (const f of files) {
+    const h = how.get(f);
+    if (!h) out.push({ ...f, mode: "fast" });
+    else if (h.mode === "none") noNetChange.push(f.path);
+    else out.push(h.reason ? { ...f, mode: h.mode, reason: h.reason } : { ...f, mode: h.mode });
+  }
+  return { files: out, noNetChange, subjects };
 }

@@ -41,12 +41,15 @@ export interface FolderDesc extends Base {
   /** All Files: how many changed files are under it (it opens when there are some). */
   changedCount?: number;
 }
+export interface RepoDesc extends Base { kind: "repo"; repoId: string; accent: number; children: NodeDesc[] }
 export interface FileDesc extends Base {
   kind: "file"; path: string; file: FileChange; openable: boolean; owner: Owner;
+  /** Combined Changes: how its diff opens. */
+  combined?: CombinedOpen;
   /** All Files: a file the commit did not change (it opens as it was, not as a diff). */
   unchanged?: boolean;
 }
-export type NodeDesc = CommitDesc | FolderDesc | FileDesc;
+export type NodeDesc = CommitDesc | RepoDesc | FolderDesc | FileDesc;
 
 export interface Decoration {
   badge: string;
@@ -130,4 +133,90 @@ export function viewDescription(s: ChangesState | null): string {
   const what = s.commit.sha === UNCOMMITTED ? "uncommitted" : s.commit.sha.slice(0, 7);
   const n = s.status === "ready" ? s.files.length : 0;
   return [s.repoName, what, ...(n > 0 ? [`${n} ${n === 1 ? "file" : "files"}`] : [])].join(" · ");
+}
+
+/** Combined Changes: how one file's diff opens (spec section 4). */
+export interface CombinedOpen {
+  repoId: string;
+  path: string;
+  status: ChangeStatus;
+  /** The first parent of the oldest selected commit that touched it; null for a root commit. */
+  beforeRef: string | null;
+  beforePath: string;
+  /** The selected commits that touched it, oldest first. */
+  shas: string[];
+  /** fast: beforeRef ↔ last. merge: the selected commits taken out of last. fallback: beforeRef ↔ last, labeled. */
+  mode: "fast" | "merge" | "fallback";
+  reason?: "conflict" | "binary" | "too large";
+  /** Unselected commits whose changes reach it, oldest first. */
+  included: string[];
+}
+
+export interface CombinedRepo {
+  repoId: string;
+  repoName: string;
+  accent: number;
+  /** Its selected commits, oldest first. */
+  commits: Commit[];
+  files: CombinedOpen[];
+}
+
+export interface CombinedState {
+  status: ChangesStatus;
+  repos: CombinedRepo[];
+  noNetChange: string[];
+  /** How many commits are selected. */
+  count: number;
+  /** Unselected commits' subjects, for the ⚠ tooltips. */
+  unselected: Record<string, string>;
+  error?: string;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const short = (sha: string, n = 7) => sha.slice(0, n);
+
+/** The Changes view with several commits: a root per repository, each changed file once. */
+export function describeCombined(s: CombinedState): { message: string | undefined; roots: NodeDesc[]; description: string } {
+  const description = `${plural(s.count, "commit", "commits")} · ${plural(s.repos.length, "repository", "repositories")}`;
+  const roots = s.repos.map((r): RepoDesc => {
+    const base = `combined/${r.repoId}`;
+    const byPath = new Map(r.files.map((f) => [f.path, f]));
+    // No +/− counts here: a file's description names the selected commits that touched it.
+    const changes: FileChange[] = r.files.map((f) => (f.beforePath !== f.path ? { path: f.path, oldPath: f.beforePath, status: f.status, added: 0, deleted: 0 } : { path: f.path, status: f.status, added: 0, deleted: 0 }));
+    const fix = (nodes: NodeDesc[]): NodeDesc[] => nodes.map((n): NodeDesc => {
+      if (n.kind !== "file") return n.kind === "folder" ? { ...n, children: fix(n.children) } : n;
+      const o = byPath.get(n.path)!;
+      const shas = o.shas.map((x) => short(x, 4)).join(" · ");
+      const warn = o.mode === "fallback";
+      const tooltip = !warn ? n.tooltip
+        : o.reason !== "conflict" ? `Shown as one diff from before the first selected commit: the file is ${o.reason === "binary" ? "binary" : "too large"}`
+        : `Includes changes from ${plural(o.included.length, "unselected commit", "unselected commits")}: ${o.included.map((x) => `${short(x)} ${s.unselected[x] ?? ""}`.trim()).join("; ")}`;
+      return { ...n, description: warn ? `⚠ ${shas}` : shas, tooltip, owner: { repoId: r.repoId, sha: o.shas[o.shas.length - 1], parent: null }, combined: o };
+    });
+    const owner = { repoId: r.repoId, sha: "", parent: null };
+    return {
+      kind: "repo", id: base, repoId: r.repoId, accent: r.accent, label: r.repoName, description: plural(r.commits.length, "commit", "commits"),
+      tooltip: r.commits.map((c) => `${short(c.sha)} ${c.subject} · ${c.author} · ${absoluteTime(c.time)}`).join("\n"),
+      children: fix(describeNodes(fileTree(changes), "", base, owner)),
+    };
+  });
+  const message =
+    s.status === "loading" ? LOADING
+    : s.status === "error" ? `Could not read these commits: ${s.error ?? "unknown error"}`
+    : s.noNetChange.length > 0 ? `${plural(s.noNetChange.length, "file", "files")} with no net change: ${s.noNetChange.join(", ")}`
+    : roots.length === 0 ? "These commits change no files."
+    : undefined;
+  return { message, roots, description };
+}
+
+/** The diff editor's title for a Combined Changes file. */
+export function combinedTitle(o: CombinedOpen, repoName: string): string {
+  const name = o.path.split("/").pop() ?? o.path;
+  const first = short(o.shas[0]);
+  const last = short(o.shas[o.shas.length - 1]);
+  if (o.mode === "fallback") {
+    const why = o.reason === "conflict" ? `includes ${plural(o.included.length, "unselected commit", "unselected commits")}` : o.reason ?? "conflict";
+    return `${name} (${first}^ ↔ ${last}, ${why})`;
+  }
+  return o.shas.length === 1 ? `${name} (${last}) — ${repoName}` : `${name} (${o.shas.length} selected commits)`;
 }

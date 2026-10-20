@@ -1,14 +1,15 @@
 import { randomBytes } from "crypto";
 import * as path from "path";
 import * as vscode from "vscode";
-import { firstOpenable } from "./changesModel";
+import { combinedTitle, firstOpenable, type CombinedOpen, type CombinedState } from "./changesModel";
+import { readCombined } from "./combinedRead";
 import type { ChangesSnapshot, ChangesTree, OpenDiffArgs } from "./changesTree";
 import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { debounce } from "./debounce";
 import { DEFAULT_FILTER, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
-import type { AuthorName, BranchName, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
+import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
 import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
@@ -21,6 +22,8 @@ import type { UncommittedStore } from "./uncommittedStore";
 import { openWorkDiff, type Ask } from "./uncommittedView";
 import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
+import { SELECTION_LIMIT } from "./webview/selectionModel";
+import { assignAccents, accentOf } from "./webview/view";
 
 const FILTER_KEY = "polylog.filter";
 /** globalState: true when the user turned Group by Repository off. */
@@ -239,6 +242,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "select":
         await this.showDetail(m.repoId, m.sha);
+        return;
+      case "selectMany":
+        await this.selectMany(m.items, m.focus);
         return;
       case "openFirst":
         await this.openFirst(m.repoId, m.sha);
@@ -1293,6 +1299,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!found) return;
     this.detail.abort();
     const ctl = (this.detail = new AbortController());
+    this.combinedSel = null;
     const { commit, repo } = found;
     const key = commitKey(commit);
     if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
@@ -1315,6 +1322,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** A filter or refresh removed the tree's commit from the list: show nothing rather than a stale commit. */
   private clearTreeIfGone(): void {
+    if (this.combinedSel) {
+      // Combined Changes: keep the selected commits still listed.
+      const kept = this.combinedSel.filter((f) => this.rows.some((c) => commitKey(c) === commitKey(f.commit)));
+      if (kept.length === this.combinedSel.length) return;
+      const focus = kept.find((f) => commitKey(f.commit) === this.combinedFocus) ?? kept[0];
+      if (kept.length >= 2) void this.showCombined(kept, focus.commit);
+      else if (kept.length === 1) void this.showDetail(kept[0].commit.repoId, kept[0].commit.sha);
+      else {
+        this.detail.abort();
+        this.combinedSel = null;
+        this.setCommitTree(null);
+      }
+      return;
+    }
     const current = this.commitTree();
     if (!current) return;
     const key = commitKey(current.commit);
@@ -1334,8 +1355,101 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private setCommitTree(state: ReturnType<ChangesTree["current"]>): void {
-    if (this.logMode === "uncommitted") this.commitsTree = state;
-    else this.deps.changes.set(state);
+    if (this.logMode === "uncommitted") {
+      this.commitsTree = state;
+      this.commitsCombined = null;
+    } else this.deps.changes.set(state);
+  }
+
+  private setCombinedTree(state: CombinedState): void {
+    if (this.logMode === "uncommitted") {
+      this.commitsTree = null;
+      this.commitsCombined = state;
+    } else this.deps.changes.setCombined(state);
+  }
+
+  /** Combined Changes: the selected commits (two or more), oldest first per repository; null when one is selected. */
+  private combinedSel: { commit: Commit; repo: Repo }[] | null = null;
+  private combinedFocus: string | null = null;
+  private commitsCombined: CombinedState | null = null;
+
+  private async selectMany(items: unknown, focus: unknown): Promise<void> {
+    if (!Array.isArray(items)) return;
+    const seen = new Set<string>();
+    const found: { commit: Commit; repo: Repo }[] = [];
+    for (const it of items.slice(0, SELECTION_LIMIT)) {
+      const f = typeof it === "object" && it !== null ? this.findCommit((it as CommitRef).repoId, (it as CommitRef).sha) : undefined;
+      if (f && !seen.has(commitKey(f.commit))) {
+        seen.add(commitKey(f.commit));
+        found.push(f);
+      }
+    }
+    const fc = typeof focus === "object" && focus !== null ? this.findCommit((focus as CommitRef).repoId, (focus as CommitRef).sha)?.commit : undefined;
+    if (found.length === 0) return;
+    if (found.length === 1) return this.showDetail(found[0].commit.repoId, found[0].commit.sha);
+    await this.showCombined(found, fc ?? found[found.length - 1].commit);
+  }
+
+  private async showCombined(found: { commit: Commit; repo: Repo }[], focus: Commit): Promise<void> {
+    this.detail.abort();
+    const ctl = (this.detail = new AbortController());
+    this.openWhenLoaded = null;
+    this.combinedSel = found;
+    this.combinedFocus = commitKey(focus);
+    // Repo List order; each repository's commits oldest first (the list is newest first).
+    const groups = this.repos
+      .map((repo) => ({ repo, commits: found.filter((f) => f.repo.id === repo.id).map((f) => f.commit).reverse() }))
+      .filter((g) => g.commits.length > 0);
+    const accents = assignAccents(this.repos);
+    const base = { repos: [], noNetChange: [], count: found.length, unselected: {} };
+    this.setCombinedTree({ ...base, status: "loading" });
+    try {
+      const settled = await runPool(groups, this.settings().maxConcurrency, (g, signal) => readCombined(this.run, g.repo.root, g.commits, signal), ctl.signal);
+      if (ctl.signal.aborted) return; // a newer selection owns the tree now
+      const failed = settled.find((r) => r.status === "rejected");
+      if (failed) throw failed.reason;
+      const state: CombinedState = { ...base, status: "ready", repos: [], noNetChange: [], unselected: {} };
+      groups.forEach((g, i) => {
+        const read = (settled[i] as PromiseFulfilledResult<Awaited<ReturnType<typeof readCombined>>>).value;
+        state.noNetChange.push(...read.noNetChange);
+        Object.assign(state.unselected, read.subjects);
+        if (read.files.length === 0) return;
+        state.repos.push({
+          repoId: g.repo.id, repoName: g.repo.name, accent: accentOf(accents, g.repo.id), commits: g.commits,
+          files: read.files.map((f): CombinedOpen => ({
+            repoId: g.repo.id, path: f.path, status: f.status, beforeRef: f.beforeRef, beforePath: f.beforePath, shas: f.shas, mode: f.mode, included: f.included,
+            ...(f.reason ? { reason: f.reason } : {}),
+          })),
+        });
+      });
+      this.setCombinedTree(state);
+    } catch (e) {
+      if (!isAbortError(e) && !ctl.signal.aborted) this.setCombinedTree({ ...base, status: "error", error: messageOf(e) });
+    }
+  }
+
+  /** Clear Selection (the Changes view's title bar): back to the focused commit alone. */
+  async clearSelection(): Promise<void> {
+    const focus = this.combinedSel?.find((f) => commitKey(f.commit) === this.combinedFocus) ?? this.combinedSel?.[0];
+    if (!focus) return;
+    const ref = { repoId: focus.commit.repoId, sha: focus.commit.sha };
+    this.post({ type: "setSelection", items: [ref], focus: ref });
+    await this.showDetail(ref.repoId, ref.sha);
+  }
+
+  /** A Combined Changes file: only what the selected commits did to it (spec section 4). */
+  async openCombinedDiff(o: CombinedOpen, preserveFocus = false): Promise<void> {
+    const repo = this.repos.find((r) => r.id === o?.repoId);
+    // From a tree node we built, but command arguments are untrusted: validate before git sees them.
+    const safe = (p: unknown) => typeof p === "string" && p !== "" && !p.startsWith("/") && !p.split("/").includes("..");
+    if (!repo || !Array.isArray(o.shas) || o.shas.length === 0 || o.shas.length > SELECTION_LIMIT || !o.shas.every(isSha)) return;
+    if (!safe(o.path) || !safe(o.beforePath) || !(o.beforeRef === null || isSha(o.beforeRef))) return;
+    const last = o.shas[o.shas.length - 1];
+    const before: RevisionRef = o.mode === "merge"
+      ? { root: repo.root, ref: last, path: o.path, without: [...o.shas].reverse() }
+      : { root: repo.root, ref: o.status === "A" ? null : o.beforeRef, path: o.beforePath };
+    const after: RevisionRef = { root: repo.root, ref: o.status === "D" ? null : last, path: o.path };
+    await vscode.commands.executeCommand("vscode.diff", toUri(before), toUri(after), combinedTitle(o, repo.name), { preview: true, preserveFocus });
   }
 
   private openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
@@ -1362,6 +1476,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private async openFirst(repoId: string, sha: string): Promise<void> {
+    const combined = this.combinedSel ? this.deps.changes.currentCombined() : null;
+    if (combined) {
+      // Combined Changes: the first file of the first repository, once read.
+      const first = combined.repos[0]?.files[0];
+      if (first) await this.openCombinedDiff(first);
+      return;
+    }
     const found = this.findCommit(repoId, sha);
     if (!found) return;
     if (this.history && found.commit.file) return this.openHistoryDiff(found.commit, false);
@@ -1418,10 +1539,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.logMode = mode;
     if (mode === "uncommitted") {
       this.commitsTree = this.deps.changes.current();
+      this.commitsCombined = this.deps.changes.currentCombined();
       this.showWorkTree();
     } else {
-      this.deps.changes.set(this.commitsTree);
+      if (this.commitsCombined) this.deps.changes.setCombined(this.commitsCombined);
+      else this.deps.changes.set(this.commitsTree);
       this.commitsTree = null;
+      this.commitsCombined = null;
       // It may be a commit the list no longer has (a filter changed meanwhile).
       this.clearTreeIfGone();
     }

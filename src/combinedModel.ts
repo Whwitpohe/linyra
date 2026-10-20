@@ -15,6 +15,7 @@ export interface RawChange {
 export interface RangeCommit {
   sha: string;
   parents: string[];
+  subject?: string;
   changes: RawChange[];
 }
 
@@ -36,7 +37,7 @@ export interface CombinedFile {
   fast: boolean;
 }
 
-const RANGE_FORMAT = "--format=%x1e%H %P";
+const RANGE_FORMAT = "--format=%x1e%H %P%x1f%s";
 
 /** The commit every selected commit descends from: the range starts there. */
 export function mergeBaseArgs(selected: readonly string[]): string[] {
@@ -55,7 +56,9 @@ export function parseRangeLog(stdout: string): RangeCommit[] {
   const commits: RangeCommit[] = [];
   for (const chunk of stdout.split("\x1e")) {
     const tokens = chunk.split("\0");
-    const [sha, ...parents] = tokens[0].trim().split(" ").filter((s) => s !== "");
+    const unit = tokens[0].indexOf("\x1f");
+    const head = unit < 0 ? tokens[0] : tokens[0].slice(0, unit);
+    const [sha, ...parents] = head.trim().split(" ").filter((s) => s !== "");
     if (!sha) continue;
     const changes: RawChange[] = [];
     for (let i = 1; i < tokens.length; i++) {
@@ -73,7 +76,7 @@ export function parseRangeLog(stdout: string): RangeCommit[] {
         ? { status: status as ChangeStatus, path: second!, oldPath: first, oldBlob, newBlob }
         : { status: status as ChangeStatus, path: first, oldBlob, newBlob });
     }
-    commits.push({ sha, parents, changes });
+    commits.push(unit < 0 ? { sha, parents, changes } : { sha, parents, subject: tokens[0].slice(unit + 1), changes });
   }
   return commits;
 }

@@ -40,7 +40,7 @@ const blobs = { [blob(1)]: v1, [blob(2)]: va, [blob(3)]: vx, [blob(4)]: vc, [`${
 
 (async () => {
 {
-  assert.deepStrictEqual(showArgs(C), ["show", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P", C]);
+  assert.deepStrictEqual(showArgs(C), ["show", "--raw", "-z", "-M", "--no-abbrev", "--diff-merges=first-parent", "--format=%x1e%H %P%x1f%s", C]);
   console.log("ok - each taken-out commit is read with one git show");
 }
 {

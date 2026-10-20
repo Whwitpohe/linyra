@@ -1,5 +1,6 @@
 import * as assert from "assert";
-import { decorationFor, describeChanges, firstOpenable, viewDescription, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
+import { combinedTitle, decorationFor, describeChanges, describeCombined, firstOpenable, viewDescription, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type CombinedOpen, type CombinedState, type NodeDesc } from "./changesModel";
+import { absoluteTime } from "./webview/view";
 import { UNCOMMITTED, type Commit } from "./types";
 
 const NOW = 1790164800;
@@ -114,3 +115,59 @@ assert.strictEqual(viewDescription(state()), `acme-api · 1596c39 · ${state().f
 assert.strictEqual(viewDescription(state({ status: "loading", files: [] })), "acme-api · 1596c39");
 assert.strictEqual(viewDescription(state({ commit: { ...commit, sha: UNCOMMITTED }, files: [state().files[0]] })), "acme-api · uncommitted · 1 file");
 console.log("ok - the Changes view's description names the repository and the commit, or says uncommitted");
+
+// Combined Changes: several commits, one tree.
+{
+  const sha = (c: string) => c.repeat(40);
+  const mk = (repoId: string, s: string, subject: string, author: string): Commit => ({ repoId, sha: s, time: NOW - 3600, author, email: `${author}@example.com`, subject, parents: [sha("f")] });
+  const a = mk("/ws/acme-web", "a3f91c2".padEnd(40, "0"), "fix(header): stop the title overflowing", "dana");
+  const c = mk("/ws/acme-web", "c7d20e5".padEnd(40, "0"), "fix(header): padding on small screens", "dana");
+  const p1 = mk("/ws/acme-api", "5be07d4".padEnd(40, "0"), "api: add GET /status", "dana");
+  const p3 = mk("/ws/acme-api", "48f0b1d".padEnd(40, "0"), "api: /status reports the version", "dana");
+  const x = "9c4e1a8".padEnd(40, "0");
+  const open = (repoId: string, path: string, shas: Commit[], mode: CombinedOpen["mode"], over: Partial<CombinedOpen> = {}): CombinedOpen =>
+    ({ repoId, path, status: "M", beforeRef: sha("f"), beforePath: path, shas: shas.map((s) => s.sha), mode, included: [], ...over });
+  const s: CombinedState = {
+    status: "ready", count: 4, noNetChange: ["src/debug.ts"], unselected: { [x]: "header: wider title, rem font size" },
+    repos: [
+      { repoId: "/ws/acme-web", repoName: "acme-web", accent: 1, commits: [a, c], files: [
+        open("/ws/acme-web", "src/header.ts", [a, c], "merge", { included: [x] }),
+        open("/ws/acme-web", "src/header.css", [a, c], "fallback", { reason: "conflict", included: [x] }),
+      ] },
+      { repoId: "/ws/acme-api", repoName: "acme-api", accent: 3, commits: [p1, p3], files: [
+        open("/ws/acme-api", "routes/status.ts", [p1, p3], "fast", { status: "A", beforeRef: null }),
+        open("/ws/acme-api", "routes/index.ts", [p1], "fast"),
+      ] },
+    ],
+  };
+  const d = describeCombined(s);
+  assert.strictEqual(d.description, "4 commits · 2 repositories");
+  assert.strictEqual(d.message, "1 file with no net change: src/debug.ts");
+  assert.deepStrictEqual(flat(d.roots), [
+    "acme-web | 2 commits",
+    "  src | 2",
+    "    header.css | ⚠ a3f9 · c7d2",
+    "    header.ts | a3f9 · c7d2",
+    "acme-api | 2 commits",
+    "  routes | 2",
+    "    index.ts | 5be0",
+    "    status.ts | 5be0 · 48f0",
+  ]);
+  assert.deepStrictEqual(d.roots.map((r) => r.kind), ["repo", "repo"]);
+  assert.strictEqual(d.roots[0].tooltip, `a3f91c2 fix(header): stop the title overflowing · dana · ${absoluteTime(a.time)}\nc7d20e5 fix(header): padding on small screens · dana · ${absoluteTime(c.time)}`);
+  const files = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [n] : n.children.flatMap(files));
+  const css = files(d.roots[0]).find((n) => n.label === "header.css")!;
+  assert.strictEqual(css.tooltip, "Includes changes from 1 unselected commit: 9c4e1a8 header: wider title, rem font size");
+  assert.strictEqual(css.kind === "file" && css.combined?.mode, "fallback");
+  assert.strictEqual(css.kind === "file" && css.owner.sha, c.sha, "file actions act on the newest selected commit");
+  assert.strictEqual(describeCombined({ ...s, noNetChange: ["a.ts", "b.ts"] }).message, "2 files with no net change: a.ts, b.ts");
+  assert.strictEqual(describeCombined({ ...s, status: "loading", repos: [] }).message, LOADING);
+  assert.strictEqual(describeCombined({ ...s, repos: [s.repos[0]], count: 2 }).description, "2 commits · 1 repository");
+  console.log("ok - Combined Changes: repository roots, each file once, ⚠ and no-net-change rows");
+
+  assert.strictEqual(combinedTitle(open("/ws/acme-web", "src/header.ts", [a, c], "merge"), "acme-web"), "header.ts (2 selected commits)");
+  assert.strictEqual(combinedTitle(open("/ws/acme-web", "src/header.css", [a, c], "fallback", { reason: "conflict", included: [x] }), "acme-web"), "header.css (a3f91c2^ ↔ c7d20e5, includes 1 unselected commit)");
+  assert.strictEqual(combinedTitle(open("/ws/acme-web", "img/logo.png", [a, c], "fallback", { reason: "binary" }), "acme-web"), "logo.png (a3f91c2^ ↔ c7d20e5, binary)");
+  assert.strictEqual(combinedTitle(open("/ws/acme-web", "src/header.ts", [a], "fast"), "acme-web"), "header.ts (a3f91c2) — acme-web");
+  console.log("ok - Combined Changes diff titles");
+}
