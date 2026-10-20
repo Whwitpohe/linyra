@@ -16,23 +16,34 @@ export interface RevisionRef {
   path: string;
   /** The index's blob id (ref INDEX): a new staged version is a new URI, never a stale document. */
   blob?: string;
+  /** Combined Changes: these commits' changes taken back out of <ref>:<path>, newest first. */
+  without?: string[];
 }
 
+/** Combined Changes' selection limit: a URI naming more commits is not one Polylog made. */
+const MAX_WITHOUT = 100;
+
 export function encodeRevision(r: RevisionRef): { path: string; query: string } {
-  return { path: `/${r.path}`, query: JSON.stringify(r.blob ? { root: r.root, ref: r.ref, blob: r.blob } : { root: r.root, ref: r.ref }) };
+  const q: { root: string; ref: string | null; blob?: string; without?: string[] } = { root: r.root, ref: r.ref };
+  if (r.blob) q.blob = r.blob;
+  if (r.without) q.without = r.without;
+  return { path: `/${r.path}`, query: JSON.stringify(q) };
 }
 
 export function decodeRevision(path: string, query: string): RevisionRef {
-  let q: { root?: unknown; ref?: unknown; blob?: unknown };
+  let q: { root?: unknown; ref?: unknown; blob?: unknown; without?: unknown };
   try {
-    q = JSON.parse(query) as { root?: unknown; ref?: unknown; blob?: unknown };
+    q = JSON.parse(query) as { root?: unknown; ref?: unknown; blob?: unknown; without?: unknown };
   } catch {
     throw new Error("not a polylog revision URI");
   }
   if (typeof q.root !== "string" || !(q.ref === null || q.ref === INDEX || isSha(q.ref))) throw new Error("not a polylog revision URI");
   if (q.blob !== undefined && !isSha(q.blob)) throw new Error("not a polylog revision URI");
+  if (q.without !== undefined && !(Array.isArray(q.without) && q.without.length <= MAX_WITHOUT && q.without.every(isSha))) throw new Error("not a polylog revision URI");
   const r: RevisionRef = { root: q.root, ref: q.ref, path: path.replace(/^\//, "") };
-  return typeof q.blob === "string" ? { ...r, blob: q.blob } : r;
+  if (typeof q.blob === "string") r.blob = q.blob;
+  if (Array.isArray(q.without)) r.without = q.without as string[];
+  return r;
 }
 
 /**

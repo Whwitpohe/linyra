@@ -55,3 +55,13 @@ const SHA = "a".repeat(40);
   assert.throws(() => decodeRevision("/x", JSON.stringify({ root, ref: INDEX, blob: "not-a-sha" })), "only an object id");
   console.log("ok - the staged version's URI names its blob");
 }
+{
+  const root = nodePath.resolve("/ws/acme-web");
+  const r: RevisionRef = { root, ref: "c".repeat(40), path: "src/header.ts", without: ["c".repeat(40), "a".repeat(40)] };
+  const e = encodeRevision(r);
+  assert.deepStrictEqual(decodeRevision(e.path, e.query), r, "Combined Changes' left side round-trips");
+  assert.throws(() => decodeRevision("/x", JSON.stringify({ root, ref: "c".repeat(40), without: "a".repeat(40) })), "an array");
+  assert.throws(() => decodeRevision("/x", JSON.stringify({ root, ref: "c".repeat(40), without: ["HEAD"] })), "of shas");
+  assert.throws(() => decodeRevision("/x", JSON.stringify({ root, ref: "c".repeat(40), without: Array(101).fill("a".repeat(40)) })), "at most 100");
+  console.log("ok - a Combined Changes revision names the commits taken out");
+}

@@ -5,7 +5,7 @@ const Z = "0".repeat(40);
 const blob = (n: number) => String(n).padStart(40, "b");
 const ch = (status: RawChange["status"], path: string, oldBlob: string, newBlob: string, oldPath?: string): RawChange =>
   oldPath ? { status, path, oldPath, oldBlob, newBlob } : { status, path, oldBlob, newBlob };
-const byPath = (files: { path: string }[]) => Object.fromEntries(files.map((f) => [f.path, f]));
+const byPath = <T extends { path: string }>(files: T[]): Record<string, T> => Object.fromEntries(files.map((f) => [f.path, f]));
 
 {
   assert.deepStrictEqual(mergeBaseArgs(["c", "a"]), ["merge-base", "--octopus", "c", "a"]);
