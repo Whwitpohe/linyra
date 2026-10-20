@@ -52,6 +52,11 @@ function page(append: boolean): void {
     ? [{ repoId: "/work/acme-libs", name: "acme-libs", reason: "shallow clone: history is incomplete" }]
     : [];
   send({ type: "page", rows, append, failures, done: offset >= matched.length, now: NOW });
+  // ?select=multi: three commits selected (Combined Changes), the second one focused.
+  if (!append && params.get("select") === "multi" && rows.length >= 4) {
+    const refs = [rows[0], rows[1], rows[3]].map((c) => ({ repoId: c.repoId, sha: c.sha }));
+    send({ type: "setSelection", items: refs, focus: refs[1] });
+  }
 }
 
 function reload(): void {

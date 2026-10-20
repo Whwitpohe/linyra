@@ -8,9 +8,10 @@ import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
 import { byId } from "./dom";
 import { EmptyView } from "./empty";
 import { FilterBar } from "./filters";
-import { CommitList } from "./list";
+import { CommitList, type Gesture } from "./list";
 import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
+import { applyGesture, keepListed, SELECTION_LIMIT, type Selection } from "./selectionModel";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
 import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
@@ -34,6 +35,10 @@ const state = {
   loading: true,
   skeleton: false,
   selected: -1,
+  /** Every selected commit (Combined Changes when there are several); `selected` is its focus row. */
+  selection: { keys: [], focus: null, anchor: null } as Selection,
+  /** A Ctrl/Shift click past the limit was refused: the footer says why. */
+  overLimit: false,
   now: Math.floor(Date.now() / 1000),
 };
 
@@ -42,7 +47,8 @@ const searchEl = byId<HTMLInputElement>("search");
 const moreEl = byId<HTMLButtonElement>("more");
 const countEl = byId("count");
 const branchUseEl = byId("branch-use");
-const list = new CommitList(listEl, byId("rows"), (i) => select(i), openFirstFile);
+const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), openFirstFile);
+const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
   render();
@@ -161,6 +167,15 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         render();
       }, SKELETON_DELAY_MS);
       break;
+    case "setSelection": {
+      // Clear Selection: the host went back to one commit and is showing it already.
+      const keys = m.items.map(commitKey);
+      const focus = commitKey(m.focus);
+      state.selection = { keys, focus, anchor: focus };
+      state.selected = state.rows.findIndex((c) => commitKey(c) === focus);
+      selectedKey = keys.length === 1 ? focus : null;
+      break;
+    }
     case "page":
       clearTimeout(skeletonTimer);
       state.loading = false;
@@ -183,6 +198,16 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
 
 /** New rows for the list, keeping the selected commit (and the scroll) when it is still listed. */
 function replaceRows(rows: Commit[]): void {
+  if (state.selection.keys.length > 1) {
+    // Combined Changes: the host keeps the commits still listed too, and re-reads what is left.
+    const kept = keepListed(state.selection, rows.map(commitKey));
+    if (kept.keys.length > 1) {
+      state.rows = rows;
+      state.selection = kept;
+      state.selected = rows.findIndex((c) => commitKey(c) === kept.focus);
+      return;
+    }
+  }
   const prev = state.rows[state.selected];
   const next = reselect(prev ? commitKey(prev) : null, rows);
   const kept = prev !== undefined && next >= 0 && commitKey(rows[next]) === commitKey(prev);
@@ -202,9 +227,50 @@ function select(index: number, andRender = true): void {
   state.selected = index;
   const c = state.rows[index];
   const key = c ? commitKey(c) : null;
+  state.selection = key ? { keys: [key], focus: key, anchor: key } : { keys: [], focus: null, anchor: null };
   if (c && key !== selectedKey) postSelect(c);
   selectedKey = key;
   if (andRender) render();
+}
+
+/** A click, key or right-click on a row: one commit as always, or several with Ctrl/⌘ and Shift. */
+function gesture(index: number, how: Gesture): void {
+  const c = state.rows[index];
+  if (!c) return;
+  const key = commitKey(c);
+  const order = state.rows.map(commitKey);
+  const g = how.kind === "click" ? { kind: "click" as const, key, ctrl: how.ctrl, shift: how.shift }
+    : how.kind === "arrow" ? { kind: "arrow" as const, key, shift: how.shift }
+    : { kind: "context" as const, key };
+  const { next, overLimit } = applyGesture(state.selection, g, order);
+  state.overLimit = overLimit;
+  if (overLimit) return render();
+  if (next.keys.length <= 1) return select(index);
+  state.selection = next;
+  state.selected = order.indexOf(next.focus ?? key);
+  selectedKey = null; // a plain click on any of them is a new selection
+  postSelectMany(next);
+  render();
+}
+
+function postSelectMany(s: Selection): void {
+  const ref = (k: string) => {
+    const c = state.rows.find((r) => commitKey(r) === k)!;
+    return { repoId: c.repoId, sha: c.sha };
+  };
+  const send = () => {
+    pendingSelect = undefined;
+    pendingPost = undefined;
+    post({ type: "selectMany", items: s.keys.map(ref), focus: ref(s.focus ?? s.keys[0]) });
+  };
+  // Shift+↓ held down: only where it stops is read, as for one commit.
+  const now = performance.now();
+  const rapid = now - lastSelectAt < RAPID_SELECT_MS;
+  lastSelectAt = now;
+  clearTimeout(pendingSelect);
+  if (!rapid) return send();
+  pendingPost = send;
+  pendingSelect = setTimeout(send, SETTLE_SELECT_MS);
 }
 
 /**
@@ -268,7 +334,7 @@ function render(): void {
   list.update({
     rows: state.rows, repoNames: names, accents, behind,
     historyPath: state.history?.path,
-    selected: state.selected, now: state.now,
+    selected: state.selected, selectedKeys: new Set(state.selection.keys), now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
   empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
@@ -276,6 +342,7 @@ function render(): void {
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;
   countEl.textContent = state.rows.length > 0 ? countLabel(state.rows.length) : "";
+  limitEl.textContent = state.overLimit ? `Combined Changes shows up to ${SELECTION_LIMIT} commits` : "";
 }
 
 document.addEventListener("keydown", (e) => {

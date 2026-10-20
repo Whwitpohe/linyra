@@ -212,13 +212,14 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 }
 .row:hover { background: var(--vscode-list-hoverBackground); }
 .row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
-.list:focus .row[aria-selected="true"] {
+/* Several selected (Combined Changes): the others keep the inactive color, the focus row is active. */
+.list:focus .row.focus[aria-selected="true"] {
   background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
   outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px;
 }
 .subject, .author, .date, .chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .author, .date { color: var(--vscode-descriptionForeground); }
-.list:focus .row[aria-selected="true"] :is(.author, .date) { color: inherit; }
+.list:focus .row.focus[aria-selected="true"] :is(.author, .date) { color: inherit; }
 .date { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Repo chip: a tint of the repo's chart hue behind text in the theme's own
@@ -253,6 +254,7 @@ body.vscode-high-contrast .row:hover,
 body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .row[aria-selected="true"]:not(.focus) { outline-style: dotted; }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
 /* High contrast: an outlined chip in the text color (the badge's own foreground is white,
    which vanishes on HC light). */

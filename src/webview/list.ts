@@ -1,7 +1,10 @@
-import type { Commit } from "../types";
+import { commitKey, type Commit } from "../types";
 import { clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { absoluteTime, accentOf, moveSelection, relativeTime, visibleRange } from "./view";
+
+/** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
+export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
 
 export interface ListProps {
   rows: readonly Commit[];
@@ -12,7 +15,10 @@ export interface ListProps {
   behind?: ReadonlySet<string>;
   /** File history: the file's current path, to flag rows where it had another name. */
   historyPath?: string;
+  /** The active row (the keyboard's). */
   selected: number;
+  /** Every selected row, as commitKey: several for Combined Changes. */
+  selectedKeys: ReadonlySet<string>;
   now: number;
   skeleton: boolean;
 }
@@ -29,14 +35,16 @@ export class CommitList {
   private frame = 0;
   /** The repo column's width, read once per layout change rather than on every scroll paint. */
   private column: number | undefined;
-  private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, now: 0, skeleton: false };
+  private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, selectedKeys: new Set(), now: 0, skeleton: false };
 
   constructor(
     private readonly root: HTMLElement,
     private readonly body: HTMLElement,
-    private readonly onSelect: (index: number) => void,
+    private readonly onSelect: (index: number, how: Gesture) => void,
     private readonly onOpen: () => void,
   ) {
+    // Ctrl/⌘ and Shift select several commits (Combined Changes).
+    root.setAttribute("aria-multiselectable", "true");
     // Several scroll events can arrive per frame: paint once, before the frame.
     root.addEventListener("scroll", () => {
       if (this.frame) return;
@@ -60,7 +68,12 @@ export class CommitList {
       const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
       if (!row) return;
       root.focus();
-      this.onSelect(Number(row.dataset.index));
+      this.onSelect(Number(row.dataset.index), { kind: "click", ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+    });
+    // A right-click outside the selection selects that row first, as VS Code's lists do.
+    body.addEventListener("contextmenu", (e) => {
+      const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
+      if (row) this.onSelect(Number(row.dataset.index), { kind: "context" });
     });
   }
 
@@ -141,12 +154,13 @@ export class CommitList {
   private renderRow(c: Commit, i: number): HTMLElement {
     const accent = accentOf(this.props.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
+    const focus = i === this.props.selected;
     return h("div", {
-      class: "row",
+      class: focus ? "row focus" : "row",
       role: "row",
       id: `row-${i}`,
       "aria-rowindex": String(i + 1),
-      "aria-selected": String(i === this.props.selected),
+      "aria-selected": String(this.props.selectedKeys.has(commitKey(c))),
       "data-index": String(i),
       // Right-click: the commit's and its repository's menu (package.json webview/context), not
       // Cut/Copy/Paste. File History is one file of one repository: no repo filter items there.
@@ -173,7 +187,7 @@ export class CommitList {
     const next = moveSelection(e.key, this.props.selected, this.props.rows.length, page);
     if (next === null) return;
     e.preventDefault();
-    this.onSelect(next);
+    this.onSelect(next, { kind: "arrow", shift: e.shiftKey });
   }
 
   private scrollToIndex(i: number): void {

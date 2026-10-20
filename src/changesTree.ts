@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
-import { decorationFor, describeChanges, describeCombined, stat, viewDescription, type ChangesState, type CombinedState, type NodeDesc, type Owner } from "./changesModel";
+import { decorationFor, describeChanges, describeCombined, stat, viewDescription, type ChangesState, type CombinedOpen, type CombinedState, type NodeDesc, type Owner } from "./changesModel";
 import { commitKey, UNCOMMITTED } from "./types";
 import { ACCENT_COLORS } from "./webview/view";
 
@@ -30,6 +30,8 @@ export interface ChangesSnapshot {
   focused: string | undefined;
   /** What VS Code has selected in the tree (File History reveals its file). */
   selected: string[];
+  /** Combined Changes: every file's diff arguments (what a click opens). */
+  combined: CombinedOpen[];
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -173,7 +175,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       const model = n.kind === "file" ? decorationFor(n.file.status) : undefined;
       return d && model ? [`${n.label} ${d.badge} ${model.color}`] : [];
     });
-    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.view.selection.map((n) => n.label) };
+    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.view.selection.map((n) => n.label),
+      combined: all(this.roots).flatMap((n) => (n.kind === "file" && n.combined ? [n.combined] : [])) };
   }
 
   private render(): void {
