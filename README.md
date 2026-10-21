@@ -118,6 +118,16 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   **All Files** (in its title bar) shows the commit's whole tree, like the Explorer: the
   folders holding changes open, each other folder read only when you open it, deleted files
   still listed, and unchanged files opening as they were at that commit.
+- **Combined Changes.** Ctrl-click (⌘-click on macOS) or Shift-click commits in the Log to
+  select several, in any repositories: one fix spread over `acme-web` and `acme-api`, say. The
+  Changes tree then lists each changed file once, under its repository, with the selected
+  commits that touched it. A file's diff shows only what those commits did to it: a teammate's
+  commit in between appears as unchanged context, not as part of your change. When an
+  unselected commit edited the same lines, the two can't be shown apart: the file gets a ⚠,
+  and its diff runs from before the first selected commit to after the last, with a title that
+  says so. Files added and removed again within the selection are listed in a note instead.
+  Up to 100 commits; **Clear Selection** (in the Changes title bar) goes back to one. It only
+  shows changes: nothing is squashed, rebased or written to your repositories.
 - **Blame in diffs.** Put the cursor on a line of any Polylog diff or revision to see who last
   changed it, as of the commit shown (hover for the details). It uses the format of
   `git.blame.editorDecoration.template`; turn it off with `polylog.blame`.
@@ -171,6 +181,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 | Key | Action |
 |---|---|
 | `↑` / `↓`, `Home` / `End`, `PageUp` / `PageDown` | Move the selection; the changed files follow |
+| `Shift+↑` / `Shift+↓` | Select several commits (Combined Changes) |
 | `Enter` | Open the selected commit's first changed file |
 | `/` or `Ctrl/Cmd+F` | Search commit messages |
 | `Esc` | Clear the search, then return to the list |

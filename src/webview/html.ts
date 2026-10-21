@@ -80,6 +80,7 @@ export function renderHtml(o: HtmlOptions): string {
       <button id="more" class="secondary" type="button" hidden>Load More</button>
       <span class="note" title="Commits in different repositories share no history, so they are merged by committer date. A rebase or a skewed clock can place a commit out of order.">Newest first by commit date</span>
       <span id="branch-use" class="note"></span>
+      <span id="limit" class="note" role="status"></span>
       <span id="count" class="count" aria-live="polite"></span>
     </footer>
   </div>

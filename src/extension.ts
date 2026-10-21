@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
+import type { CombinedOpen } from "./changesModel";
 import { UNCOMMITTED } from "./types";
 import { validPair } from "./compareModel";
 import type { ReposWebview } from "./compareProtocol";
@@ -233,6 +234,8 @@ export function activate(context: vscode.ExtensionContext): void {
     blame,
     vscode.commands.registerCommand("polylog.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
     vscode.commands.registerCommand("polylog.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
+    vscode.commands.registerCommand("polylog.openCombinedDiff", (o: CombinedOpen) => log.openCombinedDiff(o)),
+    vscode.commands.registerCommand("polylog.clearSelection", () => log.clearSelection()),
     vscode.commands.registerCommand("polylog.openRevision", (arg?: unknown) => log.openRevision(arg)),
     vscode.commands.registerCommand("polylog.changesShowAll", () => setAllFiles(true)),
     vscode.commands.registerCommand("polylog.changesShowChanged", () => setAllFiles(false)),

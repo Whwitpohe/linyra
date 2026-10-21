@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { RunGit } from "./logQuery";
+import { leftSide } from "./combinedRead";
 import { decodeRevision, INDEX } from "./revisionUri";
 
 /** Serves `polylog:` URIs: the content of <ref>:<path> in one repository. */
@@ -18,6 +19,17 @@ export class RevisionProvider implements vscode.TextDocumentContentProvider {
     if (!this.roots().includes(rev.root) || rev.path.startsWith("/") || rev.path.split("/").includes("..")) return "";
     const ctl = new AbortController();
     const sub = token.onCancellationRequested(() => ctl.abort());
+    if (rev.without && rev.ref !== INDEX) {
+      // Combined Changes' left side. The tree sent a file that falls back to a plain revision, so a
+      // fallback here means the history changed under the URI: say so rather than show a wrong diff.
+      try {
+        const left = await leftSide(this.run, rev.root, rev.ref, rev.path, rev.without, ctl.signal);
+        if (left.kind === "fallback") throw new Error(`Polylog: the selected commits' changes to ${rev.path} can't be shown apart (${left.reason}).`);
+        return left.text;
+      } finally {
+        sub.dispose();
+      }
+    }
     // The index is `:<path>` (or its blob, when known); a commit is `<sha>:<path>`.
     const spec = rev.ref === INDEX ? (rev.blob ?? `:${rev.path}`) : `${rev.ref}:${rev.path}`;
     try {

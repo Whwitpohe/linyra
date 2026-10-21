@@ -94,6 +94,7 @@ section { display: grid; gap: 16px; }
 .rows { padding: 0 8px; display: grid; align-content: start; }
 .row { display: grid; grid-template-columns: 92px 1fr 60px 64px; gap: 10px; align-items: center; height: 24px; font-size: 13px; }
 .row.sel { background: var(--vs-sel); }
+.row.multi { background: color-mix(in srgb, var(--vs-sel) 45%, transparent); }
 .chip { font-size: 12px; padding: 1px 6px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .subj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .when { text-align: right; color: var(--vs-dim); }
@@ -282,6 +283,49 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">24</i><b>Mode bar</b><span>Appears above the Filter bar in File History, with a way back to all commits.</span></div>
     <div class="g"><i class="num">25</i><b>Repo menu</b><span>Right-click a Repo List row, or any row of that repository in the Commit list.</span></div>
     <div class="g"><i class="num">26</i><b>Commit menu</b><span>Right-click a Commit row: the commit's items first, then the Repo menu.</span></div>
+  </div>
+</section>
+
+<!-- ============ COMBINED CHANGES ============ -->
+<section aria-labelledby="s-combined">
+  <div class="sec-head"><h2 id="s-combined">Combined Changes: several commits, one Changes tree</h2><span class="pill now">Exists</span></div>
+  <div class="stage">
+    <div class="vs">
+      <div class="views">
+        <div class="view">
+          <div class="vhead">▾ Log</div>
+          <div class="vbody rows" style="padding-top:6px">
+            <div class="row multi t"><span class="chip api">acme-api</span><span class="subj">api: /status reports the version</span><span class="who">dana</span><span class="when">10m ago</span><i class="n tl">37</i></div>
+            <div class="row sel"><span class="chip web">acme-web</span><span class="subj">fix(header): padding on small screens</span><span class="who">dana</span><span class="when">20m ago</span></div>
+            <div class="row"><span class="chip web">acme-web</span><span class="subj">header: wider title, rem font size</span><span class="who">rin</span><span class="when">1h ago</span></div>
+            <div class="row multi"><span class="chip api">acme-api</span><span class="subj">api: add GET /status</span><span class="who">dana</span><span class="when">2h ago</span></div>
+            <div class="row multi"><span class="chip web">acme-web</span><span class="subj">fix(header): stop the title overflowing</span><span class="who">dana</span><span class="when">2h ago</span></div>
+            <div class="foot t" style="margin-top:6px"><span>Newest first by commit date</span><span>Combined Changes shows up to 100 commits</span><i class="n tl">38</i></div>
+          </div>
+        </div>
+        <div class="view">
+          <div class="vhead">▾ Changes <span style="font-weight:400;text-transform:none;color:var(--vs-dim)">4 commits · 2 repositories</span><span class="tools t" title="Clear Selection" style="padding:0 4px">⊘<i class="n tl">39</i></span></div>
+          <div class="vbody tree">
+            <div class="node t" style="--d:0">▾ <span class="dot bg-web"></span> acme-web <span class="desc">2 commits</span><i class="n tl">40</i></div>
+            <div class="node" style="--d:1">▾ src <span class="desc">2</span></div>
+            <div class="node t" style="--d:2"><span class="mod">header.css</span> <span class="desc">⚠ a3f9 · c7d2</span><span class="badge mod">M</span><i class="n tl">41</i></div>
+            <div class="node" style="--d:2"><span class="mod">header.ts</span> <span class="desc">a3f9 · c7d2</span><span class="badge mod">M</span></div>
+            <div class="node" style="--d:0">▾ <span class="dot bg-api"></span> acme-api <span class="desc">2 commits</span></div>
+            <div class="node" style="--d:1">▾ routes <span class="desc">1</span></div>
+            <div class="node" style="--d:2"><span class="add">status.ts</span> <span class="desc">5be0 · 48f0</span><span class="badge add">A</span></div>
+            <div class="node t" style="--d:0;color:var(--vs-dim);white-space:normal;height:auto">1 file with no net change: src/debug.ts<i class="n tl">42</i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">37</i><b>Selected Commit rows</b><span>Ctrl/⌘-click adds or removes a commit, Shift-click (or Shift+↑/↓) selects a range, in any repositories. The focus row has the active color, the others the inactive one. Two or more put the Changes view in Combined Changes; a plain click goes back to one.</span></div>
+    <div class="g"><i class="num">38</i><b>Selection limit notice</b><span>In the Log footer when a click would select more than 100 commits (the click is refused).</span></div>
+    <div class="g"><i class="num">39</i><b>Clear Selection</b><span>In the Changes view's title while several commits are selected: back to the focused commit alone. All Files is hidden meanwhile.</span></div>
+    <div class="g"><i class="num">40</i><b>Combined repository row</b><span>One per repository with selected commits, in its Repo List color; the tooltip lists its selected commits.</span></div>
+    <div class="g"><i class="num">41</i><b>Combined File row</b><span>Each changed file once: the selected commits that touched it, and its net A/M/D/R badge. Its diff shows only what those commits did (other commits' lines as context). ⚠: an unselected commit edited the same lines, so the diff runs from before the first to after the last; the tooltip and the diff title name it.</span></div>
+    <div class="g"><i class="num">42</i><b>No net change row</b><span>Files added and removed again, or changed and changed back, within the selection: named here instead of listed.</span></div>
   </div>
 </section>
 

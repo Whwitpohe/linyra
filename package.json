@@ -132,6 +132,17 @@
         "category": "Polylog"
       },
       {
+        "command": "polylog.openCombinedDiff",
+        "title": "Open Diff",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.clearSelection",
+        "title": "Clear Selection",
+        "category": "Polylog",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "polylog.copySha",
         "title": "Copy Commit ID",
         "category": "Polylog"
@@ -681,6 +692,14 @@
           "when": "false"
         },
         {
+          "command": "polylog.openCombinedDiff",
+          "when": "false"
+        },
+        {
+          "command": "polylog.clearSelection",
+          "when": "false"
+        },
+        {
           "command": "polylog.copySha",
           "when": "false"
         },
@@ -858,11 +877,11 @@
         },
         {
           "command": "polylog.changesShowAll",
-          "when": "!polylog.changesAllFiles"
+          "when": "!polylog.changesAllFiles && !polylog.combined"
         },
         {
           "command": "polylog.changesShowChanged",
-          "when": "polylog.changesAllFiles"
+          "when": "polylog.changesAllFiles && !polylog.combined"
         },
         {
           "command": "polylog.stageAll",
@@ -963,13 +982,18 @@
           "group": "navigation@1"
         },
         {
+          "command": "polylog.clearSelection",
+          "when": "view == polylog.changes && polylog.combined",
+          "group": "navigation@0"
+        },
+        {
           "command": "polylog.changesShowAll",
-          "when": "view == polylog.changes && !polylog.changesAllFiles",
+          "when": "view == polylog.changes && !polylog.changesAllFiles && !polylog.combined",
           "group": "navigation@1"
         },
         {
           "command": "polylog.changesShowChanged",
-          "when": "view == polylog.changes && polylog.changesAllFiles",
+          "when": "view == polylog.changes && polylog.changesAllFiles && !polylog.combined",
           "group": "navigation@1"
         },
         {
@@ -1259,7 +1283,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
-    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs",
+    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs && esbuild src/lineMerge.test.ts --bundle --platform=node --format=cjs --outfile=out/lineMerge.test.cjs && node out/lineMerge.test.cjs && esbuild src/webview/selectionModel.test.ts --bundle --platform=node --format=cjs --outfile=out/selectionModel.test.cjs && node out/selectionModel.test.cjs && esbuild src/combinedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedModel.test.cjs && node out/combinedModel.test.cjs && esbuild src/combinedRead.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedRead.test.cjs && node out/combinedRead.test.cjs",
     "test": "npm run test:unit",
     "package": "vsce package --no-dependencies",
     "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",

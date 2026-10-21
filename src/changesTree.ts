@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
-import { decorationFor, describeChanges, stat, viewDescription, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
+import { decorationFor, describeChanges, describeCombined, stat, viewDescription, type ChangesState, type CombinedOpen, type CombinedState, type NodeDesc, type Owner } from "./changesModel";
 import { commitKey, UNCOMMITTED } from "./types";
+import { ACCENT_COLORS } from "./webview/view";
 
 /** Runs git in a repository (All Files reads one folder with it). */
 export type RunInRepo = (root: string, args: string[], signal: AbortSignal) => Promise<string>;
@@ -29,6 +30,8 @@ export interface ChangesSnapshot {
   focused: string | undefined;
   /** What VS Code has selected in the tree (File History reveals its file). */
   selected: string[];
+  /** Combined Changes: every file's diff arguments (what a click opens). */
+  combined: CombinedOpen[];
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -128,8 +131,21 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
 
   set(state: ChangesState | null): void {
     this.state = state;
+    this.combined = null;
     this.render();
   }
+
+  /** Combined Changes: several commits' files, a root per repository. */
+  setCombined(s: CombinedState | null): void {
+    this.state = null;
+    this.combined = s;
+    this.render();
+  }
+
+  currentCombined(): CombinedState | null {
+    return this.combined;
+  }
+  private combined: CombinedState | null = null;
 
   /** A fresh tree: All Files reads still running for the previous commit stop. */
   private resetAllFiles(): void {
@@ -145,7 +161,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
 
   snapshot(): ChangesSnapshot {
     // All Files: the folders read so far (what is on screen).
-    const kids = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [] : this.allFilesActive() ? this.loaded.get(n.kind === "commit" ? "" : n.path) ?? [] : n.children);
+    const kids = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [] : this.allFilesActive() ? this.loaded.get(n.kind === "commit" || n.kind === "repo" ? "" : n.path) ?? [] : n.children);
     const walk = (nodes: NodeDesc[], depth: number): string[] =>
       nodes.flatMap((n) => [`${"  ".repeat(depth)}${n.label} | ${n.description}`, ...walk(kids(n), depth + 1)]);
     const all = (nodes: NodeDesc[]): NodeDesc[] => nodes.flatMap((n) => [n, ...all(kids(n))]);
@@ -159,17 +175,20 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       const model = n.kind === "file" ? decorationFor(n.file.status) : undefined;
       return d && model ? [`${n.label} ${d.badge} ${model.color}`] : [];
     });
-    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.view.selection.map((n) => n.label) };
+    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.view.selection.map((n) => n.label),
+      combined: all(this.roots).flatMap((n) => (n.kind === "file" && n.combined ? [n.combined] : [])) };
   }
 
   private render(): void {
     this.resetAllFiles();
-    const d = describeChanges(this.state, nowSec());
+    const combined = this.combined ? describeCombined(this.combined) : undefined;
+    const d = combined ?? describeChanges(this.state, nowSec());
     this.roots = d.roots;
     this.message = d.message;
     this.view.message = d.message;
     // Next to the title: which repository and commit this is, or its uncommitted work.
-    this.view.description = viewDescription(this.state);
+    this.view.description = combined ? combined.description : viewDescription(this.state);
+    void vscode.commands.executeCommand("setContext", "polylog.combined", combined !== undefined);
     this.decorations = new Map();
     const before = this.decorated;
     this.decorated = [];
@@ -241,7 +260,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   getChildren(node?: NodeDesc): NodeDesc[] | Promise<NodeDesc[]> {
     if (!node) return this.fetched(this.roots);
     if (node.kind === "file") return [];
-    if (this.allFilesActive()) return this.level(node.kind === "commit" ? "" : node.path, node).then((rows) => this.fetched(rows));
+    if (this.allFilesActive()) return this.level(node.kind === "commit" || node.kind === "repo" ? "" : node.path, node).then((rows) => this.fetched(rows));
     return this.fetched(node.children);
   }
 
@@ -268,6 +287,12 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       item.contextValue = this.state?.commit.sha !== UNCOMMITTED ? "commit" : this.state.discardable ? `uncommitted.discardable${this.workFlags("")}` : "uncommitted";
       return item;
     }
+    if (node.kind === "repo") {
+      // Combined Changes: the repository's own accent, as its chip has in the Log.
+      item.iconPath = new vscode.ThemeIcon("repo", new vscode.ThemeColor(ACCENT_COLORS[node.accent % ACCENT_COLORS.length]));
+      item.contextValue = "combinedRepo";
+      return item;
+    }
     // resourceUri lets the file-icon theme pick icons from the name. A private
     // scheme, not the worktree file: URI, so live git and Problems decorations
     // for today's files are not painted onto a historical commit.
@@ -287,6 +312,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (node.kind === "file" && node.unchanged) {
       // Not changed by the commit: the file as it was then, read-only.
       item.command = { command: "polylog.openRevision", title: "Open File at Commit", arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };
+    } else if (node.kind === "file" && node.combined) {
+      item.command = { command: "polylog.openCombinedDiff", title: "Open Diff", arguments: [node.combined] };
     } else if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status };
       item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };

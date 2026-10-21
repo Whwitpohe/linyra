@@ -42,6 +42,9 @@ export function moveSelection(key: string, index: number, total: number, pageRow
   }
 }
 
+/** Each accent as a theme color id, for native views (tree icons): the same hues as styles.css .accent-0 … .accent-5. */
+export const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
+
 /** Six hues: five of VS Code's chart colors plus terminal cyan; see styles.css .accent-0 … .accent-5. */
 export const ACCENT_COUNT = 6;
 
