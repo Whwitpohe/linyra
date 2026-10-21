@@ -7,6 +7,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.3.0] — 2026-10-21
+
+### Added
+
+- **Combined Changes: select several commits, see one Changes tree.** Ctrl-click (⌘-click on
+  macOS), Shift-click or Shift+↑/↓ in the Log selects several commits, in any repositories:
+  one piece of work spread over `acme-web` and `acme-api`, say. The Changes view lists each
+  changed file once, under its repository, with the selected commits that touched it and its
+  net A/M/D/R status. Up to 100 commits; **Clear Selection** in the Changes title bar goes
+  back to one, and so does a plain click.
+- **A file's diff shows only what the selected commits did to it.** The right side is the
+  file after the newest selected commit; the left side is that file with the selected
+  commits' changes taken back out, by a three-way merge in memory. A teammate's commit in
+  between shows as unchanged context, not as part of your change. Nothing is written to your
+  repositories.
+- **⚠ when the changes can't be shown apart.** If an unselected commit edited the same lines
+  (or the file is binary, or very large), the file is marked ⚠ and its diff runs from before
+  the first selected commit to after the last; the tooltip and the diff title name the
+  unselected commits included.
+- **Files added and removed again, or changed and changed back,** within the selection are
+  named in a note at the end of the tree instead of listed.
+
+### Notes
+
+- Combined Changes is read-only: nothing is squashed, rebased or committed. The Uncommitted
+  side of the Log keeps its own Ctrl/Shift multi-select for staging and committing.
+
 ## [1.2.0] — 2026-10-16
 
 ### Added
