@@ -284,7 +284,9 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
 .work-row:hover { background: var(--vscode-list-hoverBackground); }
 .work-row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
 .worklist:focus .work-row[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
-.work-what { display: grid; gap: 4px; min-width: 0; }
+/* minmax(0, 1fr): without it the track takes the meter's 160px, and on a narrow panel the
+   meter and preview run under the tags. */
+.work-what { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
 .work-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meter { display: flex; gap: 1px; width: 160px; max-width: 100%; height: 4px; border-radius: 2px; overflow: hidden; background: var(--vscode-widget-border, var(--vscode-input-border, transparent)); }
 .meter .added { background: var(--vscode-gitDecoration-addedResourceForeground); }
