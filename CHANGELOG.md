@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.3.1] — 2026-10-22
+
+### Fixed
+
+- **Uncommitted rows no longer overlap their tags on a narrow panel.** Below about 600px wide,
+  a row's file preview and change meter ran under its "2 new" / "staged" tags. They now
+  shrink with the panel: the preview is cut with "…" and the meter shortens, back to full
+  size when there is room.
+
 ## [1.3.0] — 2026-10-21
 
 ### Added
