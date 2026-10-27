@@ -9,7 +9,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-10-28
+
 ### Changed
+
+- **A listing that reflects the current extension.** Replaced the outdated walkthrough
+  with a real VS Code recording and new screenshots of the multi-lane graph, branch
+  multi-select, complete commit details, native diffs, file history and branch comparison.
+  The editor keeps a natural working layout; focused images make small controls readable.
+- **Complete English and Simplified Chinese guides.** Installation now links to the live
+  Marketplace listing. Both guides cover the default all-branch scope, filters, hash lookup,
+  resizable panes, preserved toolbar actions and explicit Git operations. Open VSX remains
+  listed as unavailable until publication is completed.
+- **Reproducible, isolated demonstration assets.** The media workflow builds neutral Git
+  repositories with real merges, divergent release branches and working-file examples,
+  then captures production webviews inside a throwaway VS Code development host. Capture
+  files and dependencies remain outside the installed extension.
+
+### Notes
+
+- **This update refreshes documentation and presentation.** The feature set, theme colors,
+  approved icon, commands and compatibility identifiers are unchanged from the Marketplace
+  build of Linyra 1.4.0. The Chinese guide is included in the installation package.
+- **Historical releases remain intact.** The earlier `v1.4.0` GitHub tag and Polylog VSIX are
+  preserved; this release provides `whwitpohe.linyra-1.4.1.vsix` under its matching new tag.
+
+## [1.4.0] — 2026-10-27
+
+### Branding and publication
 
 - **A cool-color identity for Linyra.** The approved icon keeps the original Polylog
   three-history merge shape and uses periwinkle, sky blue and mint on midnight navy.
@@ -19,12 +46,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `whwitpohe.linyra`, with matching English/Chinese listing names, command categories,
   panel titles and messages. The original Polylog copyright and license remain intact.
 - **Install and publish under the fork publisher.** The README explains the separate
-  extension identity, installation from a Linyra VSIX and pending registry publication.
+  extension identity and installation from a Linyra VSIX. Linyra 1.4.0 subsequently became
+  public on the VS Code Marketplace under `whwitpohe.linyra` on 2026-10-28.
   Existing `polylog.*` settings, keybindings, commands and view ids stay compatible;
   disable the old extension when switching. Private filter and layout state belongs to
   each extension id. Earlier releases and tags keep their original identity.
-
-## [1.4.0] — 2026-10-27
 
 ### Added
 

@@ -13,16 +13,17 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | Publisher / Open VSX namespace | `whwitpohe` |
 | package name | `linyra` |
 | 完整扩展 ID | `whwitpohe.linyra` |
-| 当前包版本 | `1.4.0` |
+| 当前包版本 | `1.4.1` |
 | 源码 / Issues | `Whwitpohe/polylog` |
 
-`publisher` 字段是目标发布身份，不代表已经在商店注册或完成验证。GitHub 登录与商店发布权限分别管理。
-本次更名沿用版本号：Linyra 是新的扩展 ID，旧身份下已经发布的版本不会占用新 ID 的版本号。
+Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
+Open VSX 尚未完成发布；不要仅凭 manifest 中的发布者字段声称某个注册中心已经可用。
+GitHub 登录与商店发布权限分别管理。Linyra 是新的扩展 ID，旧身份的版本不会占用新 ID 的版本号。
 历史 `v1.4.0` 标签和 GitHub Release 保留原来的 Polylog 包，不替换其附件或校验值。
 
 ## 切换安装
 
-1. 安装新包 `whwitpohe.linyra-1.4.0.vsix`。
+1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.4.1.vsix`。
 2. 禁用或卸载旧的 `lntvan166.polylog-git`，只保留一个版本启用，然后重新加载窗口。
 3. 现有 `polylog.*` 设置和快捷键继续有效；筛选、布局等扩展私有状态按新 ID 单独保存，首次切换时可能需要重新调整。
 
@@ -40,12 +41,14 @@ npm run check:theme
 npm run check:design
 npm run check:denylist
 npm run test:integration
-npm run package -- --out whwitpohe.linyra-1.4.0.vsix
-Get-FileHash .\whwitpohe.linyra-1.4.0.vsix -Algorithm SHA256
+npm run package -- --out whwitpohe.linyra-1.4.1.vsix
+Get-FileHash .\whwitpohe.linyra-1.4.1.vsix -Algorithm SHA256
 ```
 
 还需验证最低支持版 VS Code 1.85.0，检查解压后的包内容与隐私扫描；本地词表通过忽略文件提供，CI 通过 Secret 提供。
 两个商店上传同一份经过验证的 VSIX，不分别重新构建。发布前确认包内 publisher/name/version 与上表一致。
+完整本地检查命令之外，还需等待合并后 main CI 通过。图片使用版本目录和绝对 raw.githubusercontent.com
+地址；先推送素材并核对响应，再更新商店。录制步骤见 [dev/demo/README.md](../dev/demo/README.md)。
 
 ## 品牌图标
 
@@ -75,6 +78,6 @@ Get-FileHash .\whwitpohe.linyra-1.4.0.vsix -Algorithm SHA256
 ## 发布后的验证
 
 - 分别核对两个商店中 `whwitpohe.linyra` 的版本、名称、发布者、源码与 Issues 链接。
-- 下载商店包，核对实际扩展 ID 和行为，再把 README 的“待发布”状态更新为实际商店链接。
+- 下载商店包，核对实际扩展 ID、版本、说明和行为；只把实际发布成功的注册中心列为可用。
 - 独立 ID 不会让原版用户自动迁移；在更新说明中提供上述切换步骤。
 - GitHub 的后续 Linyra Release 应使用新标签明确对应新源码提交，不能修改旧标签来覆盖旧产品包。

@@ -12,6 +12,7 @@
 !package.nls*.json
 !l10n/bundle.l10n.*.json
 !README.md
+!README.zh-CN.md
 !CHANGELOG.md
 !LICENSE
 !media/polylog.svg
