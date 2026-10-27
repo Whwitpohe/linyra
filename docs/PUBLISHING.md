@@ -49,10 +49,11 @@ Get-FileHash .\whwitpohe.linyra-1.4.0.vsix -Algorithm SHA256
 
 ## 品牌图标
 
-- `media/icon.svg` 是 Linyra 独立设计的矢量源：两条交织历史环，不含字母。
+- `media/icon-source.png` 是用户确认的配色原图：保留原 Polylog 的三线合流结构，改为紫／蓝／薄荷绿与深蓝底。两个 PNG 交付尺寸从此图直接缩放，不再次生成或重画。
+- `media/icon.svg` 是同配色的可编辑矢量参考；图形继承原 Polylog，保留上游版权及来源，不作为新的原创图形声称。
 - `media/icon.png` 是扩展商店使用的 256×256 PNG，随 VSIX 打包。
 - `media/publisher-icon.png` 是发布者表单使用的 128×128 PNG，不放进 VSIX。
-- `media/polylog.svg` 是对应的单色面板图标，通过 `currentColor` 跟随编辑器主题；文件名继续保持兼容。
+- `media/polylog.svg` 保留原三线合流的单色面板图形，通过 `currentColor` 跟随编辑器主题；文件名继续保持兼容。
 - 更改品牌不改变编辑器的 Git 状态色、布局或任何功能入口。
 
 ## Visual Studio Marketplace

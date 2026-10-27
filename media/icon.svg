@@ -1,31 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <!-- Linyra: two interwoven history loops, without letters or merge-node imagery.
-       Editable source for icon.png (256px) and publisher-icon.png (128px). -->
+  <!-- Linyra recolor of the original Polylog icon: three histories merge into one log.
+       Editable vector companion. Production PNGs are resized from the approved icon-source.png. -->
   <defs>
-    <linearGradient id="tile" x1="20" y1="16" x2="232" y2="240" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#17243d"/>
-      <stop offset="1" stop-color="#0b1222"/>
-    </linearGradient>
-    <linearGradient id="upper" x1="56" y1="46" x2="156" y2="162" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#b4a8ff"/>
-      <stop offset="1" stop-color="#7678ee"/>
-    </linearGradient>
-    <linearGradient id="lower" x1="100" y1="98" x2="200" y2="214" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#75e9e5"/>
-      <stop offset="1" stop-color="#29bfcf"/>
-    </linearGradient>
-    <mask id="upper-weave" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
-      <rect width="256" height="256" fill="white"/>
-      <path d="M100 143 V174" fill="none" stroke="black" stroke-width="30"/>
-    </mask>
-    <mask id="lower-weave" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
-      <rect width="256" height="256" fill="white"/>
-      <path d="M156 85 V117" fill="none" stroke="black" stroke-width="30"/>
-    </mask>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#14213b"/><stop offset="1" stop-color="#0c1428"/></linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8d8aff"/><stop offset=".5" stop-color="#49bdf5"/><stop offset="1" stop-color="#43dec5"/></linearGradient>
+    <linearGradient id="lane1" gradientUnits="userSpaceOnUse" x1="50" y1="0" x2="160" y2="0"><stop offset="0" stop-color="#8d8aff"/><stop offset="1" stop-color="#e9f6ff"/></linearGradient>
+    <linearGradient id="lane2" gradientUnits="userSpaceOnUse" x1="50" y1="0" x2="160" y2="0"><stop offset="0" stop-color="#49bdf5"/><stop offset="1" stop-color="#e9f6ff"/></linearGradient>
+    <linearGradient id="lane3" gradientUnits="userSpaceOnUse" x1="50" y1="0" x2="160" y2="0"><stop offset="0" stop-color="#43dec5"/><stop offset="1" stop-color="#e9f6ff"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
   </defs>
-  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#tile)"/>
-  <g fill="none" stroke-width="18" stroke-linejoin="round">
-    <path d="M106 46 156 75 V133 L106 162 56 133 V75 Z" stroke="url(#upper)" mask="url(#upper-weave)"/>
-    <path d="M150 98 200 127 V185 L150 214 100 185 V127 Z" stroke="url(#lower)" mask="url(#lower-weave)"/>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#tile)"/>
+  <rect x="11" y="11" width="234" height="234" rx="55" fill="none" stroke="url(#edge)" stroke-width="6"/>
+  <g fill="none" stroke-width="15" stroke-linecap="round" filter="url(#glow)">
+    <path d="M50 78 C 104 78, 112 128, 152 128" stroke="url(#lane1)"/>
+    <path d="M50 178 C 104 178, 112 128, 152 128" stroke="url(#lane3)"/>
+    <path d="M50 128 H 152" stroke="url(#lane2)"/>
+    <path d="M150 128 H 206" stroke="#e9f6ff"/>
   </g>
+  <circle cx="50" cy="78" r="14" fill="#8d8aff"/>
+  <circle cx="50" cy="128" r="14" fill="#49bdf5"/>
+  <circle cx="50" cy="178" r="14" fill="#43dec5"/>
+  <circle cx="206" cy="128" r="21" fill="#e9f6ff"/>
+  <circle cx="206" cy="128" r="9" fill="#0c1428" fill-opacity=".45"/>
 </svg>
