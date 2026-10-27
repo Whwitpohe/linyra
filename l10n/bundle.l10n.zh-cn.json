@@ -123,7 +123,7 @@
   "No commits to {0} match these filters.": "涉及 {0} 的提交均不符合筛选条件。",
   "Clear Author": "清除作者筛选",
   "No git repositories found": "未找到 Git 仓库",
-  "Linyra lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth.": "Linyra 显示 VS Code Git 扩展报告的仓库。如果仓库位于更深的目录中，请增大 git.repositoryScanMaxDepth 或 polylog.scanDepth。",
+  "Linyra lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or linyra.scanDepth.": "Linyra 显示 VS Code Git 扩展报告的仓库。如果仓库位于更深的目录中，请增大 git.repositoryScanMaxDepth 或 linyra.scanDepth。",
   "Open Settings": "打开设置",
   "No repositories selected": "未选择仓库",
   "Choose at least one repository to see its commits.": "至少选择一个仓库以查看提交。",
@@ -237,7 +237,6 @@
   "Current": "当前",
   "Switch profile": "切换仓库配置",
   "No profiles yet: tick some repositories, then Save Selection as Profile…": "暂无配置：勾选仓库后，选择“将所选仓库保存为配置…”",
-  "Linyra: \"{0}\" is in your User settings (polylog.profiles); change it there.": "Linyra：“{0}”保存在用户设置（polylog.profiles）中，请在那里修改。",
   "Linyra: profiles are saved in the workspace settings; open a folder first.": "Linyra：仓库配置保存在工作区设置中，请先打开文件夹。",
   "Linyra could not save the profile: {0}": "Linyra 无法保存仓库配置：{0}",
   "Name for a profile of {0}": "为包含 {0} 的配置命名",
@@ -248,7 +247,7 @@
   "New profile with {0}…": "新建包含 {0} 的配置…",
   "Profiles with {0}": "包含 {0} 的配置",
   "Name for a new profile with {0}": "为包含 {0} 的新配置命名",
-  "Linyra: {0} is excluded (polylog.excludeRepos).": "Linyra：已排除 {0}（polylog.excludeRepos）。",
+  "Linyra: {0} is excluded (linyra.excludeRepos).": "Linyra：已排除 {0}（linyra.excludeRepos）。",
   "Undo": "撤销",
   "Linyra could not read the log: {0}": "Linyra 无法读取日志：{0}",
   "Linyra could not load more commits: {0}": "Linyra 无法加载更多提交：{0}",
@@ -454,5 +453,6 @@
   "Hide Files Already on Both": "隐藏两侧已相同的文件",
   "Show Files Already on Both": "显示两侧已相同的文件",
   "Left": "左侧",
-  "Right": "右侧"
+  "Right": "右侧",
+  "Linyra: \"{0}\" is in your User settings; change it there.": "Linyra：“{0}”保存在用户设置中，请在那里修改。"
 }

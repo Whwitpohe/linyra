@@ -9,6 +9,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-10-28
+
+### Changed
+
+- **Settings belong to Linyra.** The six public settings now use `linyra.*`, including
+  repository profiles, exclusions, discovery, paging, concurrency and blame. Runtime reads,
+  change listeners, profile/exclusion writes, prompts and both guides use the new names.
+  Old `polylog.*` settings are neither registered nor read or migrated; existing configuration
+  files are left untouched. Command, view and URI identifiers remain compatible.
+- **Feature demonstrations now focus on Linyra's additions.** Four real-editor GIFs show
+  branch/author multi-select, date/topological sorting and graph folding; complete commit
+  metadata, colored references, containing branches, divider dragging and file search;
+  locating old commits by hash and restoring filters; and comparison modes, commit files,
+  repository switching, swapping and resizing. The branch sidebar has its own screenshot.
+  Both guides explain what each recording demonstrates.
+
+### Notes
+
+- **Existing features and theme colors remain intact.** This update changes the public
+  settings namespace and presentation; it does not remove toolbar actions or replace
+  the approved icon. Configure custom preferences under the new names if needed.
+
 ## [1.4.1] — 2026-10-28
 
 ### Changed

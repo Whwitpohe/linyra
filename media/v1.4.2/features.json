@@ -1,0 +1,65 @@
+{
+  "version": "1.4.2",
+  "clips": [
+    {
+      "name": "feature-branches",
+      "frames": 84,
+      "source": "real native VS Code surface",
+      "region": {
+        "x": 4.925449371337891,
+        "y": 740.5618896484375,
+        "width": 1767.3714599609375,
+        "height": 560.093994140625,
+        "top": 0,
+        "right": 1767.3714599609375,
+        "bottom": 560.093994140625,
+        "left": 0
+      }
+    },
+    {
+      "name": "feature-commit-review",
+      "frames": 84,
+      "source": "real native VS Code surface",
+      "region": {
+        "x": 1777.2956886291504,
+        "y": 740.5618896484375,
+        "width": 619.990966796875,
+        "height": 560.093994140625,
+        "top": 0,
+        "right": 2392.3612060546875,
+        "bottom": 560.093994140625,
+        "left": 1772.3702392578125
+      }
+    },
+    {
+      "name": "feature-hash-lookup",
+      "frames": 27,
+      "source": "real native VS Code surface",
+      "region": {
+        "x": 4.925449371337891,
+        "y": 740.5618896484375,
+        "width": 1767.3714599609375,
+        "height": 300,
+        "top": 0,
+        "right": 1767.3714599609375,
+        "bottom": 560.093994140625,
+        "left": 0
+      }
+    },
+    {
+      "name": "feature-compare",
+      "frames": 66,
+      "source": "real native VS Code surface",
+      "region": {
+        "x": 3.9872686862945557,
+        "y": 707.6375732421875,
+        "width": 2394.017578125,
+        "height": 594.3229370117188,
+        "top": 707.6375732421875,
+        "right": 2398.0048468112946,
+        "bottom": 1301.9605102539062,
+        "left": 3.9872686862945557
+      }
+    }
+  ]
+}

@@ -188,7 +188,7 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   if (o.repoCount === 0) {
     return {
       title: localize("No git repositories found"),
-      body: localize("Linyra lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth."),
+      body: localize("Linyra lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or linyra.scanDepth."),
       action: { label: localize("Open Settings"), id: "settings" },
     };
   }

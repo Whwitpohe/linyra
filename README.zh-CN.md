@@ -7,7 +7,11 @@
 一个需求改了前端、API、公共库和文档？搜索一次，就能看到所选仓库里的相关提交。
 沿着真实分支图追踪合并，阅读完整提交说明，再用 VS Code 原生 Diff 核对每个文件。
 
-![真实 VS Code 演示：一次搜索 ACME-142，查看四个仓库的相关提交并切换原生 Diff](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/demo.gif)
+**Linyra 的新增与改进**包括真实多轨道 Git 图、分支／作者多选、拓扑排序与历史折叠、哈希定位、
+更完整的提交详情、分支侧栏，以及带明确折叠控件的可调面板。下面专门演示这些能力，
+也保留从 Polylog 继承的多仓库合并时间线。
+
+![多选分支和作者，切换日期／拓扑排序，并折叠和展开线性历史](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-branches.gif)
 
 演示使用六个中性的示例仓库和真实 Git 提交。静态图片均可打开查看原始分辨率。
 
@@ -44,14 +48,23 @@ code --install-extension whwitpohe.linyra
 - **真实分叉与合并。** 图中彩色轨道连接同一仓库内的真实父提交。
   可按提交日期或拓扑排序，也可通过明确的图形控件折叠长线性历史，保留分支头、标签、分叉和合并。
 
-![可搜索、多选的分支筛选器，同时选择 main 和 feature/saved-cards](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-branches.png)
+**演示步骤：**同时选择 `main` 与 `feature/saved-cards`，切换日期／拓扑排序，折叠并展开线性历史，
+再多选作者。真实分叉、合并和分支头保持可见；默认仍是全部本地／远程分支和全部作者。
+
+**不用重设筛选，也能定位旧提交。** 粘贴哈希，即使时间选着“最近 24 小时”，仍能找到三个月前的提交；
+清空哈希后恢复之前的日志。
+
+![粘贴短哈希定位旧提交，清空后恢复原筛选](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-hash-lookup.gif)
 
 ## 看清完整提交说明
 
 文件下方单独展示标题、正文段落、共同作者等尾注，以及作者／邮箱、时间、可复制哈希和仓库标记。
 HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能展开查看包含此提交的分支。
 
-![完整提交正文、作者信息、多色引用图标与包含分支](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-details.png)
+![查看完整提交与彩色引用，调整或隐藏说明区域，并搜索更改文件](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-commit-review.gif)
+
+**演示步骤：**查看 HEAD／本地分支／远程分支／标签的图标和颜色，展开包含分支，隐藏并恢复说明，
+拖动分隔线，再把更改文件筛到 `PaymentStep`。
 
 拖动文件列表和提交说明之间的分隔线调整高度，小箭头可隐藏／恢复说明，大小和显隐状态都会记住。
 更改区工具栏保留**全部文件／更改文件**、展开／折叠、清除选择及提交操作菜单。
@@ -65,7 +78,10 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 从日志工具栏或 **Linyra: 比较分支** 打开比较面板。
 只需选择一次左右分支，就能查看所选仓库中各自的差异，并明确列出缺少分支的仓库。
 
-![分支比较：仓库汇总、左右文件树和完整操作按钮](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-compare.png)
+![切换文件／提交、展开提交文件、选择仓库、交换分支并调整左右大小](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-compare.gif)
+
+**演示步骤：**发布分支和主分支各有独立改动；切换“文件／提交”，展开提交的文件，选择另一仓库，
+左右交换并调整区域大小。三个区域保持在稳定的同一视图中，原有操作入口继续保留。
 
 **文件／提交**模式、左右交换、刷新、分支搜索、收藏和最近使用都可直接操作。
 左右侧还各自保留显示模式、相同内容过滤、展开／折叠、加载更多和右键菜单。
@@ -83,10 +99,15 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 | **合并查看更改** | Ctrl/⌘ 或 Shift 多选提交，支持跨仓库。同一文件汇总展示；可分离时只展示所选提交带来的改动，无法分离的重叠改动会提示。不会改写提交历史。 |
 | **未提交改动** | 日志顶部“提交／未提交”切换，或打开独立未提交侧栏。跨仓库查看工作文件，通过明确命令暂存、取消暂存、丢弃和提交，接入 VS Code Git。 |
 | **分支侧栏** | 左侧切换“仓库／分支”，浏览本地与远程分支、搜索和收藏。点击分支筛选日志；右键提供当前仓库的检出、新建、比较、重命名、合并、变基、工作树、获取、拉取、推送和删除操作。 |
-| **仓库配置组** | 保存当前仓库选择，之后一键恢复；通过工作区 `polylog.profiles` 设置共享。 |
+| **仓库配置组** | 保存当前仓库选择，之后一键恢复；通过工作区 `linyra.profiles` 设置共享。 |
 | **获取／拉取** | 按需获取，查看领先／落后数量，筛出落后仓库；批量拉取使用快进检查。 |
 | **行归属与当前文件** | 原生 Diff／历史版本编辑器显示行归属；“打开文件”跳到工作区当前文件的相同行。 |
 | **复制与远程链接** | 提交和文件右键菜单提供复制及支持的 Git 托管平台链接。 |
+
+分支侧栏也是 Linyra 的新增能力：在本地／远程分支间搜索和收藏，再从明确仓库范围的菜单执行操作。
+点击分支名称用于查看历史，不会直接检出分支。
+
+![在三个仓库中搜索本地和远程分支的侧栏](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-branch-sidebar.png)
 
 ![文件历史与跟随选择的原生 Diff](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-file-history.png)
 
@@ -112,12 +133,17 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 
 | 设置 | 默认值 | 用途 |
 | --- | --- | --- |
-| `polylog.pageSize` | `200` | 每仓库每页读取提交数量 |
-| `polylog.maxConcurrency` | `16` | Git 最大并发数 |
-| `polylog.scanDepth` | `2` | 工作区目录内的仓库发现深度 |
-| `polylog.excludeRepos` | `[]` | 排除的仓库名／路径模式 |
-| `polylog.profiles` | `{}` | 命名的仓库选择配置 |
-| `polylog.blame` | `true` | 在 Diff 与历史版本中显示行归属 |
+| `linyra.pageSize` | `200` | 每仓库每页读取提交数量 |
+| `linyra.maxConcurrency` | `16` | Git 最大并发数 |
+| `linyra.scanDepth` | `2` | 工作区目录内的仓库发现深度 |
+| `linyra.excludeRepos` | `[]` | 排除的仓库名／路径模式 |
+| `linyra.profiles` | `{}` | 命名的仓库选择配置 |
+| `linyra.blame` | `true` | 在 Diff 与历史版本中显示行归属 |
+
+从 1.4.2 开始，设置只使用 **`linyra.*`**，不读取或迁移旧 `polylog.*` 设置。
+需要自定义时使用新名称配置；现有配置文件保持原样。
+
+![VS Code 原生设置页展示 Linyra 自己的六项设置](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-settings.png)
 
 筛选条件交给 Git，读取结果分页合并；不维护持久化历史索引或数据库，不后台获取远程更新。
 输入筛选有防抖，新查询会取消被替代的 Git 读取。
@@ -126,7 +152,7 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 
 Linyra 基于 **lntvan166** 创建的 [Polylog](https://github.com/lntvan166/polylog) 独立维护，
 扩展 ID 为 **`whwitpohe.linyra`**。切换时禁用或卸载 `lntvan166.polylog-git`，重新加载窗口，只启用一个版本。
-已有 `polylog.*` 设置与快捷键继续使用；筛选和面板大小属于各扩展私有状态，首次切换可能需重新设置。
+设置改用 `linyra.*`，命令快捷键继续使用；筛选和面板大小属于各扩展私有状态，首次切换可能需重新设置。
 
 原 `v1.4.0` GitHub Release 保留历史 Polylog 安装包，后续 Linyra 版本使用与源码匹配的新标签和 VSIX 名称。
 

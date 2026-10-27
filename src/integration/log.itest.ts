@@ -66,6 +66,11 @@ describe("Linyra panel", () => {
     const s = await until("six rows", (x) => x.rows.length === 6);
     assert.deepStrictEqual(s.rows.map((r) => r.subject), EXPECTED_ORDER);
     assert.strictEqual(new Set(s.rows.map((r) => r.repoId)).size, 3);
+    assert.strictEqual(s.profiles.length, 0, "retired Polylog profiles are ignored");
+    assert.strictEqual(vscode.workspace.getConfiguration("linyra").inspect("excludeRepos")?.workspaceValue, undefined, "activation does not migrate old settings");
+    const properties = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties;
+    assert.strictEqual(Object.keys(properties).length, 6);
+    assert.ok(Object.keys(properties).every((key) => key.startsWith("linyra.")), "only Linyra settings are registered");
   });
 
   it("narrows by message and by repository", async () => {
@@ -1041,7 +1046,7 @@ describe("Linyra panel", () => {
     await vscode.commands.executeCommand("polylog.repoShowAll");
     await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
 
-    const cfg = () => vscode.workspace.getConfiguration("polylog");
+    const cfg = () => vscode.workspace.getConfiguration("linyra");
     // The user's own (global) exclusions stay: arrays do not merge across settings scopes.
     await cfg().update("excludeRepos", ["no-such-repo-*"], vscode.ConfigurationTarget.Global);
     try {
@@ -1520,10 +1525,10 @@ describe("Linyra panel", () => {
     await send({ type: "refresh" });
   });
 
-  it("profiles: read from polylog.profiles, switched by Show and Switch Profile…, other filters kept", async () => {
+  it("profiles: read from linyra.profiles, switched by Show and Switch Profile…, other filters kept", async () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
-    const cfg = vscode.workspace.getConfiguration("polylog");
+    const cfg = vscode.workspace.getConfiguration("linyra");
     try {
       await cfg.update("profiles", { backend: ["acme-api", "acme-libs", "acme-jobs"], web: ["acme-web"], bad: "acme-web" }, vscode.ConfigurationTarget.Workspace);
       let s = await until("profiles resolved", (x) => x.profiles.length === 2);
@@ -1553,7 +1558,7 @@ describe("Linyra panel", () => {
   it("profiles: save the ticks, a repository's Profiles…, update, rename (refuses a taken name), delete asks", async () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
-    const cfg = vscode.workspace.getConfiguration("polylog");
+    const cfg = vscode.workspace.getConfiguration("linyra");
     const saved = () => cfg.inspect<Record<string, string[]>>("profiles")?.workspaceValue;
     const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
     try {
@@ -1600,8 +1605,8 @@ describe("Linyra panel", () => {
   it("profiles: a write never copies User-level profiles into the workspace; Profiles… with no change writes nothing", async () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
-    const cfg = vscode.workspace.getConfiguration("polylog");
-    const ws = () => vscode.workspace.getConfiguration("polylog").inspect<Record<string, string[]>>("profiles")?.workspaceValue;
+    const cfg = vscode.workspace.getConfiguration("linyra");
+    const ws = () => vscode.workspace.getConfiguration("linyra").inspect<Record<string, string[]>>("profiles")?.workspaceValue;
     const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
     try {
       await cfg.update("profiles", { personal: ["acme-web"] }, vscode.ConfigurationTarget.Global);
@@ -1648,7 +1653,7 @@ describe("Linyra panel", () => {
     };
     await blameOn(2, /^feat: add retry to uploader \(ACME-7\), rin \(.+ ago\)$/);
     await blameOn(0, /^feat: scaffold api, dana /);
-    const config = vscode.workspace.getConfiguration("polylog");
+    const config = vscode.workspace.getConfiguration("linyra");
     await config.update("blame", false, vscode.ConfigurationTarget.Global);
     try {
       await waitFor("blame cleared when turned off", async () => ((await vscode.commands.executeCommand("polylog._itest.blame")) === undefined ? true : undefined));
@@ -1825,7 +1830,7 @@ describe("Linyra panel", () => {
     let s = await until("history", (x) => x.history !== null);
     assert.strictEqual(s.filter.date, "all");
     assert.strictEqual(s.persistedFilter?.date, "7d", "a window reload now would bring back 7 days, not all time");
-    const cfg = vscode.workspace.getConfiguration("polylog");
+    const cfg = vscode.workspace.getConfiguration("linyra");
     await cfg.update("excludeRepos", ["acme-api"], vscode.ConfigurationTarget.Global);
     try {
       await send({ type: "refresh" });

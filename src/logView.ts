@@ -309,13 +309,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         await this.profileSave();
         return;
       case "openSettings":
-        await vscode.commands.executeCommand("workbench.action.openSettings", "scan depth");
+        await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
         return;
     }
   }
 
   private settings() {
-    const config = vscode.workspace.getConfiguration("polylog");
+    const config = vscode.workspace.getConfiguration("linyra");
     return readSettings((key) => config.get(key));
   }
 
@@ -663,7 +663,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
-  /** polylog.excludeRepos or scanDepth changed in Settings: list the repositories again. */
+  /** linyra.excludeRepos or scanDepth changed in Settings: list the repositories again. */
   async reposSettingChanged(): Promise<void> {
     await this.refreshRepos();
   }
@@ -1047,12 +1047,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.refsChanged.fire(repoId);
   }
 
-  /** polylog.profiles as written (lenient: malformed entries are skipped). */
+  /** linyra.profiles as written (lenient: malformed entries are skipped). */
   private rawProfiles(): Profiles {
-    return readProfiles(vscode.workspace.getConfiguration("polylog").get("profiles"));
+    return readProfiles(vscode.workspace.getConfiguration("linyra").get("profiles"));
   }
 
-  /** How each repository is named in polylog.profiles. */
+  /** How each repository is named in linyra.profiles. */
   private profileKeys(): { id: string; key: string }[] {
     const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => ({ name: f.name, path: f.uri.fsPath }));
     return this.repos.map((r) => ({ id: r.id, key: repoKey(r.root, folders, process.platform === "win32") }));
@@ -1062,7 +1062,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return resolveProfiles(this.rawProfiles(), this.profileKeys());
   }
 
-  /** polylog.profiles changed (by Linyra or by hand): redraw the Repo List. */
+  /** linyra.profiles changed (by Linyra or by hand): redraw the Repo List. */
   profilesChanged(): void {
     this.postInit();
   }
@@ -1094,9 +1094,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
   }
 
-  /** The workspace's own polylog.profiles (the listed ones also merge in the User settings' ones). */
+  /** The workspace's own linyra.profiles (the listed ones also merge in the User settings' ones). */
   private ownProfiles(): Profiles {
-    return readProfiles(vscode.workspace.getConfiguration("polylog").inspect("profiles")?.workspaceValue);
+    return readProfiles(vscode.workspace.getConfiguration("linyra").inspect("profiles")?.workspaceValue);
   }
 
   /**
@@ -1116,18 +1116,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** A profile from the User settings cannot be renamed or deleted from a workspace: say where it is. */
   private userLevel(name: string): boolean {
     if (name in this.ownProfiles()) return false;
-    void vscode.window.showInformationMessage(localize("Linyra: \"{0}\" is in your User settings (polylog.profiles); change it there.", name));
+    void vscode.window.showInformationMessage(localize("Linyra: \"{0}\" is in your User settings; change it there.", name));
     return true;
   }
 
-  /** Writes polylog.profiles to the workspace settings; false (with an error shown) if it could not. */
+  /** Writes linyra.profiles to the workspace settings; false (with an error shown) if it could not. */
   private async writeProfiles(next: Profiles): Promise<boolean> {
     if (!vscode.workspace.workspaceFolders?.length) {
       void vscode.window.showErrorMessage(localize("Linyra: profiles are saved in the workspace settings; open a folder first."));
       return false;
     }
     try {
-      await vscode.workspace.getConfiguration("polylog").update("profiles", next, vscode.ConfigurationTarget.Workspace);
+      await vscode.workspace.getConfiguration("linyra").update("profiles", next, vscode.ConfigurationTarget.Workspace);
     } catch (e) {
       void vscode.window.showErrorMessage(localize("Linyra could not save the profile: {0}", messageOf(e)));
       return false;
@@ -1241,7 +1241,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /**
-   * Right-click → Exclude from Linyra: adds the repository's exact path to polylog.excludeRepos
+   * Right-click → Exclude from Linyra: adds the repository's exact path to linyra.excludeRepos
    * (so a repo elsewhere with the same name stays), with an Undo. It goes where the setting
    * already applies from: settings arrays do not merge across scopes, so writing to another
    * would drop the user's own entries. With none yet, the user settings: an absolute path
@@ -1250,7 +1250,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async repoExclude(arg: unknown): Promise<void> {
     const repo = this.contextRepo(arg);
     if (!repo) return;
-    const inspected = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
+    const inspected = vscode.workspace.getConfiguration("linyra").inspect<string[]>("excludeRepos");
     const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
     const previous = target === vscode.ConfigurationTarget.Workspace ? inspected?.workspaceValue : inspected?.globalValue;
     const pattern = repo.root.replace(/\\/g, "/");
@@ -1264,12 +1264,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.persistFilter();
     }
     // The configuration listener lists the repositories again (reposSettingChanged).
-    await vscode.workspace.getConfiguration("polylog").update("excludeRepos", next, target);
-    void vscode.window.showInformationMessage(localize("Linyra: {0} is excluded (polylog.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
+    await vscode.workspace.getConfiguration("linyra").update("excludeRepos", next, target);
+    void vscode.window.showInformationMessage(localize("Linyra: {0} is excluded (linyra.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
       if (pick !== localize("Undo")) return;
-      const now = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
+      const now = vscode.workspace.getConfiguration("linyra").inspect<string[]>("excludeRepos");
       const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
-      await vscode.workspace.getConfiguration("polylog").update("excludeRepos", undoExclusion(current, pattern, previous), target);
+      await vscode.workspace.getConfiguration("linyra").update("excludeRepos", undoExclusion(current, pattern, previous), target);
     });
   }
 
