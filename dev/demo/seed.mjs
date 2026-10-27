@@ -2,21 +2,29 @@
 // histories tell one story (ticket ACME-142, saved cards, landed across four repos in
 // the last few hours) on top of ~3 months of ordinary history. Dev-only.
 //
-//   node dev/demo/seed.mjs [dir=/tmp/polylog-demo]
-//   code /tmp/polylog-demo/acme.code-workspace
+//   node dev/demo/seed.mjs [temporary-demo-directory]
+//   code <temporary-demo-directory>/acme.code-workspace
 //
 // Build it at a path with no username in it: tooltips and titles show absolute paths,
 // and a fixture under ~/ puts /home/<you>/ into every screenshot. Dates are relative to
 // now, so the default "last 24 hours" range is full — re-seed before every take.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-const dir = process.argv[2] ?? "/tmp/polylog-demo";
-if (!dir.startsWith("/tmp/")) throw new Error("seed under /tmp/ so no username reaches a screenshot");
+const dir = resolve(process.argv[2] ?? join(tmpdir(), "linyra-demo"));
+const insideTemp = relative(resolve(tmpdir()), dir);
+if (!insideTemp || insideTemp.startsWith("..") || isAbsolute(insideTemp)
+  || !/^(?:linyra|polylog)-demo(?:[-/\\]|$)/.test(insideTemp)) {
+  throw new Error("seed only inside a named Linyra demo directory under the system temporary folder");
+}
+const marker = join(dir, ".linyra-demo");
+if (existsSync(dir) && !existsSync(marker)) throw new Error("refusing to replace a directory not created by this demo seeder");
 rmSync(dir, { recursive: true, force: true });
 const home = join(dir, ".home");
 mkdirSync(home, { recursive: true });
+writeFileSync(marker, "Linyra neutral documentation fixture\n");
 // "Me" is dana: the author filter's Me button reads this.
 writeFileSync(join(home, ".gitconfig"), "[user]\n\tname = dana\n\temail = dana@example.com\n");
 const baseEnv = { ...process.env, HOME: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(home, ".gitconfig") };
@@ -265,7 +273,9 @@ function commit(repo, t, author, message, files) {
   const env = { ...baseEnv, GIT_AUTHOR_NAME: author, GIT_AUTHOR_EMAIL: email, GIT_AUTHOR_DATE: date,
     GIT_COMMITTER_NAME: author, GIT_COMMITTER_EMAIL: email, GIT_COMMITTER_DATE: date };
   execFileSync("git", ["add", "-A"], { cwd: repo, env });
-  execFileSync("git", ["commit", "-q", "--allow-empty", "-m", message], { cwd: repo, env });
+  const body = message.includes("ACME-142")
+    ? `${message}\n\nConnect saved-card checkout across the web, API, shared UI and documentation.\nKeep existing payment flows available while the new branch is reviewed.\n\nCo-Authored-By: Rin <rin@example.com>` : message;
+  execFileSync("git", ["commit", "-q", "--allow-empty", "-m", body], { cwd: repo, env });
 }
 
 const repos = Object.keys(AREAS);
@@ -302,7 +312,36 @@ repos.forEach((name, seed) => {
     commit(repo, now - Math.round(hours * H), author, message, files);
     total++;
   }
+  if (["acme-web", "acme-api", "acme-libs"].includes(name)) {
+    const git = (...args) => execFileSync("git", args, { cwd: repo, env: baseEnv, encoding: "utf8" }).trim();
+    git("branch", "release-1.4", "refs/remotes/origin/release-1.4");
+    git("checkout", "-q", "-b", "feature/saved-cards", "HEAD~2");
+    commit(repo, now - 3000 + seed * 80, "rin", "feat: preview saved-card rollout (ACME-142)", {
+      "src/payments/rollout.ts": "export const savedCardRollout = { enabled: true, preview: true };\n",
+    });
+    git("update-ref", "refs/remotes/origin/feature/saved-cards", "HEAD");
+    git("checkout", "-q", "main");
+    const date = `@${now - 900 + seed * 60} +0000`;
+    execFileSync("git", ["merge", "-q", "--no-ff", "feature/saved-cards", "-m",
+      "Merge saved-card preview into main (ACME-142)\n\nKeep the incoming branch visible in the history graph.\nReview all repositories together before the rollout.\n\nCo-Authored-By: Rin <rin@example.com>"], {
+      cwd: repo, env: { ...baseEnv, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com",
+        GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com", GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    });
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    git("tag", "v1.4.1-demo");
+    git("checkout", "-q", "release-1.4");
+    commit(repo, now - 1350 + seed * 60, "dana", "fix(payments): cap checkout retries (ACME-153)", {
+      "src/payments/retry.ts": "export const paymentRetryLimit = 3;\n",
+    });
+    git("update-ref", "refs/remotes/origin/release-1.4", "HEAD");
+    git("checkout", "-q", "main");
+    total += 3;
+  }
 });
+
+// Review-only examples: the recording never stages, discards or commits these files.
+writeFileSync(join(dir, "acme-web", "src/checkout/PaymentStep.tsx"), paymentStep(true).replace("useState(false)", "useState(true)"));
+writeFileSync(join(dir, "acme-api", "review-notes.md"), "# Review notes\n\nVerify the saved-card rollout across repositories.\n");
 
 writeFileSync(join(dir, "acme.code-workspace"), JSON.stringify({
   folders: repos.map((path) => ({ path })),
@@ -312,6 +351,7 @@ writeFileSync(join(dir, "acme.code-workspace"), JSON.stringify({
     "editor.lightbulb.enabled": "off",
     "problems.decorations.enabled": false,
     "diffEditor.hideUnchangedRegions.enabled": true,
+    "window.title": "Linyra Demo — ${activeEditorShort}",
   },
 }, null, 2) + "\n");
 console.log(`demo: ${repos.length} repos, ${total} commits in ${dir}\n  code ${join(dir, "acme.code-workspace")}`);

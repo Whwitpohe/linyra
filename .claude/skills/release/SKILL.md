@@ -114,10 +114,10 @@ vsce verify-pat whwitpohe
 Summarize:
 - the version and the CHANGELOG section;
 - that the suite, bundle and auth are green;
-- the package contents, from `vsce ls`: 18 files (`package.json`, the English/Chinese
-  manifest catalogs, the Chinese runtime catalog, README, LICENSE, CHANGELOG,
+- the package contents, from `vsce ls`: 19 files (`package.json`, the English/Chinese
+  manifest catalogs, the Chinese runtime catalog, English/Chinese READMEs, LICENSE, CHANGELOG,
   `ThirdPartyNotices.txt`, the three allowlisted icons, and seven production JS/CSS
-  bundles for extension, Log, Compare and Changes). `vsce package` reports 20 because
+  bundles for extension, Log, Compare and Changes). `vsce package` reports 21 because
   it adds `[Content_Types].xml` and `extension.vsixmanifest`.
 
 Then ask for explicit confirmation. Neither registry has an undo.
@@ -163,8 +163,8 @@ vsce publish --packagePath whwitpohe.linyra-X.Y.Z.vsix      # VS Code Marketplac
 ovsx publish whwitpohe.linyra-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
 ```
 
-- **Expected package: 20 files, about 200 KB, as `vsce package` counts them**
-  (18 allowlisted files plus two manifests). Inspect the allowlist and actual archive;
+- **Expected package: 21 files, about 250 KB, as `vsce package` counts them**
+  (19 allowlisted files plus two manifests). Inspect the allowlist and actual archive;
   source, development dependencies, screenshots and source maps must not ship.
 - Both registries index **after** the CLI reports success: Open VSX in about 1–2 minutes, the Marketplace in about 3–5. Poll rather than reading once:
 

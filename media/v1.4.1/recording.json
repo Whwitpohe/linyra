@@ -1,0 +1,17 @@
+{
+  "version": "1.4.1",
+  "width": 2560,
+  "height": 1392,
+  "locale": "en",
+  "panelFraction": 0.46,
+  "frames": 78,
+  "source": "real VS Code with neutral Git repositories",
+  "repos": [
+    "acme-api",
+    "acme-docs",
+    "acme-infra",
+    "acme-libs",
+    "acme-mobile",
+    "acme-web"
+  ]
+}
