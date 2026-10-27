@@ -2,6 +2,9 @@
 
 <!-- impeccable:product-schema 1 -->
 
+Linyra is independently maintained from [Polylog](https://github.com/lntvan166/polylog)
+under the extension identity `whwitpohe.linyra`. The original MIT copyright remains intact.
+
 ## Platform
 
 web
@@ -34,7 +37,7 @@ one list, fast enough that it feels like filtering, not searching.
 ## Positioning
 
 Every other VS Code git extension (GitLens, GitCharm, Git Graph, Git History) gives a
-repository picker — one repo's history at a time. Polylog merges the log. That is the whole
+repository picker — one repo's history at a time. Linyra merges the log. That is the whole
 product; everything else is a non-goal.
 
 ## Operating Context
@@ -45,7 +48,7 @@ product; everything else is a non-goal.
   commits).
 - Keyboard-driven audience: ↑/↓ selection, Enter to open, `/` or Ctrl/Cmd+F to search,
   Esc to clear, Tab between regions.
-- The user's own VS Code theme — light, dark or high-contrast — is the environment. Polylog
+- The user's own VS Code theme — light, dark or high-contrast — is the environment. Linyra
   does not bring its own.
 
 ## Capabilities and Constraints

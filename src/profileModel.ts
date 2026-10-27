@@ -9,7 +9,7 @@ export type Profiles = Record<string, string[]>;
 export interface ResolvedProfile { name: string; ids: string[]; missing: string[] }
 export interface Folder { name: string; path: string }
 
-/** The setting as written by hand or by Polylog: anything malformed is skipped, never an error. */
+/** The setting as written by hand or by Linyra: anything malformed is skipped, never an error. */
 export function readProfiles(raw: unknown): Profiles {
   const out: Profiles = {};
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;

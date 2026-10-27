@@ -1,8 +1,8 @@
-# CLAUDE.md — Polylog Developer Guide
+# CLAUDE.md — Linyra Developer Guide
 
 ## What This Project Does
 
-Polylog is a VS Code extension that shows **one merged, filterable git log across every
+Linyra is a VS Code extension that shows **one merged, filterable git log across every
 repository in the workspace**. Click a commit to see its changed files; click a file to open
 it in the native diff editor.
 
@@ -11,7 +11,12 @@ a time. Merging the log is the core of the product; the panel also gives a cross
 view of uncommitted work and a comparison of two branches across repositories. Anything else
 is a non-goal.
 
-**Current status: 1.4.0 release candidate in the Whwitpohe fork.** The original v1 design is
+**Current status: Linyra, independently maintained from Polylog in the Whwitpohe fork.**
+
+Publishing identity: `whwitpohe.linyra`; product name: **Linyra**. Preserve upstream copyright
+and license notices. Existing `polylog.*` setting, command, view and URI identifiers remain
+compatibility interfaces; do not rename them as part of branding. See `docs/PUBLISHING.md`
+for the fork publishing and migration procedure. The original v1 design is
 `docs/superpowers/specs/2026-09-23-polylog-design.md`. Read it before writing any code; this
 file records the standing rules, not the design.
 
@@ -44,7 +49,7 @@ scoped to structure rather than palette.
 
 ### 3. Neutral fixtures — no employer or internal names, anywhere
 
-Polylog's subject matter is multi-repo workspaces, and it was designed against a private
+Linyra's subject matter is multi-repo workspaces, and it was designed against a private
 employer monorepo. Every fixture, screenshot, test name, doc example and changelog entry
 will be tempted toward those real names.
 

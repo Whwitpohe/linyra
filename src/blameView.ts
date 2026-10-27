@@ -7,7 +7,7 @@ import { isSha } from "./types";
 const DEFAULT_TEMPLATE = "${subject}, ${authorName} (${authorDateAgo})";
 
 /**
- * Blame on the cursor line of a Polylog revision (a diff side, an All Files file): who last
+ * Blame on the cursor line of a Linyra revision (a diff side, an All Files file): who last
  * changed that line, as of the commit shown. VS Code's own blame skips these documents; its
  * `git:` documents would bring its Unstage buttons onto commit diffs.
  */

@@ -14,7 +14,7 @@ export class ChangesPanel implements vscode.Disposable {
   open(): void {
     if (this.panel) { this.panel.reveal(); return; }
     const out = vscode.Uri.joinPath(this.context.extensionUri, "out");
-    const panel = vscode.window.createWebviewPanel("polylog.changesEditor", localize("Polylog Changes"), vscode.ViewColumn.Beside,
+    const panel = vscode.window.createWebviewPanel("polylog.changesEditor", localize("Linyra Changes"), vscode.ViewColumn.Beside,
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [out] });
     this.panel = panel;
     panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "compare.svg");

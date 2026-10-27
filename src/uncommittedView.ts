@@ -263,7 +263,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
       try {
         await run(r, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
       } catch (e) {
-        this.showError(localize("Polylog could not {0} {1} in {2}: {3}.", localize(verb), r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file"), r.work.name, gitMessage(e)));
+        this.showError(localize("Linyra could not {0} {1} in {2}: {3}.", localize(verb), r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file"), r.work.name, gitMessage(e)));
       }
     }
     await Promise.all(picks.map((r) => this.deps.store.readRepo(r.work.repoId)));
@@ -325,7 +325,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
       await this.deps.discovery.commit(work.root, message, all);
     } catch (e) {
       ok = false;
-      this.showError(localize("Polylog could not commit {0}: {1}.", work.name, gitMessage(e)));
+      this.showError(localize("Linyra could not commit {0}: {1}.", work.name, gitMessage(e)));
     }
     await this.deps.store.readRepo(work.repoId);
     // Only a commit that landed changes the Log.

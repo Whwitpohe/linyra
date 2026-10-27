@@ -25,7 +25,7 @@ export class RevisionProvider implements vscode.TextDocumentContentProvider {
       // fallback here means the history changed under the URI: say so rather than show a wrong diff.
       try {
         const left = await leftSide(this.run, rev.root, rev.ref, rev.path, rev.without, ctl.signal);
-        if (left.kind === "fallback") throw new Error(localize("Polylog: the selected commits' changes to {0} can't be shown apart ({1}).", rev.path, localize(left.reason)));
+        if (left.kind === "fallback") throw new Error(localize("Linyra: the selected commits' changes to {0} can't be shown apart ({1}).", rev.path, localize(left.reason)));
         return left.text;
       } finally {
         sub.dispose();

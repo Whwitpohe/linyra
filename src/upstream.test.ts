@@ -25,10 +25,10 @@ import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, p
   console.log("ok - Fetch All's arguments; the repositories behind their upstream");
 }
 {
-  assert.strictEqual(fetchProgress(23, 68), "fetching 23/68…", "after the progress title, Polylog");
-  assert.strictEqual(fetchSummary(68, 3), "Polylog: fetched 68 repositories · 3 behind their upstream");
-  assert.strictEqual(fetchSummary(68, 1), "Polylog: fetched 68 repositories · 1 behind its upstream");
-  assert.strictEqual(fetchSummary(1, 0), "Polylog: fetched 1 repository · nothing to pull");
+  assert.strictEqual(fetchProgress(23, 68), "fetching 23/68…", "after the progress title, Linyra");
+  assert.strictEqual(fetchSummary(68, 3), "Linyra: fetched 68 repositories · 3 behind their upstream");
+  assert.strictEqual(fetchSummary(68, 1), "Linyra: fetched 68 repositories · 1 behind its upstream");
+  assert.strictEqual(fetchSummary(1, 0), "Linyra: fetched 1 repository · nothing to pull");
   console.log("ok - Fetch All says how far it is, and what it found");
 }
 {
@@ -40,7 +40,7 @@ import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, p
   assert.strictEqual(pullReason("fatal: Not possible to fast-forward, aborting."), "it has diverged from its upstream");
   assert.strictEqual(pullReason("error: The following untracked working tree files would be overwritten by merge:\n\tnew.go"), "untracked files in the way");
   assert.strictEqual(pullReason("fatal: something else"), "fatal: something else");
-  assert.strictEqual(pullSummary(14), "Polylog: pulled 14 repositories");
-  assert.strictEqual(pullSummary(1), "Polylog: pulled 1 repository");
+  assert.strictEqual(pullSummary(14), "Linyra: pulled 14 repositories");
+  assert.strictEqual(pullSummary(1), "Linyra: pulled 1 repository");
   console.log("ok - Pull All Behind: fast-forwards only, and says why it left one alone");
 }

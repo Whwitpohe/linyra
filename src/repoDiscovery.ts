@@ -7,7 +7,7 @@ import { excludeRepos, labelRepos, mergeRoots } from "./repos";
 import type { Settings } from "./settings";
 import type { Repo } from "./types";
 
-// The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
+// The slice of vscode.git's API that Linyra uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
 export interface BranchRepository {

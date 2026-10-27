@@ -1,4 +1,4 @@
-// Serves the Polylog UI Map (dev/ui-map/index.html): every part of the panel, named, so the
+// Serves the Linyra UI Map (dev/ui-map/index.html): every part of the panel, named, so the
 // maintainer and Claude use the same words. Dev-only; nothing here ships in the VSIX.
 //
 //   npm run ui-map            → http://localhost:5179/
@@ -19,4 +19,4 @@ createServer(async (req, res) => {
   // Read on every request: an edit to index.html shows on the next reload.
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
   res.end(await readFile(page));
-}).listen(port, "127.0.0.1", () => console.log(`Polylog UI Map: http://localhost:${port}/`));
+}).listen(port, "127.0.0.1", () => console.log(`Linyra UI Map: http://localhost:${port}/`));

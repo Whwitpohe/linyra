@@ -107,7 +107,7 @@ export function authorSuggestions(outputs: readonly string[], limit = 200): Auth
     .slice(0, limit);
 }
 
-/** Exclude from Polylog: the list with the repository's exact path added, or null if already in it. */
+/** Exclude from Linyra: the list with the repository's exact path added, or null if already in it. */
 export function addExclusion(previous: readonly string[] | undefined, pattern: string): string[] | null {
   const list = previous ?? [];
   return list.includes(pattern) ? null : [...list, pattern];

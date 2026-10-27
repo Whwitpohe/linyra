@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Polylog UI Map</title>
+<title>Linyra UI Map</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: a field guide. Each section is a faithful mock of a Polylog view with numbered tags,
+/* Layout: a field guide. Each section is a faithful mock of a Linyra view with numbered tags,
    followed by the glossary that names every tag. Mocks scroll sideways on phones; text never does. */
 :root {
   --page: #f3f4f6;
@@ -157,18 +157,18 @@ section { display: grid; gap: 16px; }
 <body>
 <div class="wrap">
 <header>
-  <h1>Polylog UI Map</h1>
-  <p class="lede">Every part of the Polylog panel, with the name we'll both use for it. Say "Repo List row" or "Log toolbar" and we mean the same thing.</p>
+  <h1>Linyra UI Map</h1>
+  <p class="lede">Every part of the Linyra panel, with the name we'll both use for it. Say "Repo List row" or "Log toolbar" and we mean the same thing.</p>
   <!-- Dev-only (not in the VSIX). Serve with: npm run ui-map. Keep it in step with the UI: /ui-map. -->
   <p class="how"><b>Click any box, number or name to copy the name.</b> Each red box is one named region, and its red number points to the name below. Boxes inside boxes are parts of a bigger region (the Filter bar sits inside the Log view). The Log and Compare each use one native surface; their headings are labels, not full-row collapse controls. The mocks scroll sideways on a narrow screen.</p>
 </header>
 
 <!-- ============ TODAY ============ -->
 <section aria-labelledby="s-now">
-  <div class="sec-head"><h2 id="s-now">Polylog 1.4 — stable integrated panels</h2><span class="pill now">Exists</span></div>
+  <div class="sec-head"><h2 id="s-now">Linyra 1.4 — stable integrated panels</h2><span class="pill now">Exists</span></div>
   <div class="stage">
     <div class="vs">
-      <div class="tabs"><span>Problems</span><span>Output</span><span>Terminal</span><span class="on t">Polylog<i class="n tl">1</i></span></div>
+      <div class="tabs"><span>Problems</span><span>Output</span><span>Terminal</span><span class="on t">Linyra<i class="n tl">1</i></span></div>
       <div class="views">
         <!-- Log view -->
         <div class="view t">
@@ -228,7 +228,7 @@ section { display: grid; gap: 16px; }
   </div>
 
   <div class="gloss">
-    <div class="g"><i class="num">1</i><b>Polylog panel</b><span>The "Polylog" tab in VS Code's bottom panel. Holds every Polylog view.</span></div>
+    <div class="g"><i class="num">1</i><b>Linyra panel</b><span>The "Linyra" tab in VS Code's bottom panel. Holds every Linyra view.</span></div>
     <div class="g"><i class="num">2</i><b>Log view</b><span>The merged history of every repository. Everything on its left side, down to the footer, belongs to it.</span></div>
     <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Fixed, explicit buttons: repository grouping, Compare, Uncommitted sidebar, Fetch All, side-by-side/stacked layout, and the pull/profile menu. Clicking blank title space has no fold action.</span></div>
     <div class="g"><i class="num">4</i><b>Repo List</b><span>The list of repositories on the Log's left. Tick to choose which repositories the Log shows. Today's name in the code is "Repositories pane".</span></div>
@@ -270,7 +270,7 @@ section { display: grid; gap: 16px; }
         <div class="it">Pull <span class="ghost">(only when ↓)</span></div><hr>
         <div class="it">Show Only This Repository</div><div class="it">Hide from the Log</div>
         <div class="it">Show All Repositories</div><div class="it">Show Only Repositories Behind</div><hr>
-        <div class="it">Open Folder in New Window</div><hr><div class="it">Copy Path</div><hr><div class="it">Exclude from Polylog</div>
+        <div class="it">Open Folder in New Window</div><hr><div class="it">Copy Path</div><hr><div class="it">Exclude from Linyra</div>
       </div>
       <div class="menu t"><i class="n tl">26</i>
         <div class="cap">Commit menu</div>
@@ -331,10 +331,10 @@ section { display: grid; gap: 16px; }
 
 <!-- ============ PLANNED ============ -->
 <section aria-labelledby="s-planned">
-  <div class="sec-head"><h2 id="s-planned">The Polylog side bar and the Polylog Compare tab</h2><span class="pill now">Uncommitted: exists</span><span class="pill now">Compare Branches: exists</span></div>
+  <div class="sec-head"><h2 id="s-planned">The Linyra side bar and the Linyra Compare tab</h2><span class="pill now">Uncommitted: exists</span><span class="pill now">Compare Branches: exists</span></div>
   <div class="stage">
     <div class="vs">
-      <div class="tabs"><span>Problems</span><span>Terminal</span><span class="on">Polylog</span></div>
+      <div class="tabs"><span>Problems</span><span>Terminal</span><span class="on">Linyra</span></div>
       <div class="views" style="grid-template-columns: 1fr 1fr 1fr 1fr">
         <div class="view t"><i class="n tl">27</i>
           <div class="vhead">▾ Uncommitted <span class="tools">⟳ ⊟</span></div>
@@ -374,10 +374,10 @@ section { display: grid; gap: 16px; }
     </div>
   </div>
   <div class="gloss">
-    <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>In the Polylog side bar (the Polylog icon in the Activity Bar, like Source Control): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
+    <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>In the Linyra side bar (the Linyra icon in the Activity Bar, like Source Control): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>Changes toolbar: switch all/changed files, clear a combined selection, expand/collapse all, copy commit data or open Changes independently.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository of the Uncommitted view. A file staged and changed again is in both.</span></div>
-    <div class="g"><i class="num">28</i><b>Polylog Compare tab</b><span>A panel tab next to Polylog (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
+    <div class="g"><i class="num">28</i><b>Linyra Compare tab</b><span>A panel tab next to Linyra (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
     <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>Branch pickers, swap, Files/Commits, refresh, shared-file filtering, layout, side visibility and Close. All original commands remain reachable.</span></div>
     <div class="g"><i class="num">32</i><b>Branch picker</b><span>Opens under a branch box: a search box over Recent pairs, Favorites ★, Local and Remote, each name "in N repositories".</span></div>
     <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its Repo List color and name (commit counts in the tooltip); "no common history" or "git error" when it cannot be compared. ▸ unfolds the changes committed on both sides. Selecting it fills Left and Right. Right-click: the repository menu.</span></div>
