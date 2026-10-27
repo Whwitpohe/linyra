@@ -1,6 +1,6 @@
 import { localize } from "./i18n";
 // Repo List profiles: named groups of repositories, kept in the workspace setting
-// polylog.profiles. Pure: no vscode import. A profile only chooses which repositories
+// linyra.profiles. Pure: no vscode import. A profile only chooses which repositories
 // git log runs in; it filters nothing itself.
 
 /** Profile name → repositories, each as its path relative to its workspace folder. */

@@ -20,7 +20,12 @@ async function main(): Promise<void> {
   // Only acme-api has a "prod" branch, one commit behind main.
   execFileSync("git", ["branch", "prod", "HEAD~1"], { cwd: path.join(ws, "acme-api"), env: gitEnv(home) });
   const workspaceFile = path.join(home, "acme.code-workspace");
-  fs.writeFileSync(workspaceFile, JSON.stringify({ folders: Object.keys(FIXTURE).map((n) => ({ path: path.join(ws, n) })) }));
+  fs.writeFileSync(workspaceFile, JSON.stringify({
+    folders: Object.keys(FIXTURE).map((n) => ({ path: path.join(ws, n) })),
+    // Retired Polylog settings must neither affect Linyra nor be copied on activation.
+    settings: { "polylog.pageSize": 1, "polylog.maxConcurrency": 1, "polylog.scanDepth": 0,
+      "polylog.excludeRepos": ["acme-libs"], "polylog.profiles": { retired: ["acme-api"] }, "polylog.blame": false },
+  }));
   const env = gitEnv(home);
 
   await runTests({

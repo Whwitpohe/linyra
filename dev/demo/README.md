@@ -64,6 +64,16 @@ Outputs go to ignored `dev/demo/out/`:
 - Individual light/dark/high-contrast images and `screenshot-themes.png`.
 - `recording.json`: capture dimensions, locale, example repositories and frame count.
 
+For the focused 1.4.2 feature recordings, run `node dev/demo/capture.mjs --features`.
+Set `LINYRA_CAPTURE_OUTPUT` to a separate output directory if keeping both runs.
+The four GIFs show branch/author checklists, sorting and graph folding; commit references,
+containing branches, real divider dragging and file filtering; old-commit hash lookup;
+and comparison modes, commit expansion, repository switching, swapping and divider dragging.
+`features.json` records the frame counts and native crop regions. The smaller crops retain
+the actual UI pixels and avoid shrinking a whole editor around the feature being explained.
+`node dev/demo/capture.mjs --settings` separately captures the native Settings editor,
+filtered to Linyra's six registered settings, using the same isolated profile.
+
 The recording reads existing fixture changes but never stages, discards or commits them.
 The ordinary input path is used for message search, commit selection and branch checkboxes;
 the existing development test seam sets up view/layout state. The bridge shuts down the

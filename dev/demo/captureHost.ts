@@ -12,6 +12,7 @@ const allowed = new Set([
   "workbench.action.closeAllEditors", "workbench.action.closeSidebar",
   "workbench.action.closeAuxiliaryBar", "workbench.action.positionPanelBottom",
   "workbench.action.toggleMaximizedPanel", "workbench.action.focusPanel",
+  "workbench.action.openSettings", "workbench.action.closePanel",
   "notifications.clearAll",
 ]);
 

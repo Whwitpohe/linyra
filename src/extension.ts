@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const discovery = new RepoDiscovery();
   // All Files reads one folder at a time, through the Log's counted runner (the spawn log sees it).
   const ALL_FILES_KEY = "polylog.changesAllFiles";
-  const changes: ChangesTree = new ChangesTree((root, args, signal) => log.countedRun(root, args, signal), context.globalState.get<boolean>(ALL_FILES_KEY, false), () => vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16));
+  const changes: ChangesTree = new ChangesTree((root, args, signal) => log.countedRun(root, args, signal), context.globalState.get<boolean>(ALL_FILES_KEY, false), () => vscode.workspace.getConfiguration("linyra").get<number>("maxConcurrency", 16));
   const setAllFiles = (on: boolean) => {
     changes.setAllFiles(on);
     void context.globalState.update(ALL_FILES_KEY, on);
@@ -46,7 +46,7 @@ export function activate(context: vscode.ExtensionContext): void {
     run: (cwd, args, signal, opts): Promise<string> => log.countedRun(cwd, args, signal, opts),
     reportsChanges: (root) => discovery.reportsChanges(root),
     canStage: (root) => discovery.vsCodeGitHas(root),
-    concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
+    concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
   });
   const ask = new Ask();
   const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted, ask,
@@ -98,7 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id), ask });
   const compare = new CompareStore({
     run: (root, args, signal) => log.countedRun(root, args, signal),
-    concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16))),
+    concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("linyra").get<number>("maxConcurrency", 16))),
     repos: () => log.tickedRepos(),
   });
   const selection = new CompareSelection();
@@ -108,7 +108,7 @@ export function activate(context: vscode.ExtensionContext): void {
     repos: () => log.repoList, run: (root, args, signal, opts) => log.countedRun(root, args, signal, opts), discovery, ask,
     post: (message) => log.postBranchMessage(message), view: (repoId, branch) => log.selectBranch(repoId, branch),
     compare: async (repoId, branch, current) => { await log.selectBranch(repoId, branch); await compareRepos.comparePair({ left: branch, right: current }, repoId); },
-    changed: (id) => log.branchChanged(id), concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
+    changed: (id) => log.branchChanged(id), concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
   });
   log.branchSidebar = branchSidebar;
   for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase"] satisfies BranchAction[]) {
@@ -169,8 +169,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("polylog.excludeRepos") || e.affectsConfiguration("polylog.scanDepth")) void log.reposSettingChanged();
-      if (e.affectsConfiguration("polylog.profiles")) log.profilesChanged();
+      if (e.affectsConfiguration("linyra.excludeRepos") || e.affectsConfiguration("linyra.scanDepth")) void log.reposSettingChanged();
+      if (e.affectsConfiguration("linyra.profiles")) log.profilesChanged();
     }),
     // Uncommitted changes follow the working tree: VS Code's Git reporting a change in a
     // repository, or a save. Only that repository is read again.

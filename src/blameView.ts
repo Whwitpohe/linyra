@@ -32,7 +32,7 @@ export class BlameView implements vscode.Disposable {
         this.reads.delete(key);
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration("polylog.blame") || e.affectsConfiguration("git.blame.editorDecoration.template")) this.redraw();
+        if (e.affectsConfiguration("linyra.blame") || e.affectsConfiguration("git.blame.editorDecoration.template")) this.redraw();
       }),
     );
   }
@@ -70,7 +70,7 @@ export class BlameView implements vscode.Disposable {
 
   private async draw(editor: vscode.TextEditor): Promise<void> {
     const r = this.revision(editor.document.uri);
-    const enabled = vscode.workspace.getConfiguration("polylog").get<boolean>("blame", true);
+    const enabled = vscode.workspace.getConfiguration("linyra").get<boolean>("blame", true);
     if (!r || !enabled || editor !== vscode.window.activeTextEditor) {
       this.clear(editor);
       return;

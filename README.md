@@ -8,7 +8,12 @@ Find a change that spans your frontend, API, shared libraries and documentation 
 search. Follow its branches and merges, read the complete commit message, and open each
 file in VS Code's native diff editor.
 
-![Real VS Code recording: search ACME-142 across four repositories, switch commits and review their native diffs](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/demo.gif)
+**Linyra's additions** include a real multi-lane Git graph, branch/author checklists,
+topological sorting and history folding, hash lookup, richer commit details, a branch
+sidebar and resizable panes with explicit collapse controls. The clips below demonstrate
+these additions, beyond the merged timeline inherited from Polylog.
+
+![Select several branches and authors, switch date/topological order, then fold and expand linear history](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-branches.gif)
 
 The recording uses six neutral example repositories and real Git history. Screenshots
 below can be opened at full resolution.
@@ -55,7 +60,14 @@ Click a commit to see its changed files, then click a file to open its native di
   Choose commit-date or topological order. Explicit graph controls fold long linear paths
   while keeping branch tips, tags, forks and merges visible.
 
-![The searchable branch checklist with main and feature/saved-cards selected together](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-branches.png)
+**In the clip:** select `main` and `feature/saved-cards`, switch date/topological order,
+fold and expand linear paths, then select several authors. Branch tips and real merges
+remain visible. Defaults are all local/remote branches and all authors.
+
+**Find an old commit without resetting your filters.** Paste a hash; the lookup finds a
+three-month-old commit even with **Last 24 hours** selected. Clear it to restore the log.
+
+![Paste a short hash to locate an old commit, then clear it to restore the previous filters](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-hash-lookup.gif)
 
 ## Read the complete commit
 
@@ -63,7 +75,10 @@ The Changes area includes the subject, paragraphs and trailers, author/email, ti
 copyable hash, repository marker and colored HEAD, branch and tag references. Expand the
 list of branches containing a commit when you need to find where it landed.
 
-![Commit message and metadata, including colored references and containing branches](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-details.png)
+![Read colored references and complete metadata, resize or hide the details, and search the commit's files](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-commit-review.gif)
+
+**In the clip:** inspect HEAD/local/remote/tag icons and containing branches, hide and
+restore the details, drag the divider, then filter the selected commit to `PaymentStep`.
 
 Drag the divider between files and commit details to adjust their heights. The small
 arrow hides or restores the details; both the size and visibility are remembered.
@@ -80,7 +95,11 @@ Open **Linyra: Compare Branches** or use the comparison button in the Log toolba
 Choose the left and right branches once to compare them in the selected repositories.
 The repository list identifies differences and reports missing branches.
 
-![Branch comparison with repository summary, independent left and right file trees and all toolbar controls](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-compare.png)
+![Switch comparison between Files and Commits, expand a commit, change repository, swap branches and resize the sides](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-compare.gif)
+
+**In the clip:** the release and main branches each have their own changes. Switch
+**Files / Commits**, expand commit files, select another repository, swap the pair and
+resize the sides. The three panes stay in one stable surface; their original actions remain.
 
 Switch between **Files** and **Commits**, swap sides, refresh, search branches, save
 favorites or reuse recent pairs. Each side retains its own mode, shared-file filter,
@@ -100,10 +119,15 @@ an entire view. Folder and commit expansion uses the small arrow or keyboard act
 | **Combined Changes** | Ctrl/⌘-click or Shift-click commits, including commits from different repositories. Review each file once, with diffs limited to the selected changes where they can be separated. Overlapping unselected changes are marked. No history is rewritten. |
 | **Uncommitted work** | Use **Commits / Uncommitted** in the Log, or show the Uncommitted sidebar. Review working files across repositories. Explicit stage, unstage, discard and commit actions use VS Code's Git integration. |
 | **Branches sidebar** | Switch **Repositories / Branches** to browse local/remote branches, search and favorite them. Clicking a branch filters history. Context menus provide repository-scoped checkout, create, compare, rename, merge, rebase, worktree, fetch, pull, push and delete actions. |
-| **Repository profiles** | Save a repository selection and switch back to it later. Profiles use the shareable `polylog.profiles` workspace setting. |
+| **Repository profiles** | Save a repository selection and switch back to it later. Profiles use the shareable `linyra.profiles` workspace setting. |
 | **Fetch and pull** | Toolbar/context actions fetch when requested, show ahead/behind counts and select repositories behind their upstream. Pull-all uses fast-forward checks. |
 | **Blame and current file** | Native diff/revision editors show line attribution. **Open File** opens the current workspace file at the same line. |
 | **Copy and remote links** | Commit and file context menus expose copy actions and remote links for supported Git hosts. |
+
+The branch sidebar is another Linyra addition: search across local/remote branches,
+favorite them, or use repository-scoped actions without changing history by clicking a name.
+
+![Linyra's searchable local and remote branch sidebar across three repositories](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-branch-sidebar.png)
 
 ![File History follows the selected file while its native diff stays open](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-file-history.png)
 
@@ -131,12 +155,18 @@ to repositories; Git operations run when you explicitly choose them.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| `polylog.pageSize` | `200` | Commits fetched per repository per page |
-| `polylog.maxConcurrency` | `16` | Maximum concurrent Git processes |
-| `polylog.scanDepth` | `2` | Repository discovery depth inside workspace folders |
-| `polylog.excludeRepos` | `[]` | Repository-name/path patterns to exclude |
-| `polylog.profiles` | `{}` | Named repository selections |
-| `polylog.blame` | `true` | Line attribution in Linyra diffs and revisions |
+| `linyra.pageSize` | `200` | Commits fetched per repository per page |
+| `linyra.maxConcurrency` | `16` | Maximum concurrent Git processes |
+| `linyra.scanDepth` | `2` | Repository discovery depth inside workspace folders |
+| `linyra.excludeRepos` | `[]` | Repository-name/path patterns to exclude |
+| `linyra.profiles` | `{}` | Named repository selections |
+| `linyra.blame` | `true` | Line attribution in Linyra diffs and revisions |
+
+From 1.4.2, settings use only **`linyra.*`**. Old `polylog.*` settings are not read or
+migrated. Set Linyra preferences under the new keys if needed; existing configuration
+files are left untouched.
+
+![The native VS Code Settings editor shows Linyra's six settings under its own name](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-settings.png)
 
 Filters are passed to Git; results are merged as pages arrive. There is no persistent
 history index or database, and Linyra does not fetch in the background. Filter input is
@@ -148,7 +178,7 @@ Linyra is an independently maintained fork of
 [Polylog](https://github.com/lntvan166/polylog), originally created by **lntvan166**.
 Its extension ID is **`whwitpohe.linyra`**. Disable or uninstall
 `lntvan166.polylog-git` and reload the window when switching: enable one at a time.
-Existing `polylog.*` settings and keybindings remain compatible. Saved filters and pane
+Settings use `linyra.*`; command keybindings remain compatible. Saved filters and pane
 sizes belong to each extension's private state and may need to be set again once.
 
 The original `v1.4.0` GitHub release retains its historical Polylog package. New Linyra

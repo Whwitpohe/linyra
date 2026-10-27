@@ -14,8 +14,9 @@ is a non-goal.
 **Current status: Linyra, independently maintained from Polylog in the Whwitpohe fork.**
 
 Publishing identity: `whwitpohe.linyra`; product name: **Linyra**. Preserve upstream copyright
-and license notices. Existing `polylog.*` setting, command, view and URI identifiers remain
-compatibility interfaces; do not rename them as part of branding. See `docs/PUBLISHING.md`
+and license notices. Public settings use only `linyra.*`. Do not migrate, read or register
+legacy `polylog.*` settings. Existing command,
+view and URI identifiers remain compatibility interfaces. See `docs/PUBLISHING.md`
 for the fork publishing and migration procedure. The original v1 design is
 `docs/superpowers/specs/2026-09-23-polylog-design.md`. Read it before writing any code; this
 file records the standing rules, not the design.

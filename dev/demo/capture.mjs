@@ -8,6 +8,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { downloadAndUnzipVSCode } from "@vscode/test-electron";
 import { webviewDriver } from "./webviewDriver.mjs";
+import { recordFeatures } from "./features.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const require = createRequire(process.env.LINYRA_CAPTURE_NODE_MODULES
@@ -132,7 +133,16 @@ try {
   }
   const panelRect=await page.evaluate(()=>document.getElementById("workbench.parts.panel").getBoundingClientRect().toJSON());
   await shot("screenshot-log");
-  if (process.argv.includes("--prototype")) {
+  if (process.argv.includes("--settings")) {
+    await command("workbench.action.openSettings","@ext:whwitpohe.linyra");
+    await command("workbench.action.closePanel");
+    await page.locator(".settings-editor").waitFor({state:"visible"});
+    await sleep(700);
+    await shot("feature-settings",{x:Math.max(0,(nativeViewport.width-1420)/2),y:60,width:Math.min(nativeViewport.width,1420),height:Math.min(nativeViewport.height-60,780)});
+  } else if (process.argv.includes("--features")) {
+    await recordFeatures({browser,page,logView,command,snapshot,select,target,web,waitFor,capture,shot,sharp,output,control,nativeViewport,panelRect});
+    await logView.close();
+  } else if (process.argv.includes("--prototype")) {
     // Keep this isolated host available for interactive recording-script development.
     await new Promise(resolve => child.on("exit", resolve));
   } else if (!process.argv.includes("--overview")) {

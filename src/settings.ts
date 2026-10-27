@@ -11,7 +11,7 @@ function clampInt(v: unknown, min: number, max: number, fallback: number): numbe
   return typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : fallback;
 }
 
-/** `get` reads one key of the `polylog` configuration section. */
+/** `get` reads one key of the `linyra` configuration section. */
 export function readSettings(get: (key: string) => unknown): Settings {
   const exclude = get("excludeRepos");
   return {

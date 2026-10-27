@@ -76,7 +76,7 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
 {
   assert.deepStrictEqual(emptyState({ repoCount: 0, filter: ALL }).action, { label: "Open Settings", id: "settings" });
   assert.match(emptyState({ repoCount: 0, filter: ALL }).body, /git\.repositoryScanMaxDepth/);
-  assert.match(emptyState({ repoCount: 0, filter: ALL }).body, /polylog\.scanDepth/);
+  assert.match(emptyState({ repoCount: 0, filter: ALL }).body, /linyra\.scanDepth/);
   assert.deepStrictEqual(emptyState({ repoCount: 3, filter: { ...ALL, repoIds: [] } }).action?.id, "selectAll");
   const text = emptyState({ repoCount: 3, filter: { ...DEFAULT_FILTER, text: "ACME-7" } });
   assert.strictEqual(text.body, "No commit message contains “ACME-7” in 3 repositories in the last 24 hours.");
