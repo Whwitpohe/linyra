@@ -67,7 +67,7 @@ import {
   console.log("ok - author suggestions: one per email across repositories, most commits first");
 }
 {
-  // Exclude from Polylog: the repo's exact path joins the list already in effect in that scope.
+  // Exclude from Linyra: the repo's exact path joins the list already in effect in that scope.
   assert.deepStrictEqual(addExclusion(undefined, "/ws/acme-libs"), ["/ws/acme-libs"], "no list yet");
   assert.deepStrictEqual(addExclusion(["**/vendor/**"], "/ws/acme-libs"), ["**/vendor/**", "/ws/acme-libs"], "the user's own entries stay");
   assert.strictEqual(addExclusion(["/ws/acme-libs"], "/ws/acme-libs"), null, "already there: nothing to write");

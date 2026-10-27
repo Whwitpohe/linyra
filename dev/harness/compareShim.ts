@@ -1,4 +1,4 @@
-// The browser harness's Repositories page (Polylog Compare tab): a mock host, neutral names.
+// The browser harness's Repositories page (Linyra Compare tab): a mock host, neutral names.
 import type { CRepoRow, CompareLayout, CompareMode, CompareTreeRow, ReposHost, ReposWebview } from "../../src/compareProtocol";
 
 const params = new URLSearchParams(location.search);

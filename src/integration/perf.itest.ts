@@ -5,7 +5,7 @@ import type { LogSnapshot } from "../logView";
 const snapshot = () => vscode.commands.executeCommand<LogSnapshot | undefined>("polylog._itest.snapshot");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe("Polylog startup", () => {
+describe("Linyra startup", () => {
   it("measures time to first rows and the load work done", async function () {
     this.timeout(180000);
     const t0 = Date.now();

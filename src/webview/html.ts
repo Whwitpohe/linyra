@@ -22,7 +22,7 @@ export function renderHtml(o: HtmlOptions): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${o.cspSource}; img-src ${o.cspSource}; script-src 'nonce-${o.nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${o.styleUri}">
-<title>Polylog</title>
+<title>Linyra</title>
 </head>
 <body>
 <div id="workspace" class="workspace">

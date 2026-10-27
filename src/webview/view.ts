@@ -188,7 +188,7 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   if (o.repoCount === 0) {
     return {
       title: localize("No git repositories found"),
-      body: localize("Polylog lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth."),
+      body: localize("Linyra lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth."),
       action: { label: localize("Open Settings"), id: "settings" },
     };
   }
@@ -229,7 +229,7 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   }
   return {
     title: localize("No commits yet"),
-    body: localize("Polylog shows one merged log across every repository in this workspace. It found {0} {1}, but none has commits yet.", k, repoNoun(k)),
+    body: localize("Linyra shows one merged log across every repository in this workspace. It found {0} {1}, but none has commits yet.", k, repoNoun(k)),
   };
 }
 

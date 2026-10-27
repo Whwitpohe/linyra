@@ -113,7 +113,7 @@ const nowSec = () => Math.floor(Date.now() / 1000);
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const toUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRevision(r) });
 
-/** The Log view in the Polylog panel. Registered with retainContextWhenHidden (extension.ts). */
+/** The Log view in the Linyra panel. Registered with retainContextWhenHidden (extension.ts). */
 export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   branchSidebar: BranchController | undefined;
   static readonly id = "polylog.log";
@@ -361,7 +361,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /**
-   * "Polylog: File History" from the Explorer, an editor, a diff or the Changes
+   * "Linyra: File History" from the Explorer, an editor, a diff or the Changes
    * tree. Accepts a file: URI, a polylog: revision URI, a Changes file node, or
    * nothing (the active editor).
    */
@@ -387,7 +387,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
     }
     if (!target) {
-      void vscode.window.showInformationMessage(localize("Polylog: this file is not in a repository of this workspace."));
+      void vscode.window.showInformationMessage(localize("Linyra: this file is not in a repository of this workspace."));
       return;
     }
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
@@ -395,7 +395,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /**
-   * "Open File" on a Polylog diff, or on a file in the Changes tree: the file as it is
+   * "Open File" on a Linyra diff, or on a file in the Changes tree: the file as it is
    * in the workspace now, at the line the diff's cursor was on.
    */
   async openWorkingFile(arg?: unknown): Promise<void> {
@@ -419,14 +419,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
     }
     if (!file) {
-      void vscode.window.showInformationMessage(localize("Polylog: this file is not in a repository of this workspace."));
+      void vscode.window.showInformationMessage(localize("Linyra: this file is not in a repository of this workspace."));
       return;
     }
     const target = vscode.Uri.file(file);
     try {
       await vscode.workspace.fs.stat(target);
     } catch {
-      void vscode.window.showInformationMessage(localize("Polylog: {0} no longer exists in the workspace.", path.basename(file)));
+      void vscode.window.showInformationMessage(localize("Linyra: {0} no longer exists in the workspace.", path.basename(file)));
       return;
     }
     const at = line === undefined ? undefined : new vscode.Range(line, 0, line, 0);
@@ -670,7 +670,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Each repository's distance from its upstream, for the Repositories pane's ↓/↑ badge. */
   private sync = new Map<string, AheadBehind>();
-  /** Background reads (Me, ↓/↑, suggestions): stopped when Polylog is. */
+  /** Background reads (Me, ↓/↑, suggestions): stopped when Linyra is. */
   private readonly background = new AbortController();
   /** The current webview's listeners: a re-created webview drops the old one's. */
   private viewDisposables: vscode.Disposable[] = [];
@@ -718,7 +718,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /**
    * Fetch All (the Log's toolbar): git fetch in every repository, a few at a time, then read how
-   * far each is from its upstream again. The only thing Polylog changes in a repository, and only
+   * far each is from its upstream again. The only thing Linyra changes in a repository, and only
    * when asked. Never prompts (GIT_TERMINAL_PROMPT=0); a fetch that hangs stops after a minute.
    */
   fetchAll(): Promise<FetchResult> {
@@ -745,7 +745,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const outer = this.fetchCtl.signal;
     // A minute or so over SSH for many repositories: the Log's progress line, and a count in the status bar.
     const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Fetching") }, () =>
-      vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "Polylog" }, (progress) => {
+      vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "Linyra" }, (progress) => {
         let done = 0;
         progress.report({ message: fetchProgress(done, repos.length) });
         return runPool(repos, limit, (r) => this.fetchOne(r, prune, outer).finally(() => progress.report({ message: fetchProgress(++done, repos.length) })), outer);
@@ -756,7 +756,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const why = (e: unknown) => (isAbortError(e) ? localize("no answer after {0} s", FETCH_TIMEOUT_MS / 1000) : messageOf(e));
       const list = failed.slice(0, 3).map((f) => `${f.repo.name} (${why(f.reason)})`).join(", ");
       const more = failed.length > 3 ? localize(" and {0} more", failed.length - 3) : "";
-      void vscode.window.showWarningMessage(localize("Polylog could not fetch {0} of {1} repositories: {2}{3}.", failed.length, repos.length, list, more));
+      void vscode.window.showWarningMessage(localize("Linyra could not fetch {0} of {1} repositories: {2}{3}.", failed.length, repos.length, list, more));
     }
     // New remote branches: the Branch box's suggestions and a branch-mode page are out of date.
     this.suggestionsFor.delete("branches");
@@ -810,9 +810,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } catch (e) {
       if (!isAbortError(e) || !this.fetchCtl.signal.aborted) {
         const why = isAbortError(e) ? localize("no answer after {0} s", FETCH_TIMEOUT_MS / 1000)
-          : /fast-forward/i.test(messageOf(e)) ? localize("it has diverged from its upstream, and Polylog only fast-forwards here. Pull it in Source Control or a terminal")
+          : /fast-forward/i.test(messageOf(e)) ? localize("it has diverged from its upstream, and Linyra only fast-forwards here. Pull it in Source Control or a terminal")
           : messageOf(e);
-        void vscode.window.showErrorMessage(localize("Polylog could not pull {0}: {1}.", repo.name, why));
+        void vscode.window.showErrorMessage(localize("Linyra could not pull {0}: {1}.", repo.name, why));
       }
     } finally {
       this.pulling.delete(repo.id);
@@ -859,8 +859,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const repos = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
     if (repos.length === 0 && plan.diverged.length === 0) {
       void vscode.window.showInformationMessage(plan.pull.length > 0
-        ? localize("Polylog: the repositories behind their upstream are already being pulled.")
-        : localize("Polylog: no repository is behind its upstream (as of the last fetch)."));
+        ? localize("Linyra: the repositories behind their upstream are already being pulled.")
+        : localize("Linyra: no repository is behind its upstream (as of the last fetch)."));
       return { pulled: [], skipped: [] };
     }
     for (const r of repos) this.pulling.add(r.id);
@@ -883,7 +883,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (skipped.length > 0) {
       const list = skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join(", ");
       const more = skipped.length > 3 ? localize(" and {0} more", skipped.length - 3) : "";
-      void vscode.window.showWarningMessage(localize("Polylog pulled {0} of {1} repositories. Left as they were: {2}{3}. Pull those in Source Control or a terminal.", pulled.length, pulled.length + skipped.length, list, more));
+      void vscode.window.showWarningMessage(localize("Linyra pulled {0} of {1} repositories. Left as they were: {2}{3}. Pull those in Source Control or a terminal.", pulled.length, pulled.length + skipped.length, list, more));
     } else {
       vscode.window.setStatusBarMessage(pullSummary(pulled.length), 8000);
     }
@@ -909,7 +909,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async showBehind(): Promise<void> {
     const ids = behindRepos(this.repos.map((r) => r.id), Object.fromEntries(this.sync));
     if (ids.length === 0) {
-      void vscode.window.showInformationMessage(localize("Polylog: no repository is behind its upstream (as of the last fetch)."));
+      void vscode.window.showInformationMessage(localize("Linyra: no repository is behind its upstream (as of the last fetch)."));
       return;
     }
     await this.setRepoFilter(ids);
@@ -981,7 +981,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], this.background.signal);
       await vscode.env.clipboard.writeText(message.trim());
     } catch (e) {
-      void vscode.window.showErrorMessage(localize("Polylog could not read the commit message: {0}", messageOf(e)));
+      void vscode.window.showErrorMessage(localize("Linyra could not read the commit message: {0}", messageOf(e)));
     }
   }
 
@@ -1002,7 +1002,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     const url = remote ? commitWebUrl(remote, c.sha) : null;
     if (!url) {
-      void vscode.window.showInformationMessage(localize("Polylog: {0} has no remote with a web page for this commit.", c.repo.name));
+      void vscode.window.showInformationMessage(localize("Linyra: {0} has no remote with a web page for this commit.", c.repo.name));
       return undefined;
     }
     // The integration suite checks the URL without launching a browser.
@@ -1062,7 +1062,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return resolveProfiles(this.rawProfiles(), this.profileKeys());
   }
 
-  /** polylog.profiles changed (by Polylog or by hand): redraw the Repo List. */
+  /** polylog.profiles changed (by Linyra or by hand): redraw the Repo List. */
   profilesChanged(): void {
     this.postInit();
   }
@@ -1116,20 +1116,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** A profile from the User settings cannot be renamed or deleted from a workspace: say where it is. */
   private userLevel(name: string): boolean {
     if (name in this.ownProfiles()) return false;
-    void vscode.window.showInformationMessage(localize("Polylog: \"{0}\" is in your User settings (polylog.profiles); change it there.", name));
+    void vscode.window.showInformationMessage(localize("Linyra: \"{0}\" is in your User settings (polylog.profiles); change it there.", name));
     return true;
   }
 
   /** Writes polylog.profiles to the workspace settings; false (with an error shown) if it could not. */
   private async writeProfiles(next: Profiles): Promise<boolean> {
     if (!vscode.workspace.workspaceFolders?.length) {
-      void vscode.window.showErrorMessage(localize("Polylog: profiles are saved in the workspace settings; open a folder first."));
+      void vscode.window.showErrorMessage(localize("Linyra: profiles are saved in the workspace settings; open a folder first."));
       return false;
     }
     try {
       await vscode.workspace.getConfiguration("polylog").update("profiles", next, vscode.ConfigurationTarget.Workspace);
     } catch (e) {
-      void vscode.window.showErrorMessage(localize("Polylog could not save the profile: {0}", messageOf(e)));
+      void vscode.window.showErrorMessage(localize("Linyra could not save the profile: {0}", messageOf(e)));
       return false;
     }
     this.postInit();
@@ -1241,7 +1241,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /**
-   * Right-click → Exclude from Polylog: adds the repository's exact path to polylog.excludeRepos
+   * Right-click → Exclude from Linyra: adds the repository's exact path to polylog.excludeRepos
    * (so a repo elsewhere with the same name stays), with an Undo. It goes where the setting
    * already applies from: settings arrays do not merge across scopes, so writing to another
    * would drop the user's own entries. With none yet, the user settings: an absolute path
@@ -1265,7 +1265,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     // The configuration listener lists the repositories again (reposSettingChanged).
     await vscode.workspace.getConfiguration("polylog").update("excludeRepos", next, target);
-    void vscode.window.showInformationMessage(localize("Polylog: {0} is excluded (polylog.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
+    void vscode.window.showInformationMessage(localize("Linyra: {0} is excluded (polylog.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
       if (pick !== localize("Undo")) return;
       const now = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
       const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
@@ -1321,7 +1321,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.refreshCurrentReferences();
       this.post({ type: "page", rows: this.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
-      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Polylog could not read the log: {0}", messageOf(e)));
+      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not read the log: {0}", messageOf(e)));
     }
   }
 
@@ -1344,7 +1344,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.queryState = page.state;
       this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
-      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Polylog could not load more commits: {0}", messageOf(e)));
+      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not load more commits: {0}", messageOf(e)));
     } finally {
       this.loadingMore = false;
     }

@@ -355,7 +355,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       }
       return [];
     } catch (e) {
-      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Polylog could not read {0} side: {1}", this.side === "left" ? localize("the left") : localize("the right"), e instanceof Error ? e.message : String(e)));
+      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not read {0} side: {1}", this.side === "left" ? localize("the left") : localize("the right"), e instanceof Error ? e.message : String(e)));
       return [];
     }
   }

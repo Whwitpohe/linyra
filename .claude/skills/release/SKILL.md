@@ -1,11 +1,14 @@
 ---
 name: release
-description: Cut and publish a Polylog release to the VS Code Marketplace and Open VSX. Use when the maintainer asks to "make a release", "publish", "ship", "cut a version", "release vX.Y.Z", or "push a new version to the marketplace". Handles the semver bump, CHANGELOG, the full test and check suite, bundle, commit, tag, push, and publishing one .vsix to both registries (vsce + ovsx), pausing for confirmation before the irreversible publish. Only when the maintainer asks: CLAUDE.md constraint 5 forbids releasing on your own.
+description: Cut and publish a Linyra release to the VS Code Marketplace and Open VSX. Use when the maintainer asks to "make a release", "publish", "ship", "cut a version", "release vX.Y.Z", or "push a new version to the marketplace". Handles the semver bump, CHANGELOG, the full test and check suite, bundle, commit, tag, push, and publishing one .vsix to both registries (vsce + ovsx), pausing for confirmation before the irreversible publish. Only when the maintainer asks: CLAUDE.md constraint 5 forbids releasing on your own.
 ---
 
-# Release Polylog
+# Release Linyra
 
-Polylog is a VS Code extension (`publisher: lntvan166`, `name: polylog-git`, so the ID is `lntvan166.polylog-git`; plain `polylog` is taken on the Marketplace by another publisher). A release means:
+Linyra is an independently maintained fork of Polylog (`publisher: whwitpohe`,
+`name: linyra`, so the ID is `whwitpohe.linyra`). See `docs/PUBLISHING.md` for the
+publisher setup and migration procedure. Never publish under the upstream author's identity.
+A release means:
 1. Bump the version and record it in the CHANGELOG.
 2. Verify that everything builds and every check passes.
 3. Commit, tag and push to GitHub.
@@ -56,7 +59,7 @@ Do steps 1–5 first; they are all reversible. Then **stop and ask before step 6
 
 ### 1. Full suite: green baseline
 
-Polylog's checks are more than `npm test`. Run all of them:
+Linyra's checks are more than `npm test`. Run all of them:
 
 ```bash
 npm test                                             # unit tests (plain assert + "ok - …")
@@ -97,13 +100,13 @@ Confirm that `out/extension.js`, `out/webview.js`, `out/webview.css`, `out/compa
 ### 5. Publish auth, before committing
 
 ```bash
-vsce verify-pat lntvan166
+vsce verify-pat whwitpohe
 ```
 
-- **Marketplace:** if this fails, the PAT has expired. The maintainer refreshes it in Azure DevOps (Marketplace → Manage scope) and runs `! vsce login lntvan166`.
+- **Marketplace:** if this fails, the PAT has expired. The maintainer refreshes it in Azure DevOps (Marketplace → Manage scope) and runs `! vsce login whwitpohe`.
 - **Open VSX** has no `verify-pat`; the token is only checked at publish time. Prerequisites:
   - the Eclipse Foundation **Publisher Agreement** is signed on open-vsx.org (log in with GitHub → user settings);
-  - the namespace `lntvan166` exists. `ovsx create-namespace lntvan166 -p <token>` says "already exists" if it does.
+  - the namespace `whwitpohe` exists. `ovsx create-namespace whwitpohe -p <token>` says "already exists" if it does.
 - **The Open VSX token is a secret:** pass it as `-p <token>` or `OVSX_PAT`. Never write it into a file or this skill. If the maintainer hasn't given it, ask them to run the Open VSX publish themselves via `! ovsx publish … -p <token>`.
 
 ### — PAUSE HERE —
@@ -111,7 +114,11 @@ vsce verify-pat lntvan166
 Summarize:
 - the version and the CHANGELOG section;
 - that the suite, bundle and auth are green;
-- the package contents, from `vsce ls`: 13 files (`package.json`, README, LICENSE, CHANGELOG, `ThirdPartyNotices.txt`, `media/polylog.svg`, `media/icon.png`, `media/compare.svg`, `out/extension.js`, `out/webview.js`, `out/webview.css`, `out/compare.js`, `out/compare.css`). `vsce package` reports 15, because it adds `[Content_Types].xml` and `extension.vsixmanifest`.
+- the package contents, from `vsce ls`: 18 files (`package.json`, the English/Chinese
+  manifest catalogs, the Chinese runtime catalog, README, LICENSE, CHANGELOG,
+  `ThirdPartyNotices.txt`, the three allowlisted icons, and seven production JS/CSS
+  bundles for extension, Log, Compare and Changes). `vsce package` reports 20 because
+  it adds `[Content_Types].xml` and `extension.vsixmanifest`.
 
 Then ask for explicit confirmation. Neither registry has an undo.
 
@@ -122,12 +129,11 @@ git add package.json package-lock.json CHANGELOG.md
 git commit -F - <<'EOF'
 release: vX.Y.Z — <one-line summary>
 
-Co-Authored-By: <the model that did the work> <noreply@anthropic.com>
 EOF
 git status --short          # untracked strays must still be untracked
 ```
 
-Never `git add -A` or `git add .`. The commit must use the repo's **local** identity (`lntvan166 <lntvan166@gmail.com>`), never a work email. Check with `git log -1 --format='%an <%ae>'`.
+Never `git add -A` or `git add .`. The commit must use the repo's **local** identity (`Whwitpohe <7278281+Whwitpohe@users.noreply.github.com>`), never a work email. Check with `git log -1 --format='%an <%ae>'`.
 
 ### 7. Annotated tag
 
@@ -145,25 +151,27 @@ The VSIX ships no README images (`.vscodeignore` is an allowlist). Both registri
 
 ```bash
 for u in demo.gif screenshot-log.png screenshot-file-history.png screenshot-branch.png screenshot-themes.png; do
-  printf "%-30s %s\n" "$u" "$(curl -s -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com/lntvan166/polylog/main/media/$u)"
+  printf "%-30s %s\n" "$u" "$(curl -s -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/$u)"
 done   # expect 200 on every line
 ```
 
 ### 9. Package once, publish the same file to both
 
 ```bash
-vsce package                                        # → polylog-git-X.Y.Z.vsix, runs vscode:prepublish
-vsce publish --packagePath polylog-git-X.Y.Z.vsix      # VS Code Marketplace
-ovsx publish polylog-git-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
+vsce package --out whwitpohe.linyra-X.Y.Z.vsix         # runs vscode:prepublish
+vsce publish --packagePath whwitpohe.linyra-X.Y.Z.vsix      # VS Code Marketplace
+ovsx publish whwitpohe.linyra-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
 ```
 
-- **Expected package: 15 files, about 135 KB, as `vsce package` counts them** (13 from the allowlist plus two manifests; v1.2.0 was 133 KB). Hundreds of KB means media or `node_modules` crept in; fix `.vscodeignore` first.
+- **Expected package: 20 files, about 200 KB, as `vsce package` counts them**
+  (18 allowlisted files plus two manifests). Inspect the allowlist and actual archive;
+  source, development dependencies, screenshots and source maps must not ship.
 - Both registries index **after** the CLI reports success: Open VSX in about 1–2 minutes, the Marketplace in about 3–5. Poll rather than reading once:
 
 ```bash
 for i in $(seq 1 25); do
-  o=$(curl -s https://open-vsx.org/api/lntvan166/polylog-git | python3 -c "import sys,json;print(json.load(sys.stdin).get('version','?'))" 2>/dev/null)
-  m=$(vsce show lntvan166.polylog-git 2>/dev/null | grep "^  Version:" | awk '{print $2}')
+  o=$(curl -s https://open-vsx.org/api/whwitpohe/linyra | python3 -c "import sys,json;print(json.load(sys.stdin).get('version','?'))" 2>/dev/null)
+  m=$(vsce show whwitpohe.linyra 2>/dev/null | grep "^  Version:" | awk '{print $2}')
   echo "t+$((i*20))s  openvsx=$o  marketplace=$m"
   [ "$o" = "X.Y.Z" ] && [ "$m" = "X.Y.Z" ] && echo "BOTH LIVE" && break
   sleep 20
@@ -183,9 +191,10 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes "<the CHANGELOG section>"
 ## After publishing
 
 - Link both listings:
-  - https://marketplace.visualstudio.com/items?itemName=lntvan166.polylog-git
-  - https://open-vsx.org/extension/lntvan166/polylog-git
-- Delete the local `.vsix`; it is a build artifact (`*.vsix` is gitignored).
+  - https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra
+  - https://open-vsx.org/extension/whwitpohe/linyra
+- Keep the tested `.vsix` and its checksum available for the maintainer; both are
+  ignored build artifacts and must not be committed.
 
 ## What NOT to do
 

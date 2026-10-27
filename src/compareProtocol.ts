@@ -1,4 +1,4 @@
-// Messages between the Repositories view (a webview in the Polylog Compare tab) and the host.
+// Messages between the Repositories view (a webview in the Linyra Compare tab) and the host.
 import type { Duplicate, Pair } from "./compareModel";
 import type { ChangeStatus } from "./types";
 

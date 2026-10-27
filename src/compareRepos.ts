@@ -9,7 +9,7 @@ import { renderReposHtml } from "./webview/compare/html";
 import { accentOf, assignAccents } from "./webview/view";
 
 /**
- * Repositories, in the Polylog Compare tab: the two Branch boxes (◀ left ▾ ⇄ ▶ right ▾) with
+ * Repositories, in the Linyra Compare tab: the two Branch boxes (◀ left ▾ ⇄ ▶ right ▾) with
  * their searchable Branch picker, Files | Commits, Refresh, then the ticked repositories whose
  * files differ, in their Repo List colors. Selecting one fills the Left and Right views.
  * A webview: it needs the Branch boxes; the side views stay native trees (the file icon theme).
@@ -33,7 +33,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       deps.log.onDidChangeRefs((id) => this.refsMoved(id)),
     );
     void this.setContext();
-    // The Polylog Compare tab is hidden until Compare Branches is clicked (remembered per workspace).
+    // The Linyra Compare tab is hidden until Compare Branches is clicked (remembered per workspace).
     void vscode.commands.executeCommand("setContext", "polylog.compareShown", this.state.get<boolean>(SHOWN, false));
   }
 
@@ -101,7 +101,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     void this.view?.webview.postMessage(m);
   }
 
-  /** Shows the Polylog Compare tab and focuses Repositories (the user asked). */
+  /** Shows the Linyra Compare tab and focuses Repositories (the user asked). */
   private async show(): Promise<void> {
     if (!this.state.get<boolean>(SHOWN, false)) {
       await this.state.update(SHOWN, true);
@@ -111,7 +111,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.deps.log.toolbarChanged();
   }
 
-  /** Hides the Polylog Compare tab until Compare Branches is clicked again. */
+  /** Hides the Linyra Compare tab until Compare Branches is clicked again. */
   async close(): Promise<void> {
     await this.state.update(SHOWN, false);
     await vscode.commands.executeCommand("setContext", "polylog.compareShown", false);
@@ -418,7 +418,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         }
       }
     } catch (e) {
-      if (!isAbortError(e)) console.error(localize("Polylog: Compare"), e);
+      if (!isAbortError(e)) console.error(localize("Linyra: Compare"), e);
     }
   }
 

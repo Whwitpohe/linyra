@@ -1,9 +1,9 @@
 {
-  "name": "polylog-git",
+  "name": "linyra",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
   "version": "1.4.0",
-  "publisher": "lntvan166",
+  "publisher": "whwitpohe",
   "icon": "media/icon.png",
   "galleryBanner": {
     "color": "#1c0e0b",
@@ -55,7 +55,7 @@
       "panel": [
         {
           "id": "polylog",
-          "title": "Polylog",
+          "title": "Linyra",
           "icon": "media/polylog.svg"
         },
         {
@@ -67,7 +67,7 @@
       "activitybar": [
         {
           "id": "polylog-side",
-          "title": "Polylog",
+          "title": "Linyra",
           "icon": "media/polylog.svg"
         }
       ]
@@ -105,44 +105,44 @@
       {
         "command": "polylog.open",
         "title": "%command.polylog.open.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.openDiff",
         "title": "%command.polylog.openDiff.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.openCombinedDiff",
         "title": "%command.polylog.openCombinedDiff.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.clearSelection",
         "title": "%command.polylog.clearSelection.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(clear-all)"
       },
       {
         "command": "polylog.copySha",
         "title": "%command.polylog.copySha.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.copyMessage",
         "title": "%command.polylog.copyMessage.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.showRepos",
         "title": "%command.polylog.showRepos.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(list-tree)"
       },
       {
         "command": "polylog.hideRepos",
         "title": "%command.polylog.hideRepos.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(list-flat)"
       },
       {
@@ -153,400 +153,400 @@
       {
         "command": "polylog.openWorkingFile",
         "title": "%command.polylog.openWorkingFile.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(go-to-file)"
       },
       {
         "command": "polylog.copyFilePath",
         "title": "%command.polylog.copyFilePath.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.copyRelativePath",
         "title": "%command.polylog.copyRelativePath.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoShowOnly",
         "title": "%command.polylog.repoShowOnly.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoHide",
         "title": "%command.polylog.repoHide.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoShowAll",
         "title": "%command.polylog.repoShowAll.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoExclude",
         "title": "%command.polylog.repoExclude.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoOpenFolder",
         "title": "%command.polylog.repoOpenFolder.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoCopyPath",
         "title": "%command.polylog.repoCopyPath.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.profileSwitch",
         "title": "%command.polylog.profileSwitch.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.profileShow",
         "title": "%command.polylog.profileShow.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.profileSave",
         "title": "%command.polylog.profileSave.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.profileUpdate",
         "title": "%command.polylog.profileUpdate.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.profileRename",
         "title": "%command.polylog.profileRename.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.profileDelete",
         "title": "%command.polylog.profileDelete.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoProfiles",
         "title": "%command.polylog.repoProfiles.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.fetchAll",
         "title": "%command.polylog.fetchAll.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(cloud-download)"
       },
       {
         "command": "polylog.fetching",
         "title": "%command.polylog.fetching.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(sync~spin)"
       },
       {
         "command": "polylog.showBehind",
         "title": "%command.polylog.showBehind.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.pullAllBehind",
         "title": "%command.polylog.pullAllBehind.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.fetchAndPullAll",
         "title": "%command.polylog.fetchAndPullAll.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.commitCopySha",
         "title": "%command.polylog.commitCopySha.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.commitCopyMessage",
         "title": "%command.polylog.commitCopyMessage.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.commitOpenOnRemote",
         "title": "%command.polylog.commitOpenOnRemote.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.repoPull",
         "title": "%command.polylog.repoPull.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.focusUncommitted",
         "title": "%command.polylog.focusUncommitted.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.refreshUncommitted",
         "title": "%command.polylog.refreshUncommitted.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(refresh)"
       },
       {
         "command": "polylog.stage",
         "title": "%command.polylog.stage.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(add)"
       },
       {
         "command": "polylog.stageAll",
         "title": "%command.polylog.stageAll.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(add)"
       },
       {
         "command": "polylog.unstage",
         "title": "%command.polylog.unstage.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(remove)"
       },
       {
         "command": "polylog.unstageAll",
         "title": "%command.polylog.unstageAll.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(remove)"
       },
       {
         "command": "polylog.discard",
         "title": "%command.polylog.discard.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(discard)"
       },
       {
         "command": "polylog.discardAll",
         "title": "%command.polylog.discardAll.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(discard)"
       },
       {
         "command": "polylog.commitRepo",
         "title": "%command.polylog.commitRepo.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(check)"
       },
       {
         "command": "polylog.openUncommittedDiff",
         "title": "%command.polylog.openUncommittedDiff.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.changesShowAll",
         "title": "%command.polylog.changesShowAll.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(list-tree)"
       },
       {
         "command": "polylog.changesShowChanged",
         "title": "%command.polylog.changesShowChanged.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(diff)"
       },
       {
         "command": "polylog.openRevision",
         "title": "%command.polylog.openRevision.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.compareBranches",
         "title": "%command.polylog.compareBranches.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareWith",
         "title": "%command.polylog.compareWith.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.comparePick",
         "title": "%command.polylog.comparePick.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(git-branch)"
       },
       {
         "command": "polylog.compareSwap",
         "title": "%command.polylog.compareSwap.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(arrow-swap)"
       },
       {
         "command": "polylog.compareShowCommits",
         "title": "%command.polylog.compareShowCommits.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(git-commit)"
       },
       {
         "command": "polylog.compareShowFiles",
         "title": "%command.polylog.compareShowFiles.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(files)"
       },
       {
         "command": "polylog.compareHideSame",
         "title": "%command.polylog.compareHideSame.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(filter)"
       },
       {
         "command": "polylog.compareShowSame",
         "title": "%command.polylog.compareShowSame.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(filter-filled)"
       },
       {
         "command": "polylog.compareRefresh",
         "title": "%command.polylog.compareRefresh.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(refresh)"
       },
       {
         "command": "polylog.compareOpenFile",
         "title": "%command.polylog.compareOpenFile.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.compareMore",
         "title": "%command.polylog.compareMore.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.compareClose",
         "title": "%command.polylog.compareClose.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(close)"
       },
       {
         "command": "polylog.uncommittedClose",
         "title": "%command.polylog.uncommittedClose.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(close)"
       },
       {
         "command": "polylog.uncommittedShow",
         "title": "%command.polylog.uncommittedShow.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.uncommittedHide",
         "title": "%command.polylog.uncommittedHide.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.compareShow",
         "title": "%command.polylog.compareShow.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareHide",
         "title": "%command.polylog.compareHide.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareOpenSinceSplit",
         "title": "%command.polylog.compareOpenSinceSplit.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.view",
         "title": "%command.polylog.branch.view.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.compare",
         "title": "%command.polylog.branch.compare.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.worktreeDiff",
         "title": "%command.polylog.branch.worktreeDiff.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.checkout",
         "title": "%command.polylog.branch.checkout.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.create",
         "title": "%command.polylog.branch.create.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.rename",
         "title": "%command.polylog.branch.rename.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.fetch",
         "title": "%command.polylog.branch.fetch.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.pull",
         "title": "%command.polylog.branch.pull.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.push",
         "title": "%command.polylog.branch.push.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.merge",
         "title": "%command.polylog.branch.merge.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.rebase",
         "title": "%command.polylog.branch.rebase.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.pullMerge",
         "title": "%command.polylog.branch.pullMerge.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.pullRebase",
         "title": "%command.polylog.branch.pullRebase.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.worktree",
         "title": "%command.polylog.branch.worktree.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.favorite",
         "title": "%command.polylog.branch.favorite.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.copy",
         "title": "%command.polylog.branch.copy.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.branch.delete",
         "title": "%command.polylog.branch.delete.title%",
-        "category": "Polylog"
+        "category": "Linyra"
       },
       {
         "command": "polylog.openChangesEditor",
         "title": "%command.polylog.openChangesEditor.title%",
-        "category": "Polylog",
+        "category": "Linyra",
         "icon": "$(open-preview)"
       }
     ],
@@ -1534,7 +1534,7 @@
       ]
     },
     "configuration": {
-      "title": "Polylog",
+      "title": "Linyra",
       "properties": {
         "polylog.pageSize": {
           "type": "number",

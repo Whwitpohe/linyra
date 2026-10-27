@@ -11,6 +11,7 @@ import type { Pair } from "../compareModel";
 import { UNCOMMITTED, type Commit } from "../types";
 import { EXPECTED_ORDER } from "./fixture";
 
+const EXTENSION_ID = "whwitpohe.linyra";
 const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
 const send = (m: WebviewMessage) => vscode.commands.executeCommand("polylog._itest.send", m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -21,7 +22,7 @@ async function removeTestDirectory(target: string): Promise<void> {
   const absolute = testPath.resolve(target);
   const relative = testPath.relative(testOs.tmpdir(), absolute);
   assert.ok(relative && !relative.startsWith("..") && !testPath.isAbsolute(relative)
-    && relative.split(testPath.sep)[0].startsWith("polylog-"), "cleanup must stay inside a named temporary Polylog fixture");
+    && relative.split(testPath.sep)[0].startsWith("polylog-"), "cleanup must stay inside a named temporary Linyra fixture");
   await testFs.promises.rm(absolute, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
 
@@ -54,7 +55,7 @@ const closeEditors = () => vscode.commands.executeCommand("workbench.action.clos
 const args = (c: Commit, path: string): OpenDiffArgs => ({ repoId: c.repoId, sha: c.sha, parent: c.parents[0] ?? null, path });
 const bySubject = (s: LogSnapshot, prefix: string) => s.rows.find((r) => r.subject.startsWith(prefix))!;
 
-describe("Polylog panel", () => {
+describe("Linyra panel", () => {
   before(async () => {
     await vscode.commands.executeCommand("polylog.open");
     await until("the Log webview", (s) => s.readyCount >= 1 && s.repos.length === 3);
@@ -128,7 +129,7 @@ describe("Polylog panel", () => {
   });
 
   it("one native view keeps Log permanently expanded and remembers the integrated Changes layout", async () => {
-    const manifest = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON;
+    const manifest = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON;
     assert.deepStrictEqual(manifest.contributes.views.polylog.map((view: { id: string }) => view.id), ["polylog.log"]);
     const before = await snapshot();
     await send({ type: "layout", repoPaneWidth: before.layout.repoPaneWidth, changesPaneWidth: 420, changesPaneHeight: 260, showChanges: true });
@@ -616,12 +617,12 @@ describe("Polylog panel", () => {
       assert.deepStrictEqual(git("diff", "--cached", "--name-only"), "client.ts", "still staged");
       assert.strictEqual(git("rev-parse", "HEAD"), head, "nothing committed");
 
-      // A draft in Source Control's message box survives a commit from Polylog.
+      // A draft in Source Control's message box survives a commit from Linyra.
       const repo = api.getRepository(vscode.Uri.file(web.root))!;
       repo.inputBox.value = "draft: half-written";
-      await answer("feat: committed from Polylog");
+      await answer("feat: committed from Linyra");
       await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
-      assert.strictEqual(git("log", "-1", "--format=%s"), "feat: committed from Polylog");
+      assert.strictEqual(git("log", "-1", "--format=%s"), "feat: committed from Linyra");
       assert.strictEqual(repo.inputBox.value, "draft: half-written", "the Source Control draft is kept");
 
       // Review Focus 3: nothing staged, git.enableSmartCommit on: commit all without asking; smartCommitChanges "tracked" leaves new files out.
@@ -673,7 +674,7 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes" });
       await waitFor("listed.md gone", () => (fs.existsSync(at("listed.md")) ? undefined : true));
       assert.ok(fs.existsSync(at("late.md")), "a file that appeared while the prompt was open is kept");
-      // git.untrackedChanges hidden: VS Code's Git does not list new files, Polylog still deletes the one confirmed.
+      // git.untrackedChanges hidden: VS Code's Git does not list new files, Linyra still deletes the one confirmed.
       fs.rmSync(at("late.md"));
       await cfg.update("untrackedChanges", "hidden", vscode.ConfigurationTarget.Global);
       fs.writeFileSync(at("hidden-new.md"), "3\n");
@@ -882,7 +883,7 @@ describe("Polylog panel", () => {
       assert.match(err, /acme hook says no/);
       assert.ok(!err.endsWith(".."), `one period (${err})`);
       assert.strictEqual((await snapshot()).stats.reloads, reloads, "a failed commit does not reload the Log");
-      const pal = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus.commandPalette as { command: string; when: string }[];
+      const pal = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus.commandPalette as { command: string; when: string }[];
       assert.strictEqual(pal.find((m) => m.command === "polylog.uncommittedClose")?.when, "polylog.uncommittedShown", "Close only while shown");
     } finally {
       await vscode.commands.executeCommand("polylog._itest.answer", undefined);
@@ -962,13 +963,13 @@ describe("Polylog panel", () => {
       s = await until("Commits after a new webview", (x) => x.logMode === "commits");
       // The removed setting is gone (VS Code refuses to write an unregistered one), and the
       // Commit list has no Uncommitted row.
-      const props = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.configuration.properties as Record<string, unknown>;
+      const props = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties as Record<string, unknown>;
       assert.strictEqual(props["polylog.showUncommitted"], undefined);
       await send({ type: "refresh" });
       s = await until("only commits", (x) => x.rows.length === 6);
       assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED));
       // The Repo menu on the Uncommitted view's repository rows.
-      const menus = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
+      const menus = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
       for (const c of ["polylog.repoShowOnly", "polylog.repoOpenFolder", "polylog.repoCopyPath", "polylog.repoPull"]) {
         assert.ok(menus.some((m) => m.command === c && m.when.includes("view == polylog.uncommitted") && m.when.includes("repo")), `${c} on a repository row of the Uncommitted view`);
       }
@@ -1088,7 +1089,7 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.repoPull", { webviewSection: "repo", repoId: web.id });
       await waitFor("the branch at the remote's commit", () => (git(web.root, "rev-parse", "HEAD") === theirs ? true : undefined));
       const ours = (await snapshot()).spawnLog.slice(mark.spawnLog.length).filter((x) => x.cmd === "pull");
-      assert.deepStrictEqual(ours, [], "VS Code's own Git pulled it (its Pull, with its settings and messages), not Polylog's fallback");
+      assert.deepStrictEqual(ours, [], "VS Code's own Git pulled it (its Pull, with its settings and messages), not Linyra's fallback");
       const s = await until("the pulled commit in the Log, no badge", (x) => x.sync[web.id] === undefined && x.rows.some((r) => r.subject === "chore: pulled from the remote"));
       assert.strictEqual(s.rows.length, 7);
     } finally {
@@ -1247,7 +1248,7 @@ describe("Polylog panel", () => {
       // Someone pushed a commit: it is on the remote only.
       const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "theirs");
       git(bare, "update-ref", `refs/heads/${branch}`, theirs);
-      assert.strictEqual((await snapshot()).sync[web.id], undefined, "not known before a fetch: Polylog never fetches on its own");
+      assert.strictEqual((await snapshot()).sync[web.id], undefined, "not known before a fetch: Linyra never fetches on its own");
       const running = vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("polylog.fetchAll");
       assert.strictEqual((await snapshot()).fetching, true, "the toolbar shows it is fetching");
       const result = await running;
@@ -1256,7 +1257,7 @@ describe("Polylog panel", () => {
       // The unreachable remote gone: every fetch succeeds, and the status bar says what it found.
       git(api.root, "remote", "remove", "origin");
       const ok = await vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("polylog.fetchAll");
-      assert.strictEqual(ok.summary, "Polylog: fetched 3 repositories · 1 behind its upstream");
+      assert.strictEqual(ok.summary, "Linyra: fetched 3 repositories · 1 behind its upstream");
       const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
       assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
 
@@ -1921,7 +1922,7 @@ describe("Polylog panel", () => {
   });
 
   // Last: it leaves Changes hidden for the rest of the session, as a user who hid it wants.
-  it("Polylog never reopens a view: a hidden Changes view stays hidden, and keeps the selection", async () => {
+  it("Linyra never reopens a view: a hidden Changes view stays hidden, and keeps the selection", async () => {
     const rows = (await until("six rows", (x) => x.rows.length === 6)).rows;
     const c = rows.find((r) => r.subject.startsWith("feat: add retry"))!;
     const other = rows.find((r) => r.subject.startsWith("fix: guard nil"))!;
@@ -2084,7 +2085,7 @@ describe("Polylog panel", () => {
       });
     const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
 
-    it("the Polylog Compare tab: Repositories with counts; selecting one fills both sides", async () => {
+    it("the Linyra Compare tab: Repositories with counts; selecting one fills both sides", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
       await vscode.commands.executeCommand("polylog.compareBranches");
       const r = await until2("listed", repos, (x) => x.open && x.roots.length === 2 && x.selected !== undefined);
@@ -2095,11 +2096,11 @@ describe("Polylog panel", () => {
       const { accentOf, assignAccents } = require("../webview/view") as typeof import("../webview/view");
       const accents = assignAccents((await snapshot()).repos);
       assert.deepStrictEqual(r.accents, ["acme-api", "acme-web"].map((n) => accentOf(accents, roots[n])));
-      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+      const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
       const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
       assert.deepStrictEqual(pkg.viewsContainers, {
-        panel: [{ id: "polylog", title: "Polylog", icon: "media/polylog.svg" }, { id: "polylog-compare", title: "Polylog Compare", icon: "media/compare.svg" }],
-        activitybar: [{ id: "polylog-side", title: "Polylog", icon: "media/polylog.svg" }],
+        panel: [{ id: "polylog", title: "Linyra", icon: "media/polylog.svg" }, { id: "polylog-compare", title: "Linyra Compare", icon: "media/compare.svg" }],
+        activitybar: [{ id: "polylog-side", title: "Linyra", icon: "media/polylog.svg" }],
       });
       assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
         polylog: [["polylog.log", "$(history)"]],
@@ -2168,7 +2169,7 @@ describe("Polylog panel", () => {
       });
       assert.strictEqual((await vscode.workspace.openTextDocument(since.original)).getText(), "");
       assert.strictEqual((await vscode.workspace.openTextDocument(since.modified)).getText(), "package timeout\n");
-      const items = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
+      const items = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
       assert.ok(items.some((m) => m.command === "polylog.compareOpenSinceSplit" && m.when.includes("viewItem =~ /^compareFile/")));
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       // Another repository: both sides follow; a file of the old one no longer opens.
@@ -2275,7 +2276,7 @@ describe("Polylog panel", () => {
       assert.strictEqual((await sideOf("left")).tree.length, 0, "the old pair's files leave the sides");
       await rsend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
       await until2("picked", repos, (x) => x.roots.length === 2);
-      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON;
+      const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON;
       assert.ok(!JSON.stringify(pkg.contributes.menus).includes("polylog.comparePair"));
     });
 
@@ -2352,8 +2353,8 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     });
 
-    it("the Polylog Compare tab is hidden until Compare Branches is clicked, and × hides it again", async () => {
-      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+    it("the Linyra Compare tab is hidden until Compare Branches is clicked, and × hides it again", async () => {
+      const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
       for (const v of pkg.views["polylog-compare"] as { id: string; when?: string }[]) assert.strictEqual(v.when, "polylog.compareShown", `${v.id} is hidden by default`);
       assert.ok((pkg.menus["view/title"] as { command: string; when: string }[]).some((m) => m.command === "polylog.compareClose" && m.when.includes("view == polylog.compare")));
       await vscode.commands.executeCommand("polylog.compareClose");
@@ -2362,11 +2363,11 @@ describe("Polylog panel", () => {
       await until2("shown again", repos, (x) => x.open && x.roots.length === 2);
     });
 
-    it("the Polylog side bar is hidden until the Log's Uncommitted button, and × hides it again", async () => {
-      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+    it("the Linyra side bar is hidden until the Log's Uncommitted button, and × hides it again", async () => {
+      const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
       assert.strictEqual((pkg.views["polylog-side"] as { when?: string }[])[0].when, "polylog.uncommittedShown");
-      // The remembered side bar and Compare tab need their context keys after a reload, before any Polylog view opens.
-      assert.ok((vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.activationEvents as string[]).includes("onStartupFinished"));
+      // The remembered side bar and Compare tab need their context keys after a reload, before any Linyra view opens.
+      assert.ok((vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.activationEvents as string[]).includes("onStartupFinished"));
       const titles = pkg.menus["view/title"] as { command: string; when: string; group: string }[];
       assert.ok(titles.some((m) => m.command === "polylog.uncommittedClose" && m.when.includes("view == polylog.uncommitted")));
       const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
@@ -2378,7 +2379,7 @@ describe("Polylog panel", () => {
     });
 
     it("the Log toolbar's two toggles: click to show, click again to hide; the icon says which", async () => {
-      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+      const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
       const icon = (cmd: string) => (pkg.commands as { command: string; icon?: string }[]).find((c) => c.command === cmd)?.icon;
       const { renderHtml } = require("../webview/html") as typeof import("../webview/html");
       const shell = renderHtml({ cspSource: "", nonce: "test", scriptUri: "", styleUri: "" });

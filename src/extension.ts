@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const s = changes.current();
     return s && s.commit.sha !== UNCOMMITTED ? { repoId: s.commit.repoId, sha: s.commit.sha } : undefined;
   };
-  /** A file or folder row of any Polylog tree (Changes, Uncommitted, Compare): its repository and repo-relative path. */
+  /** A file or folder row of any Linyra tree (Changes, Uncommitted, Compare): its repository and repo-relative path. */
   const fileRow = (arg: unknown): { root: string; path: string } | undefined => {
     arg = compareNode(changes.commandArgument(arg));
     const n = arg as { kind?: unknown; repoId?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
@@ -133,7 +133,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const blame = new BlameView((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root));
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
-  // Polylog never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
+  // Linyra never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
   context.subscriptions.push(
     // Switching git.path takes effect at once: forget the binary, stop git processes still
     // running on the old one, and read everything again.
@@ -220,7 +220,7 @@ export function activate(context: vscode.ExtensionContext): void {
     uncommitted,
     uncommittedView,
     vscode.window.registerFileDecorationProvider(uncommittedView),
-    // The Polylog side bar (Uncommitted) is hidden until the user asks for it (remembered per workspace).
+    // The Linyra side bar (Uncommitted) is hidden until the user asks for it (remembered per workspace).
     vscode.commands.registerCommand("polylog.focusUncommitted", async () => {
       await context.workspaceState.update(UNCOMMITTED_SHOWN, true);
       await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", true);

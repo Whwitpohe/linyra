@@ -1,9 +1,14 @@
-# Polylog
+# Linyra
 
 **One git log across every repository in your workspace.**
 
+Linyra is an independently maintained fork of [Polylog](https://github.com/lntvan166/polylog),
+originally created by **lntvan166**. It adds workspace-wide branch graphs, richer commit
+details, branch management, Simplified Chinese and explicit controls that prevent accidental
+panel collapse. Upstream copyright, the MIT license and third-party notices are preserved.
+
 Every VS Code git extension gives you a repository *picker*: one repo's history at a time.
-Polylog merges them. Every commit from every repository sits in one list, newest first. You
+Linyra merges them. Every commit from every repository sits in one list, newest first. You
 can search and filter all of them at once, and click any commit to see its files in VS
 Code's own diff editor.
 
@@ -15,9 +20,9 @@ Code's own diff editor.
      broken images on the listing pages. The images are excluded from the VSIX,
      so push them to main before publishing. -->
 
-![Polylog: one search finds a ticket's commits in four repositories, and each opens in the native diff editor](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/demo.gif)
+![Linyra: one search finds a ticket's commits in four repositories, and each opens in the native diff editor](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/demo.gif)
 
-Ticket ACME-142 touched four repositories. Searching for it once in Polylog lists all
+Ticket ACME-142 touched four repositories. Searching for it once in Linyra lists all
 four commits, and each one opens in the native diff editor.
 
 ## Screenshots
@@ -27,7 +32,7 @@ lives. The Changes tree follows your selection, and clicking a file opens its di
 
 ![The merged log of six repositories, with a commit's diff open in the editor](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-log.png)
 
-**File History.** Right-click any file and choose **Polylog: File History** to get the
+**File History.** Right-click any file and choose **Linyra: File History** to get the
 commits that touched it, across renames. The diff follows as you step through them with
 `↑`/`↓`.
 
@@ -39,36 +44,49 @@ commits. Repositories with none of the selected branches are skipped and counted
 
 ![The log on origin/release-1.4: found in three repositories, current branch in the other three](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-branch.png)
 
-**Your theme, not ours.** Every color comes from your VS Code theme, so Polylog looks like
+**Your theme, not ours.** Every color comes from your VS Code theme, so Linyra looks like
 the rest of your editor. That includes light, dark and both high-contrast themes.
 
-![Polylog in Dark Modern, Light Modern, High Contrast and High Contrast Light](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-themes.png)
+![Linyra in Dark Modern, Light Modern, High Contrast and High Contrast Light](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-themes.png)
 
 ---
 
 ## Quick Start
 
-For the builds in this fork, download the latest `.vsix` from
-[GitHub Releases](https://github.com/Whwitpohe/polylog/releases), then run **Extensions:
-Install from VSIX…** and reload the window. The Marketplace/Open VSX links below refer to
-the upstream extension; a GitHub release is separate from publication to those registries.
+Linyra's extension ID is **`whwitpohe.linyra`**. Marketplace and Open VSX publication is
+pending publisher-account setup; the working installation route is a Linyra VSIX.
 
-1. Install **Polylog** (extension ID `lntvan166.polylog-git`) in any of these ways:
-   - **Extensions view:** search for `lntvan166.polylog-git`, or "Polylog", and pick the
-     one by **lntvan166**. Another publisher's unrelated extension is also called polylog.
-   - **Quick Open** (`Ctrl+P` / `Cmd+P`): `ext install lntvan166.polylog-git`
-   - **Command line:** `code --install-extension lntvan166.polylog-git`
-   - **Cursor, VSCodium, Windsurf:** it is on [Open VSX](https://open-vsx.org/extension/lntvan166/polylog-git)
-     under the same ID.
-   - Listings: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lntvan166.polylog-git)
-     · [Open VSX](https://open-vsx.org/extension/lntvan166/polylog-git)
+1. Install **Linyra** with **Extensions: Install from VSIX…**, choosing
+   `whwitpohe.linyra-1.4.0.vsix`, then reload the window. To build it from this repository:
+
+   ```powershell
+   npm ci
+   npm run package -- --out whwitpohe.linyra-1.4.0.vsix
+   code --install-extension .\whwitpohe.linyra-1.4.0.vsix --force
+   ```
+
+   Once the registries are published, search for **Linyra** by **whwitpohe**, or run
+   `code --install-extension whwitpohe.linyra`.
+
+   Packaging requires a local privacy-scan word list; see
+   [publishing checks](docs/PUBLISHING.md) before building from a fresh clone.
 2. Open a folder or multi-root workspace containing more than one git repository.
-3. Run **Polylog: Open Merged Log** from the Command Palette (`Ctrl+Shift+P` /
-   `Cmd+Shift+P`), or click the **Polylog** tab in the bottom panel next to Terminal.
+3. Run **Linyra: Open Merged Log** from the Command Palette (`Ctrl+Shift+P` /
+   `Cmd+Shift+P`), or click the **Linyra** tab in the bottom panel next to Terminal.
 
-Nothing to configure. Polylog shows every repository VS Code's Git extension has open,
+Nothing to configure. Linyra shows every repository VS Code's Git extension has open,
 plus any it finds in your workspace folders (up to `polylog.scanDepth` levels deep). Use
 `polylog.excludeRepos` to leave some out.
+
+### Switching from Polylog
+
+Linyra is a separate extension; installing an upstream Polylog update does not install it.
+Disable or uninstall `lntvan166.polylog-git` when switching to Linyra, then reload the window.
+Both versions use the same compatibility command and view identifiers, so enable one at a
+time. Your `polylog.*` settings and keybindings keep working. Saved filters and panel sizes
+belong to each extension's private state and may need to be set again on the first switch.
+The original `v1.4.0` GitHub release records the earlier Polylog identity; its old VSIX remains
+a historical artifact. See [publishing and migration](docs/PUBLISHING.md) for details.
 
 ---
 
@@ -129,7 +147,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   - **↓3 ↑2** beside a name: commits on its upstream you haven't pulled, and commits you
     haven't pushed, as of the last fetch. **Fetch All** (the cloud in the Log's toolbar)
     runs `git fetch` in every repository, a few at a time, and never prompts for
-    credentials; Polylog fetches only when you ask. **Show Only Repositories Behind**
+    credentials; Linyra fetches only when you ask. **Show Only Repositories Behind**
     (right-click, or the Log's `…` menu) then ticks just the ones with commits to pull.
     Right-click a repository showing ↓ to **Pull** it: through VS Code's own Git (your
     pull settings, its credential prompts, conflicts in Source Control), or
@@ -140,7 +158,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     local changes touch the incoming files, is left as it was and named.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
-    Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
+    Window, Copy Path, or Exclude from Linyra (adds its path to `polylog.excludeRepos`,
     with an Undo).
 - **Right-click a commit** in the Log: Copy Commit ID, Copy Message (the whole message),
   or Open on Remote, its page on GitHub, GitLab, Bitbucket or Azure DevOps (from the
@@ -180,13 +198,13 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   says so. Files added and removed again within the selection are listed in a note instead.
   Up to 100 commits; **Clear Selection** (in the Changes title bar) goes back to one. It only
   shows changes: nothing is squashed, rebased or written to your repositories.
-- **Blame in diffs.** Put the cursor on a line of any Polylog diff or revision to see who last
+- **Blame in diffs.** Put the cursor on a line of any Linyra diff or revision to see who last
   changed it, as of the commit shown (hover for the details). It uses the format of
   `git.blame.editorDecoration.template`; turn it off with `polylog.blame`.
-- **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
+- **Open File** on any Linyra diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **The Uncommitted view** (in the Polylog side bar, like Source Control: its button in the
+  - **The Uncommitted view** (in the Linyra side bar, like Source Control: its button in the
     Log toolbar shows it, and hides it again): one
     row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
     files under folders. Hover for **Stage**, **Unstage**, **Discard** (a file, a folder, a
@@ -203,7 +221,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     prompt, even across repositories).
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
-- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
+- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Linyra
   Compare** panel tab, hidden until then; ⇄ again (or ×) hides it. Repositories, Left and Right
   share one panel so clicking a heading or its blank space cannot collapse a section.
   Drag the dividers to resize the panes, switch between side-by-side and stacked layouts,
@@ -246,14 +264,14 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 
 ---
 
-**Where things are:** the **Polylog** panel tab holds the Log and the Changes view; the
-**Polylog Compare** tab holds Compare; the Uncommitted view is in the Polylog side bar. Drag
+**Where things are:** the **Linyra** panel tab holds the Log and the Changes view; the
+**Linyra Compare** tab holds Compare; the Uncommitted view is in the Linyra side bar. Drag
 any view elsewhere and VS Code keeps it there (views you moved yourself stay put after an
 update).
 
 ## Languages
 
-Polylog follows VS Code's display language. English and Simplified Chinese (`zh-cn`)
+Linyra follows VS Code's display language. English and Simplified Chinese (`zh-cn`)
 are supported; other languages fall back to English. Run **Configure Display Language**
 in VS Code and restart to change the language.
 
@@ -278,9 +296,9 @@ The browser harness includes `index.zh-cn.html` and `repos.zh-cn.html` for UI ch
              Log  ·  Changes  ·  diff editor
 ```
 
-Polylog has **no index, no cache and no database**. Git does all the searching. Every
+Linyra has **no index, no cache and no database**. Git does all the searching. Every
 filter becomes a `git log` flag (`--grep`, `--author`, `--since`/`--until`, a ref, a pathspec), so each
-repository returns only matching commits, and Polylog merges those already-filtered lists.
+repository returns only matching commits, and Linyra merges those already-filtered lists.
 
 On a 68-repository, 16,000-commit workspace:
 
@@ -305,7 +323,7 @@ skewed clock can place a commit out of order.
 | `polylog.maxConcurrency` | `16` | Maximum number of `git` processes running at once. |
 | `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
-| `polylog.blame` | `true` | Show who last changed the cursor's line in Polylog's diffs and revisions. |
+| `polylog.blame` | `true` | Show who last changed the cursor's line in Linyra's diffs and revisions. |
 
 ---
 
@@ -316,14 +334,14 @@ skewed clock can place a commit out of order.
 | VS Code 1.85+ | Or a compatible editor that installs from Open VSX |
 | Git | The same git as VS Code: your `git.path` setting, then the git VS Code's Git extension found, then `git` on `PATH`. Changing `git.path` takes effect at once |
 
-Polylog only reads history, except when you ask it to fetch or pull.
+Linyra only reads history, except when you ask it to fetch or pull.
 
 ---
 
 ## Contributing & Issues
 
 Found a bug or have a feature request?
-[Open an issue on GitHub](https://github.com/lntvan166/polylog/issues).
+[Open an issue on GitHub](https://github.com/Whwitpohe/polylog/issues).
 
 Development:
 
@@ -339,4 +357,5 @@ Development:
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE). Based on Polylog by lntvan166; the original copyright and
+third-party notices remain included in every package.

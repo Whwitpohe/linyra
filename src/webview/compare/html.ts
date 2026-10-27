@@ -1,7 +1,7 @@
 import { escapeHtml, language, localizationScript, localize } from "../../i18n";
 import type { HtmlOptions } from "../html";
 
-/** Repositories' markup (Polylog Compare tab); the extension host and the browser harness both render it. */
+/** Repositories' markup (Linyra Compare tab); the extension host and the browser harness both render it. */
 export function renderReposHtml(o: HtmlOptions): string {
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(language())}">

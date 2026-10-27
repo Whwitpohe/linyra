@@ -1,7 +1,7 @@
 import { localize } from "./i18n";
 /**
  * How far each repository's current branch is from its upstream, for the Repositories
- * pane's ↓/↑ badge. Local refs only (as of the last fetch): Polylog never fetches.
+ * pane's ↓/↑ badge. Local refs only (as of the last fetch): Linyra never fetches.
  * Pure: no vscode import.
  */
 export interface AheadBehind {
@@ -55,7 +55,7 @@ export function behindRepos(repoIds: readonly string[], sync: Readonly<Record<st
   return repoIds.filter((id) => (sync[id]?.behind ?? 0) > 0);
 }
 
-/** Fetch All in the status bar while it runs ("Polylog: fetching 23/68…"): how many are done. */
+/** Fetch All in the status bar while it runs ("Linyra: fetching 23/68…"): how many are done. */
 export function fetchProgress(done: number, total: number): string {
   return localize("fetching {0}/{1}…", done, total);
 }
@@ -64,7 +64,7 @@ export function fetchProgress(done: number, total: number): string {
 export function fetchSummary(total: number, behind: number): string {
   const repos = localize("{0} {1}", total, localize(total === 1 ? "repository" : "repositories"));
   const found = behind === 0 ? localize("nothing to pull") : localize("{0} behind {1} upstream", behind, localize(behind === 1 ? "its" : "their"));
-  return localize("Polylog: fetched {0} · {1}", repos, found);
+  return localize("Linyra: fetched {0} · {1}", repos, found);
 }
 
 /**
@@ -93,5 +93,5 @@ export function pullReason(message: string): string {
 }
 
 export function pullSummary(pulled: number): string {
-  return localize("Polylog: pulled {0} {1}", pulled, localize(pulled === 1 ? "repository" : "repositories"));
+  return localize("Linyra: pulled {0} {1}", pulled, localize(pulled === 1 ? "repository" : "repositories"));
 }

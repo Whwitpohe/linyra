@@ -1,11 +1,24 @@
 # Changelog
 
-All notable changes to Polylog are documented here.
+Changes to Linyra and its Polylog history are documented here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
+
+## [Unreleased]
+
+### Changed
+
+- **Linyra is the fork's independent product name.** The extension now uses
+  `whwitpohe.linyra`, with matching English/Chinese listing names, command categories,
+  panel titles and messages. The original Polylog copyright and license remain intact.
+- **Install and publish under the fork publisher.** The README explains the separate
+  extension identity, installation from a Linyra VSIX and pending registry publication.
+  Existing `polylog.*` settings, keybindings, commands and view ids stay compatible;
+  disable the old extension when switching. Private filter and layout state belongs to
+  each extension id. Earlier releases and tags keep their original identity.
 
 ## [1.4.0] — 2026-10-27
 

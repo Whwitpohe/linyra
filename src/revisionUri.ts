@@ -1,7 +1,7 @@
 import * as nodePath from "path";
 import { isSha } from "./types";
 
-// Polylog's own scheme: the git extension's `git:` URIs are internal to
+// Linyra's own scheme: the git extension's `git:` URIs are internal to
 // vscode.git and have changed between releases.
 export const SCHEME = "polylog";
 
@@ -20,7 +20,7 @@ export interface RevisionRef {
   without?: string[];
 }
 
-/** Combined Changes' selection limit: a URI naming more commits is not one Polylog made. */
+/** Combined Changes' selection limit: a URI naming more commits is not one Linyra made. */
 const MAX_WITHOUT = 100;
 
 export function encodeRevision(r: RevisionRef): { path: string; query: string } {
@@ -47,7 +47,7 @@ export function decodeRevision(path: string, query: string): RevisionRef {
 }
 
 /**
- * The working-tree file a revision shows ("Open File" on a Polylog diff), or undefined
+ * The working-tree file a revision shows ("Open File" on a Linyra diff), or undefined
  * when the repository is not one of the workspace's or the path would leave it.
  */
 export function workingFile(r: RevisionRef, repoRoots: readonly string[]): string | undefined {
