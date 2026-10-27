@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **An original visual identity for Linyra.** Two interwoven history loops replace the
+  inherited merge-lanes logo, with a new extension icon, matching theme-aware panel mark
+  and a 128px publisher export. The mark uses no letter monogram. The store banner follows
+  the new icon; editor colors and functional controls stay unchanged.
 - **Linyra is the fork's independent product name.** The extension now uses
   `whwitpohe.linyra`, with matching English/Chinese listing names, command categories,
   panel titles and messages. The original Polylog copyright and license remain intact.
