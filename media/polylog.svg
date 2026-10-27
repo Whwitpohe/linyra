@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
-  <!-- Panel tab icon: the extension icon's three lanes merging into one log, single-colour so it follows the theme. -->
+  <!-- Linyra panel icon: preserve the original merge-lanes shape, monochrome so it follows the theme. -->
   <path d="M2.5 4.2 C 5.8 4.2, 6.2 8, 9.2 8"/>
   <path d="M2.5 11.8 C 5.8 11.8, 6.2 8, 9.2 8"/>
   <path d="M2.5 8 H 11.6"/>

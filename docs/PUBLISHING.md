@@ -47,6 +47,15 @@ Get-FileHash .\whwitpohe.linyra-1.4.0.vsix -Algorithm SHA256
 还需验证最低支持版 VS Code 1.85.0，检查解压后的包内容与隐私扫描；本地词表通过忽略文件提供，CI 通过 Secret 提供。
 两个商店上传同一份经过验证的 VSIX，不分别重新构建。发布前确认包内 publisher/name/version 与上表一致。
 
+## 品牌图标
+
+- `media/icon-source.png` 是用户确认的配色原图：保留原 Polylog 的三线合流结构，改为紫／蓝／薄荷绿与深蓝底。两个 PNG 交付尺寸从此图直接缩放，不再次生成或重画。
+- `media/icon.svg` 是同配色的可编辑矢量参考；图形继承原 Polylog，保留上游版权及来源，不作为新的原创图形声称。
+- `media/icon.png` 是扩展商店使用的 256×256 PNG，随 VSIX 打包。
+- `media/publisher-icon.png` 是发布者表单使用的 128×128 PNG，不放进 VSIX。
+- `media/polylog.svg` 保留原三线合流的单色面板图形，通过 `currentColor` 跟随编辑器主题；文件名继续保持兼容。
+- 更改品牌不改变编辑器的 Git 状态色、布局或任何功能入口。
+
 ## Visual Studio Marketplace
 
 在 [Publisher 管理后台](https://marketplace.visualstudio.com/manage) 使用自己的 Microsoft 账号创建或管理 `whwitpohe` 发布者。

@@ -11,6 +11,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **A cool-color identity for Linyra.** The approved icon keeps the original Polylog
+  three-history merge shape and uses periwinkle, sky blue and mint on midnight navy.
+  The extension and 128px publisher icons share the same approved image. The panel keeps
+  its theme-aware monochrome merge mark; editor colors and functional controls stay unchanged.
 - **Linyra is the fork's independent product name.** The extension now uses
   `whwitpohe.linyra`, with matching English/Chinese listing names, command categories,
   panel titles and messages. The original Polylog copyright and license remain intact.
