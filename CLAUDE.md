@@ -11,7 +11,7 @@ a time. Merging the log is the core of the product; the panel also gives a cross
 view of uncommitted work and a comparison of two branches across repositories. Anything else
 is a non-goal.
 
-**Current status: v1 implemented per the plan in docs/superpowers/plans/2026-09-23-polylog.md; not released.** The authoritative design is
+**Current status: 1.4.0 release candidate in the Whwitpohe fork.** The original v1 design is
 `docs/superpowers/specs/2026-09-23-polylog-design.md`. Read it before writing any code; this
 file records the standing rules, not the design.
 
@@ -58,8 +58,9 @@ Canonical placeholders: `acme-web`, `acme-api`, `acme-libs`, `origin/release-1.4
 org name and internal module paths reached *both marketplaces inside a shipped VSIX* before
 being caught and scrubbed in a follow-up release. A CI check is cheaper than a scrub release.
 
-This repository also carries a **local git identity** (`lntvan166 <lntvan166@gmail.com>`)
-overriding the machine's global work identity. Never commit here with a work email.
+This fork uses the repository-local identity
+`Whwitpohe <7278281+Whwitpohe@users.noreply.github.com>`, overriding the machine's global
+identity. Historical upstream authorship is unchanged. Never commit here with a work email.
 
 ### 4. Never block the extension host
 

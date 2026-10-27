@@ -1,8 +1,9 @@
+import { localize } from "./i18n";
 import { randomBytes } from "crypto";
 import * as vscode from "vscode";
 import { COMMIT_PAGE, pairDuplicates, pushRecent, repoCounts, summaryLabel, tabTitle, validPair, type Pair } from "./compareModel";
-import type { CRepoRow, ReposHost, ReposWebview } from "./compareProtocol";
-import { FAVORITES, MODE, modeOf, PAIR, plural, RECENT, resultOf, SHOWN, type CompareMode, type Deps } from "./compareView";
+import type { CRepoRow, CompareLayout, ReposHost, ReposWebview } from "./compareProtocol";
+import { FAVORITES, MODE, modeOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, type CompareMode, type Deps, type CompareSide } from "./compareView";
 import { isAbortError } from "./pool";
 import { renderReposHtml } from "./webview/compare/html";
 import { accentOf, assignAccents } from "./webview/view";
@@ -24,6 +25,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   private readonly disposables: vscode.Disposable[] = [];
   private readonly touched = new Set<string>();
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private sides: { left: CompareSide; right: CompareSide } | undefined;
 
   constructor(private readonly deps: Deps) {
     this.disposables.push(
@@ -42,6 +44,31 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     return modeOf(this.deps.context);
   }
 
+  attachSides(sides: { left: CompareSide; right: CompareSide }): void {
+    this.sides = sides;
+    for (const side of ["left", "right"] as const) sides[side].attach((message) => this.post(message),
+      () => this.view?.visible === true && this.sideShown(side));
+  }
+
+  private sideShown(side: "left" | "right"): boolean { return !this.state.get<boolean>(`polylog.compare.${side}Hidden`, false); }
+
+  async setSideShown(side: "left" | "right", show: boolean, focus = false): Promise<void> {
+    await this.state.update(`polylog.compare.${side}Hidden`, !show);
+    if (focus) await this.show();
+    this.postState();
+    this.sides?.[side].visibilityChanged();
+    if (focus) this.post({ type: "focusSide", side });
+  }
+
+  private layout(): CompareLayout {
+    const saved = this.state.get<Partial<CompareLayout>>("polylog.compare.layout", {});
+    const size = (value: unknown, fallback: number, max: number, min = 120) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
+    return { repositoriesWidth: size(saved.repositoriesWidth, 240, 1000, 160), leftWidth: size(saved.leftWidth, 480, 1600, 100), leftHeight: size(saved.leftHeight, 180, 1200, 80), sidesHeight: size(saved.sidesHeight, 280, 1200),
+      orientation: saved.orientation === "sideBySide" || saved.orientation === "stacked" ? saved.orientation : "auto" };
+  }
+
+  toolbarChanged(): void { this.postState(); }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     const out = vscode.Uri.joinPath(this.deps.context.extensionUri, "out");
     view.webview.options = { enableScripts: true, localResourceRoots: [out] };
@@ -53,7 +80,11 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     });
     view.webview.onDidReceiveMessage((m: ReposWebview) => void this.onMessage(m));
     // Hidden or collapsed: its reads stop. Shown again: the remembered pair is read again (nothing is kept).
-    view.onDidChangeVisibility(() => (view.visible ? void this.start() : this.stop()));
+    view.onDidChangeVisibility(() => {
+      if (view.visible) void this.start(); else this.stop();
+      this.sides?.left.visibilityChanged();
+      this.sides?.right.visibilityChanged();
+    });
     view.onDidDispose(() => {
       if (this.view !== view) return;
       this.view = undefined;
@@ -77,12 +108,14 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       await vscode.commands.executeCommand("setContext", "polylog.compareShown", true);
     }
     await vscode.commands.executeCommand(`${CompareRepos.viewType}.focus`);
+    this.deps.log.toolbarChanged();
   }
 
   /** Hides the Polylog Compare tab until Compare Branches is clicked again. */
   async close(): Promise<void> {
     await this.state.update(SHOWN, false);
     await vscode.commands.executeCommand("setContext", "polylog.compareShown", false);
+    this.deps.log.toolbarChanged();
   }
 
   /** The repository the user picked, kept while the tab is hidden: it is picked again when listed. */
@@ -132,6 +165,13 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.openPicker("right");
   }
 
+  async comparePair(pair: Pair, repoId: string): Promise<void> {
+    await this.show();
+    this.wantPicker = undefined;
+    await this.setPair(pair);
+    this.select(repoId);
+  }
+
   /** One side known, the other not: the old comparison leaves the sides; the guidance says what to pick. */
   private async beginPending(p: Pair): Promise<void> {
     this.pending = p;
@@ -159,6 +199,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.deps.selection.set(undefined);
     this.postState();
     await this.deps.store.setPair(p);
+    if (this.deps.store.pair?.left === p.left && this.deps.store.pair.right === p.right) await this.deps.selection.syncFile(this.deps);
   }
 
   async swap(): Promise<void> {
@@ -168,6 +209,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.postState();
     this.changed();
     this.deps.selection.touch();
+    await this.deps.selection.syncFile(this.deps);
   }
 
   async setMode(mode: CompareMode): Promise<void> {
@@ -215,17 +257,18 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
 
   private message(): string | undefined {
     const pair = this.pairShown();
-    if (!pair || !pair.left) return "Pick the branch to merge from (◀) and the branch it goes into (▶).";
-    if (!pair.right) return `Pick the branch ${pair.left} goes into (▶).`;
-    if (pair.left === pair.right) return `Pick two different branches. Both sides are ${pair.left}.`;
-    if (this.deps.log.tickedRepos().length === 0) return "No repositories are ticked in the Repo List.";
+    if (!pair || !pair.left) return localize("Pick the branch to merge from (◀) and the branch it goes into (▶).");
+    if (!pair.right) return localize("Pick the branch {0} goes into (▶).", pair.left);
+    if (pair.left === pair.right) return localize("Pick two different branches. Both sides are {0}.", pair.left);
+    if (this.deps.log.tickedRepos().length === 0) return localize("No repositories are ticked in the Repo List.");
     return undefined;
   }
 
   private postState(): void {
     const pair = this.pairShown();
     if (this.view) this.view.description = tabTitle(pair);
-    this.post({ type: "state", pair, mode: this.mode, recent: this.state.get<Pair[]>(RECENT, []), favorites: this.state.get<string[]>(FAVORITES, []), message: this.message() });
+    this.post({ type: "state", pair, mode: this.mode, recent: this.state.get<Pair[]>(RECENT, []), favorites: this.state.get<string[]>(FAVORITES, []), message: this.message(),
+      hideSame: hideSameOf(this.deps.context), showLeft: this.sideShown("left"), showRight: this.sideShown("right"), layout: this.layout() });
     void this.setContext();
   }
 
@@ -236,7 +279,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   private summary(): string {
     const ticked = this.deps.log.tickedRepos().length;
     const results = this.deps.store.results();
-    return this.deps.store.reading ? `Reading ${plural(ticked, "repository", "repositories")}… ${results.length > 0 ? summaryLabel(results.map((x) => x.result), ticked) : ""}`.trim()
+    return this.deps.store.reading ? localize("Reading {0}… {1}", plural(ticked, "repository", "repositories"), results.length > 0 ? summaryLabel(results.map((x) => x.result), ticked) : "").trim()
       : summaryLabel(results.map((x) => x.result), ticked);
   }
 
@@ -272,9 +315,9 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     // "The same files" only once this pair's read is done and found identical repositories.
     const done = pair !== null && shown !== null && pair.left === shown.left && pair.right === shown.right && !this.deps.store.reading;
     const empty = rows.length > 0 ? undefined
-      : !done ? (pair ? "Reading…" : undefined)
-      : results.some((x) => x.result.kind === "identical") ? `${pair.left} and ${pair.right} have the same files in every repository.`
-      : results.length > 0 ? `None of the ticked repositories has both ${pair.left} and ${pair.right}.` : undefined;
+      : !done ? (pair ? localize("Reading…") : undefined)
+      : results.some((x) => x.result.kind === "identical") ? localize("{0} and {1} have the same files in every repository.", pair.left, pair.right)
+      : results.length > 0 ? localize("None of the ticked repositories has both {0} and {1}.", pair.left, pair.right) : undefined;
     this.post({
       type: "repos", reading: this.deps.store.reading, summary: pair && pair.left !== pair.right ? this.summary() : "", rows,
       missing: results.filter((x) => x.result.kind === "missing").map((x) => x.repo.name), selected: this.deps.selection.repoId,
@@ -286,6 +329,33 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   async onMessage(m: ReposWebview): Promise<void> {
     try {
       switch (m?.type) {
+        case "sideReady":
+          this.sides?.left.visibilityChanged();
+          this.sides?.right.visibilityChanged();
+          return;
+        case "sideOpen": case "sideExpand":
+          if ((m.side === "left" || m.side === "right") && typeof m.id === "string") {
+            if (m.type === "sideOpen") await this.sides?.[m.side].openNode(m.id);
+            else await this.sides?.[m.side].expandNode(m.id);
+          }
+          return;
+        case "sideExpandAll":
+          if (m.side === "left" || m.side === "right") await this.sides?.[m.side].expandAll();
+          return;
+        case "sideVisibility":
+          if ((m.side === "left" || m.side === "right") && typeof m.show === "boolean") await this.setSideShown(m.side, m.show);
+          return;
+        case "hideSame":
+          if (typeof m.hide === "boolean") await vscode.commands.executeCommand(m.hide ? "polylog.compareHideSame" : "polylog.compareShowSame");
+          return;
+        case "close": return this.close();
+        case "layout": {
+          const layout = m.layout;
+          if (!layout || (layout.orientation !== "auto" && layout.orientation !== "sideBySide" && layout.orientation !== "stacked")) return;
+          if (![layout.repositoriesWidth, layout.leftWidth, layout.leftHeight, layout.sidesHeight].every((value) => typeof value === "number" && Number.isFinite(value))) return;
+          await this.state.update("polylog.compare.layout", layout);
+          return;
+        }
         case "ready":
           this.postState();
           this.changed();
@@ -348,7 +418,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         }
       }
     } catch (e) {
-      if (!isAbortError(e)) console.error("Polylog: Compare", e);
+      if (!isAbortError(e)) console.error(localize("Polylog: Compare"), e);
     }
   }
 

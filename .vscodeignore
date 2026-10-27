@@ -6,7 +6,11 @@
 !out/webview.css
 !out/compare.js
 !out/compare.css
+!out/changes.js
+!out/changes.css
 !package.json
+!package.nls*.json
+!l10n/bundle.l10n.*.json
 !README.md
 !CHANGELOG.md
 !LICENSE

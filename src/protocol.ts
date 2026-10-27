@@ -1,12 +1,19 @@
 import type { ResolvedProfile } from "./profileModel";
+import type { Branches, BranchSidebarState } from "./branchModel";
 import type { FilterState } from "./filterModel";
 import type { BranchUse } from "./logQuery";
 import type { Commit, Repo, RepoFailure } from "./types";
+import type { ChangesMessage, ChangesPage } from "./changesProtocol";
+import type { ChangesLayout, ToolbarAction, ToolbarState } from "./toolbarModel";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
 export interface Layout {
   repoPaneWidth: number;
   groupByRepo: boolean;
+  changesPaneWidth?: number;
+  changesPaneHeight?: number;
+  showChanges?: boolean;
+  changesLayout?: ChangesLayout;
 }
 
 /** Someone who committed recently, across the workspace (Author box suggestions). */
@@ -41,6 +48,11 @@ export interface WorkRow {
 
 /** Extension host → webview. */
 export type HostMessage =
+  | { type: "toolbar"; state: ToolbarState }
+  | { type: "focusChanges" }
+  | { type: "changesView"; message: ChangesPage | { type: "copied" } }
+  | { type: "sidebarState"; state: BranchSidebarState }
+  | { type: "branchTree"; repoId: string; data?: Branches; loading?: boolean; error?: string }
   | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
   | { type: "loading" }
   /** The uncommitted work behind the Log's switch. `known`: every repository was read (the badge shows a number). */
@@ -61,6 +73,9 @@ export interface CommitRef {
 
 /** Webview → extension host. Every field is untrusted until validated. */
 export type WebviewMessage =
+  | { type: "toolbarAction"; action: ToolbarAction }
+  | { type: "changesView"; message: ChangesMessage }
+  | { type: "branchSidebar"; action: "state" | "load" | "refresh" | "select" | "favorite"; repoId?: string; ref?: string; state?: BranchSidebarState }
   | { type: "ready" }
   | { type: "filter"; filter: FilterState }
   | { type: "loadMore" }
@@ -69,7 +84,7 @@ export type WebviewMessage =
   /** Combined Changes: two or more commits selected (Ctrl/⌘ or Shift). */
   | { type: "selectMany"; items: CommitRef[]; focus: CommitRef }
   | { type: "openFirst"; repoId: string; sha: string }
-  | { type: "layout"; repoPaneWidth: number }
+  | { type: "layout"; repoPaneWidth: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout }
   | { type: "exitHistory" }
   /** The Log's switch: Commits or Uncommitted. */
   | { type: "logMode"; mode: "commits" | "uncommitted" }

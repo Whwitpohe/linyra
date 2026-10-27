@@ -1,3 +1,4 @@
+import { localize } from "../../i18n";
 import { pickerGroups, type Pair, type PickerItem } from "../../compareModel";
 import { clear, h } from "../dom";
 
@@ -86,9 +87,10 @@ export class BranchPicker {
 
   /** Under its box, but inside the view: a narrow or short panel never clips it. */
   private place(anchor: HTMLElement): void {
-    const top = anchor.offsetTop + anchor.offsetHeight + 2;
+    const box = anchor.getBoundingClientRect();
+    const top = box.bottom + 2;
     const width = this.root.offsetWidth;
-    this.root.style.left = `${Math.max(4, Math.min(anchor.offsetLeft, window.innerWidth - width - 4))}px`;
+    this.root.style.left = `${Math.max(4, Math.min(box.left, window.innerWidth - width - 4))}px`;
     this.root.style.top = `${top}px`;
     // The list scrolls inside what is left below the box.
     this.list.style.maxHeight = `${Math.max(80, window.innerHeight - top - this.input.offsetHeight - 24)}px`;
@@ -112,7 +114,7 @@ export class BranchPicker {
     this.items = groups.flatMap((g) => g.items);
     clear(this.list);
     if (this.items.length === 0) {
-      this.list.append(h("div", { class: "picker-empty" }, [!this.loaded ? "Reading branch names…" : this.names.length === 0 ? "No branches in the ticked repositories." : `No branch named "${q.trim()}" in any repository.`]));
+      this.list.append(h("div", { class: "picker-empty" }, [!this.loaded ? localize("Reading branch names…") : this.names.length === 0 ? localize("No branches in the ticked repositories.") : localize("No branch named \"{0}\" in any repository.", q.trim())]));
       return;
     }
     let i = 0;
@@ -126,9 +128,9 @@ export class BranchPicker {
             h("span", { class: "side-mark right", "aria-hidden": "true" }, ["▶"]), h("span", { class: "branch-name" }, [it.pair.right]),
           ])
           : h("div", { class: "picker-row", role: "option", id, "data-i": String(i) }, [
-            h("button", { class: it.favorite ? "star on" : "star", "data-star": it.name, title: it.favorite ? "Remove from Favorites" : "Add to Favorites", "aria-label": `Favorite ${it.name}`, "aria-pressed": String(it.favorite), tabindex: "-1" }, ["★"]),
+            h("button", { class: it.favorite ? "star on" : "star", "data-star": it.name, title: it.favorite ? localize("Remove from Favorites") : localize("Add to Favorites"), "aria-label": localize("Favorite {0}", it.name), "aria-pressed": String(it.favorite), tabindex: "-1" }, ["★"]),
             highlight(it.name, q),
-            h("span", { class: "picker-count" }, [`in ${it.count} ${it.count === 1 ? "repository" : "repositories"}`]),
+            h("span", { class: "picker-count" }, [localize("in {0} {1}", it.count, localize(it.count === 1 ? "repository" : "repositories"))]),
           ]));
         i++;
       }

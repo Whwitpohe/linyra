@@ -1,7 +1,8 @@
 import type { RunOptions } from "./git";
-import { hasOtherAuthors, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, type FilterState } from "./filterModel";
+import { hasOtherAuthors, hashQuery, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { fetchHashPage } from "./hashSearch";
 import { countRecords, parseHistory, parseLog } from "./gitLog";
-import { takeReady, type RepoProgress } from "./mergeStream";
+import { copyTopoState, takeReady, takeTopoReady, type RepoProgress, type TopoMergeState } from "./mergeStream";
 import { abortError, runPool } from "./pool";
 import type { Commit, Repo, RepoFailure } from "./types";
 
@@ -13,6 +14,7 @@ export interface QueryState {
   progress: Map<string, RepoProgress>;
   /** File history: every name the file has had, learned on the first page. */
   historyPaths?: string[];
+  topology?: TopoMergeState;
 }
 
 export interface PageRequest {
@@ -31,11 +33,11 @@ export interface PageRequest {
   history?: { repoId: string; path: string } | null;
 }
 
-/** Branch mode: how many repositories have the branch, and how many fell back to their current branch. */
+/** Repositories with at least one selected branch, and those with none. */
 export interface BranchUse {
-  branch: string;
+  branches: string[];
   found: number;
-  fallback: number;
+  missing: number;
 }
 
 export interface PageResult {
@@ -55,6 +57,8 @@ const MAX_ROUNDS = 64;
  * the pending rows live only as long as this query.
  */
 export async function fetchPage(req: PageRequest): Promise<PageResult> {
+  const hash = hashQuery(req.filter.text);
+  if (hash) return fetchHashPage(req, hash);
   const now = req.prev?.now ?? req.now;
   const byId = new Map(req.repos.map((r) => [r.id, r]));
   // Copy, so an aborted page leaves the previous state intact.
@@ -68,18 +72,23 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
           .map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
   );
   const failures: RepoFailure[] = [];
-  const branch = req.filter.branch;
+  const topology = req.filter.sort === "topo" ? copyTopoState(req.prev?.topology) : undefined;
+  const branches = selectedBranches(req.filter);
 
-  // Branch mode, first page: does each repo have the branch? Exit code only
-  // (rev-parse --verify --quiet), so no localized error text is parsed. Each repo runs its
-  // own git log straight after, so none waits for the slowest rev-parse.
+  // One listing resolves all selected names. Each repository can start its own log
+  // immediately afterwards, without waiting for the others' ref listings.
   const resolveRef = async (repo: Repo, signal: AbortSignal): Promise<void> => {
     const p = progress.get(repo.id)!;
-    if (!branch || p.ref !== undefined) return;
-    p.ref = await req.run(repo.root, ["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], signal).then(() => branch, () => null);
+    if (!branches.length || p.refs !== undefined) return;
+    const available = new Set((await req.run(repo.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal)).split(/\r?\n/));
+    p.refs = [...new Set(branches.flatMap((branch) => {
+      if (branch === "HEAD") return ["HEAD"];
+      const ref = branch.startsWith("refs/") ? branch : available.has(`refs/heads/${branch}`) ? `refs/heads/${branch}` : `refs/remotes/${branch}`;
+      return available.has(ref) ? [ref] : [];
+    }))];
     if (signal.aborted) throw abortError();
   };
-  if (branch && !req.prev && req.history) {
+  if (branches.length && !req.prev && req.history) {
     // File history reads the file's names on its branch first.
     const repo = byId.get(req.history.repoId);
     if (repo && progress.has(repo.id)) await resolveRef(repo, req.signal);
@@ -90,9 +99,13 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
   if (req.history && !historyPaths) {
     const repo = byId.get(req.history.repoId);
     const p = repo && progress.get(repo.id);
-    if (repo && p) {
+    if (repo && p && (!branches.length || p.refs?.length)) {
       try {
-        historyPaths = parseHistoryPaths(await req.run(repo.root, historyPathsArgs(req.history.path, p.ref ?? undefined), req.signal), req.history.path);
+        // Follow each selected tip separately so a rename on one branch cannot hide another's old name.
+        const tips = p.refs?.length ? p.refs : [undefined];
+        const names = await runPool(tips, req.concurrency, (ref, signal) => req.run(repo.root, historyPathsArgs(req.history!.path, ref), signal), req.signal);
+        for (const result of names) if (result.status === "rejected") throw result.reason;
+        historyPaths = [...new Set(names.flatMap((result) => parseHistoryPaths((result as PromiseFulfilledResult<string>).value, req.history!.path)))];
       } catch (e) {
         if (req.signal.aborted) throw abortError();
         progress.delete(repo.id);
@@ -102,9 +115,9 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
   }
 
   const branchUse = (): BranchUse | undefined => {
-    if (!branch) return undefined;
-    const refs = [...progress.values()].map((p) => p.ref);
-    return { branch, found: refs.filter((x) => x).length, fallback: refs.filter((x) => !x).length };
+    if (!branches.length) return undefined;
+    const refs = [...progress.values()].map((p) => p.refs);
+    return { branches, found: refs.filter((x) => x?.length).length, missing: refs.filter((x) => !x?.length).length };
   };
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -117,7 +130,8 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       async (repo, signal) => {
         await resolveRef(repo, signal);
         const p = progress.get(repo.id)!;
-        const o = { pageSize: req.pageSize, now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), ref: p.ref ?? undefined };
+        if (branches.length && !p.refs?.length) return "";
+        const o = { pageSize: req.pageSize, now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);
       },
       req.signal,
@@ -131,7 +145,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         const records = countRecords(result.value);
         p.fetched += records;
         const commits = req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id);
-        if (branch) for (const c of commits) c.ref = p.ref ?? "current branch";
+        if (branches.length) for (const c of commits) c.ref = p.refs?.map((r) => r.replace(/^refs\/(heads|remotes)\//, "")).join(", ");
         p.pending.push(...commits);
         if (records < req.pageSize) p.exhausted = true;
       } else {
@@ -141,9 +155,9 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       }
     });
 
-    const rows = takeReady(progress);
+    const rows = topology ? takeTopoReady(progress, topology) : takeReady(progress);
     const done = [...progress.values()].every((p) => p.exhausted && p.pending.length === 0);
-    if (rows.length > 0 || done) return { rows, failures, state: { now, progress, historyPaths }, done, branchUse: branchUse() };
+    if (rows.length > 0 || done) return { rows, failures, state: { now, progress, historyPaths, ...(topology ? { topology } : {}) }, done, branchUse: branchUse() };
   }
-  return { rows: [], failures, state: { now, progress, historyPaths }, done: false, branchUse: branchUse() };
+  return { rows: [], failures, state: { now, progress, historyPaths, ...(topology ? { topology } : {}) }, done: false, branchUse: branchUse() };
 }

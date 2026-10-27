@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 // Uncommitted work as the Log's switch and the Uncommitted view show it. Pure: no vscode import.
 import { fileTree, type TreeNode } from "./fileTree";
 import type { FileChange } from "./types";
@@ -20,7 +21,7 @@ export type Group = "staged" | "changes";
 export type DiffSide = "head" | "index" | "worktree" | "empty";
 export const NO_UNCOMMITTED_VIEW = "No uncommitted changes in the ticked repositories.";
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
 /** Each changed path once, though a file staged and changed again is in both halves. */
 export function distinctPaths(w: RepoWork): string[] {
@@ -59,9 +60,9 @@ export function meter(w: RepoWork): { added: number; modified: number; deleted: 
 
 export function tags(w: RepoWork): string[] {
   const out: string[] = [];
-  if (w.staged.length > 0) out.push(w.changes.length === 0 ? "all staged" : `${w.staged.length} staged`);
+  if (w.staged.length > 0) out.push(w.changes.length === 0 ? localize("all staged") : localize("{0} staged", w.staged.length));
   const news = w.changes.filter((f) => f.untracked).length;
-  if (news > 0) out.push(`${news} new`);
+  if (news > 0) out.push(localize("{0} new", news));
   return out;
 }
 
@@ -73,10 +74,10 @@ export function previewLabel(w: RepoWork): string {
 export function editedLabel(nowMs: number, editedAt: number | null): string {
   if (editedAt === null) return "";
   const m = Math.floor((nowMs - editedAt) / 60_000);
-  if (m < 1) return "edited just now";
-  if (m < 60) return `edited ${m}m ago`;
-  if (m < 48 * 60) return `edited ${Math.floor(m / 60)}h ago`;
-  return `edited ${Math.floor(m / 1440)}d ago`;
+  if (m < 1) return localize("edited just now");
+  if (m < 60) return localize("edited {0}m ago", m);
+  if (m < 48 * 60) return localize("edited {0}h ago", Math.floor(m / 60));
+  return localize("edited {0}d ago", Math.floor(m / 1440));
 }
 
 /** The diff a row opens, as Source Control: Staged is HEAD ↔ index; Changes is index (or HEAD) ↔ file. */
@@ -106,11 +107,11 @@ export function discardPrompt(repoName: string, files: readonly FileChange[], on
   // A file staged and changed again is listed in both groups: count it once.
   const n = new Set(files.map((f) => f.path)).size;
   const news = discardPlan(files, staged).remove.length;
-  const message = one ? `Discard changes in "${files[0].path}"?` : `Discard changes in ${plural(n, "file")} in ${repoName}?`;
+  const message = one ? localize("Discard changes in \"{0}\"?", files[0].path) : localize("Discard changes in {0} in {1}?", plural(n, "file"), repoName);
   let extra = "";
-  if (staged.length > 0) extra += " Staged changes are discarded too.";
-  if (news > 0) extra += one || news === n ? (news === 1 ? " This deletes the new file." : " This deletes the new files.") : ` ${plural(news, "new file")} will be deleted.`;
-  return { message, detail: `This can't be undone.${extra}`, button: one ? "Discard File" : "Discard All" };
+  if (staged.length > 0) extra += localize(" Staged changes are discarded too.");
+  if (news > 0) extra += one || news === n ? (news === 1 ? localize(" This deletes the new file.") : localize(" This deletes the new files.")) : localize(" {0} will be deleted.", plural(news, "new file"));
+  return { message, detail: localize("This can't be undone.{0}", extra), button: one ? localize("Discard File") : localize("Discard All") };
 }
 
 /** Files a commit-all takes, as git.smartCommitChanges says: every change, or tracked files only. */
@@ -170,18 +171,18 @@ export function describeUncommitted(works: readonly RepoWork[]): { message: stri
   const roots = works.filter((w) => distinctPaths(w).length > 0).map((w): UNode => {
     const ro = w.canStage ? "" : ".readonly";
     const groups: UNode[] = [];
-    for (const [group, list, label] of [["staged", w.staged, "Staged"], ["changes", w.changes, "Changes"]] as const) {
+    for (const [group, list, label] of [["staged", w.staged, localize("Staged")], ["changes", w.changes, localize("Changes")]] as const) {
       if (list.length === 0) continue;
       const id = `${w.repoId}/${group}`;
-      groups.push({ kind: "group", id, label, description: String(list.length), tooltip: `${label} in ${w.name}`, contextValue: `group.${group}${ro}`, repoId: w.repoId, group, children: describeTree(fileTree(list), "", id, w, group) });
+      groups.push({ kind: "group", id, label, description: String(list.length), tooltip: localize("{0} in {1}", label, w.name), contextValue: `group.${group}${ro}`, repoId: w.repoId, group, children: describeTree(fileTree(list), "", id, w, group) });
     }
     return {
       kind: "repo", id: w.repoId, label: w.name, description: plural(distinctPaths(w).length, "file"),
-      tooltip: w.canStage ? `${w.name}: uncommitted changes` : `${w.name}: staging needs VS Code's Git to have this repository open.`,
+      tooltip: w.canStage ? localize("{0}: uncommitted changes", w.name) : localize("{0}: staging needs VS Code's Git to have this repository open.", w.name),
       contextValue: w.canStage ? "repo.stageable" : "repo.readonly", repoId: w.repoId, children: groups,
     };
   });
-  return { message: roots.length === 0 ? NO_UNCOMMITTED_VIEW : undefined, roots };
+  return { message: roots.length === 0 ? localize(NO_UNCOMMITTED_VIEW) : undefined, roots };
 }
 
 /** The Uncommitted view's description (next to its title): how much is uncommitted, and where. */

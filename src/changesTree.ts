@@ -1,7 +1,11 @@
+import { localize } from "./i18n";
 import * as vscode from "vscode";
 import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
 import { decorationFor, describeChanges, describeCombined, stat, viewDescription, type ChangesState, type CombinedOpen, type CombinedState, type NodeDesc, type Owner } from "./changesModel";
 import { commitKey, UNCOMMITTED } from "./types";
+import { commitDetails } from "./changesPresentation";
+import type { CommitReferences } from "./commitReferences";
+import type { ChangeRow, ChangesMessage, ChangesPage } from "./changesProtocol";
 import { ACCENT_COLORS } from "./webview/view";
 
 /** Runs git in a repository (All Files reads one folder with it). */
@@ -18,6 +22,7 @@ export interface OpenDiffArgs {
 }
 
 export interface ChangesSnapshot {
+  presentation?: ChangesPage;
   message: string | undefined;
   /** What the view's title says next to "Changes". */
   description: string;
@@ -37,7 +42,7 @@ export interface ChangesSnapshot {
 const nowSec = () => Math.floor(Date.now() / 1000);
 const TREE_SCHEME = "polylog-tree";
 
-/** The native Changes view: a thin adapter from changesModel's descriptors to TreeItems. */
+/** The Changes view reuses the tree model and native commands in a resizable detail layout. */
 export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.FileDecorationProvider, vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<NodeDesc | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
@@ -47,7 +52,14 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   private decorations = new Map<string, vscode.FileDecoration>();
   /** The URIs decorated now: a new commit tells VS Code about these and the new ones only. */
   private decorated: vscode.Uri[] = [];
-  private readonly view: vscode.TreeView<NodeDesc>;
+  private send: ((message: ChangesPage | { type: "copied" }) => void) | undefined;
+  private isVisible: () => boolean = () => false;
+  private readonly additionalViews = new Set<{ send: (message: ChangesPage | { type: "copied" }) => void; visible: () => boolean }>();
+  private description = "";
+  private selection: NodeDesc[] = [];
+  private readonly selections = new Map<string, NodeDesc[]>();
+  private nodesById = new Map<string, NodeDesc>();
+  private presentation: ChangesPage | undefined;
   private state: ChangesState | null = null;
   private roots: NodeDesc[] = [];
   private message: string | undefined;
@@ -63,8 +75,135 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   constructor(private readonly runInRepo?: RunInRepo, allFiles = false, private readonly concurrency: () => number = () => 16) {
     this.reads = new Limiter(concurrency());
     this.allFiles = allFiles;
-    this.view = vscode.window.createTreeView("polylog.changes", { treeDataProvider: this, showCollapseAll: true, canSelectMany: true });
     this.render();
+  }
+
+  attach(send: (message: ChangesPage | { type: "copied" }) => void, visible: () => boolean): void {
+    this.send = send;
+    this.isVisible = visible;
+  }
+
+  visibilityChanged(): void {
+    if (this.visible) { this.post(); void this.hydrate(); }
+  }
+
+  subscribe(send: (message: ChangesPage | { type: "copied" }) => void, visible: () => boolean): vscode.Disposable {
+    const view = { send, visible };
+    this.additionalViews.add(view);
+    this.visibilityChanged();
+    return new vscode.Disposable(() => this.additionalViews.delete(view));
+  }
+
+  private broadcast(message: ChangesPage | { type: "copied" }): void {
+    this.send?.(message);
+    for (const view of this.additionalViews) view.send(message);
+  }
+
+  /** Native webview context menus carry an id, resolved against the current host-owned tree. */
+  commandArgument(arg: unknown): unknown {
+    const id = (arg as { changesNodeId?: unknown } | undefined)?.changesNodeId;
+    return typeof id === "string" ? this.nodesById.get(id) : arg;
+  }
+
+  commandSelection(arg: unknown, many?: unknown[]): unknown[] | undefined {
+    const node = this.commandArgument(arg);
+    const viewId = (arg as { changesViewId?: unknown } | undefined)?.changesViewId;
+    const selected = typeof viewId === "string" ? this.selections.get(viewId) ?? [] : this.selection;
+    return typeof (arg as { changesNodeId?: unknown } | undefined)?.changesNodeId === "string" && selected.includes(node as NodeDesc)
+      ? selected : many;
+  }
+
+  async onMessage(value: unknown, viewId = "main"): Promise<void> {
+    if (!value || typeof value !== "object") return;
+    const m = value as ChangesMessage;
+    if (m.type === "action") {
+      if (m.action === "expandAll") {
+        const state = this.state, combined = this.combined;
+        const read = async (nodes: NodeDesc[]): Promise<void> => {
+          if (this.state !== state || this.combined !== combined) return;
+          await Promise.all(nodes.filter((node) => node.kind !== "file").map(async (node) => read(await this.getChildren(node))));
+        };
+        await read(this.roots);
+        if (this.state === state && this.combined === combined) this.post();
+        return;
+      }
+      if (m.action === "openOnRemote") {
+        const details = commitDetails(this.state, this.combined);
+        if (details.length === 1) await vscode.commands.executeCommand("polylog.commitOpenOnRemote", { repoId: details[0].repoId, sha: details[0].sha });
+        return;
+      }
+      const command = m.action === "allFiles" ? "polylog.changesShowAll" : m.action === "changedFiles" ? "polylog.changesShowChanged" : m.action === "clearSelection" ? "polylog.clearSelection" : m.action === "openChangesEditor" ? "polylog.openChangesEditor" : undefined;
+      if (command) await vscode.commands.executeCommand(command);
+      return;
+    }
+    if (m.type === "ready") { this.post(); await this.hydrate(); return; }
+    if (m.type === "selection" && Array.isArray(m.ids)) {
+      const selected = m.ids.flatMap((id) => typeof id === "string" && this.nodesById.has(id) ? [this.nodesById.get(id)!] : []);
+      this.selections.set(viewId, selected);
+      if (viewId === "main") this.selection = selected;
+      return;
+    }
+    if (m.type === "copy" && (m.field === "sha" || m.field === "message")) {
+      const detail = commitDetails(this.state, this.combined).find((c) => c.sha === m.sha);
+      if (!detail) return;
+      if (m.field === "sha") await vscode.env.clipboard.writeText(detail.sha);
+      else if (this.state?.commit.sha === detail.sha && this.state.status === "ready") await vscode.env.clipboard.writeText(this.state.message || this.state.commit.subject);
+      else await vscode.commands.executeCommand("polylog.commitCopyMessage", { repoId: detail.repoId, sha: detail.sha });
+      this.broadcast({ type: "copied" });
+      return;
+    }
+    if (m.type !== "open" && m.type !== "expand") return;
+    const node = this.nodesById.get(m.id);
+    if (!node) return;
+    if (m.type === "expand" && node.kind !== "file") { await this.getChildren(node); this.post(); return; }
+    if (m.type !== "open" || node.kind !== "file") return;
+    const command = this.getTreeItem(node).command;
+    if (command) await vscode.commands.executeCommand(command.command, ...(command.arguments ?? []));
+  }
+
+  private children(node: NodeDesc): NodeDesc[] {
+    return node.kind === "file" ? [] : this.allFilesActive()
+      ? this.loaded.get(node.kind === "commit" || node.kind === "repo" ? "" : node.path) ?? [] : node.children;
+  }
+
+  private post(): void {
+    this.nodesById.clear();
+    const row = (node: NodeDesc): ChangeRow => {
+      this.nodesById.set(node.id, node);
+      const item = this.getTreeItem(node);
+      const common = { id: node.id, kind: node.kind === "commit" ? "repo" as const : node.kind,
+        label: node.label, description: node.description, tooltip: node.tooltip, contextValue: item.contextValue ?? "",
+        path: node.kind === "folder" || node.kind === "file" ? node.path : undefined };
+      return node.kind === "file"
+        ? { ...common, oldPath: node.file.oldPath, status: node.file.status, added: node.file.added, deleted: node.file.deleted,
+          staged: node.file.staged, untracked: node.file.untracked, unchanged: node.unchanged, combined: !!node.combined }
+        : { ...common, collapsed: node.kind === "folder" && node.changedCount === 0, children: this.children(node).map(row) };
+    };
+    const roots = this.roots.map(row);
+    // The full commit lives below the files, so its title never occupies a tree row.
+    const shown = this.state?.commit.sha !== UNCOMMITTED && this.roots[0]?.kind === "commit" ? roots[0].children ?? [] : roots;
+    const details = commitDetails(this.state, this.combined);
+    const key = this.state ? commitKey(this.state.commit) : this.combined ? JSON.stringify(this.combined.repos.map((r) => [r.repoId, r.commits.map((c) => c.sha)])) : "";
+    const changedRoot = this.allFilesActive() ? describeChanges(this.state, nowSec()).roots[0] : undefined;
+    const searchRoots = changedRoot && changedRoot.kind !== "file" ? changedRoot.children.map(row) : undefined;
+    const page: ChangesPage = { type: "changes", key: `${key}/${this.allFiles}`, description: this.description, message: this.message,
+      roots: shown, searchRoots, details, focusId: this.focused?.id, allFiles: this.allFiles };
+    this.presentation = page;
+    this.broadcast(page);
+  }
+
+  /** As with the native tree, only changed folders expand automatically in All Files. */
+  private async hydrate(): Promise<void> {
+    if (!this.allFilesActive() || !this.visible || !this.roots[0]) return;
+    const state = this.state;
+    const read = async (node: NodeDesc): Promise<void> => {
+      if (state !== this.state || node.kind === "file") return;
+      const rows = await this.getChildren(node);
+      if (state !== this.state) return;
+      this.post();
+      await Promise.all(rows.filter((r) => r.kind === "folder" && (r.changedCount ?? 0) > 0).map(read));
+    };
+    await read(this.roots[0]);
   }
 
   get showsAllFiles(): boolean {
@@ -98,7 +237,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       ...merged.folders.map((f): NodeDesc => ({ kind: "folder", id: `${base}/d:${f.path}`, label: f.name, description: f.changedCount > 0 ? String(f.changedCount) : "", tooltip: f.path, path: f.path, children: [], changedCount: f.changedCount })),
       ...merged.files.map((f): NodeDesc => f.change
         ? { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: stat(f.change), tooltip: f.change.oldPath ? `${f.change.oldPath} → ${f.path}` : f.path, path: f.path, file: f.change, openable: f.change.added !== null, owner }
-        : { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: f.submodule ? "submodule" : "", tooltip: f.path, path: f.path, file: { path: f.path, added: 0, deleted: 0 }, openable: !f.submodule, owner, unchanged: !f.submodule }),
+        : { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: f.submodule ? localize("submodule") : "", tooltip: f.path, path: f.path, file: { path: f.path, added: 0, deleted: 0 }, openable: !f.submodule, owner, unchanged: !f.submodule }),
     ];
     for (const r of rows) this.parents.set(r, parent);
     this.loaded.set(dir, rows);
@@ -117,6 +256,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (!parent) return;
     await this.level(dir, parent);
     this.emitter.fire(undefined);
+    this.post();
   }
 
   private findFolder(dir: string): NodeDesc | undefined {
@@ -126,7 +266,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
 
   /** Expanded and on screen (integration test seam). */
   get visible(): boolean {
-    return this.view.visible;
+    return this.isVisible() || [...this.additionalViews].some((view) => view.visible());
   }
 
   set(state: ChangesState | null): void {
@@ -159,6 +299,13 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     return this.state;
   }
 
+  /** References arrive independently; keep in-flight file reads and expanded folders intact. */
+  setReferences(repoId: string, sha: string, references: CommitReferences): void {
+    if (this.state?.commit.repoId !== repoId || this.state.commit.sha !== sha) return;
+    this.state.references = references;
+    this.post();
+  }
+
   snapshot(): ChangesSnapshot {
     // All Files: the folders read so far (what is on screen).
     const kids = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [] : this.allFilesActive() ? this.loaded.get(n.kind === "commit" || n.kind === "repo" ? "" : n.path) ?? [] : n.children);
@@ -175,7 +322,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       const model = n.kind === "file" ? decorationFor(n.file.status) : undefined;
       return d && model ? [`${n.label} ${d.badge} ${model.color}`] : [];
     });
-    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.view.selection.map((n) => n.label),
+    return { presentation: this.presentation, message: this.message, description: this.description, items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.selection.map((n) => n.label),
       combined: all(this.roots).flatMap((n) => (n.kind === "file" && n.combined ? [n.combined] : [])) };
   }
 
@@ -185,9 +332,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     const d = combined ?? describeChanges(this.state, nowSec());
     this.roots = d.roots;
     this.message = d.message;
-    this.view.message = d.message;
     // Next to the title: which repository and commit this is, or its uncommitted work.
-    this.view.description = combined ? combined.description : viewDescription(this.state);
+    this.description = combined ? combined.description : viewDescription(this.state);
     void vscode.commands.executeCommand("setContext", "polylog.combined", combined !== undefined);
     this.decorations = new Map();
     const before = this.decorated;
@@ -214,29 +360,16 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (changed.length > 0) this.decorationsChanged.fire(changed);
     // File history: select the file this history is about, without taking focus from the Log.
     const target = this.focused;
-    this.pendingReveal = target;
+    this.selection = target ? [target] : [];
+    this.selections.clear();
+    this.selections.set("main", this.selection);
+    this.post();
+    void this.hydrate();
   }
 
-  /**
-   * Selects the File History file once VS Code has fetched the folder holding it: revealed any
-   * earlier, or after the tree was redrawn (stepping through commits), VS Code cannot find the
-   * node and logs an error.
-   */
+  /** File History selects its file without moving focus away from the Log. */
   private revealSoon(target: NodeDesc): void {
-    this.pendingReveal = target;
-  }
-  private pendingReveal: NodeDesc | undefined;
-
-  /** VS Code has these children: reveal the File History file if it is among them, and still the one shown. */
-  private fetched(children: NodeDesc[]): NodeDesc[] {
-    const target = this.pendingReveal;
-    if (target && children.includes(target)) {
-      this.pendingReveal = undefined;
-      setTimeout(() => {
-        if (this.focused === target) void this.view.reveal(target, { select: true, focus: false }).then(undefined, () => undefined);
-      }, 0);
-    }
-    return children;
+    this.selection = [target];
   }
 
   /**
@@ -258,10 +391,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   }
 
   getChildren(node?: NodeDesc): NodeDesc[] | Promise<NodeDesc[]> {
-    if (!node) return this.fetched(this.roots);
+    if (!node) return this.roots;
     if (node.kind === "file") return [];
-    if (this.allFilesActive()) return this.level(node.kind === "commit" || node.kind === "repo" ? "" : node.path, node).then((rows) => this.fetched(rows));
-    return this.fetched(node.children);
+    if (this.allFilesActive()) return this.level(node.kind === "commit" || node.kind === "repo" ? "" : node.path, node);
+    return node.children;
   }
 
   /** Uncommitted work under a folder ("" for all of it): ".staged" if part is staged, ".changed" if part is not. */
@@ -311,18 +444,21 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     }
     if (node.kind === "file" && node.unchanged) {
       // Not changed by the commit: the file as it was then, read-only.
-      item.command = { command: "polylog.openRevision", title: "Open File at Commit", arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };
+      item.command = { command: "polylog.openRevision", title: localize("Open File at Commit"), arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };
     } else if (node.kind === "file" && node.combined) {
-      item.command = { command: "polylog.openCombinedDiff", title: "Open Diff", arguments: [node.combined] };
+      item.command = { command: "polylog.openCombinedDiff", title: localize("Open Diff"), arguments: [node.combined] };
     } else if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status };
-      item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };
+      item.command = { command: "polylog.openDiff", title: localize("Open Diff"), arguments: [args] };
     }
     return item;
   }
 
   dispose(): void {
-    this.view.dispose();
+    this.resetAllFiles();
+    this.send = undefined;
+    this.additionalViews.clear();
+    this.isVisible = () => false;
     this.emitter.dispose();
     this.decorationsChanged.dispose();
   }

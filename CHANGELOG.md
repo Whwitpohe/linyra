@@ -7,6 +7,91 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.4.0] — 2026-10-27
+
+### Added
+
+- **A real commit graph across the workspace.** Parent edges are drawn from Git's commit
+  ids, with separate colored lanes for parallel branches and ring markers for branch tips
+  and merges. Repository identity is part of every edge, so unrelated repositories are never
+  connected, even when they contain the same commit hash. Branches and tags pointing at a
+  commit appear beside its subject; matching local and remote tips share a compact label
+  such as `origin & main`.
+- **Searchable branch and author multi-selects.** Start with all local and remote branches,
+  choose several branch names to see their combined history, or clear the selection to return
+  to all branches. Choose several authors, including **Me**, from a searchable checklist.
+  Selections are remembered. A repository with none of the chosen branches is skipped and
+  counted in the footer instead of silently showing an unrelated current branch.
+- **Commit-date and topological sorting.** The sort menu switches between timestamp order
+  and a Git topology walk that keeps children before parents and incoming histories below
+  their merge. Both modes work across repositories and Load More, including commits whose
+  clocks run backwards. The chosen order is remembered.
+- **Fold long linear histories without hiding branch structure.** The graph's explicit
+  controls collapse complete linear paths into a counted summary. Branch heads, tags,
+  forks, merges and unknown parents remain visible. Expand a path again or use the toolbar's
+  expand/collapse controls; commit selection continues to use real commit identities.
+- **Locate a commit by full or abbreviated hash.** Paste at least seven hexadecimal characters
+  into the existing search box, or use `sha:` with at least four. Git resolves the prefix in
+  every selected repository, including old commits outside the current branch. All matching
+  commits are listed when a prefix is ambiguous. Other filters are temporarily disabled and
+  explained in a note; clearing the hash restores them. Ordinary text remains a commit-message search.
+- **Search within the current commit's changed files.** The new file search matches names,
+  full paths and rename sources, keeps matching directory ancestors visible, and shows the
+  matching count. **Enter** opens the first matching diff; **Escape** clears the query.
+  In **All Files**, the search covers the commit's changed files, including unopened folders.
+- **A branch sidebar with explicit repository-scoped actions.** Browse local and remote
+  branches, search names, mark favorites, and view a branch's history. Context actions include
+  comparison with another branch or the working tree, checkout, create, rename, fetch, pull,
+  push, merge, rebase, creating a worktree and deleting branches. Git operations use the chosen
+  repository and full ref; protected or destructive actions retain their checks and prompts.
+- **Simplified Chinese localization.** Commands, menus, filters, pickers, status messages,
+  dialogs and both webviews follow VS Code's language. English remains the fallback, while
+  repository names, paths, ref names and commit messages remain literal.
+
+### Changed
+
+- **Read a complete commit message below its files.** The commit details area preserves
+  paragraphs and trailers, shows author/email, timestamp, copyable hash, repository marker,
+  colored references and an expandable list of containing branches. Drag its divider to
+  adjust its height or use its small arrow to hide it; the height and visibility are remembered.
+- **The Log and Changes share a stable, resizable surface.** Choose side-by-side or stacked
+  layouts, hide/show Changes explicitly, or open it in an independently movable editor tab.
+  The Log toolbar retains grouping, branch comparison, the Uncommitted sidebar, Fetch All,
+  pull actions and repository profiles. Line counts align on the right; file and rename-path
+  colors keep the theme's Git status colors.
+- **Branch comparison keeps all three regions in one surface.** Repositories, Left and Right
+  remain independently scrollable and resizable, with remembered layout and side visibility.
+  **Files / Commits**, swap, refresh, branch search, favorites, recent pairs, duplicate changes,
+  missing-branch information, shared-file filtering, expand/collapse, paging and context
+  actions remain available in explicit controls.
+
+### Fixed
+
+- **Clicking a title or its blank right-hand area no longer collapses an entire Log or
+  Compare view.** The native whole-header collapse targets have been removed. Within the
+  file and commit trees, only the small arrow or deliberate keyboard action expands or
+  collapses a folder or commit; clicking its text selects it.
+- **Toolbar features remain reachable after the layout migration.** The old Log actions are
+  wired to the same commands, the Changes toolbar has clear selection, all/changed files,
+  expand/collapse and a commit-action menu, and Compare retains its side-specific operations.
+- **Filtered file actions do not include hidden children.** A folder in a filtered tree no
+  longer exposes whole-folder mutation actions; multi-file operations use only visible matching
+  file ids. The main and standalone Changes surfaces keep separate selections.
+- **Stale selections cannot open a different repository's diff.** Changed-file and Compare
+  actions resolve host-owned row ids against the current result; a superseded pair, mode or
+  result cannot substitute a path supplied by a webview message. Refresh and swaps retain
+  correct rename paths, status decorations and left/right revision order.
+
+### Notes
+
+- The default branch scope is now **all local and remote branches**. Existing explicit branch
+  selections are retained; clear them to use the new default. The date default remains the
+  last 24 hours.
+- Existing native section positions are replaced by the remembered in-panel layouts. The
+  Uncommitted view remains a separate sidebar, and diffs continue to open in VS Code's editor.
+- Reading history and folding the graph do not modify repositories. Branch-management actions
+  write only when explicitly invoked. No history database, index or background fetch is added.
+
 ## [1.3.1] — 2026-10-22
 
 ### Fixed

@@ -51,7 +51,7 @@ export class WorkList {
             return seg;
           })),
         ]),
-        h("span", { class: "work-tags" }, r.tags.map((t) => h("span", { class: t.endsWith("staged") ? "work-tag staged" : "work-tag" }, [t]))),
+        h("span", { class: "work-tags" }, r.tags.map((tag, i) => h("span", { class: r.hasStaged && i === 0 ? "work-tag staged" : "work-tag" }, [tag]))),
         h("span", { class: "work-edited" }, [r.edited]),
       ]));
     }

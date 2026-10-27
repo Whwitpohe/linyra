@@ -1,3 +1,5 @@
+import type { CommitReference } from "./commitReferences";
+
 export interface Repo {
   /** Absolute repository root; stable identity across messages. */
   id: string;
@@ -18,8 +20,10 @@ export interface Commit {
   email: string;
   subject: string;
   parents: string[];
-  /** Branch mode: the ref this row was read from ("current branch" when the repo lacks it). */
+  /** Selected branches used for this repository's query. */
   ref?: string;
+  /** Branches, HEAD and tags pointing directly at this commit, from Git's decoration field. */
+  refs?: CommitReference[];
   /** File history only: the file as it was in this commit (it may have been renamed since). */
   file?: { path: string; oldPath?: string; status?: ChangeStatus };
 }

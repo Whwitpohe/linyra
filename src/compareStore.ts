@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 import * as vscode from "vscode";
 import { parseShow, showArgs } from "./commitDetail";
 import {
@@ -24,9 +25,9 @@ export interface CompareDeps {
 export function rowLabel(name: string, c: RepoCompare): string {
   switch (c.kind) {
     case "differs": return `${name} ◀${c.left} ▶${c.right} =${c.sameLeft}`;
-    case "nobase": return `${name} no common history`;
-    case "error": return `${name} git error: ${c.reason}`;
-    default: return `${name} ${c.kind}`;
+    case "nobase": return localize("{0} no common history", name);
+    case "error": return localize("{0} git error: {1}", name, c.reason);
+    default: return localize("{0} {1}", name, c.kind);
   }
 }
 

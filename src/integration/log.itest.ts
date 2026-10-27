@@ -1,6 +1,10 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
+import * as testFs from "fs";
+import * as testPath from "path";
+import * as testOs from "os";
 import type { OpenDiffArgs } from "../changesTree";
+import type { ChangeRow } from "../changesProtocol";
 import type { LogSnapshot } from "../logView";
 import type { WebviewMessage } from "../protocol";
 import type { Pair } from "../compareModel";
@@ -11,6 +15,15 @@ const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._ite
 const send = (m: WebviewMessage) => vscode.commands.executeCommand("polylog._itest.send", m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ALL = { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" as const };
+
+/** Git/watchers can briefly retain Windows handles after a ref or remote is removed. */
+async function removeTestDirectory(target: string): Promise<void> {
+  const absolute = testPath.resolve(target);
+  const relative = testPath.relative(testOs.tmpdir(), absolute);
+  assert.ok(relative && !relative.startsWith("..") && !testPath.isAbsolute(relative)
+    && relative.split(testPath.sep)[0].startsWith("polylog-"), "cleanup must stay inside a named temporary Polylog fixture");
+  await testFs.promises.rm(absolute, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+}
 
 async function waitFor<T>(what: string, probe: () => PromiseLike<T | undefined> | T | undefined, ms = 20000): Promise<T> {
   const start = Date.now();
@@ -69,6 +82,39 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("hash lookup finds an old commit outside other filters, opens its diff and exits File History", async () => {
+    await send({ type: "filter", filter: ALL });
+    const start = await until("six rows for hash lookup", (x) => x.rows.length === 6);
+    const target = bySubject(start, "feat: scaffold api");
+    const oldFilter = { ...ALL, date: "24h" as const, author: "nobody", mine: true,
+      branches: ["missing-branch"], path: "unrelated/path", text: target.sha.slice(0, 7).toUpperCase() };
+    await send({ type: "filter", filter: oldFilter });
+    let s = await until("old commit found by hash despite filters", (x) => x.rows.length === 1 && x.rows[0].sha === target.sha && x.done);
+    assert.strictEqual(s.filter.author, "nobody");
+    assert.strictEqual(s.filter.date, "24h", "hash lookup leaves saved filters intact");
+    assert.deepStrictEqual(s.filter.branches, ["missing-branch"]);
+    assert.strictEqual(s.failures.length, 0);
+    await send({ type: "select", repoId: target.repoId, sha: target.sha });
+    await until("hash result details", (x) => x.changes.presentation?.details[0]?.sha === target.sha);
+    await closeEditors();
+    await send({ type: "openFirst", repoId: target.repoId, sha: target.sha });
+    await diffTab();
+    await closeEditors();
+    await send({ type: "filter", filter: { ...oldFilter, text: "" } });
+    await until("previous restrictive filters restored", (x) => x.filter.text === "" && x.rows.length === 0 && x.done);
+    await send({ type: "filter", filter: ALL });
+    await until("all rows again", (x) => x.rows.length === 6);
+    const targetRepo = start.repos.find((repo) => repo.id === target.repoId)!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.joinPath(vscode.Uri.file(targetRepo.root), "upload.go"));
+    s = await until("file history before hash lookup", (x) => x.history?.path === "upload.go");
+    await send({ type: "filter", filter: { ...s.filter, text: target.sha } });
+    await until("hash lookup leaves File History", (x) => x.history === null && x.rows.length === 1 && x.rows[0].sha === target.sha);
+    await send({ type: "filter", filter: { ...ALL, text: "f".repeat(40) } });
+    await until("unknown hash is an empty result", (x) => x.rows.length === 0 && x.done && x.failures.length === 0);
+    await send({ type: "filter", filter: ALL });
+    await until("six rows after hash lookup", (x) => x.rows.length === 6);
+  });
+
   it("filters by author, alone and together with search", async () => {
     await send({ type: "filter", filter: { ...ALL, author: "DANA" } });
     let s = await until("dana's three commits", (x) => x.rows.length === 3);
@@ -79,6 +125,49 @@ describe("Polylog panel", () => {
     await until("no rows: dana never mentions ACME-7", (x) => x.rows.length === 0);
     await send({ type: "filter", filter: ALL });
     await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("one native view keeps Log permanently expanded and remembers the integrated Changes layout", async () => {
+    const manifest = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON;
+    assert.deepStrictEqual(manifest.contributes.views.polylog.map((view: { id: string }) => view.id), ["polylog.log"]);
+    const before = await snapshot();
+    await send({ type: "layout", repoPaneWidth: before.layout.repoPaneWidth, changesPaneWidth: 420, changesPaneHeight: 260, showChanges: true });
+    let state = await until("integrated changes visible", (x) => x.changesVisible && x.layout.changesPaneWidth === 420);
+    assert.strictEqual(state.layout.changesPaneHeight, 260);
+    await send({ type: "changesView", message: { type: "ready" } });
+    await send({ type: "layout", repoPaneWidth: state.layout.repoPaneWidth, showChanges: false });
+    await until("only changed files hidden", (x) => !x.changesVisible && x.layout.showChanges === false);
+    assert.ok((await snapshot()).rows.length > 0, "hiding changed files never collapses the Log");
+    await send({ type: "layout", repoPaneWidth: state.layout.repoPaneWidth, showChanges: true });
+    state = await until("changed files restored", (x) => x.changesVisible);
+    assert.strictEqual(state.layout.changesPaneWidth, 420);
+    await send({ type: "layout", repoPaneWidth: state.layout.repoPaneWidth, changesPaneWidth: 360, changesPaneHeight: 240, showChanges: true });
+  });
+
+  it("restored toolbars preserve grouping, both layout directions, comparison display modes and independently movable changes", async () => {
+    const before = await snapshot();
+    await send({ type: "toolbarAction", action: "toggleRepos" });
+    await until("toolbar toggled grouping", (x) => x.layout.groupByRepo !== before.layout.groupByRepo && x.toolbar.groupByRepo === x.layout.groupByRepo);
+    await send({ type: "toolbarAction", action: "toggleRepos" });
+    await until("grouping restored", (x) => x.layout.groupByRepo === before.layout.groupByRepo);
+    for (const changesLayout of ["sideBySide", "stacked", "auto"] as const) {
+      await send({ type: "layout", repoPaneWidth: before.layout.repoPaneWidth, changesLayout });
+      assert.strictEqual((await snapshot()).layout.changesLayout, changesLayout);
+    }
+    for (const mode of ["commits", "files"] as const) {
+      await vscode.commands.executeCommand(mode === "files" ? "polylog.compareShowFiles" : "polylog.compareShowCommits");
+      const compare = await vscode.commands.executeCommand<{ mode: string }>("polylog._itest.compare");
+      assert.strictEqual(compare?.mode, mode, "Show Files / Show Commits is retained in branch comparison");
+    }
+    await closeEditors();
+    await send({ type: "toolbarAction", action: "openChangesEditor" });
+    await waitFor("a movable changes editor tab", () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
+      .some((tab) => tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes("polylog.changesEditor")) ? true : undefined);
+    await closeEditors();
+    await vscode.commands.executeCommand("polylog.changes.removeView");
+    assert.strictEqual((await snapshot()).layout.showChanges, false);
+    await vscode.commands.executeCommand("polylog.changes.focus");
+    await until("legacy focus command reaches integrated changes", (x) => x.layout.showChanges === true && x.changesVisible);
   });
 
   it("remembers the Repositories pane width the user dragged to", async () => {
@@ -391,6 +480,10 @@ describe("Polylog panel", () => {
   });
 
   it("All Files in the Changes view: the commit's whole tree, one folder read at a time", async () => {
+    await vscode.commands.executeCommand("polylog.open");
+    await vscode.commands.executeCommand("polylog.changes.focus");
+    await until("Changes visible before reading All Files", (x) => x.changesVisible);
+    await vscode.commands.executeCommand("polylog.changesShowChanged");
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const cp = require("child_process") as typeof import("child_process");
@@ -429,9 +522,18 @@ describe("Polylog panel", () => {
       assert.ok(items.includes("lib |"), "a folder with no change, closed");
       assert.ok(!items.includes("x.ts |"), "and not read until opened");
       assert.strictEqual(lsTrees(mark, s), 3, "one git ls-tree per folder shown: the root, src, src/a");
+      const filterRows = (nodes: ChangeRow[]): ChangeRow[] => nodes.flatMap((node) => [node, ...filterRows(node.children ?? [])]);
+      const searchable = filterRows(s.changes.presentation?.searchRoots ?? []);
+      const one = searchable.find((node) => node.kind === "file" && node.label === "one.ts");
+      assert.strictEqual(one?.path, "src/a/one.ts", "file filtering sees the full changed path in All Files mode");
+      assert.ok(!searchable.some((node) => node.label === "package.json"), "changed-file search does not claim to search unopened unchanged folders");
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "open", id: one!.id });
+      await diffTab();
+      await closeEditors();
 
       mark = s;
-      await vscode.commands.executeCommand("polylog._itest.expandChanges", "lib");
+      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "action", action: "expandAll" });
       s = await until("lib's files", (x) => x.changes.items.some((i) => i.trim() === "x.ts |"));
       assert.strictEqual(lsTrees(mark, s), 1, "opening a folder reads that folder only");
 
@@ -840,7 +942,10 @@ describe("Polylog panel", () => {
     try {
       await send({ type: "refresh" });
       await until("acme-web behind the switch", (x) => x.workRows.length === 1);
-      const uv = await vscode.commands.executeCommand<{ description: string }>("polylog._itest.uncommitted");
+      const uv = await waitFor("the Uncommitted title reflects the refreshed work", async () => {
+        const current = await vscode.commands.executeCommand<{ description: string }>("polylog._itest.uncommitted");
+        return current.description === "1 file · 1 repository" ? current : undefined;
+      });
       assert.strictEqual(uv.description, "1 file · 1 repository", "the Uncommitted view's title counts the work");
       // File History from the Uncommitted side goes back to the Commit list.
       await send({ type: "logMode", mode: "uncommitted" });
@@ -991,7 +1096,7 @@ describe("Polylog panel", () => {
       quietly(() => git(web.root, "reset", "-q", "--keep", before));
       quietly(() => git(web.root, "branch", "--unset-upstream", branch));
       quietly(() => git(web.root, "remote", "remove", "origin"));
-      fs.rmSync(remote, { recursive: true, force: true });
+      await removeTestDirectory(remote);
     }
     await send({ type: "refresh" });
     await until("six rows again", (x) => x.rows.length === 6 && x.sync[web.id] === undefined);
@@ -1055,7 +1160,7 @@ describe("Polylog panel", () => {
         quietly(() => git(r.root, "remote", "remove", "origin"));
       }
       quietly(() => git(libs.root, "config", "--unset", "merge.autoStash"));
-      fs.rmSync(remote, { recursive: true, force: true });
+      await removeTestDirectory(remote);
       // In the cleanup: a failure here must not leave stale ↓ marks for the tests after it.
       await send({ type: "refresh" });
       await until("six rows again", (x) => x.rows.length === 6 && Object.keys(x.sync).length === 0);
@@ -1158,14 +1263,15 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.showBehind");
       await until("only the repository behind", (x) => x.filter.repoIds?.join() === web.id && x.rows.every((r) => r.repoId === web.id));
       await vscode.commands.executeCommand("polylog.repoShowAll");
-      await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
+      await until("every repository including the fetched remote tip", (x) => x.filter.repoIds === null && x.rows.length === 7);
+      assert.ok((await snapshot()).rows.some((row) => row.sha === theirs), "all-branches mode includes a fetched commit before it is pulled");
     } finally {
       // Each step on its own: one failing must not leave the others' state for later tests.
       const quietly = (f: () => unknown) => { try { f(); } catch { /* not set up */ } };
       quietly(() => git(web.root, "branch", "--unset-upstream", branch));
       quietly(() => git(web.root, "remote", "remove", "origin"));
       quietly(() => git(api.root, "remote", "remove", "origin"));
-      fs.rmSync(remote, { recursive: true, force: true });
+      await removeTestDirectory(remote);
     }
     await send({ type: "refresh" });
     await until("no badge without the remote", (x) => x.sync[web.id] === undefined && x.rows.length === 6);
@@ -1241,6 +1347,64 @@ describe("Polylog panel", () => {
       return e?.document.uri.scheme === "file" ? e : undefined;
     });
     assert.match(editor.document.uri.fsPath, /acme-web[\\/]client\.ts$/);
+    await closeEditors();
+  });
+
+  it("Changes detail view: separate commit metadata, current row ids and guarded copy/open messages", async () => {
+    await send({ type: "filter", filter: ALL });
+    const start = await until("six rows", (x) => x.rows.length === 6);
+    const c = bySubject(start, "fix: guard nil");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    const s = await until("separate commit details", (x) => x.changes.presentation?.details[0]?.sha === c.sha && x.changes.presentation?.roots.some((r) => r.label === "client.ts") === true);
+    const page = s.changes.presentation!;
+    assert.strictEqual(page.details[0].title, c.subject);
+    assert.strictEqual(page.details[0].author, c.author);
+    assert.strictEqual(page.details[0].email, c.email);
+    const withRefs = await until("the selected commit's actual references", (x) => x.changes.presentation?.details[0]?.sha === c.sha && x.changes.presentation.details[0].containingBranches !== undefined);
+    const actualRefs = withRefs.changes.presentation!.details[0];
+    assert.ok(actualRefs.refs?.some((r) => r.kind === "head" && r.name === "HEAD"));
+    assert.ok(actualRefs.containingBranches?.includes("HEAD"));
+    assert.ok(actualRefs.refs?.some((r) => r.kind === "local"), "the actual local branch points here");
+    const cp = require("child_process") as typeof import("child_process");
+    const repo = s.repos.find((r) => r.id === c.repoId)!;
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: repo.root }).toString().trim();
+    try {
+      git("branch", "polylog-detail-ref", c.sha);
+      git("tag", "-a", "polylog-detail-tag", "-m", "detail reference fixture", c.sha);
+      git("update-ref", "refs/remotes/polylog-detail-remote/preview", c.sha);
+      await send({ type: "refresh" });
+      const refreshed = await until("new branch, remote and annotated tag references", (x) => {
+        const refs = x.changes.presentation?.details[0]?.refs ?? [];
+        return refs.some((r) => r.kind === "local" && r.name === "polylog-detail-ref")
+          && refs.some((r) => r.kind === "remote" && r.name === "polylog-detail-remote/preview")
+          && refs.some((r) => r.kind === "tag" && r.name === "polylog-detail-tag");
+      });
+      assert.ok(refreshed.changes.presentation!.details[0].containingBranches?.includes("polylog-detail-ref"));
+      assert.ok(!refreshed.changes.presentation!.details[0].containingBranches?.includes("polylog-detail-tag"), "tags do not inflate the branch count");
+    } finally {
+      git("branch", "-D", "polylog-detail-ref");
+      git("tag", "-d", "polylog-detail-tag");
+      git("update-ref", "-d", "refs/remotes/polylog-detail-remote/preview");
+      await send({ type: "refresh" });
+    }
+    assert.ok(!page.roots.some((r) => r.label === c.subject), "commit title does not occupy a file row");
+    const row = page.roots.find((r) => r.label === "client.ts")!;
+    const message = (value: unknown) => vscode.commands.executeCommand("polylog._itest.changesMessage", value);
+    await message({ type: "copy", sha: c.sha, field: "sha" });
+    assert.strictEqual(await vscode.env.clipboard.readText(), c.sha);
+    await message({ type: "copy", sha: "f".repeat(40), field: "message" });
+    assert.strictEqual(await vscode.env.clipboard.readText(), c.sha, "unknown commits cannot copy arbitrary data");
+    await message({ type: "copy", sha: c.sha, field: "message" });
+    assert.strictEqual(await vscode.env.clipboard.readText(), c.subject);
+    await vscode.commands.executeCommand("polylog.copyRelativePath", { changesNodeId: row.id });
+    assert.strictEqual(await vscode.env.clipboard.readText(), "client.ts");
+    await vscode.commands.executeCommand("polylog.copyRelativePath", { changesNodeId: "stale-row", kind: "file", path: "forged.ts" });
+    assert.strictEqual(await vscode.env.clipboard.readText(), "client.ts");
+    await message({ type: "selection", ids: [row.id, "stale-row"] });
+    assert.deepStrictEqual((await snapshot()).changes.selected, ["client.ts"]);
+    await closeEditors();
+    await message({ type: "open", id: row.id });
+    await waitFor("the detail row's native diff", () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((t) => t.input instanceof vscode.TabInputTextDiff) ? true : undefined);
     await closeEditors();
   });
 
@@ -1323,6 +1487,18 @@ describe("Polylog panel", () => {
       await until("acme-web in the Changes view", (x) => x.changes.items[0]?.startsWith("acme-web") === true);
       await vscode.commands.executeCommand("polylog.stage", { kind: "folder", path: "docs" });
       await waitFor("docs staged", () => (git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "docs/a.md,docs/b.md" ? true : undefined));
+      const flatten = (nodes: ChangeRow[]): ChangeRow[] => nodes.flatMap((n) => [n, ...flatten(n.children ?? [])]);
+      const docRows = (x: LogSnapshot) => flatten(x.changes.presentation?.roots ?? []).filter((n) => n.label === "a.md" || n.label === "b.md");
+      const staged = await until("staged document rows in the webview", (x) => docRows(x).length === 2 && docRows(x).every((n) => n.contextValue.includes(".staged")));
+      const ids = docRows(staged).map((n) => n.id);
+      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "selection", ids: [] });
+      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "selection", ids }, "editor");
+      await vscode.commands.executeCommand("polylog.unstage", { changesNodeId: ids[0], changesViewId: "editor" });
+      await waitFor("both webview-selected files unstaged", () => git(web.root, "diff", "--cached", "--name-only") === "" ? true : undefined);
+      await until("unstaged document rows in the webview", (x) => docRows(x).length === 2 && docRows(x).every((n) => !n.contextValue.includes(".staged")));
+      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "selection", ids });
+      await vscode.commands.executeCommand("polylog.stage", { changesNodeId: ids[0] });
+      await waitFor("both webview-selected files staged", () => git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "docs/a.md,docs/b.md" ? true : undefined);
       await send({ type: "logMode", mode: "commits" });
       await send({ type: "refresh" });
       await until("docs staged in the store", (x) => work(x, web.id)?.staged.length === 2);
@@ -1663,11 +1839,29 @@ describe("Polylog panel", () => {
     }
   });
 
-  it("a branch is used where it exists, the current branch elsewhere", async () => {
+  it("a selected branch skips repositories without it; multiple selections form a union and persist", async () => {
     await send({ type: "filter", filter: { ...ALL, branch: "prod" } });
-    const s = await until("prod in acme-api only", (x) => x.rows.length === 5 && x.branchUse?.found === 1);
-    assert.deepStrictEqual(s.branchUse, { branch: "prod", found: 1, fallback: 2 });
+    let s = await until("prod in acme-api only", (x) => x.rows.length === 1 && x.branchUse?.found === 1);
+    assert.deepStrictEqual(s.branchUse, { branches: ["prod"], found: 1, missing: 2 });
     assert.ok(!s.rows.some((r) => r.subject.startsWith("feat: add retry")), "acme-api shows prod, which is one commit behind");
+    assert.strictEqual(s.rows[0].subject, "feat: scaffold api");
+    await send({ type: "filter", filter: { ...ALL, branches: ["main", "prod"] } });
+    s = await until("both branches without duplicates", (x) => x.rows.length === 6 && x.branchUse?.found === 3);
+    assert.strictEqual(new Set(s.rows.map((c) => `${c.repoId}/${c.sha}`)).size, 6);
+    assert.deepStrictEqual(s.persistedFilter?.branches, ["main", "prod"]);
+    await send({ type: "ready" });
+    s = await until("saved branch selection replayed", (x) => x.filter.branches?.length === 2 && x.rows.length === 6);
+    assert.deepStrictEqual(s.filter.branches, ["main", "prod"]);
+    await send({ type: "filter", filter: { ...s.filter, sort: "topo" } });
+    s = await until("topological sort saved with the branches", (x) => x.filter.sort === "topo" && x.rows.length === 6);
+    assert.strictEqual(s.persistedFilter?.sort, "topo");
+    s.rows.forEach((row, i) => row.parents.forEach((parent) => {
+      const parentIndex = s.rows.findIndex((p) => p.repoId === row.repoId && p.sha === parent);
+      if (parentIndex >= 0) assert.ok(i < parentIndex, "child before parent in the merged topological page");
+    }));
+    assert.ok(s.rows.some((row) => row.refs?.some((ref) => ref.kind === "local" && ref.name === "main")), "row decorations carry real branch references");
+    await send({ type: "filter", filter: { ...s.filter, branches: [] } });
+    await until("cleared branch selection shows all", (x) => !x.branchUse && x.rows.length === 6);
     await send({ type: "filter", filter: ALL });
     await until("six rows again", (x) => x.rows.length === 6);
   });
@@ -1733,7 +1927,8 @@ describe("Polylog panel", () => {
     const other = rows.find((r) => r.subject.startsWith("fix: guard nil"))!;
     await send({ type: "select", repoId: c.repoId, sha: c.sha });
     await until("Changes showing the commit", (x) => x.changesVisible && x.changes.items.some((i) => i.includes("upload.go")));
-    await vscode.commands.executeCommand("polylog.changes.removeView");
+    const width = (await snapshot()).layout.repoPaneWidth;
+    await send({ type: "layout", repoPaneWidth: width, showChanges: false });
     await sleep(1200);
     assert.strictEqual((await snapshot()).changesVisible, false, "hidden on the first try: nothing reopens it");
     // Rule 5: it still follows the selection while hidden, and shows it when opened.
@@ -1742,7 +1937,7 @@ describe("Polylog panel", () => {
     let s = await snapshot();
     assert.strictEqual(s.changesVisible, false, "a selection does not bring it back");
     assert.ok(s.changes.items.some((i) => i.includes("client.ts")), "but it has the new commit's files");
-    await vscode.commands.executeCommand("polylog.changes.focus");
+    await send({ type: "layout", repoPaneWidth: width, showChanges: true });
     s = await until("shown again by the user", (x) => x.changesVisible);
     assert.ok(s.changes.items.some((i) => i.includes("client.ts")));
   });
@@ -1907,12 +2102,11 @@ describe("Polylog panel", () => {
         activitybar: [{ id: "polylog-side", title: "Polylog", icon: "media/polylog.svg" }],
       });
       assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
-        polylog: [["polylog.log", "$(history)"], ["polylog.changes", "$(diff)"]],
-        "polylog-compare": [["polylog.compare", "$(repo)"], ["polylog.compareLeft", "$(arrow-left)"], ["polylog.compareRight", "$(arrow-right)"]],
+        polylog: [["polylog.log", "$(history)"]],
+        "polylog-compare": [["polylog.compare", "$(repo)"]],
         "polylog-side": [["polylog.uncommitted", "$(diff-modified)"]],
-      }, "Layout D: Log + Changes; the Compare tab; Uncommitted in the side bar");
-      assert.strictEqual(views["polylog-compare"][0].type, "webview", "Repositories: the Branch boxes need a page; Left and Right stay native trees");
-      assert.strictEqual(views["polylog-compare"][1].type, undefined);
+      }, "one native surface per panel prevents accidental header collapsing; Uncommitted keeps its sidebar");
+      assert.strictEqual(views["polylog-compare"][0].type, "webview", "the unified comparison retains repositories and both sides");
       const menus = pkg.menus["webview/context"] as { command: string; when: string }[];
       for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
         assert.ok(menus.some((m) => m.command === c && m.when.includes("webviewId == 'polylog.compare'")), `${c} on a Compare repository row`);
@@ -1952,10 +2146,10 @@ describe("Polylog panel", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
       });
-      // A click: the file as the two branches have it now — left pane the right branch (prod), right pane the left one.
-      assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "package timeout\n", "prod has timeout.go");
-      assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "", "release-1.4 does not");
-      assert.match(vscode.window.tabGroups.activeTabGroup.activeTab!.label, /\(prod ↔ release-1\.4\)/);
+      // A click follows the branch boxes: release-1.4 on the left, prod on the right.
+      assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "", "release-1.4 does not have timeout.go");
+      assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package timeout\n", "prod has timeout.go");
+      assert.match(vscode.window.tabGroups.activeTabGroup.activeTab!.label, /\(release-1\.4 ↔ prod\)/);
       // limit.go, changed on both sides: both halves in one diff.
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "limit.go" });
@@ -1963,8 +2157,8 @@ describe("Polylog panel", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
       });
-      assert.strictEqual((await vscode.workspace.openTextDocument(both.original)).getText(), "package limit // prod\n");
-      assert.strictEqual((await vscode.workspace.openTextDocument(both.modified)).getText(), "package limit\n");
+      assert.strictEqual((await vscode.workspace.openTextDocument(both.original)).getText(), "package limit\n");
+      assert.strictEqual((await vscode.workspace.openTextDocument(both.modified)).getText(), "package limit // prod\n");
       // Right-click → Changes since the split: merge base ↔ that side (what the merge brings).
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       await vscode.commands.executeCommand("polylog.compareOpenSinceSplit", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
@@ -1986,6 +2180,52 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "billing.ts" });
       await sleep(300);
       assert.strictEqual(tabs(), before, "a file opens only from the repository whose files are shown");
+    });
+
+    it("unified comparison retains side context actions, mode switching, layout memory and forged-row guards", async () => {
+      type SideWithRows = { presentation?: import("../compareProtocol").CompareSidePage; tree: string[]; open: boolean };
+      const current = (side: "left" | "right") => vscode.commands.executeCommand<SideWithRows>("polylog._itest.compareSide", side);
+      const rsend = (message: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", message);
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("polylog.compareShowFiles");
+      await vscode.commands.executeCommand("polylog.compareHideSame");
+      await vscode.commands.executeCommand("polylog.compareLeft.focus");
+      await vscode.commands.executeCommand("polylog.compareRight.focus");
+      await select(roots["acme-api"]);
+      const files = await until2("left tree serialized for its webview", () => current("left"), (side) => !!side.presentation?.rows.some((row) => row.label === "limit.go"));
+      const row = files.presentation!.rows.find((row) => row.label === "limit.go")!;
+      const context = { compareSide: "left", compareNodeId: row.id };
+      await vscode.commands.executeCommand("polylog.copyRelativePath", context);
+      assert.strictEqual(await vscode.env.clipboard.readText(), "limit.go");
+      await vscode.commands.executeCommand("polylog.copyRelativePath", { compareSide: "left", compareNodeId: "forged", kind: "file", repoId: roots["acme-api"], path: "secret.txt" });
+      assert.strictEqual(await vscode.env.clipboard.readText(), "limit.go", "the host ignores forged row fields");
+      await closeEditors();
+      await rsend({ type: "sideOpen", side: "left", id: row.id });
+      await diffTab();
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog.compareOpenSinceSplit", context);
+      await diffTab();
+      await closeEditors();
+      await rsend({ type: "mode", mode: "commits" });
+      const commits = await until2("commit rows serialized", () => current("left"), (side) => !!side.presentation?.rows.some((item) => item.kind === "commit"));
+      const commit = commits.presentation!.rows.find((item) => item.kind === "commit")!;
+      await vscode.commands.executeCommand("polylog.commitCopySha", { compareSide: "left", compareNodeId: commit.id });
+      assert.ok(/^[a-f\d]{40}$/.test(await vscode.env.clipboard.readText()));
+      await rsend({ type: "sideExpand", side: "left", id: commit.id });
+      await rsend({ type: "sideExpandAll", side: "left" });
+      assert.ok((await current("left")).tree.some((line) => line.startsWith("  ")), "commit expansion retains file children");
+      const layout = { repositoriesWidth: 260, leftWidth: 420, leftHeight: 160, sidesHeight: 290, orientation: "stacked" as const };
+      await rsend({ type: "layout", layout });
+      await rsend({ type: "ready" });
+      const posted = await vscode.commands.executeCommand<{ state?: { layout?: typeof layout } }>("polylog._itest.comparePosted");
+      assert.deepStrictEqual(posted.state?.layout, layout);
+      await rsend({ type: "layout", layout: { ...layout, orientation: "auto" } });
+      await rsend({ type: "sideVisibility", side: "left", show: false });
+      assert.strictEqual((await current("left")).open, false);
+      assert.strictEqual((await current("right")).open, true);
+      await rsend({ type: "sideVisibility", side: "left", show: true });
+      await rsend({ type: "mode", mode: "files" });
+      await until2("files mode restored", () => current("left"), (side) => side.tree.some((line) => line.startsWith("limit.go")));
     });
 
     it("Repositories says what it knows: nothing before the read, 'the same files' only once it is done, ticks followed", async () => {
@@ -2058,6 +2298,45 @@ describe("Polylog panel", () => {
       assert.deepStrictEqual((await posted()).dups, { type: "dups", repoId: "/nowhere", items: [] });
     });
 
+    it("the active file diff follows branch picks and swaps without another file click", async () => {
+      const api = roots["acme-api"];
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("listed", repos, (x) => x.open && x.roots.length === 2);
+      await select(api);
+      await until2("timeout.go listed", () => sideOf("right"), (x) => x.tree.some((l) => l.startsWith("timeout.go")));
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: api, path: "timeout.go" });
+      const check = async (left: string, right: string, original: string, modified: string) => {
+        const tab = await waitFor("diff matches the branch boxes", () => {
+          const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+          return input instanceof vscode.TabInputTextDiff && JSON.parse(input.original.query).ref === git(api, ["rev-parse", left]) && JSON.parse(input.modified.query).ref === git(api, ["rev-parse", right]) ? input : undefined;
+        });
+        assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), original);
+        assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), modified);
+        assert.ok(vscode.window.tabGroups.activeTabGroup.activeTab!.label.includes(`(${left} ↔ ${right})`));
+      };
+      await check("release-1.4", "prod", "", "package timeout\n");
+      // The same message as choosing the branches in the webview.
+      await vscode.commands.executeCommand("polylog._itest.compareReposSend", { type: "pick", pair: { left: "prod", right: "release-1.4" } });
+      await check("prod", "release-1.4", "package timeout\n", "");
+      await vscode.commands.executeCommand("polylog.compareSwap");
+      await check("release-1.4", "prod", "", "package timeout\n");
+      // Choosing a different pair also updates the active file when the tips are identical.
+      git(api, ["update-ref", "refs/heads/follow-same", "prod"]);
+      try {
+        await vscode.commands.executeCommand("polylog._itest.compareReposSend", { type: "pick", pair: { left: "prod", right: "follow-same" } });
+        await check("prod", "follow-same", "package timeout\n", "package timeout\n");
+      } finally {
+        cp.spawnSync("git", ["update-ref", "-d", "refs/heads/follow-same"], { cwd: api });
+      }
+      const other = await vscode.workspace.openTextDocument({ content: "keep this editor active" });
+      await vscode.window.showTextDocument(other);
+      await vscode.commands.executeCommand("polylog.compareSwap");
+      assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), other.uri.toString());
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    });
+
     it("after Refresh, a file in Left or Right still opens its diff", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
       await vscode.commands.executeCommand("polylog.compareShow");
@@ -2101,17 +2380,13 @@ describe("Polylog panel", () => {
     it("the Log toolbar's two toggles: click to show, click again to hide; the icon says which", async () => {
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       const icon = (cmd: string) => (pkg.commands as { command: string; icon?: string }[]).find((c) => c.command === cmd)?.icon;
-      const log = (pkg.menus["view/title"] as { command: string; when: string }[]).filter((m) => m.when.startsWith("view == polylog.log"));
-      const at = (cmd: string) => log.find((m) => m.command === cmd)?.when;
-      // Each button keeps its place whether shown or hidden: one position per button, not per state.
-      const pos = (cmd: string) => (log.find((m) => m.command === cmd) as { group?: string } | undefined)?.group;
-      assert.strictEqual(pos("polylog.compareShow"), pos("polylog.compareHide"));
-      assert.strictEqual(pos("polylog.uncommittedShow"), pos("polylog.uncommittedHide"));
-      assert.notStrictEqual(pos("polylog.compareShow"), pos("polylog.uncommittedShow"), "the two buttons never trade places");
-      assert.deepStrictEqual([icon("polylog.uncommittedShow"), at("polylog.uncommittedShow")], ["$(diff-modified)", "view == polylog.log && !polylog.uncommittedShown"]);
-      assert.deepStrictEqual([icon("polylog.uncommittedHide"), at("polylog.uncommittedHide")], ["$(diff-modified)", "view == polylog.log && polylog.uncommittedShown"]);
-      assert.deepStrictEqual([icon("polylog.compareShow"), at("polylog.compareShow")], ["$(git-compare)", "view == polylog.log && !polylog.compareShown"]);
-      assert.deepStrictEqual([icon("polylog.compareHide"), at("polylog.compareHide")], ["$(git-compare)", "view == polylog.log && polylog.compareShown"]);
+      const { renderHtml } = require("../webview/html") as typeof import("../webview/html");
+      const shell = renderHtml({ cspSource: "", nonce: "test", scriptUri: "", styleUri: "" });
+      assert.ok(shell.indexOf('id="toolbar-compare"') < shell.indexOf('id="toolbar-uncommitted"'), "the two fixed toolbar buttons never trade places");
+      assert.strictEqual((shell.match(/id="toolbar-compare"/g) ?? []).length, 1);
+      assert.strictEqual((shell.match(/id="toolbar-uncommitted"/g) ?? []).length, 1);
+      assert.deepStrictEqual([icon("polylog.uncommittedShow"), icon("polylog.uncommittedHide")], ["$(diff-modified)", "$(diff-modified)"]);
+      assert.deepStrictEqual([icon("polylog.compareShow"), icon("polylog.compareHide")], ["$(git-compare)", "$(git-compare)"]);
       const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
       await vscode.commands.executeCommand("polylog.uncommittedShow");
       assert.strictEqual(await shown(), true);
@@ -2211,8 +2486,17 @@ describe("Polylog panel", () => {
           const t = vscode.window.tabGroups.activeTabGroup.activeTab;
           return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
         });
-        assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "package limit\n", "release-1.4 has it as limit.go: not an empty side");
+        assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "package limit\n");
         assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package limit\n");
+        assert.strictEqual(tab.original.path, "/rate.go", "the left branch has the renamed path");
+        assert.strictEqual(tab.modified.path, "/limit.go", "the right branch still has the old path");
+        await vscode.commands.executeCommand("polylog.compareSwap");
+        const swapped = await waitFor("renamed diff follows swap", () => {
+          const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+          return input instanceof vscode.TabInputTextDiff && input.original.path === "/limit.go" && input.modified.path === "/rate.go" ? input : undefined;
+        });
+        assert.strictEqual((await vscode.workspace.openTextDocument(swapped.original)).getText(), "package limit\n");
+        assert.strictEqual((await vscode.workspace.openTextDocument(swapped.modified)).getText(), "package limit\n");
       } finally {
         cp.spawnSync("git", ["update-ref", "-d", "refs/heads/ren"], { cwd: api });
         await vscode.commands.executeCommand("workbench.action.closeAllEditors");

@@ -1,7 +1,19 @@
 import * as assert from "assert";
+import * as fs from "fs";
+import * as path from "path";
 import { renderHtml } from "./html";
 
 const html = renderHtml({ cspSource: "vscode-resource:", nonce: "n0nce", scriptUri: "vscode-resource:/out/webview.js", styleUri: "vscode-resource:/out/webview.css" });
+
+{
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
+  assert.deepStrictEqual(manifest.contributes.views.polylog.map((view: { id: string }) => view.id), ["polylog.log"], "one native view removes the collapsible Log section header");
+  assert.ok(html.includes('id="workspace"') && html.includes('id="changes-pane"') && html.includes('id="changes-splitter"'));
+  const toggle = /<button id="detail-toggle"[\s\S]*?<\/button>/.exec(html)![0];
+  assert.ok(!toggle.includes(">Commit details<"), "only the detail arrow is inside the fold button");
+  assert.ok(html.includes('id="toggle-changes"'), "changed files has an explicit visibility control");
+  console.log("ok - one native surface contains both panes; section labels are outside collapse buttons");
+}
 
 {
   const csp = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(html)?.[1] ?? "";

@@ -1,8 +1,8 @@
 {
   "name": "polylog-git",
-  "displayName": "Polylog — Multi-Repo Git Log",
-  "description": "One git log across every repository in your workspace. Search commit messages, filter by author, branch and date across all of them at once, and open any change in the native diff editor.",
-  "version": "1.3.1",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
+  "version": "1.4.0",
   "publisher": "lntvan166",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -12,12 +12,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lntvan166/polylog"
+    "url": "https://github.com/Whwitpohe/polylog"
   },
   "bugs": {
-    "url": "https://github.com/lntvan166/polylog/issues"
+    "url": "https://github.com/Whwitpohe/polylog/issues"
   },
-  "homepage": "https://github.com/lntvan166/polylog#readme",
+  "homepage": "https://github.com/Whwitpohe/polylog#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -43,7 +43,6 @@
   "activationEvents": [
     "onCommand:polylog.fileHistory",
     "onCommand:polylog.open",
-    "onView:polylog.changes",
     "onView:polylog.log",
     "onStartupFinished"
   ],
@@ -61,7 +60,7 @@
         },
         {
           "id": "polylog-compare",
-          "title": "Polylog Compare",
+          "title": "%container.polylog-compare.title%",
           "icon": "media/compare.svg"
         }
       ],
@@ -78,42 +77,24 @@
         {
           "type": "webview",
           "id": "polylog.log",
-          "name": "Log",
+          "name": "%view.polylog.log.name%",
           "initialSize": 1100,
           "icon": "$(history)"
-        },
-        {
-          "id": "polylog.changes",
-          "name": "Changes",
-          "initialSize": 450,
-          "icon": "$(diff)"
         }
       ],
       "polylog-compare": [
         {
           "id": "polylog.compare",
-          "name": "Repositories",
+          "name": "%view.polylog.compare.name%",
           "icon": "$(repo)",
           "when": "polylog.compareShown",
           "type": "webview"
-        },
-        {
-          "id": "polylog.compareLeft",
-          "name": "Left",
-          "icon": "$(arrow-left)",
-          "when": "polylog.compareShown"
-        },
-        {
-          "id": "polylog.compareRight",
-          "name": "Right",
-          "icon": "$(arrow-right)",
-          "when": "polylog.compareShown"
         }
       ],
       "polylog-side": [
         {
           "id": "polylog.uncommitted",
-          "name": "Uncommitted",
+          "name": "%view.polylog.uncommitted.name%",
           "initialSize": 450,
           "icon": "$(diff-modified)",
           "when": "polylog.uncommittedShown"
@@ -123,359 +104,450 @@
     "commands": [
       {
         "command": "polylog.open",
-        "title": "Open Merged Log",
+        "title": "%command.polylog.open.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.openDiff",
-        "title": "Open Diff",
+        "title": "%command.polylog.openDiff.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.openCombinedDiff",
-        "title": "Open Diff",
+        "title": "%command.polylog.openCombinedDiff.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.clearSelection",
-        "title": "Clear Selection",
+        "title": "%command.polylog.clearSelection.title%",
         "category": "Polylog",
         "icon": "$(clear-all)"
       },
       {
         "command": "polylog.copySha",
-        "title": "Copy Commit ID",
+        "title": "%command.polylog.copySha.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.copyMessage",
-        "title": "Copy Message",
+        "title": "%command.polylog.copyMessage.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.showRepos",
-        "title": "Group by Repository",
+        "title": "%command.polylog.showRepos.title%",
         "category": "Polylog",
         "icon": "$(list-tree)"
       },
       {
         "command": "polylog.hideRepos",
-        "title": "Hide Repositories",
+        "title": "%command.polylog.hideRepos.title%",
         "category": "Polylog",
         "icon": "$(list-flat)"
       },
       {
         "command": "polylog.fileHistory",
-        "title": "Polylog: File History",
+        "title": "%command.polylog.fileHistory.title%",
         "icon": "$(history)"
       },
       {
         "command": "polylog.openWorkingFile",
-        "title": "Open File",
+        "title": "%command.polylog.openWorkingFile.title%",
         "category": "Polylog",
         "icon": "$(go-to-file)"
       },
       {
         "command": "polylog.copyFilePath",
-        "title": "Copy Path",
+        "title": "%command.polylog.copyFilePath.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.copyRelativePath",
-        "title": "Copy Relative Path",
+        "title": "%command.polylog.copyRelativePath.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoShowOnly",
-        "title": "Show Only This Repository",
+        "title": "%command.polylog.repoShowOnly.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoHide",
-        "title": "Hide from the Log",
+        "title": "%command.polylog.repoHide.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoShowAll",
-        "title": "Show All Repositories",
+        "title": "%command.polylog.repoShowAll.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoExclude",
-        "title": "Exclude from Polylog",
+        "title": "%command.polylog.repoExclude.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoOpenFolder",
-        "title": "Open Folder in New Window",
+        "title": "%command.polylog.repoOpenFolder.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoCopyPath",
-        "title": "Copy Path",
+        "title": "%command.polylog.repoCopyPath.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.profileSwitch",
-        "title": "Switch Profile…",
+        "title": "%command.polylog.profileSwitch.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.profileShow",
-        "title": "Show This Profile",
+        "title": "%command.polylog.profileShow.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.profileSave",
-        "title": "Save Selection as Profile…",
+        "title": "%command.polylog.profileSave.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.profileUpdate",
-        "title": "Update to Current Selection",
+        "title": "%command.polylog.profileUpdate.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.profileRename",
-        "title": "Rename…",
+        "title": "%command.polylog.profileRename.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.profileDelete",
-        "title": "Delete",
+        "title": "%command.polylog.profileDelete.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoProfiles",
-        "title": "Profiles…",
+        "title": "%command.polylog.repoProfiles.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.fetchAll",
-        "title": "Fetch All Repositories",
+        "title": "%command.polylog.fetchAll.title%",
         "category": "Polylog",
         "icon": "$(cloud-download)"
       },
       {
         "command": "polylog.fetching",
-        "title": "Fetching All Repositories…",
+        "title": "%command.polylog.fetching.title%",
         "category": "Polylog",
         "icon": "$(sync~spin)"
       },
       {
         "command": "polylog.showBehind",
-        "title": "Show Only Repositories Behind",
+        "title": "%command.polylog.showBehind.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.pullAllBehind",
-        "title": "Pull All Repositories Behind",
+        "title": "%command.polylog.pullAllBehind.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.fetchAndPullAll",
-        "title": "Fetch and Pull All Repositories",
+        "title": "%command.polylog.fetchAndPullAll.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.commitCopySha",
-        "title": "Copy Commit ID",
+        "title": "%command.polylog.commitCopySha.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.commitCopyMessage",
-        "title": "Copy Message",
+        "title": "%command.polylog.commitCopyMessage.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.commitOpenOnRemote",
-        "title": "Open on Remote",
+        "title": "%command.polylog.commitOpenOnRemote.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.repoPull",
-        "title": "Pull",
+        "title": "%command.polylog.repoPull.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.focusUncommitted",
-        "title": "Open Uncommitted View",
+        "title": "%command.polylog.focusUncommitted.title%",
         "category": "Polylog",
         "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.refreshUncommitted",
-        "title": "Refresh Uncommitted",
+        "title": "%command.polylog.refreshUncommitted.title%",
         "category": "Polylog",
         "icon": "$(refresh)"
       },
       {
         "command": "polylog.stage",
-        "title": "Stage Changes",
+        "title": "%command.polylog.stage.title%",
         "category": "Polylog",
         "icon": "$(add)"
       },
       {
         "command": "polylog.stageAll",
-        "title": "Stage All Changes",
+        "title": "%command.polylog.stageAll.title%",
         "category": "Polylog",
         "icon": "$(add)"
       },
       {
         "command": "polylog.unstage",
-        "title": "Unstage Changes",
+        "title": "%command.polylog.unstage.title%",
         "category": "Polylog",
         "icon": "$(remove)"
       },
       {
         "command": "polylog.unstageAll",
-        "title": "Unstage All Changes",
+        "title": "%command.polylog.unstageAll.title%",
         "category": "Polylog",
         "icon": "$(remove)"
       },
       {
         "command": "polylog.discard",
-        "title": "Discard Changes",
+        "title": "%command.polylog.discard.title%",
         "category": "Polylog",
         "icon": "$(discard)"
       },
       {
         "command": "polylog.discardAll",
-        "title": "Discard All Changes",
+        "title": "%command.polylog.discardAll.title%",
         "category": "Polylog",
         "icon": "$(discard)"
       },
       {
         "command": "polylog.commitRepo",
-        "title": "Commit…",
+        "title": "%command.polylog.commitRepo.title%",
         "category": "Polylog",
         "icon": "$(check)"
       },
       {
         "command": "polylog.openUncommittedDiff",
-        "title": "Open Diff",
+        "title": "%command.polylog.openUncommittedDiff.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.changesShowAll",
-        "title": "Show All Files",
+        "title": "%command.polylog.changesShowAll.title%",
         "category": "Polylog",
         "icon": "$(list-tree)"
       },
       {
         "command": "polylog.changesShowChanged",
-        "title": "Show Changed Files",
+        "title": "%command.polylog.changesShowChanged.title%",
         "category": "Polylog",
         "icon": "$(diff)"
       },
       {
         "command": "polylog.openRevision",
-        "title": "Open File at Commit",
+        "title": "%command.polylog.openRevision.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.compareBranches",
-        "title": "Compare Branches…",
+        "title": "%command.polylog.compareBranches.title%",
         "category": "Polylog",
         "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareWith",
-        "title": "Compare with…",
+        "title": "%command.polylog.compareWith.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.comparePick",
-        "title": "Pick Branches…",
+        "title": "%command.polylog.comparePick.title%",
         "category": "Polylog",
         "icon": "$(git-branch)"
       },
       {
         "command": "polylog.compareSwap",
-        "title": "Swap Sides",
+        "title": "%command.polylog.compareSwap.title%",
         "category": "Polylog",
         "icon": "$(arrow-swap)"
       },
       {
         "command": "polylog.compareShowCommits",
-        "title": "Show Commits",
+        "title": "%command.polylog.compareShowCommits.title%",
         "category": "Polylog",
         "icon": "$(git-commit)"
       },
       {
         "command": "polylog.compareShowFiles",
-        "title": "Show Files",
+        "title": "%command.polylog.compareShowFiles.title%",
         "category": "Polylog",
         "icon": "$(files)"
       },
       {
         "command": "polylog.compareHideSame",
-        "title": "Hide Files Already on Both",
+        "title": "%command.polylog.compareHideSame.title%",
         "category": "Polylog",
         "icon": "$(filter)"
       },
       {
         "command": "polylog.compareShowSame",
-        "title": "Show Files Already on Both",
+        "title": "%command.polylog.compareShowSame.title%",
         "category": "Polylog",
         "icon": "$(filter-filled)"
       },
       {
         "command": "polylog.compareRefresh",
-        "title": "Refresh",
+        "title": "%command.polylog.compareRefresh.title%",
         "category": "Polylog",
         "icon": "$(refresh)"
       },
       {
         "command": "polylog.compareOpenFile",
-        "title": "Open Diff",
+        "title": "%command.polylog.compareOpenFile.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.compareMore",
-        "title": "Show More Commits",
+        "title": "%command.polylog.compareMore.title%",
         "category": "Polylog"
       },
       {
         "command": "polylog.compareClose",
-        "title": "Close Polylog Compare",
+        "title": "%command.polylog.compareClose.title%",
         "category": "Polylog",
         "icon": "$(close)"
       },
       {
         "command": "polylog.uncommittedClose",
-        "title": "Close Uncommitted View",
+        "title": "%command.polylog.uncommittedClose.title%",
         "category": "Polylog",
         "icon": "$(close)"
       },
       {
         "command": "polylog.uncommittedShow",
-        "title": "Show Uncommitted View",
+        "title": "%command.polylog.uncommittedShow.title%",
         "category": "Polylog",
         "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.uncommittedHide",
-        "title": "Hide Uncommitted View",
+        "title": "%command.polylog.uncommittedHide.title%",
         "category": "Polylog",
         "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.compareShow",
-        "title": "Show Polylog Compare",
+        "title": "%command.polylog.compareShow.title%",
         "category": "Polylog",
         "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareHide",
-        "title": "Hide Polylog Compare",
+        "title": "%command.polylog.compareHide.title%",
         "category": "Polylog",
         "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareOpenSinceSplit",
-        "title": "Changes since the Split",
+        "title": "%command.polylog.compareOpenSinceSplit.title%",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.view",
+        "title": "%command.polylog.branch.view.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.compare",
+        "title": "%command.polylog.branch.compare.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.worktreeDiff",
+        "title": "%command.polylog.branch.worktreeDiff.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.checkout",
+        "title": "%command.polylog.branch.checkout.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.create",
+        "title": "%command.polylog.branch.create.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.rename",
+        "title": "%command.polylog.branch.rename.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.fetch",
+        "title": "%command.polylog.branch.fetch.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.pull",
+        "title": "%command.polylog.branch.pull.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.push",
+        "title": "%command.polylog.branch.push.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.merge",
+        "title": "%command.polylog.branch.merge.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.rebase",
+        "title": "%command.polylog.branch.rebase.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.pullMerge",
+        "title": "%command.polylog.branch.pullMerge.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.pullRebase",
+        "title": "%command.polylog.branch.pullRebase.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.worktree",
+        "title": "%command.polylog.branch.worktree.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.favorite",
+        "title": "%command.polylog.branch.favorite.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.copy",
+        "title": "%command.polylog.branch.copy.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.branch.delete",
+        "title": "%command.polylog.branch.delete.title%",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.openChangesEditor",
+        "title": "%command.polylog.openChangesEditor.title%",
+        "category": "Polylog",
+        "icon": "$(open-preview)"
       }
     ],
     "menus": {
@@ -918,49 +990,77 @@
         {
           "command": "polylog.repoProfiles",
           "when": "false"
+        },
+        {
+          "command": "polylog.branch.view",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.compare",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.worktreeDiff",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.checkout",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.create",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.rename",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.fetch",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.pull",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.push",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.merge",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.rebase",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.pullMerge",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.pullRebase",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.worktree",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.favorite",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.copy",
+          "when": "false"
+        },
+        {
+          "command": "polylog.branch.delete",
+          "when": "false"
         }
       ],
       "view/title": [
-        {
-          "command": "polylog.showRepos",
-          "when": "view == polylog.log && polylog.hideRepos",
-          "group": "navigation"
-        },
-        {
-          "command": "polylog.hideRepos",
-          "when": "view == polylog.log && !polylog.hideRepos",
-          "group": "navigation"
-        },
-        {
-          "command": "polylog.uncommittedShow",
-          "when": "view == polylog.log && !polylog.uncommittedShown",
-          "group": "navigation@2"
-        },
-        {
-          "command": "polylog.uncommittedHide",
-          "when": "view == polylog.log && polylog.uncommittedShown",
-          "group": "navigation@2"
-        },
-        {
-          "command": "polylog.compareShow",
-          "when": "view == polylog.log && !polylog.compareShown",
-          "group": "navigation@1"
-        },
-        {
-          "command": "polylog.compareHide",
-          "when": "view == polylog.log && polylog.compareShown",
-          "group": "navigation@1"
-        },
-        {
-          "command": "polylog.fetchAll",
-          "when": "view == polylog.log && !polylog.fetching",
-          "group": "navigation@3"
-        },
-        {
-          "command": "polylog.fetching",
-          "when": "view == polylog.log && polylog.fetching",
-          "group": "navigation@3"
-        },
         {
           "command": "polylog.showBehind",
           "when": "view == polylog.log && polylog.anyBehind",
@@ -1220,6 +1320,216 @@
           "command": "polylog.repoProfiles",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "9_profile@2"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(\\.|$)/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file/",
+          "group": "2_history@1"
+        },
+        {
+          "command": "polylog.discard",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "group": "3_modification@3"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable.*\\.changed$/",
+          "group": "3_modification@1"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable\\.staged/",
+          "group": "3_modification@2"
+        },
+        {
+          "command": "polylog.commitRepo",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable/",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "polylog.discardAll",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable/",
+          "group": "1_modification@5"
+        },
+        {
+          "command": "polylog.copyFilePath",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
+          "group": "8_copy@1"
+        },
+        {
+          "command": "polylog.copyRelativePath",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
+          "group": "8_copy@2"
+        },
+        {
+          "command": "polylog.stageAll",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "polylog.unstageAll",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable\\.staged/",
+          "group": "1_modification@4"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable.*\\.changed/",
+          "group": "3_modification@1"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable\\.staged/",
+          "group": "3_modification@2"
+        },
+        {
+          "command": "polylog.discard",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable/",
+          "group": "3_modification@3"
+        },
+        {
+          "command": "polylog.commitCopySha",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "group": "0_commit"
+        },
+        {
+          "command": "polylog.commitCopyMessage",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "group": "0_commit"
+        },
+        {
+          "command": "polylog.commitOpenOnRemote",
+          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "group": "0_commit"
+        },
+        {
+          "command": "polylog.branch.view",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "0_view@1"
+        },
+        {
+          "command": "polylog.branch.compare",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "group": "0_view@2"
+        },
+        {
+          "command": "polylog.branch.worktreeDiff",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "0_view@3"
+        },
+        {
+          "command": "polylog.branch.checkout",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "group": "1_branch@1"
+        },
+        {
+          "command": "polylog.branch.create",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "1_branch@2"
+        },
+        {
+          "command": "polylog.branch.rename",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchLocal",
+          "group": "1_branch@3"
+        },
+        {
+          "command": "polylog.branch.fetch",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "2_sync@1"
+        },
+        {
+          "command": "polylog.branch.pull",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchCurrent",
+          "group": "2_sync@2"
+        },
+        {
+          "command": "polylog.branch.push",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchLocal",
+          "group": "2_sync@3"
+        },
+        {
+          "command": "polylog.branch.merge",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "group": "3_integrate@1"
+        },
+        {
+          "command": "polylog.branch.rebase",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "group": "3_integrate@2"
+        },
+        {
+          "command": "polylog.branch.pullMerge",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchRemote",
+          "group": "3_integrate@3"
+        },
+        {
+          "command": "polylog.branch.pullRebase",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchRemote",
+          "group": "3_integrate@4"
+        },
+        {
+          "command": "polylog.branch.worktree",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "4_worktree@1"
+        },
+        {
+          "command": "polylog.branch.favorite",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "5_tools@1"
+        },
+        {
+          "command": "polylog.branch.copy",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "group": "5_tools@2"
+        },
+        {
+          "command": "polylog.branch.delete",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "polylog.commitCopySha",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "group": "0_commit@1"
+        },
+        {
+          "command": "polylog.commitCopyMessage",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "group": "0_commit@2"
+        },
+        {
+          "command": "polylog.commitOpenOnRemote",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "group": "0_commit@3"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File$/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
+          "group": "2_history@1"
+        },
+        {
+          "command": "polylog.copyFilePath",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
+          "group": "8_copy@1"
+        },
+        {
+          "command": "polylog.copyRelativePath",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
+          "group": "8_copy@2"
+        },
+        {
+          "command": "polylog.compareOpenSinceSplit",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile/",
+          "group": "1_open@2"
         }
       ]
     },
@@ -1231,21 +1541,21 @@
           "default": 200,
           "minimum": 1,
           "maximum": 1000,
-          "description": "Commits fetched per repository per page."
+          "description": "%setting.polylog.pageSize.description%"
         },
         "polylog.maxConcurrency": {
           "type": "number",
           "default": 16,
           "minimum": 1,
           "maximum": 64,
-          "description": "Maximum number of git processes running at once."
+          "description": "%setting.polylog.maxConcurrency.description%"
         },
         "polylog.scanDepth": {
           "type": "number",
           "default": 2,
           "minimum": 0,
           "maximum": 6,
-          "markdownDescription": "Folder levels to search the workspace folders for repositories. Polylog shows these together with the repositories the Git extension has open. See also `#git.repositoryScanMaxDepth#`."
+          "markdownDescription": "%setting.polylog.scanDepth.markdownDescription%"
         },
         "polylog.excludeRepos": {
           "type": "array",
@@ -1253,7 +1563,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "Glob patterns for repositories to leave out, matched against the repository folder name and its full path."
+          "description": "%setting.polylog.excludeRepos.description%"
         },
         "polylog.profiles": {
           "type": "object",
@@ -1265,12 +1575,12 @@
               "type": "string"
             }
           },
-          "markdownDescription": "Named groups of repositories for the Repo List, e.g. `{ \"backend\": [\"acme-api\", \"acme-libs\"] }`. Each repository is its path relative to the workspace folder (`.` for the folder itself; in a multi-root workspace, the folder's name first). Saved from the Repo List; clicking a profile ticks its repositories and changes no other filter."
+          "markdownDescription": "%setting.polylog.profiles.markdownDescription%"
         },
         "polylog.blame": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show who last changed the cursor's line in Polylog's diffs and revisions, as of the commit shown. The text follows `#git.blame.editorDecoration.template#`."
+          "markdownDescription": "%setting.polylog.blame.markdownDescription%"
         }
       }
     }
@@ -1278,12 +1588,12 @@
   "scripts": {
     "vscode:prepublish": "npm run check:denylist && npm run bundle",
     "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --target=node18",
-    "bundle": "npm run bundle:ext -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify",
-    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap",
+    "bundle": "npm run bundle:ext -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
-    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs && esbuild src/lineMerge.test.ts --bundle --platform=node --format=cjs --outfile=out/lineMerge.test.cjs && node out/lineMerge.test.cjs && esbuild src/webview/selectionModel.test.ts --bundle --platform=node --format=cjs --outfile=out/selectionModel.test.cjs && node out/selectionModel.test.cjs && esbuild src/combinedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedModel.test.cjs && node out/combinedModel.test.cjs && esbuild src/combinedRead.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedRead.test.cjs && node out/combinedRead.test.cjs",
+    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs && esbuild src/lineMerge.test.ts --bundle --platform=node --format=cjs --outfile=out/lineMerge.test.cjs && node out/lineMerge.test.cjs && esbuild src/webview/selectionModel.test.ts --bundle --platform=node --format=cjs --outfile=out/selectionModel.test.cjs && node out/selectionModel.test.cjs && esbuild src/combinedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedModel.test.cjs && node out/combinedModel.test.cjs && esbuild src/combinedRead.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedRead.test.cjs && node out/combinedRead.test.cjs && esbuild src/i18n.test.ts --bundle --platform=node --format=cjs --outfile=out/i18n.test.cjs && node out/i18n.test.cjs && esbuild src/changesPresentation.test.ts --bundle --platform=node --format=cjs --outfile=out/changesPresentation.test.cjs && node out/changesPresentation.test.cjs && esbuild src/commitReferences.test.ts --bundle --platform=node --format=cjs --outfile=out/commitReferences.test.cjs && node out/commitReferences.test.cjs && esbuild src/webview/graphModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphModel.test.cjs && node out/graphModel.test.cjs && esbuild src/branchModel.test.ts --bundle --platform=node --format=cjs --outfile=out/branchModel.test.cjs && node out/branchModel.test.cjs && esbuild src/webview/graphFoldModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphFoldModel.test.cjs && node out/graphFoldModel.test.cjs && esbuild src/hashSearch.test.ts --bundle --platform=node --format=cjs --outfile=out/hashSearch.test.cjs && node out/hashSearch.test.cjs && esbuild src/webview/changes/fileFilterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/fileFilterModel.test.cjs && node out/fileFilterModel.test.cjs && esbuild src/topoOrder.test.ts --bundle --platform=node --format=cjs --outfile=out/topoOrder.test.cjs && node out/topoOrder.test.cjs && esbuild src/toolbarModel.test.ts --bundle --platform=node --format=cjs --outfile=out/toolbarModel.test.cjs && node out/toolbarModel.test.cjs && esbuild src/webview/compare/html.test.ts --bundle --platform=node --format=cjs --outfile=out/compareHtml.test.cjs && node out/compareHtml.test.cjs",
     "test": "npm run test:unit",
     "package": "vsce package --no-dependencies",
     "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",
@@ -1292,10 +1602,11 @@
     "ui-map": "node dev/ui-map/serve.mjs",
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
-    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
+    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/branches.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
     "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
-    "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022"
+    "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022",
+    "bundle:changes": "esbuild src/webview/changes/main.ts --bundle --outfile=out/changes.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -1310,5 +1621,6 @@
     "eslint": "^8.57.1",
     "mocha": "^10.8.2",
     "typescript": "^5.9.3"
-  }
+  },
+  "l10n": "./l10n"
 }

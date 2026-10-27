@@ -164,37 +164,35 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const inner = fakeRun(data, calls);
     // acme-web and acme-libs have origin/prod; acme-api does not.
     const run: RunGit = async (cwd, args, signal) => {
-      if (args[0] === "rev-parse") {
+      if (args[0] === "for-each-ref") {
         calls.push([cwd, ...args]);
-        if (cwd === API.root) throw new GitError("", 1);
-        return "abc\n";
+        return cwd === API.root ? "refs/heads/main\n" : "refs/remotes/origin/prod\n";
       }
       return inner(cwd, args, signal);
     };
     const filter = { ...ALL, branch: "origin/prod" };
     let page = await fetchPage(req({ filter, pageSize: 2, run }));
-    assert.deepStrictEqual(calls.filter((c) => c[1] === "rev-parse").map((c) => [c[0], c.at(-1)]).sort(),
-      [[API.root, "origin/prod^{commit}"], [LIBS.root, "origin/prod^{commit}"], [WEB.root, "origin/prod^{commit}"]].sort());
+    assert.strictEqual(calls.filter((c) => c[1] === "for-each-ref").length, 3, "one ref listing per repository");
     const logs = calls.filter((c) => c[1] === "log");
-    assert.deepStrictEqual(logs.find((c) => c[0] === WEB.root)!.slice(-3), ["--end-of-options", "origin/prod", "--"]);
-    assert.ok(!logs.find((c) => c[0] === API.root)!.includes("--end-of-options"), "a repo without the branch uses its current branch");
-    assert.deepStrictEqual(page.branchUse, { branch: "origin/prod", found: 2, fallback: 1 });
-    assert.deepStrictEqual(page.rows.map((r) => r.ref), ["origin/prod", "current branch", "origin/prod"].slice(0, page.rows.length));
+    assert.deepStrictEqual(logs.find((c) => c[0] === WEB.root)!.slice(-3), ["--end-of-options", "refs/remotes/origin/prod", "--"]);
+    assert.ok(!logs.find((c) => c[0] === API.root), "a repo without the branch is skipped");
+    assert.deepStrictEqual(page.branchUse, { branches: ["origin/prod"], found: 2, missing: 1 });
+    assert.ok(page.rows.every((r) => r.ref === "origin/prod"));
     const before = calls.length;
     page = await fetchPage(req({ filter, pageSize: 2, run, prev: page.state }));
-    assert.ok(calls.slice(before).every((c) => c[1] !== "rev-parse"), "Load More reuses the resolution");
-    assert.ok(calls.slice(before).find((c) => c[0] === WEB.root)!.includes("origin/prod"));
-    console.log("ok - each repo uses the branch if it has it, else its current branch, resolved once per query");
+    assert.ok(calls.slice(before).every((c) => c[1] !== "for-each-ref"), "Load More reuses the resolution");
+    assert.ok(calls.slice(before).find((c) => c[0] === WEB.root)!.includes("refs/remotes/origin/prod"));
+    console.log("ok - each repo walks the branches it has, skips missing ones and reuses the resolution for paging");
   }
   {
     // A slow rev-parse in one repository must not hold back the others' git log.
     const order: string[] = [];
     const inner = fakeRun({ [WEB.root]: [mk(WEB, 30)], [API.root]: [mk(API, 25)] });
     const run: RunGit = async (cwd, args, signal) => {
-      if (args[0] === "rev-parse") {
+      if (args[0] === "for-each-ref") {
         if (cwd === WEB.root) await new Promise((r) => setTimeout(r, 50));
         order.push(`rev-parse ${cwd}`);
-        return "abc\n";
+        return "refs/remotes/origin/prod\n";
       }
       order.push(`log ${cwd}`);
       return inner(cwd, args, signal);
@@ -238,6 +236,19 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     }
     assert.deepStrictEqual(all.map((c) => c.subject).sort(), Array.from({ length: 10 }, (_, i) => `c${i}`).sort());
     console.log("ok - real git: one backwards-dated commit does not truncate paging");
+    const topological: Commit[] = [];
+    let topoPrev: QueryState | null = null;
+    for (let guard = 0; guard < 50; guard++) {
+      const page = await fetchPage({ repos: [skewed], filter: { ...ALL, sort: "topo" }, pageSize: 2, concurrency: 4, now: 5000,
+        prev: topoPrev, run: runGit, signal: new AbortController().signal });
+      topological.push(...page.rows);
+      topoPrev = page.state;
+      if (page.done) break;
+    }
+    assert.strictEqual(topological.length, 10);
+    const indexes = new Map(topological.map((c, i) => [c.sha, i]));
+    topological.forEach((c, i) => c.parents.forEach((parent) => assert.ok(i < indexes.get(parent)!, "every child precedes its parent, across page boundaries and reversed dates")));
+    console.log("ok - real git: topological sorting survives reversed dates and pagination");
   }
 })().catch((e) => {
   console.error(e);

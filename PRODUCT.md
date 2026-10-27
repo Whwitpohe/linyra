@@ -6,7 +6,8 @@
 
 web
 
-A VS Code panel view (Log webview beside a native Changes tree), next to Terminal. It also renders in a plain browser through the
+A VS Code panel view with an integrated Log and Changes surface, next to Terminal. Branch comparison
+uses another integrated surface with Repositories, Left and Right regions. Both render in a plain browser through the
 dev harness (spec §6), which is where design iteration and detectors run.
 
 ## Stack
@@ -49,13 +50,14 @@ product; everything else is a non-goal.
 
 ## Capabilities and Constraints
 
-- Read-only. No fetch, pull, checkout or any state-changing git operation.
-- No commit graph: commits in unrelated repos share no topology.
-- Filters are text (`--grep`), author (`--author`, with a "Me" shortcut), repo subset, and
-  date range. No branch or path filters in v1.
+- History reads, hash lookup and graph folding are read-only. Explicit repository and branch
+  actions provide fetch, pull, staging, commit and branch management with repository/ref validation.
+- The graph uses real parent ids and repository-qualified identities; it never connects unrelated roots.
+- Filters include message text, multiple authors, repository subset, date, path and multiple
+  branches. All local/remote branches are the default; hash lookup temporarily ignores other filters.
 - No index, cache or database; every filter is pushed down into `git log` flags.
-- Ordering is by committer date and is best-effort across repositories; the date column is
-  always visible so ordering is never mysterious.
+- Ordering is by committer date or Git topology, with bounded continuation across pages;
+  the chosen mode and its cross-repository behavior are visible.
 - One failing repository is contained to a dismissible notice; it never fails the others.
 - Open (spec §9): worktree duplication, an "all branches" toggle, marketplace icon and demo
   GIF.

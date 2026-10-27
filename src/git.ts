@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
 import { abortError } from "./pool";
@@ -31,6 +32,8 @@ const NOT_RUNNABLE = new Set(["ENOENT", "EACCES", "ENOTDIR", "EISDIR", "EINVAL",
 class NotRunnable extends Error {}
 
 export interface RunOptions {
+  /** UTF-8 input for Git's batch commands. Never interpreted by a shell. */
+  input?: string;
   /**
    * Abort kills git's whole process tree (ssh, remote helpers, credential helpers), not only
    * git: for network commands, whose helpers would otherwise outlive a timeout.
@@ -77,13 +80,19 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       else if (e.code && NOT_RUNNABLE.has(e.code)) reject(new NotRunnable(e.code));
       else reject(e);
     });
+    if (opts.input !== undefined) {
+      // An invalid command can close stdin before the write completes; its exit code
+      // and stderr below remain the authoritative error instead of an unhandled EPIPE.
+      child.stdin.on("error", () => undefined);
+      child.stdin.end(opts.input);
+    }
     child.on("close", (code) => {
       signal?.removeEventListener("abort", onAbort);
       // Aborted: usually rejected already by the "error" handler, but not when git had exited
       // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
       if (signal?.aborted) return reject(abortError());
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
-      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || `git exited with code ${code}`, code));
+      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || localize("git exited with code {0}", String(code)), code));
     });
   });
 }
@@ -145,7 +154,7 @@ export class GitRunner {
       }
     }
     if (generation === this.generation) this.lastFailed = true;
-    throw new GitError(`git was not found (tried: ${tried.join(", ")}). Check the git.path setting.`, null);
+    throw new GitError(localize("git was not found (tried: {0}). Check the git.path setting.", tried.join(", ")), null);
   };
 
   private remember(binary: string, generation: number): void {
@@ -156,7 +165,7 @@ export class GitRunner {
 
   private async checkFolder(cwd: string): Promise<void> {
     const ok = await fs.stat(cwd).then((s) => s.isDirectory(), () => false);
-    if (!ok) throw new GitError(`the repository folder is missing: ${cwd}`, null);
+    if (!ok) throw new GitError(localize("the repository folder is missing: {0}", cwd), null);
   }
 }
 

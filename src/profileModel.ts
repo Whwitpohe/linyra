@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 // Repo List profiles: named groups of repositories, kept in the workspace setting
 // polylog.profiles. Pure: no vscode import. A profile only chooses which repositories
 // git log runs in; it filters nothing itself.
@@ -75,9 +76,9 @@ export function profileFilter(p: ResolvedProfile, allIds: readonly string[]): st
 /** Why a name cannot be used (undefined: it can). Names differing only in case are the same name. */
 export function nameProblem(p: Profiles, name: string, current?: string): string | undefined {
   const n = name.trim();
-  if (!n) return "Enter a name.";
+  if (!n) return localize("Enter a name.");
   const clash = Object.keys(p).find((k) => k.toLowerCase() === n.toLowerCase() && k !== current);
-  return clash === undefined ? undefined : `A profile named "${clash}" already exists.`;
+  return clash === undefined ? undefined : localize("A profile named \"{0}\" already exists.", clash);
 }
 
 export function saveProfile(p: Profiles, name: string, keys: readonly string[]): Profiles {

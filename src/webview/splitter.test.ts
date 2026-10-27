@@ -61,3 +61,21 @@ for (const end of ["pointercancel", "lostpointercapture"]) {
   assert.deepStrictEqual(t.commits, [206, 190, 174]);
   console.log("ok - arrow keys resize in 16px steps and save");
 }
+
+{
+  const el = new FakeSplitter();
+  let height = 220;
+  const commits: number[] = [];
+  attachSplitter(el as unknown as HTMLElement, { get: () => height, set: (h) => { height = h; }, commit: () => commits.push(height) }, "y");
+  el.dispatchEvent(ev("pointerdown", { clientY: 100 }));
+  el.dispatchEvent(ev("pointermove", { clientX: 900, clientY: 150 }));
+  assert.strictEqual(height, 270, "horizontal motion does not change a vertical split");
+  el.dispatchEvent(ev("pointercancel"));
+  el.dispatchEvent(ev("pointermove", { clientY: 500 }));
+  assert.strictEqual(height, 270);
+  el.dispatchEvent(ev("keydown", { key: "ArrowUp" }));
+  el.dispatchEvent(ev("keydown", { key: "ArrowDown" }));
+  el.dispatchEvent(ev("keydown", { key: "ArrowLeft" }));
+  assert.deepStrictEqual(commits, [270, 254, 270]);
+  console.log("ok - horizontal divider uses vertical pointer motion and Up/Down keys, including cancellation");
+}

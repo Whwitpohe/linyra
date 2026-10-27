@@ -15,7 +15,7 @@ Code's own diff editor.
      broken images on the listing pages. The images are excluded from the VSIX,
      so push them to main before publishing. -->
 
-![Polylog: one search finds a ticket's commits in four repositories, and each opens in the native diff editor](https://raw.githubusercontent.com/lntvan166/polylog/main/media/demo.gif)
+![Polylog: one search finds a ticket's commits in four repositories, and each opens in the native diff editor](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/demo.gif)
 
 Ticket ACME-142 touched four repositories. Searching for it once in Polylog lists all
 four commits, and each one opens in the native diff editor.
@@ -25,28 +25,33 @@ four commits, and each one opens in the native diff editor.
 **The merged log.** Every commit from every repo, with a colored chip showing where it
 lives. The Changes tree follows your selection, and clicking a file opens its diff above.
 
-![The merged log of six repositories, with a commit's diff open in the editor](https://raw.githubusercontent.com/lntvan166/polylog/main/media/screenshot-log.png)
+![The merged log of six repositories, with a commit's diff open in the editor](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-log.png)
 
 **File History.** Right-click any file and choose **Polylog: File History** to get the
 commits that touched it, across renames. The diff follows as you step through them with
 `↑`/`↓`.
 
-![File History for one file, following renames, with the diff following the selection](https://raw.githubusercontent.com/lntvan166/polylog/main/media/screenshot-file-history.png)
+![File History for one file, following renames, with the diff following the selection](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-file-history.png)
 
-**A branch in every repo.** Type `origin/release-1.4` to see that branch in every
-repository that has it. The others fall back to their current branch, and the footer
-shows how many repos use each.
+**Branch selection.** The log starts on all local and remote branches. Open the branch
+filter to search and select several branches; their histories are combined without duplicate
+commits. Repositories with none of the selected branches are skipped and counted in the footer.
 
-![The log on origin/release-1.4: found in three repositories, current branch in the other three](https://raw.githubusercontent.com/lntvan166/polylog/main/media/screenshot-branch.png)
+![The log on origin/release-1.4: found in three repositories, current branch in the other three](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-branch.png)
 
 **Your theme, not ours.** Every color comes from your VS Code theme, so Polylog looks like
 the rest of your editor. That includes light, dark and both high-contrast themes.
 
-![Polylog in Dark Modern, Light Modern, High Contrast and High Contrast Light](https://raw.githubusercontent.com/lntvan166/polylog/main/media/screenshot-themes.png)
+![Polylog in Dark Modern, Light Modern, High Contrast and High Contrast Light](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/screenshot-themes.png)
 
 ---
 
 ## Quick Start
+
+For the builds in this fork, download the latest `.vsix` from
+[GitHub Releases](https://github.com/Whwitpohe/polylog/releases), then run **Extensions:
+Install from VSIX…** and reload the window. The Marketplace/Open VSX links below refer to
+the upstream extension; a GitHub release is separate from publication to those registries.
 
 1. Install **Polylog** (extension ID `lntvan166.polylog-git`) in any of these ways:
    - **Extensions view:** search for `lntvan166.polylog-git`, or "Polylog", and pick the
@@ -70,9 +75,21 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 ## Features
 
 - **One merged log.** Every repository's commits in one list, newest first by commit
-  date, with a colored chip showing each commit's repo.
+  date. Adjacent commits from the same repository share one continuous color band. The graph
+  beside it shows actual parent links, branches and merges within each repository.
+  A dashed endpoint means the parent is filtered out or has not been loaded yet.
+  A minus-in-a-square marks a collapsible node; a plus-in-a-square expands it again.
+  Ordinary circles only select commits. Click a marked linear node or its connecting edge to fold the intermediate commits
+  into a dashed summary; click the summary to expand them again. The two graph buttons
+  fold or expand all eligible paths. Branch/tag labels, forks, merges and endpoints remain
+  visible. Left/Right on a linear node also folds/expands its path; Ctrl/Shift-click keeps
+  the normal commit selection behavior. Folding only changes the display of loaded history.
 - **Search across every repo.** Search commit messages (literal, case-insensitive) across
   every repository at once.
+  Paste a full commit hash or a prefix of at least seven characters to locate it directly
+  in the selected repositories. `sha:` accepts prefixes of at least four characters.
+  Hash lookup temporarily ignores the other filters and lists every matching commit;
+  clearing the search restores your filter settings.
 - **Filters:**
   - **Authors:** type a name or email. Enter, a comma or a picked suggestion adds it as a
     chip, and a commit by any of the chips matches. Suggestions list who committed
@@ -81,11 +98,27 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   - **Path**: only commits touching a file, a folder (everything inside it), or a glob, in
     every repository at once. Paths are relative to each repo's root. `*.sql` matches in
     any folder; `db/*.sql` only in `db/`.
-  - **Branch**, applied in every repo that has it.
+  - **Branches**, all by default, with a searchable multi-select picker. Clear the selection
+    to return to all local and remote branches; the selected names are remembered.
+  - **Sort**, by commit date or topology. Topology keeps incoming branch history directly
+    below its merge instead of interleaving it with another repository's dates. Connected
+    parts stay together across pages, while children still precede parents. The graph uses
+    separate colored lanes for parallel branches. Branch references appear beside the commit
+    subject with local/remote icons.
   - **Date range:** last 24 hours by default, or 7 days, 30 days, all time, or a custom
     range.
 - **Repositories pane.** Pick which repositories to show, with fuzzy search and
   multi-select. Toggle it with **Group by Repository** in the Log's title bar.
+  - **Branches mode.** Switch the pane from **Repositories** to **Branches** for a
+    Local/Remote tree, grouped by repository and remote. Expand a repository to read its
+    branches; search matches repository and branch names. The current branch has a check,
+    upstream and ahead/behind counts appear in its tooltip, and stars mark favorites.
+    The mode, expanded groups and favorites are remembered per workspace.
+    Clicking a branch filters the log to that repository and branch; it does not check it out.
+    Right-click a branch to check out, create, compare with the current branch or working
+    tree, fetch, pull, push, rename, merge, rebase, delete or create a worktree. Remote branches
+    also offer fetch-and-merge and fetch-and-rebase. These commands act only on that repository;
+    local deletion refuses unmerged work, and remote deletion asks before changing the server.
   - **Profiles.** Save the ticked repositories under a name (**＋ Save as profile…** appears
     as soon as you pick some, or right-click the Repo List), then click the profile to tick
     exactly those repositories again. Your other filters stay as they are. Profiles live in
@@ -112,9 +145,28 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Right-click a commit** in the Log: Copy Commit ID, Copy Message (the whole message),
   or Open on Remote, its page on GitHub, GitLab, Bitbucket or Azure DevOps (from the
   repository's `origin`; credentials in the URL are never opened).
-- **Native Changes tree.** Its title says what it shows (`acme-api · 3f9a2c1 · 2 files`, or
-  `… · uncommitted · …`). Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
-  open its diff in the editor area. Right-click the commit to copy its SHA or message.
+- **Changes and commit details.** Its title says what it shows (`acme-api · 3f9a2c1 · 2 files`, or
+  `… · uncommitted · …`). The file tree keeps Git status colors for filenames and rename paths,
+  with compact file-type icons, right-aligned line counts and `A`/`M`/`D`/`R` badges. Click a file to open its diff
+  in the editor area. The full commit message, author, email and date appear below the files;
+  click the SHA or copy button to copy the commit id or message. Drag the divider to resize
+  the details, use Up/Down while the divider is focused, or double-click to reset its height.
+  Click the arrow beside **Commit details** to collapse or expand the details area; the view
+  remembers this state and restores the previous height when expanded.
+  Both panes scroll independently and the chosen height is remembered.
+  The Log and Changes share one panel, so clicking an empty title area cannot collapse
+  the Log. Drag the divider to resize Changes, or use its dedicated visibility button.
+  The Log toolbar retains repository grouping, comparison, the Uncommitted sidebar, Fetch All,
+  and the pull/profile actions in its menu. Its layout buttons choose side-by-side or stacked
+  panes; the choice and sizes are remembered. **Open Changes in Editor** opens a separately
+  movable tab. The Changes toolbar has Clear Selection, All/Changed Files, Expand All,
+  Collapse All, and a menu for copying the commit id/message or opening it on the remote.
+  The file search above the tree matches filenames, full paths and rename sources, keeps
+  matching folders visible, and shows the matching file count. Enter opens the first match;
+  Escape clears the file search. In **All Files**, it searches the commit's changed files.
+  Commit details use separate colors for the subject, author and reference kinds. Repository
+  markers and HEAD, local/remote branch and tag icons accompany the real Git references;
+  the list of branches containing the commit can be expanded or hidden.
   **All Files** (in its title bar) shows the commit's whole tree, like the Explorer: the
   folders holding changes open, each other folder read only when you open it, deleted files
   still listed, and unchanged files opening as they were at that commit.
@@ -152,8 +204,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
 - **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
-  Compare** panel tab, hidden until then; ⇄ again (or × in its title) hides it: three views
-  side by side. It compares two branches in every ticked
+  Compare** panel tab, hidden until then; ⇄ again (or ×) hides it. Repositories, Left and Right
+  share one panel so clicking a heading or its blank space cannot collapse a section.
+  Drag the dividers to resize the panes, switch between side-by-side and stacked layouts,
+  or explicitly hide/show either side; these choices are remembered. It compares two branches in every ticked
   repository, for example `origin/release-1.4` (◀ left, what you merge from) and
   `origin/main` (▶ right, where it goes).
   - **Repositories** lists the repositories whose files differ, in their Repo List colors (commit
@@ -164,12 +218,16 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     pairs, ★ favorites, local, remote), then **Files | Commits** and **Refresh**.
   - **Left** and **Right** show the selected repository's two sides:
     - **Files** (the default): what each side changed since the branches split, as a folder
-      tree with your file icons. A file changed on both sides is marked **both**. One the two
+      tree with themed file-type icons and Git status colors. A file changed on both sides is marked **both**. One the two
       branches now have the same (a cherry-pick: nothing to merge) is hidden, and counted in the
       title; **Show Files Already on Both** (the filter in the title bar) lists it, dimmed.
     - **Commits**: each side's commits, each expanding to its files.
+    Folder and commit expansion uses the small arrow or keyboard controls; clicking their
+    text only selects the row. Both side toolbars retain display-mode switching, the shared-file
+    filter and Expand/Collapse All; Show More and the original file/commit context actions remain available.
 
-    Click a file to open it as the two branches have it now (the target branch on the left);
+    Click a file to open it as the two branches have it now, with the editor's left and right
+    sides matching the branch boxes. Changing or swapping the pair updates the active file diff;
     right-click → **Changes since the Split** shows only what that side changed (what the merge
     brings in).
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
@@ -192,6 +250,18 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 **Polylog Compare** tab holds Compare; the Uncommitted view is in the Polylog side bar. Drag
 any view elsewhere and VS Code keeps it there (views you moved yourself stay put after an
 update).
+
+## Languages
+
+Polylog follows VS Code's display language. English and Simplified Chinese (`zh-cn`)
+are supported; other languages fall back to English. Run **Configure Display Language**
+in VS Code and restart to change the language.
+
+Translations cover commands, settings, native views, prompts and both webviews.
+To add a language, provide `package.nls.<locale>.json` for extension contributions and
+`l10n/bundle.l10n.<locale>.json` for runtime messages. Keep the numbered placeholders
+(`{0}`, `{1}`, …) in translated messages. `npm test` checks catalog coverage.
+The browser harness includes `index.zh-cn.html` and `repos.zh-cn.html` for UI checks.
 
 ## How It Works
 
