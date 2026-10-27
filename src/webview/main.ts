@@ -1,4 +1,8 @@
+import { localize } from "../i18n";
 import "./styles.css";
+import "./changes/changes.css";
+import { mountChanges, type SavedState } from "./changes/view";
+import type { ChangesMessage } from "../changesProtocol";
 import type { ResolvedProfile } from "../profileModel";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
@@ -11,14 +15,18 @@ import { FilterBar } from "./filters";
 import { CommitList, type Gesture } from "./list";
 import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
+import { BranchPane } from "./branchPane";
 import { applyGesture, keepListed, SELECTION_LIMIT, type Selection } from "./selectionModel";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
 import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
 import { WorkList } from "./workList";
+import { LogToolbar } from "./toolbar";
+import type { ChangesLayout } from "../toolbarModel";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
+const changesEvents = new EventTarget();
 
 /** A 25 ms query should never flash a skeleton. */
 const SKELETON_DELAY_MS = 150;
@@ -47,7 +55,17 @@ const searchEl = byId<HTMLInputElement>("search");
 const moreEl = byId<HTMLButtonElement>("more");
 const countEl = byId("count");
 const branchUseEl = byId("branch-use");
-const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), openFirstFile);
+const graphCollapse = byId<HTMLButtonElement>("graph-collapse");
+const graphExpand = byId<HTMLButtonElement>("graph-expand");
+const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), openFirstFile, (stats) => {
+  graphCollapse.disabled = stats.available === stats.collapsed;
+  graphExpand.disabled = stats.collapsed === 0;
+  const count = byId("graph-fold-count");
+  count.hidden = stats.hidden === 0;
+  count.textContent = localize("{0} commits hidden", stats.hidden);
+});
+graphCollapse.addEventListener("click", () => list.collapseAll());
+graphExpand.addEventListener("click", () => list.expandAll());
 const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
@@ -56,6 +74,7 @@ const notices = new NoticeBar(byId("notices"), () => {
 const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }), () => post({ type: "profileSave" }));
+const branchPane = new BranchPane(post);
 const appEl = byId("app");
 /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
 let mode: "commits" | "uncommitted" = "commits";
@@ -99,6 +118,44 @@ byId("mode-all").addEventListener("click", exitHistory);
 byId("history-close").addEventListener("click", exitHistory);
 const splitter = byId("splitter");
 const paneWidth = new PaneWidth();
+const workspace = byId("workspace");
+const changesPane = byId("changes-pane");
+const changesSplitter = byId("changes-splitter");
+const changesVerticalSplitter = byId("changes-splitter-vertical");
+const changesToggle = byId<HTMLButtonElement>("toggle-changes");
+let changesWidth = 360;
+let changesHeight = 240;
+let showChanges = true;
+let changesLayout: ChangesLayout = "auto";
+
+function applyChangesLayout(): void {
+  const stacked = changesLayout === "stacked" || (changesLayout === "auto" && workspace.clientWidth < 720) || workspace.clientWidth < 505;
+  const size = stacked ? Math.max(96, Math.min(changesHeight, workspace.clientHeight - 160)) : Math.max(180, Math.min(changesWidth, workspace.clientWidth - 320));
+  workspace.classList.toggle("stacked", stacked);
+  workspace.classList.toggle("no-changes", !showChanges);
+  workspace.style.setProperty("--changes-size", `${size}px`);
+  changesPane.hidden = !showChanges;
+  changesSplitter.hidden = !showChanges || stacked;
+  changesVerticalSplitter.hidden = !showChanges || !stacked;
+  changesToggle.setAttribute("aria-pressed", String(showChanges));
+  changesSplitter.setAttribute("aria-valuenow", String(size));
+  changesVerticalSplitter.setAttribute("aria-valuenow", String(size));
+  toolbar.updateLayout(changesLayout);
+}
+const saveChangesLayout = () => post({ type: "layout", repoPaneWidth: paneWidth.shown, changesPaneWidth: changesWidth, changesPaneHeight: changesHeight, showChanges, changesLayout });
+const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); });
+changesToggle.addEventListener("click", () => { showChanges = !showChanges; applyChangesLayout(); saveChangesLayout(); });
+attachSplitter(changesSplitter, {
+  get: () => changesSplitter.getBoundingClientRect().left,
+  set: (left) => { changesWidth = Math.max(180, Math.min(workspace.clientWidth - left - 5, workspace.clientWidth - 320)); applyChangesLayout(); },
+  commit: saveChangesLayout,
+});
+attachSplitter(changesVerticalSplitter, {
+  get: () => changesVerticalSplitter.getBoundingClientRect().top,
+  set: (top) => { changesHeight = Math.max(96, Math.min(workspace.clientHeight - top - 5, workspace.clientHeight - 160)); applyChangesLayout(); },
+  commit: saveChangesLayout,
+}, "y");
+new ResizeObserver(applyChangesLayout).observe(workspace);
 
 function showPaneWidth(width: number): void {
   appEl.style.setProperty("--repo-pane-width", `${width}px`);
@@ -126,6 +183,11 @@ moreEl.addEventListener("click", () => {
 window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
   const m = e.data;
   switch (m.type) {
+    case "toolbar": toolbar.update(m.state); return;
+    case "focusChanges": byId("file-tree").focus(); return;
+    case "changesView": changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })); return;
+    case "sidebarState": branchPane.applyState(m.state); return;
+    case "branchTree": branchPane.receive(m); return;
     case "init":
       state.repos = m.repos;
       accents = assignAccents(m.repos);
@@ -136,6 +198,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       state.profiles = m.profiles;
       repoPane.update(m.repos, m.filter.repoIds, m.profiles);
+      branchPane.update(m.repos, m.filter);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       // Only when the host changed the switch: a late init must not undo the user's click.
       if (m.logMode !== undefined && m.logMode !== mode) setMode(m.logMode);
@@ -147,6 +210,11 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       byId("repo-pane").toggleAttribute("inert", !!m.history);
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
+      changesWidth = m.layout.changesPaneWidth ?? changesWidth;
+      changesHeight = m.layout.changesPaneHeight ?? changesHeight;
+      showChanges = m.layout.showChanges ?? true;
+      changesLayout = m.layout.changesLayout ?? "auto";
+      applyChangesLayout();
       break;
     case "uncommitted":
       work = { known: m.known, totals: m.totals, rows: m.rows };
@@ -240,7 +308,7 @@ function gesture(index: number, how: Gesture): void {
   const c = state.rows[index];
   if (!c) return;
   const key = commitKey(c);
-  const order = state.rows.map(commitKey);
+  const order = list.visibleCommitIndexes().map((i) => commitKey(state.rows[i]));
   const g = how.kind === "click" ? { kind: "click" as const, key, ctrl: how.ctrl, shift: how.shift }
     : how.kind === "arrow" ? { kind: "arrow" as const, key, shift: how.shift }
     : { kind: "context" as const, key };
@@ -248,9 +316,9 @@ function gesture(index: number, how: Gesture): void {
   state.overLimit = overLimit;
   if (overLimit) return render();
   // Back to one commit: the one left, not necessarily the row clicked (Ctrl-click removes it).
-  if (next.keys.length <= 1) return select(order.indexOf(next.focus ?? key));
+  if (next.keys.length <= 1) return select(state.rows.findIndex((c) => commitKey(c) === (next.focus ?? key)));
   state.selection = next;
-  state.selected = order.indexOf(next.focus ?? key);
+  state.selected = state.rows.findIndex((c) => commitKey(c) === (next.focus ?? key));
   selectedKey = null; // a plain click on any of them is a new selection
   postSelectMany(next);
   render();
@@ -306,6 +374,7 @@ function setFilter(f: FilterState): void {
   state.filter = f;
   filters.update(f);
   repoPane.update(state.repos, f.repoIds, state.profiles);
+  branchPane.update(state.repos, f);
   post({ type: "filter", filter: f });
   render();
 }
@@ -315,7 +384,7 @@ function runEmptyAction(action: EmptyAction): void {
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
     case "clearAuthor": setFilter({ ...f, author: "", mine: false, authors: undefined }); return;
-    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, authors: f.authors, path: f.path, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
+    case "allTime": setFilter({ ...f, date: "all", from: undefined, to: undefined }); return;
     case "clearPath": setFilter({ ...f, path: undefined }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
@@ -323,15 +392,16 @@ function runEmptyAction(action: EmptyAction): void {
 }
 
 function render(): void {
+  byId("graph-controls").hidden = mode === "uncommitted";
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
   const count = switchCount(work.known, work.totals.files);
   workCount.textContent = count;
   workCount.hidden = count === "";
-  tabs.uncommitted.setAttribute("aria-label", count ? `Uncommitted, ${count} ${count === "1" ? "file" : "files"}` : "Uncommitted");
+  tabs.uncommitted.setAttribute("aria-label", count ? localize("Uncommitted, {0} {1}", count, localize(count === "1" ? "file" : "files")) : localize("Uncommitted"));
   workTotals.textContent = mode === "uncommitted" ? totalsLabel(work.totals) : "";
   if (mode === "uncommitted") {
     workList.update(work.rows, names, accents, behind);
-    empty.render(work.rows.length === 0 ? { title: "Nothing uncommitted", body: "Nothing uncommitted in the ticked repositories." } : null);
+    empty.render(work.rows.length === 0 ? { title: localize("Nothing uncommitted"), body: localize("Nothing uncommitted in the ticked repositories.") } : null);
     return;
   }
   list.update({
@@ -345,11 +415,12 @@ function render(): void {
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;
   countEl.textContent = state.rows.length > 0 ? countLabel(state.rows.length) : "";
-  limitEl.textContent = state.overLimit ? `Combined Changes shows up to ${SELECTION_LIMIT} commits` : "";
+  limitEl.textContent = state.overLimit ? localize("Combined Changes shows up to {0} commits", SELECTION_LIMIT) : "";
 }
 
 document.addEventListener("keydown", (e) => {
   const t = e.target;
+  if (t instanceof Element && t.closest("#changes-pane")) return;
   const typing = t instanceof HTMLInputElement || t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement;
   const find = e.key.toLowerCase() === "f" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
   if (find || (e.key === "/" && !typing)) {
@@ -366,11 +437,6 @@ document.addEventListener("keydown", (e) => {
     setFilter({ ...state.filter, text: "" });
     return;
   }
-  if (t instanceof HTMLInputElement && t.id === "author" && t.value !== "") {
-    e.preventDefault();
-    setFilter({ ...state.filter, author: "" });
-    return;
-  }
   if (t instanceof HTMLInputElement && t.id === "path" && t.value !== "") {
     e.preventDefault();
     t.value = "";
@@ -378,14 +444,15 @@ document.addEventListener("keydown", (e) => {
     setFilter({ ...state.filter, path: undefined });
     return;
   }
-  if (t instanceof HTMLInputElement && t.id === "branch" && t.value !== "") {
-    e.preventDefault();
-    t.value = "";
-    setFilter({ ...state.filter, branch: "" });
-    return;
-  }
   byId(escapeTarget(mode)).focus();
 });
 
+mountChanges({
+  viewId: "main",
+  postMessage: (message: ChangesMessage) => post({ type: "changesView", message }),
+  getState: () => (vscode.getState() as { changes?: SavedState } | undefined)?.changes,
+  setState: (changes) => vscode.setState({ ...((vscode.getState() ?? {}) as object), changes }),
+}, changesEvents);
+applyChangesLayout();
 render();
 post({ type: "ready" });

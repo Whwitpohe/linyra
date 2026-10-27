@@ -160,12 +160,12 @@ section { display: grid; gap: 16px; }
   <h1>Polylog UI Map</h1>
   <p class="lede">Every part of the Polylog panel, with the name we'll both use for it. Say "Repo List row" or "Log toolbar" and we mean the same thing.</p>
   <!-- Dev-only (not in the VSIX). Serve with: npm run ui-map. Keep it in step with the UI: /ui-map. -->
-  <p class="how"><b>Click any box, number or name to copy the name.</b> Each red box is one named region, and its red number points to the name below. Boxes inside boxes are parts of a bigger region (the Filter bar sits inside the Log view). Amber boxes are the planned views from our current design talk. The mocks scroll sideways on a narrow screen.</p>
+  <p class="how"><b>Click any box, number or name to copy the name.</b> Each red box is one named region, and its red number points to the name below. Boxes inside boxes are parts of a bigger region (the Filter bar sits inside the Log view). The Log and Compare each use one native surface; their headings are labels, not full-row collapse controls. The mocks scroll sideways on a narrow screen.</p>
 </header>
 
 <!-- ============ TODAY ============ -->
 <section aria-labelledby="s-now">
-  <div class="sec-head"><h2 id="s-now">The Polylog panel today</h2><span class="pill now">Exists</span></div>
+  <div class="sec-head"><h2 id="s-now">Polylog 1.4 — stable integrated panels</h2><span class="pill now">Exists</span></div>
   <div class="stage">
     <div class="vs">
       <div class="tabs"><span>Problems</span><span>Output</span><span>Terminal</span><span class="on t">Polylog<i class="n tl">1</i></span></div>
@@ -173,7 +173,7 @@ section { display: grid; gap: 16px; }
         <!-- Log view -->
         <div class="view t">
           <i class="n tl">2</i>
-          <div class="vhead">▾ Log
+          <div class="vhead">Log
             <span class="tools t" title="Log toolbar">☰ ⇄ ▣ ☁ ⋯<i class="n tl">3</i></span>
           </div>
           <div class="vbody log">
@@ -213,7 +213,7 @@ section { display: grid; gap: 16px; }
         <!-- Changes view -->
         <div class="view t">
           <i class="n tl">20</i>
-          <div class="vhead">▾ Changes<span class="tools t" title="All Files toggle" style="padding:0 4px">☰<i class="n tl">29</i></span></div>
+          <div class="vhead">Changes<span class="tools t" title="All Files toggle" style="padding:0 4px">☰<i class="n tl">29</i></span></div>
           <div class="vbody tree">
             <div class="node t" style="--d:0">▾ ◇ feat(checkout): pay with a saved card <span class="desc">acme-web</span><i class="n tl">21</i></div>
             <div class="node t" style="--d:1">▾ src <span class="desc">3</span><i class="n tl">22</i></div>
@@ -230,7 +230,7 @@ section { display: grid; gap: 16px; }
   <div class="gloss">
     <div class="g"><i class="num">1</i><b>Polylog panel</b><span>The "Polylog" tab in VS Code's bottom panel. Holds every Polylog view.</span></div>
     <div class="g"><i class="num">2</i><b>Log view</b><span>The merged history of every repository. Everything on its left side, down to the footer, belongs to it.</span></div>
-    <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Icons in the Log\'s title, left to right: Group by Repository, ⇄ Polylog Compare and Uncommitted View (the modified-file icon) — click to show, click again to hide — Fetch All, and the "⋯" menu (Show Only Repositories Behind).</span></div>
+    <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Fixed, explicit buttons: repository grouping, Compare, Uncommitted sidebar, Fetch All, side-by-side/stacked layout, and the pull/profile menu. Clicking blank title space has no fold action.</span></div>
     <div class="g"><i class="num">4</i><b>Repo List</b><span>The list of repositories on the Log's left. Tick to choose which repositories the Log shows. Today's name in the code is "Repositories pane".</span></div>
     <div class="g"><i class="num">5</i><b>Repo search</b><span>"Filter repositories": narrows the Repo List by name.</span></div>
     <div class="g"><i class="num">6</i><b>All repositories row</b><span>Ticks or unticks every repository; shows how many are picked.</span></div>
@@ -239,18 +239,18 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">7</i><b>Sync badge</b><span>↓ commits to pull, ↑ commits not pushed, as of the last fetch.</span></div>
     <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: checkbox, color dot (same color as its chip in the Commit list), name. Right-click for the Repo menu.</span></div>
     <div class="g"><i class="num">9</i><b>Filter bar</b><span>The boxes above the commits. Every filter runs inside git.</span></div>
-    <div class="g"><i class="num">10</i><b>Search box</b><span>Commit messages, across every repository.</span></div>
-    <div class="g"><i class="num">11</i><b>Author box</b><span>Author chips, with suggestions, and the Me toggle.</span></div>
+    <div class="g"><i class="num">10</i><b>Search box</b><span>Ordinary text matches messages across selected repositories; full or 7+ character hashes locate commits directly. sha: accepts 4+ hexadecimal characters; other filters are temporarily ignored during lookup.</span></div>
+    <div class="g"><i class="num">11</i><b>Author box</b><span>Searchable multi-select checklist, with the Me toggle and each repository's own identity.</span></div>
     <div class="g"><i class="num">12</i><b>Path box</b><span>Commits that touched a file, folder or glob.</span></div>
-    <div class="g"><i class="num">13</i><b>Branch box</b><span>Read each repository on this branch (falls back to its current branch).</span></div>
+    <div class="g"><i class="num">13</i><b>Branch box</b><span>All local and remote branches by default. Search and select several names; Git returns their union. A repository without any selected branch is skipped, not replaced with its current branch.</span></div>
     <div class="g"><i class="num">14</i><b>Date range</b><span>24 hours, 7 days, 30 days, all time, or custom.</span></div>
     <div class="g"><i class="num">15</i><b>Refresh button</b><span>Reads every repository again.</span></div>
     <div class="g"><i class="num">16</i><b>Commits | Uncommitted switch</b><span>At the top of the Log. Its badge counts the uncommitted files in the ticked repositories. Uncommitted shows one Uncommitted list row per repository with work (files, change meter, staged/new tags, when edited); clicking one shows its files in the Changes view. Right-click a row or the Changes view root for Commit…, Stage All, Unstage All and Discard All Changes; a file or folder there for Stage, Unstage and Discard. Several selected rows act together.</span></div>
-    <div class="g"><i class="num">17</i><b>Commit row</b><span>Repo chip, subject, author, date. Click: its files go to the Changes view. Right-click: the Commit menu.</span></div>
+    <div class="g"><i class="num">17</i><b>Commit row</b><span>Repository band, real parent graph, subject, compact branch/tag references, author and date. Explicit graph controls fold complete linear histories; selection keeps real commit ids.</span></div>
     <div class="g"><i class="num">18</i><b>Load more</b><span>The next page of commits.</span></div>
-    <div class="g"><i class="num">19</i><b>Log footer</b><span>Sort order, the branch in use, and how many commits are listed.</span></div>
-    <div class="g"><i class="num">20</i><b>Changes view</b><span>Native tree: the files of the selected Commit row.</span></div>
-    <div class="g"><i class="num">21</i><b>Commit header</b><span>The selected commit's subject and repository. Right-click to copy its id or message.</span></div>
+    <div class="g"><i class="num">19</i><b>Log footer</b><span>The selected date/topology order, branch-scope coverage, folded count and commit count.</span></div>
+    <div class="g"><i class="num">20</i><b>Changes view</b><span>Integrated changed-file region with its own toolbar, file search and independent scrolling. It can also open as a movable editor tab.</span></div>
+    <div class="g"><i class="num">21</i><b>Commit details</b><span>Full message below the files, preserving paragraphs/trailers, author/email/time/hash, colored refs and containing branches. Drag its divider to resize; only its small arrow collapses it.</span></div>
     <div class="g"><i class="num">22</i><b>Folder row</b><span>A folder, with how many changed files it holds.</span></div>
     <div class="g"><i class="num">23</i><b>File row</b><span>A changed file: +/− lines and its A/M/D/R badge. Click opens the diff.</span></div>
   </div>
@@ -293,7 +293,7 @@ section { display: grid; gap: 16px; }
     <div class="vs">
       <div class="views">
         <div class="view">
-          <div class="vhead">▾ Log</div>
+          <div class="vhead">Log</div>
           <div class="vbody rows" style="padding-top:6px">
             <div class="row multi t"><span class="chip api">acme-api</span><span class="subj">api: /status reports the version</span><span class="who">dana</span><span class="when">10m ago</span><i class="n tl">37</i></div>
             <div class="row sel"><span class="chip web">acme-web</span><span class="subj">fix(header): padding on small screens</span><span class="who">dana</span><span class="when">20m ago</span></div>
@@ -304,7 +304,7 @@ section { display: grid; gap: 16px; }
           </div>
         </div>
         <div class="view">
-          <div class="vhead">▾ Changes <span style="font-weight:400;text-transform:none;color:var(--vs-dim)">4 commits · 2 repositories</span><span class="tools t" title="Clear Selection" style="padding:0 4px">⊘<i class="n tl">39</i></span></div>
+          <div class="vhead">Changes <span style="font-weight:400;text-transform:none;color:var(--vs-dim)">4 commits · 2 repositories</span><span class="tools t" title="Clear Selection" style="padding:0 4px">⊘<i class="n tl">39</i></span></div>
           <div class="vbody tree">
             <div class="node t" style="--d:0">▾ <span class="dot bg-web"></span> acme-web <span class="desc">2 commits</span><i class="n tl">40</i></div>
             <div class="node" style="--d:1">▾ src <span class="desc">2</span></div>
@@ -375,18 +375,20 @@ section { display: grid; gap: 16px; }
   </div>
   <div class="gloss">
     <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>In the Polylog side bar (the Polylog icon in the Activity Bar, like Source Control): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
-    <div class="g"><i class="num">29</i><b>All Files toggle</b><span>In the Changes view's title: the selected commit's whole tree, like the Explorer; folders holding changes open, others read when opened.</span></div>
+    <div class="g"><i class="num">29</i><b>All Files toggle</b><span>Changes toolbar: switch all/changed files, clear a combined selection, expand/collapse all, copy commit data or open Changes independently.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository of the Uncommitted view. A file staged and changed again is in both.</span></div>
     <div class="g"><i class="num">28</i><b>Polylog Compare tab</b><span>A panel tab next to Polylog (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
-    <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>At the top of Repositories: ◀ left ▾ ⇄ ▶ right ▾ (each box opens the Branch picker), Files | Commits, ↻ Refresh; × in the view title hides the Polylog Compare tab. Show Commits / Show Files is also on Left and Right.</span></div>
+    <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>Branch pickers, swap, Files/Commits, refresh, shared-file filtering, layout, side visibility and Close. All original commands remain reachable.</span></div>
     <div class="g"><i class="num">32</i><b>Branch picker</b><span>Opens under a branch box: a search box over Recent pairs, Favorites ★, Local and Remote, each name "in N repositories".</span></div>
     <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its Repo List color and name (commit counts in the tooltip); "no common history" or "git error" when it cannot be compared. ▸ unfolds the changes committed on both sides. Selecting it fills Left and Right. Right-click: the repository menu.</span></div>
-    <div class="g"><i class="num">34</i><b>Left and Right views</b><span>The selected repository&#39;s two sides ("release-1.4 only", "main only" in their titles): the files each side changed since the split, with your file icons (Files), or its commits (Commits). A file changed on both sides says "both"; one the two branches now have the same is hidden ("already on both", counted in the title; the filter in the title bar lists it, dimmed). A click opens the file as the two branches have it now; right-click → Changes since the Split shows what that side changed.</span></div>
+    <div class="g"><i class="num">34</i><b>Left and Right views</b><span>Two resizable regions within one Compare surface. Folder/commit text selects a row; only the small arrow or a keyboard action folds it. Both sides retain display mode, shared-file filtering, expand/collapse, Show More and file/commit context menus.</span></div>
     <div class="g"><i class="num">35</i><b>On both duplicates</b><span>Under a Repositories row (its ▸): each change committed on both sides (cherry-picked), with both commit ids.</span></div>
-    <div class="g"><i class="num">36</i><b>Missing a branch</b><span>The last row: the repositories that lack one of the two branches.</span></div>
+    <div class="g"><i class="num">36</i><b>Missing a branch</b><span>Missing repositories are listed separately. Its small arrow expands the names; the heading text and right-hand blank space do not.</span></div>
   </div>
 </section>
 </div>
+
+<section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branch sidebar</b><span>Local/remote grouping, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>

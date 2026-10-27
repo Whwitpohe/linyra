@@ -1,3 +1,4 @@
+import { localize } from "../i18n";
 import type { RepoFailure } from "../types";
 import { clear, h } from "./dom";
 
@@ -13,11 +14,11 @@ export class NoticeBar {
     clear(this.root);
     if (failures.length === 0) return;
     const n = failures.length;
-    const dismiss = h("button", { class: "link", type: "button" }, ["Dismiss"]);
+    const dismiss = h("button", { class: "link", type: "button" }, [localize("Dismiss")]);
     dismiss.addEventListener("click", this.onDismiss);
     this.root.append(h("div", { class: "notice", role: "status" }, [
       h("span", { class: "notice-text" }, [
-        `${n === 1 ? "1 repository" : `${n} repositories`} could not be read and ${n === 1 ? "is" : "are"} left out: `,
+        n === 1 ? localize("1 repository could not be read and is left out: ") : localize("{0} repositories could not be read and are left out: ", n),
         failures.map((f) => `${f.name} (${f.reason})`).join("; "),
       ]),
       dismiss,

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -18,14 +18,14 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 
 // ── No filters: the bare log, and no --grep at all ──────────────────────────
 {
-  assert.deepStrictEqual(args(ALL), ["log", LOG_FORMAT, "--max-count=200", "--"]);
-  assert.deepStrictEqual(args({ ...ALL, text: "   " }), ["log", LOG_FORMAT, "--max-count=200", "--"]);
+  assert.deepStrictEqual(args(ALL), ["log", LOG_FORMAT, "--max-count=200", "--decorate=full", "--branches", "--remotes", "HEAD", "--"]);
+  assert.deepStrictEqual(args({ ...ALL, text: "   " }), ["log", LOG_FORMAT, "--max-count=200", "--decorate=full", "--branches", "--remotes", "HEAD", "--"]);
   console.log("ok - empty or whitespace search omits --grep entirely");
 }
 
 // ── Search is literal and case-insensitive ──────────────────────────────────
 {
-  assert.deepStrictEqual(args({ ...ALL, text: " ACME-7 " }), ["log", LOG_FORMAT, "--max-count=200", "--regexp-ignore-case", "--fixed-strings", "--grep=ACME-7", "--"]);
+  assert.deepStrictEqual(args({ ...ALL, text: " ACME-7 " }), ["log", LOG_FORMAT, "--max-count=200", "--decorate=full", "--regexp-ignore-case", "--fixed-strings", "--grep=ACME-7", "--branches", "--remotes", "HEAD", "--"]);
   for (const text of ["fix(api)", "[ACME-7]", ".", "a|b", "^x$"]) {
     const a = args({ ...ALL, text });
     assert.ok(a.includes("--fixed-strings") && a.includes(`--grep=${text}`), `literal: ${text}`);
@@ -103,7 +103,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 
 // ── Author is pushed down as --author, literal and case-insensitive ────────
 {
-  assert.deepStrictEqual(args({ ...ALL, author: " Rin " }), ["log", LOG_FORMAT, "--max-count=200", "--regexp-ignore-case", "--fixed-strings", "--author=Rin", "--"]);
+  assert.deepStrictEqual(args({ ...ALL, author: " Rin " }), ["log", LOG_FORMAT, "--max-count=200", "--decorate=full", "--regexp-ignore-case", "--fixed-strings", "--author=Rin", "--branches", "--remotes", "HEAD", "--"]);
   const both = args({ ...ALL, text: "ACME-7", author: "dana@example.com" });
   assert.deepStrictEqual(both.filter((a) => a === "--fixed-strings").length, 1, "the literal/case flags are given once");
   assert.ok(both.includes("--grep=ACME-7") && both.includes("--author=dana@example.com"));
@@ -149,7 +149,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(a[1], HISTORY_FORMAT);
   assert.ok(a.includes("--grep=fix") && a.includes("--skip=5"));
   assert.ok(!a.includes("--follow"), "no --follow: it cannot page with --skip, and a filtered-out rename would cut the history");
-  assert.deepStrictEqual(a.slice(-6), ["--name-status", "-z", "-M", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.deepStrictEqual(a.slice(-9), ["--name-status", "-z", "-M", "--branches", "--remotes", "HEAD", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "the paths are always after --, and literal: [id] is a folder, not a glob");
   const inj = historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["--output=/tmp/x"] });
   assert.deepStrictEqual(inj.slice(-2), ["--", ":(literal)--output=/tmp/x"], "a path can never be read as an option");
   assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
@@ -162,8 +162,8 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 // ── Default range and branch ────────────────────────────────────────────────
 {
   assert.strictEqual(DEFAULT_FILTER.date, "24h", "new workspaces start at the last 24 hours");
-  assert.strictEqual(DEFAULT_FILTER.branch, "", "and on each repository's current branch");
-  console.log("ok - the default filter is the last 24 hours on the current branch");
+  assert.deepStrictEqual(selectedBranches(DEFAULT_FILTER), [], "all branches by default");
+  console.log("ok - the default filter is the last 24 hours across all branches");
 }
 {
   for (const ok of ["origin/prod", "prod", "release-1.4", "origin/release/1.4", "feature/acme_7", "v1.2.3", "feature@x", "fix/#12", "fix/ü", "a+b", "a@b/c"]) assert.ok(isValidRef(ok), ok);
@@ -175,11 +175,33 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.deepStrictEqual(a.slice(-3), ["--end-of-options", "origin/prod", "--"], "the ref comes after --end-of-options and before --, so a same-named folder is never ambiguous");
   const h = historyArgs({ ...ALL, text: "fix" }, { pageSize: 5, now: NOW, paths: ["b.ts", "a.ts"], ref: "origin/prod" });
   assert.deepStrictEqual(h.slice(-8), ["--name-status", "-z", "-M", "--end-of-options", "origin/prod", "--", ":(literal)b.ts", ":(literal)a.ts"], "history options stay before the ref; every name the file had is a pathspec");
-  assert.ok(!logArgs(ALL, { pageSize: 5, now: NOW }).includes("--end-of-options"), "current branch: no ref at all");
+  assert.ok(logArgs(ALL, { pageSize: 5, now: NOW }).includes("--branches"), "all local and remote branches by default");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "--output=/tmp/x" }).branch, "", "an invalid persisted branch is dropped");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");
   assert.ok(!sameExceptText(ALL, { ...ALL, branch: "origin/prod" }), "a branch change applies at once, not debounced");
   console.log("ok - a branch becomes one revision argument after --end-of-options");
+}
+
+{
+  const filter = sanitizeFilter({ ...ALL, branches: ["main", "prod", "main", "--output=/tmp/x", 7, "a..b", "fix/ü"] });
+  assert.deepStrictEqual(selectedBranches(filter), ["main", "prod", "fix/ü"]);
+  assert.deepStrictEqual(logArgs(filter, { pageSize: 5, now: NOW }).slice(-5), ["--end-of-options", "main", "prod", "fix/ü", "--"]);
+  assert.deepStrictEqual(selectedBranches(sanitizeFilter({ ...ALL, branch: "main", branches: [] })), [], "explicitly clearing overrides the legacy branch");
+  assert.deepStrictEqual(selectedBranches(sanitizeFilter({ ...ALL, branch: "prod" })), ["prod"], "older saved selections still work");
+  assert.ok(sameExceptText({ ...ALL, branches: ["main", "prod"] }, { ...ALL, branches: ["prod", "main"] }), "selection order has no effect");
+  assert.ok(!sameExceptText(ALL, filter), "checkbox changes apply immediately");
+  assert.strictEqual(selectedBranches(sanitizeFilter({ ...ALL, branches: Array.from({ length: 120 }, (_, i) => `branch-${i}`) })).length, 100);
+  console.log("ok - multiple branches are validated, unique, bounded, migrated and passed as separate revisions");
+}
+
+{
+  const topo = sanitizeFilter({ ...ALL, branches: ["main", "prod"], sort: "topo" });
+  assert.strictEqual(topo.sort, "topo");
+  assert.ok(logArgs(topo, { pageSize: 10, now: NOW }).includes("--topo-order"));
+  assert.ok(!logArgs(ALL, { pageSize: 10, now: NOW }).includes("--topo-order"));
+  assert.ok(!sameExceptText(ALL, { ...ALL, sort: "topo" }), "sort applies immediately");
+  assert.ok(!sanitizeFilter({ ...ALL, sort: "invalid" }).sort);
+  console.log("ok - sorting is validated, persisted and pushed down into Git");
 }
 
 // ── Path filter: one pathspec after "--", so git does the filtering ─────────────

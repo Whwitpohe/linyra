@@ -1,7 +1,35 @@
 // Messages between the Repositories view (a webview in the Polylog Compare tab) and the host.
 import type { Duplicate, Pair } from "./compareModel";
+import type { ChangeStatus } from "./types";
 
 export type CompareMode = "files" | "commits";
+export interface CompareTreeRow {
+  id: string;
+  kind: "folder" | "file" | "commit" | "more";
+  label: string;
+  description: string;
+  tooltip: string;
+  contextValue: string;
+  status?: ChangeStatus;
+  same?: boolean;
+  children?: CompareTreeRow[];
+  loaded?: boolean;
+}
+export interface CompareSidePage {
+  type: "side";
+  side: "left" | "right";
+  key: string;
+  description: string;
+  message?: string;
+  rows: CompareTreeRow[];
+}
+export interface CompareLayout {
+  repositoriesWidth: number;
+  leftWidth: number;
+  leftHeight: number;
+  sidesHeight: number;
+  orientation: "auto" | "sideBySide" | "stacked";
+}
 
 export interface CRepoRow {
   repoId: string;
@@ -18,7 +46,9 @@ export interface CRepoRow {
 
 /** Host → Repositories page. */
 export type ReposHost =
-  | { type: "state"; pair: Pair | null; mode: CompareMode; recent: Pair[]; favorites: string[]; message?: string }
+  | CompareSidePage
+  | { type: "focusSide"; side: "left" | "right" }
+  | { type: "state"; pair: Pair | null; mode: CompareMode; recent: Pair[]; favorites: string[]; message?: string; hideSame?: boolean; showLeft?: boolean; showRight?: boolean; layout?: CompareLayout }
   /**
    * message: the page shows it instead of the list (no pair, no ticks…). empty: the list's text when
    * it has no rows — only claims "the same files" once a read is done. pairKey: unfolded duplicates
@@ -32,6 +62,13 @@ export type ReposHost =
 
 /** Repositories page → host. */
 export type ReposWebview =
+  | { type: "sideReady" }
+  | { type: "sideOpen" | "sideExpand"; side: "left" | "right"; id: string }
+  | { type: "sideExpandAll"; side: "left" | "right" }
+  | { type: "sideVisibility"; side: "left" | "right"; show: boolean }
+  | { type: "hideSame"; hide: boolean }
+  | { type: "close" }
+  | { type: "layout"; layout: CompareLayout }
   | { type: "ready" }
   | { type: "pick"; pair: Pair }
   /** One side picked, the other still empty: the host keeps it (guidance, sides cleared). */

@@ -1,19 +1,20 @@
-import type { FilterState } from "../filterModel";
+import { localize } from "../i18n";
+import { hashQuery, type FilterState } from "../filterModel";
 import { commitKey } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export function relativeTime(now: number, t: number): string {
   const s = Math.max(0, now - t);
-  if (s < 60) return "just now";
+  if (s < 60) return localize("just now");
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return localize("{0}m ago", m);
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return localize("{0}h ago", h);
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  if (d < 365) return `${Math.floor(d / 30)}mo ago`;
-  return `${Math.floor(d / 365)}y ago`;
+  if (d < 30) return localize("{0}d ago", d);
+  if (d < 365) return localize("{0}mo ago", Math.floor(d / 30));
+  return localize("{0}y ago", Math.floor(d / 365));
 }
 
 export function absoluteTime(t: number): string {
@@ -144,25 +145,25 @@ export function chipsThatFit(widths: readonly number[], room: number, plusWidth:
   return widths.length;
 }
 
-const repoNoun = (n: number) => (n === 1 ? "repository" : "repositories");
+const repoNoun = (n: number) => localize(n === 1 ? "repository" : "repositories");
 
 export function repoButtonLabel(repoIds: readonly string[] | null, repos: readonly { id: string; name: string }[]): string {
-  if (repoIds === null) return "All repositories";
-  if (repoIds.length === 0) return "No repositories";
-  if (repoIds.length === 1) return repos.find((r) => r.id === repoIds[0])?.name ?? "1 repository";
-  return `${repoIds.length} of ${repos.length} repositories`;
+  if (repoIds === null) return localize("All repositories");
+  if (repoIds.length === 0) return localize("No repositories");
+  if (repoIds.length === 1) return repos.find((r) => r.id === repoIds[0])?.name ?? localize("1 repository");
+  return localize("{0} of {1} repositories", repoIds.length, repos.length);
 }
 
 export function dateLabel(f: FilterState): string {
   switch (f.date) {
-    case "24h": return " in the last 24 hours";
-    case "7d": return " in the last 7 days";
-    case "30d": return " in the last 30 days";
+    case "24h": return localize(" in the last 24 hours");
+    case "7d": return localize(" in the last 7 days");
+    case "30d": return localize(" in the last 30 days");
     case "all": return "";
     case "custom":
-      if (f.from && f.to) return ` between ${f.from} and ${f.to}`;
-      if (f.from) return ` since ${f.from}`;
-      if (f.to) return ` until ${f.to}`;
+      if (f.from && f.to) return localize(" between {0} and {1}", f.from, f.to);
+      if (f.from) return localize(" since {0}", f.from);
+      if (f.to) return localize(" until {0}", f.to);
       return "";
   }
 }
@@ -180,63 +181,67 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   if (o.history !== undefined) {
     const p = o.history;
     const text = f.text.trim();
-    if (text) return { title: "No matching commits", body: `No commit to ${p} contains “${text}”.`, action: { label: "Clear Search", id: "clearText" } };
-    if (f.date !== "all") return { title: "No commits in this date range", body: `No commits to ${p}${dateLabel(f)}.`, action: { label: "Show All Time", id: "allTime" } };
-    return { title: "No matching commits", body: `No commits to ${p} match these filters.`, action: { label: "Clear Author", id: "clearAuthor" } };
+    if (text) return { title: localize("No matching commits"), body: localize("No commit to {0} contains “{1}”.", p, text), action: { label: localize("Clear Search"), id: "clearText" } };
+    if (f.date !== "all") return { title: localize("No commits in this date range"), body: localize("No commits to {0}{1}.", p, dateLabel(f)), action: { label: localize("Show All Time"), id: "allTime" } };
+    return { title: localize("No matching commits"), body: localize("No commits to {0} match these filters.", p), action: { label: localize("Clear Author"), id: "clearAuthor" } };
   }
   if (o.repoCount === 0) {
     return {
-      title: "No git repositories found",
-      body: "Polylog lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth.",
-      action: { label: "Open Settings", id: "settings" },
+      title: localize("No git repositories found"),
+      body: localize("Polylog lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth."),
+      action: { label: localize("Open Settings"), id: "settings" },
     };
   }
   if (f.repoIds !== null && f.repoIds.length === 0) {
-    return { title: "No repositories selected", body: "Choose at least one repository to see its commits.", action: { label: "Select All", id: "selectAll" } };
+    return { title: localize("No repositories selected"), body: localize("Choose at least one repository to see its commits."), action: { label: localize("Select All"), id: "selectAll" } };
   }
+  const hash = hashQuery(f.text);
+  if (hash) return { title: localize("No commit with this hash"),
+    body: localize("No commit matching {0} was found in the selected repositories. Try a longer hash or select more repositories.", hash),
+    action: { label: localize("Clear Search"), id: "clearText" } };
   const k = f.repoIds === null ? o.repoCount : f.repoIds.length;
-  const scope = f.repoIds === null ? `${k} ${repoNoun(k)}` : `${k} selected ${repoNoun(k)}`;
+  const scope = f.repoIds === null ? localize("{0} {1}", k, repoNoun(k)) : localize("{0} selected {1}", k, repoNoun(k));
   const text = f.text.trim();
   const names = [...(f.authors ?? []), f.author].map((n) => n.trim()).filter((n) => n !== "").map((n) => `“${n}”`);
-  const who = f.mine ? [...names, "you"] : names;
+  const who = f.mine ? [...names, localize("you")] : names;
   const author = who.length > 0;
   // "“dana”", "“dana” or “rin”", "“dana”, “rin” or you"
-  const by = who.length <= 1 ? who.join("") : `${who.slice(0, -1).join(", ")} or ${who[who.length - 1]}`;
-  const touching = f.path ? ` touching “${f.path}”` : "";
+  const by = who.length <= 1 ? who.join("") : localize("{0} or {1}", who.slice(0, -1).join(", "), who[who.length - 1]);
+  const touching = f.path ? localize(" touching “{0}”", f.path) : "";
   if (text && author) {
-    return { title: "No matching commits", body: `No commit by ${by}${touching} contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
+    return { title: localize("No matching commits"), body: localize("No commit by {0}{1} contains “{2}” in {3}{4}.", by, touching, text, scope, dateLabel(f)), action: { label: localize("Clear Search"), id: "clearText" } };
   }
   if (text) {
-    const what = f.path ? `commit${touching}` : "commit message";
-    return { title: "No matching commits", body: `No ${what} contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
+    const what = f.path ? localize("commit{0}", touching) : localize("commit message");
+    return { title: localize("No matching commits"), body: localize("No {0} contains “{1}” in {2}{3}.", what, text, scope, dateLabel(f)), action: { label: localize("Clear Search"), id: "clearText" } };
   }
   if (author) {
-    return { title: "No matching commits", body: `No commits by ${by}${touching} in ${scope}${dateLabel(f)}.`, action: { label: "Clear Author", id: "clearAuthor" } };
+    return { title: localize("No matching commits"), body: localize("No commits by {0}{1} in {2}{3}.", by, touching, scope, dateLabel(f)), action: { label: localize("Clear Author"), id: "clearAuthor" } };
   }
   if (f.path) {
-    return { title: "No matching commits", body: `No commit touches “${f.path}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Path", id: "clearPath" } };
+    return { title: localize("No matching commits"), body: localize("No commit touches “{0}” in {1}{2}.", f.path, scope, dateLabel(f)), action: { label: localize("Clear Path"), id: "clearPath" } };
   }
   if (f.date !== "all") {
-    return { title: "No commits in this date range", body: `No commits in ${scope}${dateLabel(f)}.`, action: { label: "Show All Time", id: "allTime" } };
+    return { title: localize("No commits in this date range"), body: localize("No commits in {0}{1}.", scope, dateLabel(f)), action: { label: localize("Show All Time"), id: "allTime" } };
   }
   if (f.repoIds !== null) {
-    return { title: "No commits in the selected repositories", body: `The ${scope} have no commits.`, action: { label: "Select All", id: "selectAll" } };
+    return { title: localize("No commits in the selected repositories"), body: localize("The {0} have no commits.", scope), action: { label: localize("Select All"), id: "selectAll" } };
   }
   return {
-    title: "No commits yet",
-    body: `Polylog shows one merged log across every repository in this workspace. It found ${k} ${repoNoun(k)}, but none has commits yet.`,
+    title: localize("No commits yet"),
+    body: localize("Polylog shows one merged log across every repository in this workspace. It found {0} {1}, but none has commits yet.", k, repoNoun(k)),
   };
 }
 
-export function branchUseLabel(u: { branch: string; found: number; fallback: number } | undefined): string {
+export function branchUseLabel(u: { branches: string[]; found: number; missing: number } | undefined): string {
   if (!u) return "";
-  if (u.fallback === 0) return `${u.branch} in all ${u.found} repos`;
-  if (u.found === 0) return `no repo has ${u.branch} · current branch in ${u.fallback}`;
-  return `${u.branch} in ${u.found} repos · current branch in ${u.fallback}`;
+  const what = u.branches.length === 1 ? u.branches[0] : localize("{0} branches", u.branches.length);
+  return u.missing === 0 ? localize("{0} in all {1} repos", what, u.found)
+    : localize("{0} in {1} repos · skipped {2} without selected branches", what, u.found, u.missing);
 }
 
 export function countLabel(n: number): string {
-  return `${n} ${n === 1 ? "commit" : "commits"}`;
+  return localize("{0} {1}", n, localize(n === 1 ? "commit" : "commits"));
 }
 
 export function splitPath(p: string): { dir: string; base: string } {
@@ -265,7 +270,7 @@ export function switchCount(known: boolean, files: number): string {
 /** "3 repositories · +24 −5", beside the switch on its Uncommitted side. */
 export function totalsLabel(t: { files: number; repos: number; added: number; deleted: number }): string {
   if (t.files === 0) return "";
-  return `${t.repos} ${t.repos === 1 ? "repository" : "repositories"} · +${t.added} −${t.deleted}`;
+  return localize("{0} {1} · +{2} −{3}", t.repos, localize(t.repos === 1 ? "repository" : "repositories"), t.added, t.deleted);
 }
 
 /** An Uncommitted row's change meter: each kind's share of the files, empty kinds left out. */

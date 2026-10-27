@@ -11,6 +11,7 @@ import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
 import { isAbortError } from "./pool";
+import { fetchPage } from "./logQuery";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-git-test-"));
 Object.assign(process.env, gitEnv(home)); // runGit inherits process.env
@@ -91,6 +92,41 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     const docs = parseLog(await runGit(docsRepo, logArgs(ALL, { pageSize: 50, now: 10_000, ref: "docs" })), docsRepo);
     assert.strictEqual(docs[0].subject, "docs: add x", "a branch named like a folder is not ambiguous");
     console.log("ok - real git: a branch named like a top-level folder works");
+    const base = git(docsRepo, ["rev-parse", "HEAD"]);
+    const tree = git(docsRepo, ["rev-parse", "HEAD^{tree}"]);
+    git(docsRepo, ["config", "user.name", "dana"]);
+    git(docsRepo, ["config", "user.email", "dana@example.com"]);
+    const makeTip = (message: string, ref: string) => {
+      const sha = git(docsRepo, ["commit-tree", tree, "-p", base, "-m", message]);
+      git(docsRepo, ["update-ref", ref, sha]);
+      return sha;
+    };
+    const local = makeTip("feat: local preview only", "refs/heads/preview");
+    const remote = makeTip("feat: remote release only", "refs/remotes/origin/release");
+    const tagOnly = makeTip("chore: tag without a branch", "refs/tags/archive-only");
+    const stashOnly = makeTip("WIP: unpublished work", "refs/stash");
+    const defaultRows = parseLog(await runGit(docsRepo, logArgs(ALL, { pageSize: 20, now: Date.now() / 1000 })), docsRepo);
+    assert.deepStrictEqual(new Set(defaultRows.map((c) => c.sha)), new Set([base, local, remote]), "all branches includes unmerged local/remote tips, excluding stash and tag-only history");
+    assert.ok(!defaultRows.some((c) => c.sha === tagOnly || c.sha === stashOnly));
+    const selected = parseLog(await runGit(docsRepo, logArgs({ ...ALL, branches: ["preview", "origin/release"] }, { pageSize: 20, now: Date.now() / 1000 })), docsRepo);
+    assert.deepStrictEqual(new Set(selected.map((c) => c.sha)), new Set([base, local, remote]));
+    assert.strictEqual(selected.filter((c) => c.sha === base).length, 1, "shared ancestors appear only once");
+    const repo = { id: docsRepo, root: docsRepo, name: "acme-docs" };
+    let prev = null as Awaited<ReturnType<typeof fetchPage>>["state"] | null;
+    const paged: string[] = [];
+    let listings = 0;
+    for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+      const page = await fetchPage({ repos: [repo], filter: { ...ALL, branches: ["preview", "origin/release", "missing"] },
+        pageSize: 1, concurrency: 2, now: Date.now() / 1000, prev, signal: new AbortController().signal,
+        run: (root, args, signal) => { if (args[0] === "for-each-ref") listings++; return runGit(root, args, signal); } });
+      paged.push(...page.rows.map((c) => c.sha));
+      prev = page.state;
+      if (page.done) break;
+    }
+    assert.deepStrictEqual(new Set(paged), new Set([base, local, remote]));
+    assert.strictEqual(paged.length, 3, "paging loses no tips and repeats no ancestors");
+    assert.strictEqual(listings, 1, "multiple selected names resolve with one ref listing per query");
+    console.log("ok - real git: all branches, union selection, no stash/tag leakage and duplicate-free pagination");
   }
   {
     git(api, ["config", "i18n.logOutputEncoding", "ISO-8859-1"]);

@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 // Compare Branches: every git argument and parser. Pure: no vscode import.
 import { parseShow } from "./commitDetail";
 import { isValidRef } from "./filterModel";
@@ -40,7 +41,7 @@ export interface PickerGroup {
 /** Commits shown per side before "Show 500 more". */
 export const COMMIT_PAGE = 500;
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
 /** Names cross the webview boundary: only what git accepts as a branch name reaches git. */
 export function validPair(p: unknown): p is Pair {
@@ -150,17 +151,17 @@ export function summaryLabel(results: readonly RepoCompare[], ticked: number): s
     else if (c.kind === "missing") missing++;
     else differ++;
   }
-  const parts = [`${differ} ${differ === 1 ? "repository differs" : "repositories differ"}`];
-  if (identical > 0) parts.push(`${identical} identical`);
-  if (missing > 0) parts.push(`${missing} missing a branch`);
-  parts.push(`in ${plural(ticked, "repository", "repositories")}`);
+  const parts = [localize("{0} {1}", differ, localize(differ === 1 ? "repository differs" : "repositories differ"))];
+  if (identical > 0) parts.push(localize("{0} identical", identical));
+  if (missing > 0) parts.push(localize("{0} missing a branch", missing));
+  parts.push(localize("in {0}", plural(ticked, "repository", "repositories")));
   return parts.join(" · ");
 }
 
 /** The Compare view's description, next to its title: the pair, without "origin/". */
 export function tabTitle(p: Pair | null): string {
   if (!p || !p.left || !p.right) return "";
-  const short = (n: string) => n.replace(/^origin\//, "");
+  const short = (n: string) => n.replace(/^refs\/(heads|remotes)\//, "").replace(/^origin\//, "");
   return `${short(p.left)} ↔ ${short(p.right)}`;
 }
 
@@ -177,13 +178,13 @@ export function pickerGroups(names: readonly { name: string; count: number }[], 
   const sorted = [...names].filter((n) => match(n.name)).sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const remote = (n: string) => isRemoteName(n);
   const groups: PickerGroup[] = [];
-  if (q === "" && recent.length > 0) groups.push({ title: "Recent pairs", items: recent.map((pair) => ({ kind: "pair", pair })) });
+  if (q === "" && recent.length > 0) groups.push({ title: localize("Recent pairs"), items: recent.map((pair) => ({ kind: "pair", pair })) });
   const favs = sorted.filter((n) => fav.has(n.name));
-  if (favs.length > 0) groups.push({ title: "Favorites", items: favs.map(item) });
+  if (favs.length > 0) groups.push({ title: localize("Favorites"), items: favs.map(item) });
   const local = sorted.filter((n) => !remote(n.name));
-  if (local.length > 0) groups.push({ title: "Local", items: local.map(item) });
+  if (local.length > 0) groups.push({ title: localize("Local"), items: local.map(item) });
   const rem = sorted.filter((n) => remote(n.name));
-  if (rem.length > 0) groups.push({ title: "Remote", items: rem.map(item) });
+  if (rem.length > 0) groups.push({ title: localize("Remote"), items: rem.map(item) });
   return groups;
 }
 
@@ -201,8 +202,8 @@ export function setRemoteNames(names: Iterable<string>): void {
 export function repoDescription(c: RepoCompare): string {
   switch (c.kind) {
     case "differs": return c.sameLeft > 0 ? `=${c.sameLeft}` : "";
-    case "nobase": return "no common history";
-    case "error": return "git error";
+    case "nobase": return localize("no common history");
+    case "error": return localize("git error");
     default: return "";
   }
 }

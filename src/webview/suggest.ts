@@ -1,4 +1,5 @@
 import { clear, h } from "./dom";
+import { localize } from "../i18n";
 import { matchSuggestions, suggestKey, type Suggestion, type SuggestionMatch } from "./suggestModel";
 
 /**
@@ -20,7 +21,7 @@ export class SuggestBox {
     private readonly onPick: (value: string) => void,
   ) {
     const id = `${input.id}-suggestions`;
-    this.list = h("div", { id, class: "suggest", role: "listbox", "aria-label": `${input.getAttribute("aria-label") ?? input.id} suggestions` });
+    this.list = h("div", { id, class: "suggest", role: "listbox", "aria-label": localize("{0} suggestions", input.getAttribute("aria-label") ?? input.id) });
     this.list.hidden = true;
     document.body.append(this.list);
     input.setAttribute("role", "combobox");

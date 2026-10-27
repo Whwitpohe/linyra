@@ -1,8 +1,9 @@
 import { isSha, type ChangeStatus, type Commit } from "./types";
+import { parseDecorations } from "./commitReferences";
 
 // Fields separated by NUL, records terminated by RS (0x1e): no subject can be
 // confused with a delimiter, so nothing needs escaping.
-export const LOG_FORMAT = "--format=%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x1e";
+export const LOG_FORMAT = "--format=%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x00refs:%D%x1e";
 
 export function parseLog(stdout: string, repoId: string): Commit[] {
   const records = stdout.split("\x1e");
@@ -12,11 +13,12 @@ export function parseLog(stdout: string, repoId: string): Commit[] {
   const commits: Commit[] = [];
   for (const record of records) {
     const fields = record.replace(/^\n/, "").split("\0");
-    if (fields.length !== 6) continue;
-    const [sha, ct, author, email, subject, parents] = fields;
+    if (fields.length !== 6 && !(fields.length === 7 && fields[6].startsWith("refs:"))) continue;
+    const [sha, ct, author, email, subject, parents, decorations] = fields;
     const time = Number(ct);
     if (!isSha(sha) || !Number.isInteger(time)) continue;
-    commits.push({ repoId, sha, time, author, email, subject, parents: parents ? parents.split(" ") : [] });
+    commits.push({ repoId, sha, time, author, email, subject, parents: parents ? parents.split(" ") : [],
+      ...(decorations ? { refs: parseDecorations(decorations.slice(5)) } : {}) });
   }
   return commits;
 }
@@ -34,7 +36,7 @@ export function countRecords(stdout: string): number {
  * File history: RS *starts* each record, because --name-status output follows
  * the format: RS <fields> NUL "\n" <STATUS> NUL <path> NUL [<new path> NUL].
  */
-export const HISTORY_FORMAT = "--format=%x1e%H%x00%ct%x00%an%x00%ae%x00%s%x00%P";
+export const HISTORY_FORMAT = "--format=%x1e%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x00refs:%D";
 
 const HISTORY_STATUSES = new Set(["A", "M", "D", "R", "C", "T"]);
 
@@ -47,16 +49,18 @@ export function parseHistory(stdout: string, repoId: string, currentPath: string
     const [sha, ct, author, email, subject, parents] = t;
     const time = Number(ct);
     if (!isSha(sha) || !Number.isInteger(time)) continue;
-    const letter = (t[6] ?? "").replace(/^\n+/, "").charAt(0);
+    const offset = t[6]?.startsWith("refs:") ? 7 : 6;
+    const letter = (t[offset] ?? "").replace(/^\n+/, "").charAt(0);
     let file: NonNullable<Commit["file"]> = { path: commits.at(-1)?.file?.oldPath ?? commits.at(-1)?.file?.path ?? currentPath };
     if (HISTORY_STATUSES.has(letter)) {
       const status = letter as ChangeStatus;
       const twoPaths = status === "R" || status === "C";
-      const path = t[twoPaths ? 8 : 7];
+      const path = t[offset + (twoPaths ? 2 : 1)];
       if (path === undefined || path === "") continue; // truncated
-      file = twoPaths ? { path, oldPath: t[7], status } : { path, status };
+      file = twoPaths ? { path, oldPath: t[offset + 1], status } : { path, status };
     }
-    commits.push({ repoId, sha, time, author, email, subject, parents: parents ? parents.split(" ") : [], file });
+    commits.push({ repoId, sha, time, author, email, subject, parents: parents ? parents.split(" ") : [], file,
+      ...(offset === 7 ? { refs: parseDecorations(t[6].slice(5)) } : {}) });
   }
   return commits;
 }

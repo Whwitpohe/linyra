@@ -1,12 +1,14 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { configureI18n } from "./i18n";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
+import { ChangesPanel } from "./changesPanel";
 import type { CombinedOpen } from "./changesModel";
 import { UNCOMMITTED } from "./types";
 import { validPair } from "./compareModel";
 import type { ReposWebview } from "./compareProtocol";
 import { CompareRepos } from "./compareRepos";
-import { CompareSelection, CompareSide, HIDE_SAME, hideSameOf, type CompareMode } from "./compareView";
+import { CompareSelection, CompareSide, HIDE_SAME, hideSameOf, SHOWN as COMPARE_SHOWN, type CompareMode } from "./compareView";
 import { CompareStore, rowLabel } from "./compareStore";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
@@ -20,10 +22,12 @@ import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
 import { Ask, UncommittedView } from "./uncommittedView";
 import { assignAccents } from "./webview/view";
+import { BranchController, type BranchAction } from "./branchController";
 
 const UNCOMMITTED_SHOWN = "polylog.uncommitted.shown";
 
 export function activate(context: vscode.ExtensionContext): void {
+  configureI18n(vscode.env.language, vscode.l10n.bundle);
   void vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false));
   const discovery = new RepoDiscovery();
   // All Files reads one folder at a time, through the Log's counted runner (the spawn log sees it).
@@ -45,9 +49,13 @@ export function activate(context: vscode.ExtensionContext): void {
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
   });
   const ask = new Ask();
-  const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted, ask });
+  const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted, ask,
+    toolbarFlags: () => ({ compareShown: context.workspaceState.get<boolean>(COMPARE_SHOWN, false), uncommittedShown: context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false) }) });
+  const changesPanel = new ChangesPanel(context, changes);
+  let compareNode = (arg: unknown): unknown => arg;
   /** A commit row's right-click: the Log's { repoId, sha }, a Compare commit row, or the Changes view's root. */
   const commitArg = (arg: unknown): unknown => {
+    arg = compareNode(changes.commandArgument(arg));
     const n = arg as { kind?: unknown; repoId?: unknown; commit?: { sha?: unknown } } | undefined;
     if (!n || typeof n !== "object" || n.kind !== "commit") return arg;
     if (typeof n.repoId === "string" && typeof n.commit?.sha === "string") return { repoId: n.repoId, sha: n.commit.sha };
@@ -56,6 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   /** A file or folder row of any Polylog tree (Changes, Uncommitted, Compare): its repository and repo-relative path. */
   const fileRow = (arg: unknown): { root: string; path: string } | undefined => {
+    arg = compareNode(changes.commandArgument(arg));
     const n = arg as { kind?: unknown; repoId?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
     if (!n || typeof n !== "object" || (n.kind !== "file" && n.kind !== "folder") || typeof n.path !== "string") return undefined;
     const repoId = typeof n.repoId === "string" ? n.repoId : typeof n.owner?.repoId === "string" ? n.owner.repoId : changes.current()?.commit.repoId;
@@ -64,12 +73,15 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   /** A Compare file row, as the file in the workspace (File History and Open File take a file: URI). */
   const compareFile = (arg: unknown): unknown => {
+    const fromChanges = typeof (arg as { changesNodeId?: unknown } | undefined)?.changesNodeId === "string";
+    arg = compareNode(changes.commandArgument(arg));
     const side = (arg as { side?: unknown } | undefined)?.side;
-    const f = side === "left" || side === "right" ? fileRow(arg) : undefined;
+    const f = fromChanges || side === "left" || side === "right" ? fileRow(arg) : undefined;
     return f ? vscode.Uri.file(path.join(f.root, ...f.path.split("/"))) : arg;
   };
   /** A right-click in the Changes view on uncommitted work: its repository, and the file if on one. */
   const changesTarget = (arg: unknown): { repoId: string; path?: string } | undefined => {
+    arg = changes.commandArgument(arg);
     const n = arg as { kind?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
     const s = changes.current();
     if (!n || typeof n !== "object" || s?.commit.sha !== UNCOMMITTED) return undefined;
@@ -82,7 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const t = changesTarget(arg);
     return t ? { ...t, group } : arg;
   };
-  const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (arg as { repoId?: unknown } | undefined)?.repoId;
+  const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (changes.commandArgument(arg) as { repoId?: unknown } | undefined)?.repoId;
   const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id), ask });
   const compare = new CompareStore({
     run: (root, args, signal) => log.countedRun(root, args, signal),
@@ -92,7 +104,23 @@ export function activate(context: vscode.ExtensionContext): void {
   const selection = new CompareSelection();
   const compareDeps = { context, store: compare, log, selection };
   const compareRepos = new CompareRepos(compareDeps);
+  const branchSidebar = new BranchController(context, {
+    repos: () => log.repoList, run: (root, args, signal, opts) => log.countedRun(root, args, signal, opts), discovery, ask,
+    post: (message) => log.postBranchMessage(message), view: (repoId, branch) => log.selectBranch(repoId, branch),
+    compare: async (repoId, branch, current) => { await log.selectBranch(repoId, branch); await compareRepos.comparePair({ left: branch, right: current }, repoId); },
+    changed: (id) => log.branchChanged(id), concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
+  });
+  log.branchSidebar = branchSidebar;
+  for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase"] satisfies BranchAction[]) {
+    context.subscriptions.push(vscode.commands.registerCommand(`polylog.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
+  }
+  context.subscriptions.push(branchSidebar, log.onDidChangeRefs((id) => void branchSidebar.refresh(id)));
   const sides = { left: new CompareSide("left", compareDeps), right: new CompareSide("right", compareDeps) };
+  compareNode = (arg: unknown): unknown => {
+    const side = (arg as { compareSide?: unknown } | undefined)?.compareSide;
+    return side === "left" || side === "right" ? sides[side].commandArgument(arg) : arg;
+  };
+  compareRepos.attachSides(sides);
   // Hide Files Already on Both: on unless turned off; both sides follow it.
   void vscode.commands.executeCommand("setContext", HIDE_SAME, hideSameOf(context));
   const setHideSame = async (hide: boolean) => {
@@ -100,6 +128,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await vscode.commands.executeCommand("setContext", HIDE_SAME, hide);
     sides.left.hideSameChanged();
     sides.right.hideSameChanged();
+    compareRepos.toolbarChanged();
   };
   const blame = new BlameView((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root));
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
@@ -123,6 +152,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     discovery,
     changes,
+    changesPanel,
+    vscode.commands.registerCommand("polylog.openChangesEditor", () => changesPanel.open()),
+    vscode.commands.registerCommand("polylog.changes.focus", () => log.showChanges(true, true)),
+    vscode.commands.registerCommand("polylog.changes.removeView", () => log.showChanges(false)),
     vscode.window.registerFileDecorationProvider(changes),
     vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
     vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
@@ -148,7 +181,7 @@ export function activate(context: vscode.ExtensionContext): void {
     compare,
     selection,
     compareRepos,
-    vscode.window.registerWebviewViewProvider(CompareRepos.viewType, compareRepos),
+    vscode.window.registerWebviewViewProvider(CompareRepos.viewType, compareRepos, { webviewOptions: { retainContextWhenHidden: true } }),
     sides.left,
     sides.right,
     vscode.window.registerFileDecorationProvider(sides.left),
@@ -168,13 +201,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.compareHideSame", () => setHideSame(true)),
     vscode.commands.registerCommand("polylog.compareShowSame", () => setHideSame(false)),
     vscode.commands.registerCommand("polylog.compareRefresh", () => compareRepos.refresh()),
-    vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: { side?: unknown }) => (arg?.side === "left" || arg?.side === "right" ? sides[arg.side].openFile(arg) : undefined)),
+    vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: unknown) => {
+      const value = compareNode(arg) as { side?: unknown } | undefined;
+      return value?.side === "left" || value?.side === "right" ? sides[value.side].openFile(value) : undefined;
+    }),
     vscode.commands.registerCommand("polylog.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {
       // From the tree's right-click the argument is the row; from a test, { side, repoId, path }.
-      const side = arg?.side === "left" || arg?.side === "right" ? arg.side : undefined;
-      return side ? sides[side].openSinceSplit(arg) : undefined;
+      const value = compareNode(arg) as typeof arg;
+      const side = value?.side === "left" || value?.side === "right" ? value.side : undefined;
+      return side ? sides[side].openSinceSplit(value) : undefined;
     }),
     vscode.commands.registerCommand("polylog.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
+    ...(["left", "right"] as const).flatMap((side) => [
+      vscode.commands.registerCommand(`polylog.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
+      vscode.commands.registerCommand(`polylog.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),
+    ]),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,
     uncommittedView,
@@ -184,17 +225,19 @@ export function activate(context: vscode.ExtensionContext): void {
       await context.workspaceState.update(UNCOMMITTED_SHOWN, true);
       await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", true);
       await vscode.commands.executeCommand("polylog.uncommitted.focus");
+      log.toolbarChanged();
     }),
     vscode.commands.registerCommand("polylog.uncommittedClose", async () => {
       await context.workspaceState.update(UNCOMMITTED_SHOWN, false);
       await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", false);
+      log.toolbarChanged();
     }),
     vscode.commands.registerCommand("polylog.refreshUncommitted", () => uncommitted.readAll(true)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
-    vscode.commands.registerCommand("polylog.stage", (arg?: unknown, many?: unknown[]) => uncommittedView.stage(inGroup(arg, "changes"), many?.map((m) => inGroup(m, "changes")))),
-    vscode.commands.registerCommand("polylog.unstage", (arg?: unknown, many?: unknown[]) => uncommittedView.unstage(inGroup(arg, "staged"), many?.map((m) => inGroup(m, "staged")))),
-    vscode.commands.registerCommand("polylog.discard", (arg?: unknown, many?: unknown[]) => uncommittedView.discard(changesTarget(arg) ?? arg, many?.map((m) => changesTarget(m) ?? m))),
+    vscode.commands.registerCommand("polylog.stage", (arg?: unknown, many?: unknown[]) => uncommittedView.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
+    vscode.commands.registerCommand("polylog.unstage", (arg?: unknown, many?: unknown[]) => uncommittedView.unstage(inGroup(arg, "staged"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "staged")))),
+    vscode.commands.registerCommand("polylog.discard", (arg?: unknown, many?: unknown[]) => uncommittedView.discard(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
     // A repository row (the Uncommitted view, the Log's Uncommitted side, or the Changes view's root): every file it lists.
     vscode.commands.registerCommand("polylog.discardAll", (arg?: unknown) => uncommittedView.discard({ repoId: repoOf(arg) })),
     vscode.commands.registerCommand("polylog.stageAll", (arg?: unknown) => uncommittedView.stage({ repoId: repoOf(arg), group: "changes" })),
@@ -251,6 +294,8 @@ export function activate(context: vscode.ExtensionContext): void {
   // Test seam for the integration suite only; never registered for users.
   if (process.env.POLYLOG_ITEST === "1") {
     context.subscriptions.push(
+      vscode.commands.registerCommand("polylog._itest.branches", () => branchSidebar.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
       vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
       vscode.commands.registerCommand("polylog._itest.blame", () => blame.last),
       vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
@@ -270,6 +315,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.comparePosted", () => compareRepos.posted),
       vscode.commands.registerCommand("polylog._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
+      vscode.commands.registerCommand("polylog._itest.changesMessage", (message: unknown, viewId?: unknown) => changes.onMessage(message, viewId === "editor" ? "editor" : "main")),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
       vscode.commands.registerCommand("polylog._itest.lastWarning", () => uncommittedView.ask.lastWarning),
       vscode.commands.registerCommand("polylog._itest.asked", () => uncommittedView.ask.asked),

@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 import { promises as fs, realpathSync } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -9,7 +10,20 @@ import type { Repo } from "./types";
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
-interface GitRepository {
+export interface BranchRepository {
+  status?(): Promise<void>;
+  checkout?(ref: string): Promise<void>;
+  createBranch?(name: string, checkout: boolean, ref?: string): Promise<void>;
+  setBranchUpstream?(name: string, upstream: string): Promise<void>;
+  deleteBranch?(name: string, force?: boolean): Promise<void>;
+  fetch?(remote?: string, ref?: string): Promise<void>;
+  pull?(): Promise<void>;
+  push?(remote?: string, branch?: string, setUpstream?: boolean): Promise<void>;
+  merge?(ref: string): Promise<void>;
+  rebase?(ref: string): Promise<void>;
+  createWorktree?(options: { path: string; branch: string; commitish: string }): Promise<string>;
+}
+interface GitRepository extends BranchRepository {
   rootUri: vscode.Uri;
   state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> };
   status?(): Promise<void>;
@@ -103,6 +117,10 @@ export class RepoDiscovery implements vscode.Disposable {
     return this.vsCodeGitRepo(root) !== undefined;
   }
 
+  branchRepository(root: string): BranchRepository | undefined {
+    return this.vsCodeGitRepo(root);
+  }
+
   /**
    * VS Code's own Pull (git.pull) on this repository, which reports its errors in its own words.
    * Its view of the repository can lag a change made in a terminal (a remote just added, an
@@ -114,7 +132,7 @@ export class RepoDiscovery implements vscode.Disposable {
    */
   private async gitRepoFor(root: string): Promise<GitRepository> {
     const repo = this.vsCodeGitRepo(root);
-    if (!repo) throw new Error("VS Code's Git does not have this repository open");
+    if (!repo) throw new Error(localize("VS Code's Git does not have this repository open"));
     await repo.status?.();
     return repo;
   }
@@ -169,7 +187,7 @@ export class RepoDiscovery implements vscode.Disposable {
 
   async pullWithVsCodeGit(root: string): Promise<void> {
     const repo = this.vsCodeGitRepo(root);
-    if (!repo) throw new Error("VS Code's Git does not have this repository open");
+    if (!repo) throw new Error(localize("VS Code's Git does not have this repository open"));
     await repo.status?.();
     await vscode.commands.executeCommand("git.pull", repo.rootUri);
   }

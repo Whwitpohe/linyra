@@ -36,6 +36,7 @@ async function main(): Promise<void> {
       POLYLOG_ITEST: "1",
     },
   });
+  fs.rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 main().catch((err) => {

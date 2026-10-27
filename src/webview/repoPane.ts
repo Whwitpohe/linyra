@@ -1,3 +1,4 @@
+import { localize } from "../i18n";
 import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
@@ -20,6 +21,7 @@ export class RepoPane {
   private rows: PaneRow[] = [];
   private profiles: readonly ResolvedProfile[] = [];
   private active = 0;
+  private get hidden(): boolean { return this.list.hidden; }
 
   constructor(private readonly onChange: (repoIds: string[] | null) => void, private readonly onSave: () => void) {
     // Right-click the Repo List's empty area: Save Selection as Profile… (package.json webview/context).
@@ -36,10 +38,12 @@ export class RepoPane {
     // Dragging the divider resizes the pane without a window resize.
     new ResizeObserver(() => this.fitNames()).observe(this.list);
     this.filterInput.addEventListener("input", () => {
+      if (this.hidden) return;
       this.active = 0;
       this.render();
     });
     this.filterInput.addEventListener("keydown", (e) => {
+      if (this.hidden) return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         this.list.focus();
@@ -168,12 +172,12 @@ export class RepoPane {
       if (row.kind === "profile") {
         const p = row.profile;
         const names = p.ids.map((id) => this.repos.find((r) => r.id === id)?.name ?? id).join(", ");
-        const missing = p.missing.length > 0 ? `\n${p.missing.length} not in this workspace: ${p.missing.join(", ")} (skipped)` : "";
+        const missing = p.missing.length > 0 ? localize("\n{0} not in this workspace: {1} (skipped)", p.missing.length, p.missing.join(", ")) : "";
         this.list.append(h("div", {
           class: rowClass(` profile-row${row.active ? " current" : ""}`),
           role: "option", id: `repo-row-${i}`, "aria-selected": String(row.active), "data-row": String(i),
-          title: `${p.name}: ${names || "no repository found"}${missing}`,
-          "aria-label": `Profile ${p.name}, ${p.ids.length} repositories${p.missing.length ? `, ${p.missing.length} not found` : ""}`,
+          title: `${p.name}: ${names || localize("no repository found")}${missing}`,
+          "aria-label": localize("Profile {0}, {1} repositories{2}", p.name, p.ids.length, p.missing.length ? localize(", {0} not found", p.missing.length) : ""),
           // Right-click a profile: Show, Update, Rename, Delete (package.json webview/context).
           "data-vscode-context": JSON.stringify({ webviewSection: "profile", profile: p.name, updatable: !(row.active && p.missing.length === 0), preventDefaultContextMenuItems: true }),
         }, [
@@ -188,10 +192,10 @@ export class RepoPane {
         this.list.append(h("div", {
           class: rowClass(" save-row"),
           role: "option", id: `repo-row-${i}`, "aria-selected": "false", "data-row": String(i),
-          title: "Save the ticked repositories as a profile",
-          "aria-label": `Save ${row.count} ticked repositories as a profile`,
+          title: localize("Save the ticked repositories as a profile"),
+          "aria-label": localize("Save {0} ticked repositories as a profile", row.count),
           "data-vscode-context": JSON.stringify({ webviewSection: "repoList", preventDefaultContextMenuItems: true }),
-        }, [h("span", { class: "save-icon", "aria-hidden": "true" }, ["+"]), h("span", { class: "repo-name" }, ["Save as profile…"]), h("span", { class: "repo-count" }, [String(row.count)])]));
+        }, [h("span", { class: "save-icon", "aria-hidden": "true" }, ["+"]), h("span", { class: "repo-name" }, [localize("Save as profile…")]), h("span", { class: "repo-count" }, [String(row.count)])]));
         return;
       }
       // A line between All, the profiles and the save row, and the repositories.
@@ -199,7 +203,7 @@ export class RepoPane {
         this.list.append(h("div", { class: "repo-divider", role: "presentation" }));
       }
       const id = row.kind === "repo" ? row.id : null;
-      const name = row.kind === "repo" ? row.name : "All repositories";
+      const name = row.kind === "repo" ? row.name : localize("All repositories");
       const checked = id === null ? this.repoIds === null : isChecked(this.repoIds, id);
       const accent = id === null ? null : accentOf(this.accents, id);
       const ab = id === null ? undefined : this.sync[id];
@@ -219,7 +223,7 @@ export class RepoPane {
         id: `repo-row-${i}`,
         "aria-selected": String(checked),
         "data-row": String(i),
-        title: id ?? "Show commits from every repository",
+        title: id ?? localize("Show commits from every repository"),
         // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
         "aria-label": id === null ? `${name}, ${count}` : badge ? `${name}, ${badge.title}` : name,
         // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
@@ -233,7 +237,7 @@ export class RepoPane {
         badge ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [badge.text]) : null,
       ]));
     });
-    if (this.rows.every((r) => r.kind !== "repo") && this.repos.length > 0 && this.filterInput.value.trim()) this.list.append(h("p", { class: "hint" }, ["No repositories match."]));
+    if (this.rows.every((r) => r.kind !== "repo") && this.repos.length > 0 && this.filterInput.value.trim()) this.list.append(h("p", { class: "hint" }, [localize("No repositories match.")]));
     this.fitNames();
     this.list.setAttribute("aria-activedescendant", `repo-row-${this.active}`);
     if (reveal) this.list.querySelector(".repo-row.active")?.scrollIntoView({ block: "nearest" });

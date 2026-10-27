@@ -11,7 +11,7 @@ export interface SplitterWidth {
  * pointerup, pointercancel (touch/pen, the OS taking the pointer) and lost
  * capture — ends it once, so a later buttonless move can never keep resizing.
  */
-export function attachSplitter(el: HTMLElement, width: SplitterWidth): void {
+export function attachSplitter(el: HTMLElement, width: SplitterWidth, axis: "x" | "y" = "x"): void {
   let drag: { startX: number; startWidth: number } | null = null;
   const end = () => {
     if (!drag) return;
@@ -24,16 +24,16 @@ export function attachSplitter(el: HTMLElement, width: SplitterWidth): void {
     if (p.button !== 0) return;
     e.preventDefault();
     el.setPointerCapture(p.pointerId);
-    drag = { startX: p.clientX, startWidth: width.get() };
+    drag = { startX: axis === "x" ? p.clientX : p.clientY, startWidth: width.get() };
     el.classList.add("dragging");
   });
   el.addEventListener("pointermove", (e) => {
-    if (drag) width.set(drag.startWidth + (e as PointerEvent).clientX - drag.startX);
+    if (drag) width.set(drag.startWidth + (axis === "x" ? (e as PointerEvent).clientX : (e as PointerEvent).clientY) - drag.startX);
   });
   for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) el.addEventListener(type, end);
   el.addEventListener("keydown", (e) => {
     const key = (e as KeyboardEvent).key;
-    const step = key === "ArrowLeft" ? -16 : key === "ArrowRight" ? 16 : 0;
+    const step = key === (axis === "x" ? "ArrowLeft" : "ArrowUp") ? -16 : key === (axis === "x" ? "ArrowRight" : "ArrowDown") ? 16 : 0;
     if (!step) return;
     e.preventDefault();
     width.set(width.get() + step);

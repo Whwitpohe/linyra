@@ -1,7 +1,7 @@
 // Builds (or serves) the webview in a plain browser: the real bundle and the
 // real markup from src/webview/html.ts, plus a host shim and theme variables.
 import * as esbuild from "esbuild";
-import { cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -13,19 +13,26 @@ mkdirSync(dist, { recursive: true });
 // One markup source: render the production HTML, then swap its CSP (there is no
 // host to enforce it against) for the theme stylesheet and host shim.
 const { outputFiles } = await esbuild.build({
-  entryPoints: [join(root, "src/webview/html.ts")], bundle: true, format: "esm", platform: "node", write: false,
+  stdin: { contents: 'export { renderHtml } from "./src/webview/html"; export { renderReposHtml } from "./src/webview/compare/html"; export { renderChangesHtml } from "./src/webview/changes/html"; export { configureI18n } from "./src/i18n";', resolveDir: root },
+  bundle: true, format: "esm", platform: "node", write: false,
 });
-const { renderHtml } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`);
-const html = renderHtml({ cspSource: "", nonce: "harness", scriptUri: "webview.js", styleUri: "webview.css" })
-  .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n?/, "")
-  .replace("</head>", '<link id="theme" rel="stylesheet" href="themes/dark.css">\n<script src="shim.js"></script>\n</head>');
-writeFileSync(join(dist, "index.html"), html);
-// The Repositories page (Polylog Compare tab), same way: its real markup, a mock host.
-const reposBuild = await esbuild.build({ entryPoints: [join(root, "src/webview/compare/html.ts")], bundle: true, format: "esm", platform: "node", write: false });
-const { renderReposHtml } = await import(`data:text/javascript;base64,${Buffer.from(reposBuild.outputFiles[0].text).toString("base64")}`);
-writeFileSync(join(dist, "repos.html"), renderReposHtml({ cspSource: "", nonce: "harness", scriptUri: "compare.js", styleUri: "compare.css" })
-  .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n?/, "")
-  .replace("</head>", '<link id="theme" rel="stylesheet" href="themes/dark.css">\n<script src="compareShim.js"></script>\n</head>'));
+const { renderHtml, renderReposHtml, renderChangesHtml, configureI18n } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`);
+for (const locale of ["en", "zh-cn"]) {
+  const bundle = locale === "en" ? {} : JSON.parse(readFileSync(join(root, `l10n/bundle.l10n.${locale}.json`), "utf8"));
+  configureI18n(locale, bundle);
+  const suffix = locale === "en" ? "" : `.${locale}`;
+  for (const [name, render, script, style, shim] of [
+    ["index", renderHtml, "webview.js", "webview.css", "shim.js"],
+    ["repos", renderReposHtml, "compare.js", "compare.css", "compareShim.js"],
+    ["changes", renderChangesHtml, "changes.js", "changes.css", "changesShim.js"],
+  ]) {
+    const html = render({ cspSource: "", nonce: "harness", scriptUri: script, styleUri: style })
+      .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n?/, "")
+      .replace("</head>", '<link id="theme" rel="stylesheet" href="themes/dark.css">\n</head>')
+      .replace('<script nonce="harness" src=', `<script src="${shim}"></script>\n<script nonce="harness" src=`);
+    writeFileSync(join(dist, `${name}${suffix}.html`), html);
+  }
+}
 cpSync(join(here, "themes"), join(dist, "themes"), { recursive: true });
 cpSync(join(here, "gallery.html"), join(dist, "gallery.html"));
 
@@ -34,6 +41,8 @@ const contexts = await Promise.all([
   esbuild.context({ entryPoints: [join(here, "shim.ts")], bundle: true, format: "iife", outfile: join(dist, "shim.js"), sourcemap: true }),
   esbuild.context({ entryPoints: [join(root, "src/webview/compare/main.ts")], bundle: true, format: "iife", outfile: join(dist, "compare.js"), sourcemap: true }),
   esbuild.context({ entryPoints: [join(here, "compareShim.ts")], bundle: true, format: "iife", outfile: join(dist, "compareShim.js"), sourcemap: true }),
+  esbuild.context({ entryPoints: [join(root, "src/webview/changes/main.ts")], bundle: true, format: "iife", outfile: join(dist, "changes.js"), sourcemap: true }),
+  esbuild.context({ entryPoints: [join(here, "changesShim.ts")], bundle: true, format: "iife", outfile: join(dist, "changesShim.js"), sourcemap: true }),
 ]);
 
 if (process.argv.includes("--serve")) {

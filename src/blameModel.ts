@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 // Blame for a file at one commit: `git blame --incremental`, read into line → commit.
 
 export interface BlameInfo {
@@ -58,9 +59,9 @@ export function agoText(sec: number, nowSec: number): string {
   const d = Math.max(0, nowSec - sec);
   for (const [size, unit] of UNITS) {
     const n = Math.floor(d / size);
-    if (n >= 1) return `${n} ${unit}${n === 1 ? "" : "s"} ago`;
+    if (n >= 1) return localize("{0} {1} ago", n, localize(n === 1 ? unit : `${unit}s`));
   }
-  return "just now";
+  return localize("just now");
 }
 
 /** VS Code's `git.blame.editorDecoration.template` variables; an unknown one stays as written. */

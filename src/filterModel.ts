@@ -19,8 +19,12 @@ export interface FilterState {
    * file, a folder (everything inside it) or a glob. Absent = anywhere.
    */
   path?: string;
-  /** A branch to show in every repository that has it ("" = each repo's current branch). */
+  /** Legacy single selection; "" with no branches means all local and remote branches. */
   branch: string;
+  /** Multiple selected branches. An empty selection means all branches. */
+  branches?: string[];
+  /** Date order by default; topology groups incoming histories below their merges. */
+  sort?: "date" | "topo";
   /** null = every repository; [] = none. */
   repoIds: string[] | null;
   date: DatePreset;
@@ -39,6 +43,13 @@ export interface RepoCursor {
 }
 
 export const DEFAULT_FILTER: FilterState = { text: "", author: "", mine: false, branch: "", repoIds: null, date: "24h" };
+
+/** Ordinary words such as "face" remain message searches; sha: accepts Git's 4-char minimum. */
+export function hashQuery(text: string): string | undefined {
+  const value = text.trim();
+  if (/^[a-f\d]{7,64}$/i.test(value)) return value.toLowerCase();
+  return /^sha:([a-f\d]{4,64})$/i.exec(value)?.[1].toLowerCase();
+}
 
 const PRESETS: readonly DatePreset[] = ["24h", "7d", "30d", "all", "custom"];
 const PRESET_SECONDS = { "24h": 86_400, "7d": 7 * 86_400, "30d": 30 * 86_400 } as const;
@@ -76,18 +87,32 @@ export function isValidRef(ref: string): boolean {
   return ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 }
 
+export const MAX_BRANCHES = 100;
+
+/** Explicit array wins over an older saved single branch, including an empty array. */
+export function selectedBranches(f: Pick<FilterState, "branch" | "branches">): string[] {
+  const raw = Array.isArray(f.branches) ? f.branches : f.branch ? [f.branch] : [];
+  return [...new Set(raw.filter((b) => typeof b === "string" && isValidRef(b)))].slice(0, MAX_BRANCHES);
+}
+
+function revisionArgs(refs: readonly string[]): string[] {
+  return refs.length ? ["--end-of-options", ...refs] : ["--branches", "--remotes", "HEAD"];
+}
+
 interface ArgOptions {
   pageSize: number;
   now: number;
   cursor?: RepoCursor;
   /** This repository's user.email, for "Me". */
   me?: string;
-  /** The revision to walk; absent = the current branch. */
+  /** Resolved revisions to walk; absent = the filter's selection or all branches. */
   ref?: string;
+  refs?: readonly string[];
 }
 
 function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = []): string[] {
-  const args = ["log", format, `--max-count=${o.pageSize}`];
+  const args = ["log", format, `--max-count=${o.pageSize}`, "--decorate=full"];
+  if (f.sort === "topo") args.push("--topo-order");
   const text = f.text.trim();
   const authors = authorPatterns(f, o.me);
   // All patterns literal and case-insensitive; git ANDs --author with --grep, and ORs
@@ -103,7 +128,7 @@ function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonl
   args.push(...extra);
   // After --end-of-options: revisions, never options. After --: paths, never
   // revisions, so a branch named like a folder ("docs") is not ambiguous.
-  if (o.ref) args.push("--end-of-options", o.ref);
+  args.push(...revisionArgs(o.refs ?? (o.ref ? [o.ref] : selectedBranches(f))));
   args.push("--", ...paths);
   return args;
 }
@@ -146,8 +171,8 @@ export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly st
 }
 
 /** Unfiltered, unpaged --follow walk that only collects the names a file has had. */
-export function historyPathsArgs(path: string, ref?: string): string[] {
-  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...(ref ? ["--end-of-options", ref] : []), "--", `:(literal)${path}`];
+export function historyPathsArgs(path: string, ref?: string | readonly string[]): string[] {
+  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...revisionArgs(typeof ref === "string" ? [ref] : ref ?? []), "--", `:(literal)${path}`];
 }
 
 /** The file's names, newest first; always starts with its current path. */
@@ -172,7 +197,7 @@ export function parseHistoryPaths(stdout: string, path: string): string[] {
   return names;
 }
 
-const MAX_AUTHORS = 20;
+export const MAX_AUTHORS = 20;
 
 /**
  * Every author pattern for one repository: the chips, what is being typed, and Me (that
@@ -224,6 +249,12 @@ export function sanitizeFilter(raw: unknown): FilterState {
     repoIds: Array.isArray(r.repoIds) ? r.repoIds.filter((x): x is string => typeof x === "string") : null,
     date,
   };
+  if (Array.isArray(r.branches)) {
+    const branches = selectedBranches({ branch: "", branches: r.branches as string[] });
+    f.branch = "";
+    if (branches.length) f.branches = branches;
+  }
+  if (r.sort === "topo") f.sort = "topo";
   if (date === "custom") {
     if (typeof r.from === "string" && DAY.test(r.from)) f.from = r.from;
     if (typeof r.to === "string" && DAY.test(r.to)) f.to = r.to;
@@ -235,5 +266,6 @@ export function sanitizeFilter(raw: unknown): FilterState {
 export function sameExceptText(a: FilterState, b: FilterState): boolean {
   const ids = (x: FilterState) => (x.repoIds === null ? null : x.repoIds.join("\0"));
   const authors = (x: FilterState) => (x.authors ?? []).join("\0");
-  return a.mine === b.mine && authors(a) === authors(b) && a.branch === b.branch && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
+  const branches = (f: FilterState) => selectedBranches(f).sort().join("\0");
+  return a.mine === b.mine && authors(a) === authors(b) && branches(a) === branches(b) && a.sort === b.sort && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
 }

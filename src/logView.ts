@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 import { randomBytes } from "crypto";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -5,8 +6,10 @@ import { combinedTitle, firstOpenable, type CombinedOpen, type CombinedState } f
 import { readCombined } from "./combinedRead";
 import type { ChangesSnapshot, ChangesTree, OpenDiffArgs } from "./changesTree";
 import { diffSides, parseShow, showArgs } from "./commitDetail";
+import { readReferences } from "./commitReferences";
 import { debounce } from "./debounce";
-import { DEFAULT_FILTER, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
+import { toolbarCommand, type ToolbarState, type ChangesLayout } from "./toolbarModel";
+import { DEFAULT_FILTER, hashQuery, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
@@ -23,6 +26,7 @@ import { openWorkDiff, type Ask } from "./uncommittedView";
 import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 import { SELECTION_LIMIT } from "./webview/selectionModel";
+import type { BranchController } from "./branchController";
 import { assignAccents, accentOf } from "./webview/view";
 
 const FILTER_KEY = "polylog.filter";
@@ -53,6 +57,7 @@ export interface LogDeps {
   uncommitted: UncommittedStore;
   /** VS Code's prompts (shared with the Uncommitted view; the integration suite answers them). */
   ask: Ask;
+  toolbarFlags?: () => Pick<ToolbarState, "compareShown" | "uncommittedShown">;
 }
 
 export interface LogSnapshot {
@@ -93,6 +98,7 @@ export interface LogSnapshot {
   sync: Record<string, AheadBehind>;
   /** Fetch All is running. */
   fetching: boolean;
+  toolbar: ToolbarState;
   /** Repositories VS Code's Git reports changes for (the others are always read again). */
   reported: string[];
   /** Messages posted to the webview, by type, and their total size in bytes (integration runs only). */
@@ -109,6 +115,7 @@ const toUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRev
 
 /** The Log view in the Polylog panel. Registered with retainContextWhenHidden (extension.ts). */
 export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
+  branchSidebar: BranchController | undefined;
   static readonly id = "polylog.log";
 
   private webviewView: vscode.WebviewView | undefined;
@@ -152,19 +159,24 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly spawnLog: { root: string; cmd: string }[] = [];
   private readonly posts: Record<string, { count: number; bytes: number }> = {};
   private readonly run: RunGit;
+  private referenceEpoch = 0;
   private firstLoad: Promise<void> | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.run = (cwd, args, signal, opts) => {
       this.stats.spawns++;
       this.spawnLog.push({ root: cwd, cmd: args[0] ?? "" });
-      if (this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
+      // Production keeps a bounded trace. The full integration suite needs a stable
+      // cursor into every test spawn; truncating its prefix makes later read-count
+      // assertions incorrectly see an empty slice.
+      if (process.env.POLYLOG_ITEST !== "1" && this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
       return deps.run(cwd, args, signal, opts);
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
     this.disposables.push(
       deps.discovery.onDidChange(() => this.reposChangedSoon()),
+      this.onDidChangeRefs((id) => this.refreshCurrentReferences(id)),
       // The switch's badge and rows, and the Changes view while on the Uncommitted side.
       deps.uncommitted.onDidChange(() => {
         this.postUncommitted();
@@ -181,6 +193,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       await this.reload();
     })();
     this.webviewView = view;
+    this.deps.changes.attach((message) => this.post({ type: "changesView", message }), () => !!this.webviewView?.visible && this.layout().showChanges !== false);
     const out = vscode.Uri.joinPath(this.context.extensionUri, "out");
     view.webview.options = { enableScripts: true, localResourceRoots: [out] };
     view.webview.html = renderHtml({
@@ -191,6 +204,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     });
     for (const d of this.viewDisposables) d.dispose();
     this.viewDisposables = [
+      view.onDidChangeVisibility(() => this.deps.changes.visibilityChanged()),
       view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
       view.onDidDispose(() => {
         if (this.webviewView === view) this.webviewView = undefined;
@@ -202,7 +216,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async onMessage(m: WebviewMessage): Promise<void> {
     if (!m || typeof m !== "object") return; // webview input is untrusted
     switch (m.type) {
+      case "branchSidebar": await this.branchSidebar?.handle(m); return;
       case "ready":
+        this.branchSidebar?.ready();
         this.readyCount++;
         if (!this.stats.readyAt) this.stats.readyAt = Date.now();
         // The first load started when the view was created; wait for it, then
@@ -220,9 +236,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
       case "filter": {
-        const next = sanitizeFilter(m.filter);
+        let next = sanitizeFilter(m.filter);
+        const leaveForHash = !!this.history && !!hashQuery(next.text);
+        if (leaveForHash) {
+          this.leaveHistory();
+          next = { ...this.filter, text: next.text };
+        }
         const textOnly = sameExceptText(next, this.filter);
         this.filter = next;
+        if (leaveForHash) this.postInit(true);
         this.persistFilter();
         this.query.abort(); // kill superseded spawns now, not after the debounce
         if (textOnly) {
@@ -234,6 +256,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       }
       case "refresh":
+        void this.branchSidebar?.refresh();
         this.reloadSoon.cancel();
         await this.refreshRepos(true);
         return;
@@ -264,8 +287,23 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "wantSuggestions":
         if (m.kind === "authors" || m.kind === "branches") await this.loadSuggestions(m.kind);
         return;
+      case "toolbarAction": {
+        const command = toolbarCommand(m.action, this.toolbarState());
+        if (command) await vscode.commands.executeCommand(command);
+        this.toolbarChanged();
+        return;
+      }
+      case "changesView":
+        await this.deps.changes.onMessage(m.message);
+        return;
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
+        if (typeof m.changesPaneWidth === "number" && Number.isFinite(m.changesPaneWidth)) await this.context.globalState.update("polylog.changesPaneWidth", Math.max(180, Math.min(1600, Math.round(m.changesPaneWidth))));
+        if (typeof m.changesPaneHeight === "number" && Number.isFinite(m.changesPaneHeight)) await this.context.globalState.update("polylog.changesPaneHeight", Math.max(96, Math.min(1200, Math.round(m.changesPaneHeight))));
+        if (typeof m.showChanges === "boolean") await this.context.globalState.update("polylog.showChanges", m.showChanges);
+        if (m.changesLayout === "auto" || m.changesLayout === "sideBySide" || m.changesLayout === "stacked") await this.context.globalState.update("polylog.changesLayout", m.changesLayout);
+        if (typeof m.showChanges === "boolean") this.postInit();
+        this.deps.changes.visibilityChanged();
         return;
       case "profileSave":
         await this.profileSave();
@@ -286,11 +324,37 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return {
       repoPaneWidth: typeof width === "number" && Number.isFinite(width) ? width : DEFAULT_PANE_WIDTH,
       groupByRepo: !this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false),
+      changesPaneWidth: this.context.globalState.get<number>("polylog.changesPaneWidth", 360),
+      changesPaneHeight: this.context.globalState.get<number>("polylog.changesPaneHeight", 240),
+      showChanges: this.context.globalState.get<boolean>("polylog.showChanges", true),
+      changesLayout: this.context.globalState.get<ChangesLayout>("polylog.changesLayout", "auto"),
     };
+  }
+
+  private toolbarState(): ToolbarState {
+    const flags = this.deps.toolbarFlags?.();
+    return { groupByRepo: this.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
+      uncommittedShown: flags?.uncommittedShown ?? false, fetching: this.fetching !== undefined,
+      anyBehind: [...this.sync.values()].some((state) => state.behind > 0) };
+  }
+
+  toolbarChanged(): void {
+    this.post({ type: "toolbar", state: this.toolbarState() });
+  }
+
+  async showChanges(show: boolean, focus = false): Promise<void> {
+    await this.context.globalState.update("polylog.showChanges", show);
+    this.postInit();
+    this.deps.changes.visibilityChanged();
+    if (show && focus) {
+      await vscode.commands.executeCommand(`${LogView.id}.focus`);
+      this.post({ type: "focusChanges" });
+    }
   }
 
   /** forceMode: the host changed the switch (File History, a new webview); otherwise the page's choice stands. */
   private postInit(forceMode = false): void {
+    this.toolbarChanged();
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
     this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, profiles: this.resolvedProfiles(), ...(forceMode ? { logMode: this.logMode } : {}) });
@@ -323,7 +387,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
     }
     if (!target) {
-      void vscode.window.showInformationMessage("Polylog: this file is not in a repository of this workspace.");
+      void vscode.window.showInformationMessage(localize("Polylog: this file is not in a repository of this workspace."));
       return;
     }
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
@@ -355,14 +419,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
     }
     if (!file) {
-      void vscode.window.showInformationMessage("Polylog: this file is not in a repository of this workspace.");
+      void vscode.window.showInformationMessage(localize("Polylog: this file is not in a repository of this workspace."));
       return;
     }
     const target = vscode.Uri.file(file);
     try {
       await vscode.workspace.fs.stat(target);
     } catch {
-      void vscode.window.showInformationMessage(`Polylog: ${path.basename(file)} no longer exists in the workspace.`);
+      void vscode.window.showInformationMessage(localize("Polylog: {0} no longer exists in the workspace.", path.basename(file)));
       return;
     }
     const at = line === undefined ? undefined : new vscode.Range(line, 0, line, 0);
@@ -625,7 +689,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** The Branch box's name ("" when empty): Compare with… starts from it. */
   get branchBox(): string {
-    return this.filter.branch;
+    const branches = selectedBranches(this.filter);
+    return branches.length === 1 ? branches[0] : "";
   }
 
   /**
@@ -662,10 +727,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       void vscode.commands.executeCommand("setContext", FETCHING_KEY, true);
       this.fetching = this.runFetchAll().finally(() => {
         this.fetching = undefined;
+        this.toolbarChanged();
         void vscode.commands.executeCommand("setContext", FETCHING_KEY, false);
         this.refsChanged.fire(undefined);
       });
     }
+    this.toolbarChanged();
     return this.fetching;
   }
 
@@ -677,7 +744,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const limit = Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY);
     const outer = this.fetchCtl.signal;
     // A minute or so over SSH for many repositories: the Log's progress line, and a count in the status bar.
-    const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Fetching" }, () =>
+    const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Fetching") }, () =>
       vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "Polylog" }, (progress) => {
         let done = 0;
         progress.report({ message: fetchProgress(done, repos.length) });
@@ -686,15 +753,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (outer.aborted) return { fetched: 0, failed: [] }; // disposed, or git changed: say nothing
     const failed = settled.flatMap((s, i) => (s.status === "rejected" ? [{ repo: repos[i], reason: s.reason }] : []));
     if (failed.length > 0) {
-      const why = (e: unknown) => (isAbortError(e) ? `no answer after ${FETCH_TIMEOUT_MS / 1000} s` : messageOf(e));
+      const why = (e: unknown) => (isAbortError(e) ? localize("no answer after {0} s", FETCH_TIMEOUT_MS / 1000) : messageOf(e));
       const list = failed.slice(0, 3).map((f) => `${f.repo.name} (${why(f.reason)})`).join(", ");
-      const more = failed.length > 3 ? ` and ${failed.length - 3} more` : "";
-      void vscode.window.showWarningMessage(`Polylog could not fetch ${failed.length} of ${repos.length} repositories: ${list}${more}.`);
+      const more = failed.length > 3 ? localize(" and {0} more", failed.length - 3) : "";
+      void vscode.window.showWarningMessage(localize("Polylog could not fetch {0} of {1} repositories: {2}{3}.", failed.length, repos.length, list, more));
     }
     // New remote branches: the Branch box's suggestions and a branch-mode page are out of date.
     this.suggestionsFor.delete("branches");
     if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
-    if (this.filter.branch) await this.reload();
+    if (selectedBranches(this.filter).length) await this.reload();
     await this.readSync();
     const result: FetchResult = { fetched: repos.length - failed.length, failed: failed.map((f) => f.repo.name) };
     if (failed.length === 0) {
@@ -736,16 +803,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       if (this.fetching) await this.fetching;
       // VS Code's own Pull (git.pull) reports its own errors (conflicts, a dirty tree) in its words.
       const viaVsCode = this.deps.discovery.vsCodeGitHas(repo.root);
-      await vscode.window.withProgress({ location: { viewId: LogView.id }, title: `Pulling ${repo.name}` }, async () => {
+      await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Pulling {0}", repo.name) }, async () => {
         if (viaVsCode) await this.deps.discovery.pullWithVsCodeGit(repo.root);
         else await this.pullFastForward(repo);
       });
     } catch (e) {
       if (!isAbortError(e) || !this.fetchCtl.signal.aborted) {
-        const why = isAbortError(e) ? `no answer after ${FETCH_TIMEOUT_MS / 1000} s`
-          : /fast-forward/i.test(messageOf(e)) ? "it has diverged from its upstream, and Polylog only fast-forwards here. Pull it in Source Control or a terminal"
+        const why = isAbortError(e) ? localize("no answer after {0} s", FETCH_TIMEOUT_MS / 1000)
+          : /fast-forward/i.test(messageOf(e)) ? localize("it has diverged from its upstream, and Polylog only fast-forwards here. Pull it in Source Control or a terminal")
           : messageOf(e);
-        void vscode.window.showErrorMessage(`Polylog could not pull ${repo.name}: ${why}.`);
+        void vscode.window.showErrorMessage(localize("Polylog could not pull {0}: {1}.", repo.name, why));
       }
     } finally {
       this.pulling.delete(repo.id);
@@ -792,15 +859,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const repos = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
     if (repos.length === 0 && plan.diverged.length === 0) {
       void vscode.window.showInformationMessage(plan.pull.length > 0
-        ? "Polylog: the repositories behind their upstream are already being pulled."
-        : "Polylog: no repository is behind its upstream (as of the last fetch).");
+        ? localize("Polylog: the repositories behind their upstream are already being pulled.")
+        : localize("Polylog: no repository is behind its upstream (as of the last fetch)."));
       return { pulled: [], skipped: [] };
     }
     for (const r of repos) this.pulling.add(r.id);
     const outer = this.fetchCtl.signal;
     let settled: PromiseSettledResult<string>[];
     try {
-      settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Pulling" }, () =>
+      settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Pulling") }, () =>
         // The pool stops starting merges on an abort; a merge already running is never killed
         // halfway through the working tree. No prompts (hooks and LFS may ask), and git's own words in English for pullReason.
         runPool(repos, Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY), (r) => this.run(r.root, pullArgs(), NEVER_ABORT, { env: { ...FETCH_ENV, LC_ALL: "C" } }), outer));
@@ -811,12 +878,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const pulled = repos.filter((_, i) => settled[i].status === "fulfilled");
     const skipped = [
       ...repos.flatMap((r, i) => { const s = settled[i]; return s.status === "rejected" ? [{ name: r.name, reason: pullReason(messageOf(s.reason)) }] : []; }),
-      ...plan.diverged.map((id) => ({ name: byId(id).name, reason: "it has diverged from its upstream" })),
+      ...plan.diverged.map((id) => ({ name: byId(id).name, reason: localize("it has diverged from its upstream") })),
     ];
     if (skipped.length > 0) {
       const list = skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join(", ");
-      const more = skipped.length > 3 ? ` and ${skipped.length - 3} more` : "";
-      void vscode.window.showWarningMessage(`Polylog pulled ${pulled.length} of ${pulled.length + skipped.length} repositories. Left as they were: ${list}${more}. Pull those in Source Control or a terminal.`);
+      const more = skipped.length > 3 ? localize(" and {0} more", skipped.length - 3) : "";
+      void vscode.window.showWarningMessage(localize("Polylog pulled {0} of {1} repositories. Left as they were: {2}{3}. Pull those in Source Control or a terminal.", pulled.length, pulled.length + skipped.length, list, more));
     } else {
       vscode.window.setStatusBarMessage(pullSummary(pulled.length), 8000);
     }
@@ -842,13 +909,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async showBehind(): Promise<void> {
     const ids = behindRepos(this.repos.map((r) => r.id), Object.fromEntries(this.sync));
     if (ids.length === 0) {
-      void vscode.window.showInformationMessage("Polylog: no repository is behind its upstream (as of the last fetch).");
+      void vscode.window.showInformationMessage(localize("Polylog: no repository is behind its upstream (as of the last fetch)."));
       return;
     }
     await this.setRepoFilter(ids);
   }
 
   private postSync(): void {
+    this.toolbarChanged();
     this.post({ type: "sync", byRepo: Object.fromEntries(this.sync) });
     this.syncChanged.fire();
   }
@@ -913,7 +981,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], this.background.signal);
       await vscode.env.clipboard.writeText(message.trim());
     } catch (e) {
-      void vscode.window.showErrorMessage(`Polylog could not read the commit message: ${messageOf(e)}`);
+      void vscode.window.showErrorMessage(localize("Polylog could not read the commit message: {0}", messageOf(e)));
     }
   }
 
@@ -934,7 +1002,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     const url = remote ? commitWebUrl(remote, c.sha) : null;
     if (!url) {
-      void vscode.window.showInformationMessage(`Polylog: ${c.repo.name} has no remote with a web page for this commit.`);
+      void vscode.window.showInformationMessage(localize("Polylog: {0} has no remote with a web page for this commit.", c.repo.name));
       return undefined;
     }
     // The integration suite checks the URL without launching a browser.
@@ -956,6 +1024,27 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.postInit();
     this.reloadSoon.cancel();
     await this.reload();
+  }
+
+  /** A branch row filters history only; it never checks out that branch. */
+  async selectBranch(repoId: string, branch: string): Promise<void> {
+    if (!this.repos.some((r) => r.id === repoId)) return;
+    if (this.history) this.leaveHistory();
+    this.setLogMode("commits");
+    this.filter = { ...this.filter, branch, branches: undefined, repoIds: [repoId] };
+    await this.context.globalState.update(HIDE_REPOS_KEY, false);
+    await vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, false);
+    this.persistFilter(); this.postInit(true); this.reloadSoon.cancel();
+    await this.reload();
+  }
+
+  async branchChanged(repoId: string): Promise<void> {
+    this.suggestionsFor.delete("branches");
+    if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
+    await this.reload();
+    await this.deps.uncommitted.readRepo(repoId);
+    await this.readSync(new Set([repoId]));
+    this.refsChanged.fire(repoId);
   }
 
   /** polylog.profiles as written (lenient: malformed entries are skipped). */
@@ -997,10 +1086,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const active = activeProfiles(resolved, this.filter.repoIds, all);
     const nameOf = new Map(this.repos.map((r) => [r.id, r.name]));
     const items: vscode.QuickPickItem[] = [
-      { label: "All repositories", description: `${all.length} repositories`, detail: this.filter.repoIds === null ? "Current" : undefined },
-      ...resolved.map((p) => ({ label: p.name, description: p.ids.map((id) => nameOf.get(id)).join(", ") || "no repository found", detail: active.includes(p.name) ? "Current" : undefined })),
+      { label: localize("All repositories"), description: localize("{0} repositories", all.length), detail: this.filter.repoIds === null ? localize("Current") : undefined },
+      ...resolved.map((p) => ({ label: p.name, description: p.ids.map((id) => nameOf.get(id)).join(", ") || localize("no repository found"), detail: active.includes(p.name) ? localize("Current") : undefined })),
     ];
-    const i = await this.deps.ask.pick(items, resolved.length > 0 ? "Switch profile" : "No profiles yet: tick some repositories, then Save Selection as Profile…");
+    const i = await this.deps.ask.pick(items, resolved.length > 0 ? localize("Switch profile") : localize("No profiles yet: tick some repositories, then Save Selection as Profile…"));
     if (i === undefined) return;
     await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
   }
@@ -1027,20 +1116,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** A profile from the User settings cannot be renamed or deleted from a workspace: say where it is. */
   private userLevel(name: string): boolean {
     if (name in this.ownProfiles()) return false;
-    void vscode.window.showInformationMessage(`Polylog: "${name}" is in your User settings (polylog.profiles); change it there.`);
+    void vscode.window.showInformationMessage(localize("Polylog: \"{0}\" is in your User settings (polylog.profiles); change it there.", name));
     return true;
   }
 
   /** Writes polylog.profiles to the workspace settings; false (with an error shown) if it could not. */
   private async writeProfiles(next: Profiles): Promise<boolean> {
     if (!vscode.workspace.workspaceFolders?.length) {
-      void vscode.window.showErrorMessage("Polylog: profiles are saved in the workspace settings; open a folder first.");
+      void vscode.window.showErrorMessage(localize("Polylog: profiles are saved in the workspace settings; open a folder first."));
       return false;
     }
     try {
       await vscode.workspace.getConfiguration("polylog").update("profiles", next, vscode.ConfigurationTarget.Workspace);
     } catch (e) {
-      void vscode.window.showErrorMessage(`Polylog could not save the profile: ${messageOf(e)}`);
+      void vscode.window.showErrorMessage(localize("Polylog could not save the profile: {0}", messageOf(e)));
       return false;
     }
     this.postInit();
@@ -1058,12 +1147,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const keys = this.tickedKeys();
     if (keys.length === 0) return;
     const current = this.rawProfiles();
-    const n = keys.length === 1 ? "1 repository" : `${keys.length} repositories`;
-    const name = await this.deps.ask.input(`Name for a profile of ${n}`, "backend", {
+    const n = keys.length === 1 ? localize("1 repository") : localize("{0} repositories", keys.length);
+    const name = await this.deps.ask.input(localize("Name for a profile of {0}", n), "backend", {
       validate: (v) => {
         if (!v.trim()) return undefined;
         const taken = Object.keys(current).find((k) => k.toLowerCase() === v.trim().toLowerCase());
-        return taken === undefined ? undefined : { message: `"${taken}" exists: Enter replaces it with these ${n}.`, severity: vscode.InputBoxValidationSeverity.Warning };
+        return taken === undefined ? undefined : { message: localize("\"{0}\" exists: Enter replaces it with these {1}.", taken, n), severity: vscode.InputBoxValidationSeverity.Warning };
       },
     });
     if (!name?.trim()) return;
@@ -1086,7 +1175,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const p = this.contextProfile(arg);
     if (!p || this.userLevel(p.name)) return;
     const current = this.rawProfiles();
-    const name = await this.deps.ask.input(`New name for profile "${p.name}"`, p.name, { value: p.name, validate: (v) => nameProblem(current, v, p.name) });
+    const name = await this.deps.ask.input(localize("New name for profile \"{0}\"", p.name), p.name, { value: p.name, validate: (v) => nameProblem(current, v, p.name) });
     if (name === undefined || nameProblem(current, name, p.name) !== undefined || name.trim() === p.name) return;
     await this.writeChanges(current, renameProfile(current, p.name, name));
   }
@@ -1095,7 +1184,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async profileDelete(arg: unknown): Promise<void> {
     const p = this.contextProfile(arg);
     if (!p || this.userLevel(p.name)) return;
-    if (!(await this.deps.ask.warning(`Delete profile "${p.name}"?`, "Its repositories stay as they are; only the name goes.", "Delete"))) return;
+    if (!(await this.deps.ask.warning(localize("Delete profile \"{0}\"?", p.name), localize("Its repositories stay as they are; only the name goes."), localize("Delete")))) return;
     const current = this.rawProfiles();
     await this.writeChanges(current, deleteProfile(current, p.name));
   }
@@ -1109,14 +1198,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const current = this.rawProfiles();
     const names = profileNames(current);
     const items: vscode.QuickPickItem[] = [
-      ...names.map((n) => ({ label: n, description: current[n].length === 1 ? "1 repository" : `${current[n].length} repositories`, picked: current[n].includes(key) })),
-      { label: `New profile with ${repo.name}…`, picked: false },
+      ...names.map((n) => ({ label: n, description: current[n].length === 1 ? localize("1 repository") : localize("{0} repositories", current[n].length), picked: current[n].includes(key) })),
+      { label: localize("New profile with {0}…", repo.name), picked: false },
     ];
-    const chosen = await this.deps.ask.pickMany(items, `Profiles with ${repo.name}`);
+    const chosen = await this.deps.ask.pickMany(items, localize("Profiles with {0}", repo.name));
     if (chosen === undefined) return;
     let next = setMembership(current, key, chosen.filter((i) => i < names.length).map((i) => names[i]));
     if (chosen.includes(names.length)) {
-      const name = await this.deps.ask.input(`Name for a new profile with ${repo.name}`, "backend", { validate: (v) => (v.trim() ? nameProblem(next, v) : undefined) });
+      const name = await this.deps.ask.input(localize("Name for a new profile with {0}", repo.name), "backend", { validate: (v) => (v.trim() ? nameProblem(next, v) : undefined) });
       if (name !== undefined && nameProblem(next, name) === undefined) next = saveProfile(next, name, [key]);
     }
     await this.writeChanges(current, next);
@@ -1176,8 +1265,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     // The configuration listener lists the repositories again (reposSettingChanged).
     await vscode.workspace.getConfiguration("polylog").update("excludeRepos", next, target);
-    void vscode.window.showInformationMessage(`Polylog: ${repo.name} is excluded (polylog.excludeRepos).`, "Undo").then(async (pick) => {
-      if (pick !== "Undo") return;
+    void vscode.window.showInformationMessage(localize("Polylog: {0} is excluded (polylog.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
+      if (pick !== localize("Undo")) return;
       const now = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
       const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
       await vscode.workspace.getConfiguration("polylog").update("excludeRepos", undoExclusion(current, pattern, previous), target);
@@ -1210,7 +1299,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.deps.uncommitted.started) void this.deps.uncommitted.readAll();
     try {
       // Me needs each repository's user.email, or the first page is empty and read twice.
-      if (this.filter.mine && this.meFor !== this.repos.map((r) => r.id).join("\0")) {
+      if (this.filter.mine && !hashQuery(this.filter.text) && this.meFor !== this.repos.map((r) => r.id).join("\0")) {
         if (await this.readMe()) this.postInit();
         if (ctl.signal.aborted) return;
       }
@@ -1229,9 +1318,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.stats.fetchMs = Date.now() - t;
       this.startBackgroundReads();
       this.clearTreeIfGone();
+      this.refreshCurrentReferences();
       this.post({ type: "page", rows: this.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
-      if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not read the log: ${messageOf(e)}`);
+      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Polylog could not read the log: {0}", messageOf(e)));
     }
   }
 
@@ -1254,7 +1344,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.queryState = page.state;
       this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
-      if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not load more commits: ${messageOf(e)}`);
+      if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Polylog could not load more commits: {0}", messageOf(e)));
     } finally {
       this.loadingMore = false;
     }
@@ -1279,7 +1369,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       workTotals: totals(this.deps.uncommitted.works()),
       workKnown: this.deps.uncommitted.known,
       sync: Object.fromEntries(this.sync),
-      fetching: this.fetching !== undefined,
+      fetching: this.fetching !== undefined, toolbar: this.toolbarState(),
       reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
     };
@@ -1303,7 +1393,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const { commit, repo } = found;
     const key = commitKey(commit);
     if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
-    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path };
+    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path, repoAccent: accentOf(assignAccents(this.repos), repoId) };
     // File history: the diff follows the selection, in one preview tab, keeping focus in the Log.
     if (this.history && commit.file) void this.openHistoryDiff(commit);
     this.setCommitTree({ ...base, status: "loading" });
@@ -1311,6 +1401,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const { files, message } = parseShow(await this.run(repo.root, showArgs(sha), ctl.signal));
       if (ctl.signal.aborted) return; // a newer selection owns the tree now
       this.setCommitTree({ ...base, status: "ready", files, message });
+      void this.updateCommitReferences(repo.root, repoId, sha, ctl.signal);
       if (this.openWhenLoaded === key) {
         this.openWhenLoaded = null;
         await this.openFirstOf(commit);
@@ -1318,6 +1409,24 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } catch (e) {
       if (!isAbortError(e) && !ctl.signal.aborted) this.setCommitTree({ ...base, status: "error", error: messageOf(e) });
     }
+  }
+
+  /** A selection, refresh or ref update reads this commit's refs without re-reading its files. */
+  private refreshCurrentReferences(repoId?: string): void {
+    const state = this.commitTree();
+    if (!state || state.status !== "ready" || state.commit.sha === UNCOMMITTED || (repoId && state.commit.repoId !== repoId)) return;
+    void this.updateCommitReferences(state.repoRoot, state.commit.repoId, state.commit.sha, this.detail.signal);
+  }
+
+  private async updateCommitReferences(root: string, repoId: string, sha: string, signal: AbortSignal): Promise<void> {
+    const epoch = ++this.referenceEpoch;
+    try {
+      const value = await readReferences(this.run, root, sha, signal);
+      if (signal.aborted || epoch !== this.referenceEpoch) return;
+      if (this.logMode === "uncommitted") {
+        if (this.commitsTree?.commit.repoId === repoId && this.commitsTree.commit.sha === sha) this.commitsTree.references = value;
+      } else this.deps.changes.setReferences(repoId, sha, value);
+    } catch { /* A missing ref must not hide the commit message or its files. */ }
   }
 
   /** A filter or refresh removed the tree's commit from the list: show nothing rather than a stale commit. */
@@ -1581,7 +1690,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // A file changed again after staging shows its working-tree side, marked staged only if nothing is left.
     for (const f of work.changes) byPath.set(f.path, { ...f, staged: false });
     const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ ...f, staged: staged.has(f.path) && !work.changes.some((c) => c.path === f.path) }));
-    const commit: Commit = { repoId: repo.id, sha: UNCOMMITTED, time: Math.floor(Date.now() / 1000), author: "", email: "", subject: "Uncommitted changes", parents: work.head ? [work.head] : [] };
+    const commit: Commit = { repoId: repo.id, sha: UNCOMMITTED, time: Math.floor(Date.now() / 1000), author: "", email: "", subject: localize("Uncommitted changes"), parents: work.head ? [work.head] : [] };
     this.deps.changes.set({ commit, repoRoot: repo.root, repoName: repo.name, status: "ready", message: "", files, discardable: work.canStage, stagedPaths: [...staged] });
   }
 
@@ -1613,6 +1722,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     void this.webviewView?.webview.postMessage(m);
   }
+
+  postBranchMessage(message: Extract<HostMessage, { type: "sidebarState" | "branchTree" }>): void { this.post(message); }
 
   dispose(): void {
     this.background.abort();

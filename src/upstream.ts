@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 /**
  * How far each repository's current branch is from its upstream, for the Repositories
  * pane's ↓/↑ badge. Local refs only (as of the last fetch): Polylog never fetches.
@@ -20,7 +21,7 @@ export function parseAheadBehind(out: string): AheadBehind | null {
   return m ? { ahead: Number(m[1]), behind: Number(m[2]) } : null;
 }
 
-const commits = (n: number) => `${n} ${n === 1 ? "commit" : "commits"}`;
+const commits = (n: number) => localize("{0} {1}", n, localize(n === 1 ? "commit" : "commits"));
 
 /** The badge beside a repository's name, or null when it is up to date. */
 export function syncLabel(s: AheadBehind): { text: string; title: string; behind: boolean } | null {
@@ -28,11 +29,11 @@ export function syncLabel(s: AheadBehind): { text: string; title: string; behind
   const titles: string[] = [];
   if (s.behind > 0) {
     parts.push(`↓${s.behind}`);
-    titles.push(`${commits(s.behind)} to pull from its upstream`);
+    titles.push(localize("{0} to pull from its upstream", commits(s.behind)));
   }
   if (s.ahead > 0) {
     parts.push(`↑${s.ahead}`);
-    titles.push(`${commits(s.ahead)} not pushed`);
+    titles.push(localize("{0} not pushed", commits(s.ahead)));
   }
   return parts.length === 0 ? null : { text: parts.join(" "), title: titles.join(", "), behind: s.behind > 0 };
 }
@@ -56,14 +57,14 @@ export function behindRepos(repoIds: readonly string[], sync: Readonly<Record<st
 
 /** Fetch All in the status bar while it runs ("Polylog: fetching 23/68…"): how many are done. */
 export function fetchProgress(done: number, total: number): string {
-  return `fetching ${done}/${total}…`;
+  return localize("fetching {0}/{1}…", done, total);
 }
 
 /** Fetch All's result, when every fetch succeeded: the ↓ marks it leaves, in one line. */
 export function fetchSummary(total: number, behind: number): string {
-  const repos = `${total} ${total === 1 ? "repository" : "repositories"}`;
-  const found = behind === 0 ? "nothing to pull" : `${behind} behind ${behind === 1 ? "its" : "their"} upstream`;
-  return `Polylog: fetched ${repos} · ${found}`;
+  const repos = localize("{0} {1}", total, localize(total === 1 ? "repository" : "repositories"));
+  const found = behind === 0 ? localize("nothing to pull") : localize("{0} behind {1} upstream", behind, localize(behind === 1 ? "its" : "their"));
+  return localize("Polylog: fetched {0} · {1}", repos, found);
 }
 
 /**
@@ -85,12 +86,12 @@ export function pullPlan(repoIds: readonly string[], sync: Readonly<Record<strin
 
 /** Why git refused a fast-forward, in a few words. */
 export function pullReason(message: string): string {
-  if (/untracked working tree files would be overwritten/i.test(message)) return "untracked files in the way";
-  if (/would be overwritten/i.test(message)) return "local changes to the same files";
-  if (/fast-forward/i.test(message)) return "it has diverged from its upstream";
+  if (/untracked working tree files would be overwritten/i.test(message)) return localize("untracked files in the way");
+  if (/would be overwritten/i.test(message)) return localize("local changes to the same files");
+  if (/fast-forward/i.test(message)) return localize("it has diverged from its upstream");
   return message.trim();
 }
 
 export function pullSummary(pulled: number): string {
-  return `Polylog: pulled ${pulled} ${pulled === 1 ? "repository" : "repositories"}`;
+  return localize("Polylog: pulled {0} {1}", pulled, localize(pulled === 1 ? "repository" : "repositories"));
 }

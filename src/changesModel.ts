@@ -1,6 +1,8 @@
+import { localize } from "./i18n";
 import { fileTree, type TreeNode } from "./fileTree";
 import { commitKey, UNCOMMITTED, type ChangeStatus, type Commit, type FileChange } from "./types";
 import { absoluteTime, relativeTime } from "./webview/view";
+import type { CommitReferences } from "./commitReferences";
 
 export type ChangesStatus = "loading" | "ready" | "error";
 
@@ -19,6 +21,8 @@ export interface ChangesState {
   discardable?: boolean;
   /** Uncommitted work: the paths with a staged change (their rows offer Unstage). */
   stagedPaths?: readonly string[];
+  references?: CommitReferences;
+  repoAccent?: number;
 }
 
 /** Which repository and revision a file node belongs to, for opening its diff. */
@@ -69,7 +73,8 @@ const DECORATIONS: Record<ChangeStatus, Decoration> = {
 
 /** What the commit did to a file, as a native file decoration (color + badge). */
 export function decorationFor(status: ChangeStatus | undefined): Decoration | undefined {
-  return status ? DECORATIONS[status] : undefined;
+  const decoration = status ? DECORATIONS[status] : undefined;
+  return decoration ? { ...decoration, tooltip: localize(decoration.tooltip) } : undefined;
 }
 
 export const NO_SELECTION = "Select a commit in the Log to see its changed files.";
@@ -82,11 +87,11 @@ export function firstOpenable(files: readonly FileChange[]): FileChange | undefi
 
 /** A changed file's description: +/− counts, "new", "binary", a rename's old name, "· staged". */
 export function stat(f: FileChange): string {
-  if (f.untracked) return "new";
-  if (f.added === null) return f.staged ? "binary · staged" : "binary";
+  if (f.untracked) return localize("new");
+  if (f.added === null) return f.staged ? localize("binary · staged") : localize("binary");
   const counts = `+${f.added} −${f.deleted}`;
   const shown = f.oldPath ? `← ${f.oldPath}  ${counts}` : counts;
-  return f.staged ? `${shown} · staged` : shown;
+  return f.staged ? localize("{0} · staged", shown) : shown;
 }
 
 function describeNodes(nodes: readonly TreeNode[], parent: string, base: string, owner: Owner): NodeDesc[] {
@@ -105,7 +110,7 @@ function describeNodes(nodes: readonly TreeNode[], parent: string, base: string,
 
 /** Everything the Changes tree shows, as plain data. The VS Code adapter only maps it to TreeItems. */
 export function describeChanges(s: ChangesState | null, now: number): { message: string | undefined; roots: NodeDesc[] } {
-  if (!s) return { message: NO_SELECTION, roots: [] };
+  if (!s) return { message: localize(NO_SELECTION), roots: [] };
   const c = s.commit;
   const base = commitKey(c);
   const tooltip = `${s.message || c.subject}\n\n${c.author} <${c.email}> · ${absoluteTime(c.time)} · ${s.repoName}\n${c.sha}`;
@@ -113,16 +118,16 @@ export function describeChanges(s: ChangesState | null, now: number): { message:
   const children = s.status === "ready" ? describeNodes(fileTree(s.files), "", base, owner) : [];
   const pending = c.sha === UNCOMMITTED;
   const n = s.files.length;
-  const description = pending ? `${n} ${n === 1 ? "file" : "files"} · not committed` : `${c.sha.slice(0, 7)} · ${c.author} · ${relativeTime(now, c.time)}`;
+  const description = pending ? localize("{0} {1} · not committed", n, localize(n === 1 ? "file" : "files")) : `${c.sha.slice(0, 7)} · ${c.author} · ${relativeTime(now, c.time)}`;
   // Uncommitted work (the Log's Uncommitted side): one repository, review only.
   const root: CommitDesc = {
     kind: "commit", id: base, label: pending ? s.repoName : c.subject, description,
-    tooltip: pending ? `${s.repoName}: changes since the last commit, staged or not. Stage, unstage and commit in the Uncommitted view.` : tooltip, children,
+    tooltip: pending ? localize("{0}: changes since the last commit, staged or not. Stage, unstage and commit in the Uncommitted view.", s.repoName) : tooltip, children,
   };
   const message =
-    s.status === "loading" ? LOADING
-    : s.status === "error" ? `Could not read this commit: ${s.error ?? "unknown error"}`
-    : s.files.length === 0 ? NO_FILES
+    s.status === "loading" ? localize(LOADING)
+    : s.status === "error" ? localize("Could not read this commit: {0}", s.error ?? localize("unknown error"))
+    : s.files.length === 0 ? localize(NO_FILES)
     : undefined;
   return { message, roots: [root] };
 }
@@ -130,9 +135,9 @@ export function describeChanges(s: ChangesState | null, now: number): { message:
 /** The Changes view's description (next to its title): which repository and commit, or "uncommitted". */
 export function viewDescription(s: ChangesState | null): string {
   if (!s) return "";
-  const what = s.commit.sha === UNCOMMITTED ? "uncommitted" : s.commit.sha.slice(0, 7);
+  const what = s.commit.sha === UNCOMMITTED ? localize("uncommitted") : s.commit.sha.slice(0, 7);
   const n = s.status === "ready" ? s.files.length : 0;
-  return [s.repoName, what, ...(n > 0 ? [`${n} ${n === 1 ? "file" : "files"}`] : [])].join(" · ");
+  return [s.repoName, what, ...(n > 0 ? [localize("{0} {1}", n, localize(n === 1 ? "file" : "files"))] : [])].join(" · ");
 }
 
 /** Combined Changes: how one file's diff opens (spec section 4). */
@@ -172,7 +177,7 @@ export interface CombinedState {
   error?: string;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many: string) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 const short = (sha: string, n = 7) => sha.slice(0, n);
 
 /** The Changes view with several commits: a root per repository, each changed file once. */
@@ -189,8 +194,8 @@ export function describeCombined(s: CombinedState): { message: string | undefine
       const shas = o.shas.map((x) => short(x, 4)).join(" · ");
       const warn = o.mode === "fallback";
       const tooltip = !warn ? n.tooltip
-        : o.reason !== "conflict" ? `Shown as one diff from before the first selected commit: the file is ${o.reason === "binary" ? "binary" : "too large"}`
-        : `Includes changes from ${plural(o.included.length, "unselected commit", "unselected commits")}: ${o.included.map((x) => `${short(x)} ${s.unselected[x] ?? ""}`.trim()).join("; ")}`;
+        : o.reason !== "conflict" ? localize("Shown as one diff from before the first selected commit: the file is {0}", localize(o.reason === "binary" ? "binary" : "too large"))
+        : localize("Includes changes from {0}: {1}", plural(o.included.length, "unselected commit", "unselected commits"), o.included.map((x) => localize("{0} {1}", short(x), s.unselected[x] ?? "").trim()).join("; "));
       return { ...n, description: warn ? `⚠ ${shas}` : shas, tooltip, owner: { repoId: r.repoId, sha: o.shas[o.shas.length - 1], parent: null }, combined: o };
     });
     const owner = { repoId: r.repoId, sha: "", parent: null };
@@ -201,10 +206,10 @@ export function describeCombined(s: CombinedState): { message: string | undefine
     };
   });
   const message =
-    s.status === "loading" ? LOADING
-    : s.status === "error" ? `Could not read these commits: ${s.error ?? "unknown error"}`
-    : s.noNetChange.length > 0 ? `${plural(s.noNetChange.length, "file", "files")} with no net change: ${s.noNetChange.join(", ")}`
-    : roots.length === 0 ? "These commits change no files."
+    s.status === "loading" ? localize(LOADING)
+    : s.status === "error" ? localize("Could not read these commits: {0}", s.error ?? localize("unknown error"))
+    : s.noNetChange.length > 0 ? localize("{0} with no net change: {1}", plural(s.noNetChange.length, "file", "files"), s.noNetChange.join(", "))
+    : roots.length === 0 ? localize("These commits change no files.")
     : undefined;
   return { message, roots, description };
 }
@@ -215,8 +220,8 @@ export function combinedTitle(o: CombinedOpen, repoName: string): string {
   const first = short(o.shas[0]);
   const last = short(o.shas[o.shas.length - 1]);
   if (o.mode === "fallback") {
-    const why = o.reason === "conflict" ? `includes ${plural(o.included.length, "unselected commit", "unselected commits")}` : o.reason ?? "conflict";
+    const why = o.reason === "conflict" ? localize("includes {0}", plural(o.included.length, "unselected commit", "unselected commits")) : localize(o.reason ?? "conflict");
     return `${name} (${first}^ ↔ ${last}, ${why})`;
   }
-  return o.shas.length === 1 ? `${name} (${last}) — ${repoName}` : `${name} (${o.shas.length} selected commits)`;
+  return o.shas.length === 1 ? `${name} (${last}) — ${repoName}` : localize("{0} ({1} selected commits)", name, o.shas.length);
 }

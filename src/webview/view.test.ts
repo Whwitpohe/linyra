@@ -123,9 +123,9 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   console.log("ok - file history has its own empty state");
 }
 {
-  assert.strictEqual(branchUseLabel({ branch: "origin/prod", found: 52, fallback: 16 }), "origin/prod in 52 repos · current branch in 16");
-  assert.strictEqual(branchUseLabel({ branch: "origin/prod", found: 3, fallback: 0 }), "origin/prod in all 3 repos");
-  assert.strictEqual(branchUseLabel({ branch: "prod", found: 0, fallback: 2 }), "no repo has prod · current branch in 2");
+  assert.strictEqual(branchUseLabel({ branches: ["origin/prod"], found: 52, missing: 16 }), "origin/prod in 52 repos · skipped 16 without selected branches");
+  assert.strictEqual(branchUseLabel({ branches: ["origin/prod"], found: 3, missing: 0 }), "origin/prod in all 3 repos");
+  assert.strictEqual(branchUseLabel({ branches: ["prod", "main"], found: 0, missing: 2 }), "2 branches in 0 repos · skipped 2 without selected branches");
   assert.strictEqual(branchUseLabel(undefined), "");
   console.log("ok - the footer says which repos use the branch and which fell back");
 }

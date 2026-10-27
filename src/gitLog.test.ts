@@ -12,7 +12,7 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
 
 // ── The format string is the contract the parser relies on ─────────────────
 {
-  assert.strictEqual(LOG_FORMAT, "--format=%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x1e");
+  assert.strictEqual(LOG_FORMAT, "--format=%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x00refs:%D%x1e");
   console.log("ok - LOG_FORMAT is NUL-delimited fields, RS-terminated records");
 }
 
@@ -78,7 +78,7 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
 // ── File history: RS starts each record; the file's status follows it ──────
 // Byte shape from git 2.43: RS <fields NUL-separated> NUL "\n" <STATUS> NUL <path> NUL [<new> NUL]
 {
-  assert.strictEqual(HISTORY_FORMAT, "--format=%x1e%H%x00%ct%x00%an%x00%ae%x00%s%x00%P");
+  assert.strictEqual(HISTORY_FORMAT, "--format=%x1e%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x00refs:%D");
   const hrec = (sha: string, ct: number, subject: string, status: string, ...paths: string[]) =>
     "\x1e" + [sha, String(ct), "dana", "dana@example.com", subject, ""].join("\0") + "\0\n" + status + "\0" + paths.join("\0") + "\0";
   const out = hrec(A, 400, "edit new", "M", "src/new.ts") + hrec(B, 300, "rename", "R100", "src/old.ts", "src/new.ts") + hrec(C, 200, "edit old", "M", "src/old.ts");
@@ -93,4 +93,14 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
   const merge = "\x1e" + [C, "5", "rin", "rin@example.com", "merge", `${A} ${B}`].join("\0") + "\0";
   assert.deepStrictEqual(parseHistory(merge, REPO, "a.ts")[0].file, { path: "a.ts" }, "a record with no status keeps the file's current path");
   console.log("ok - parseHistory reads each commit's path and status, following renames");
+}
+
+{
+  const fields = [A, "1", "dana", "dana@example.com", "feat: branch tip", B, "refs:HEAD -> refs/heads/develop, refs/remotes/origin/develop, tag: refs/tags/v1"];
+  const refs = [{ kind: "head", name: "HEAD" }, { kind: "local", name: "develop" }, { kind: "remote", name: "origin/develop" }, { kind: "tag", name: "v1" }];
+  assert.deepStrictEqual(parseLog(fields.join("\0") + "\x1e", REPO)[0].refs, refs);
+  const history = parseHistory("\x1e" + fields.join("\0") + "\0\nR100\0src/old.ts\0src/new.ts\0", REPO, "src/new.ts")[0];
+  assert.deepStrictEqual(history.refs, refs);
+  assert.deepStrictEqual(history.file, { path: "src/new.ts", oldPath: "src/old.ts", status: "R" });
+  console.log("ok - local/remote/tag decorations do not shift file-history status or rename paths");
 }

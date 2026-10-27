@@ -1,3 +1,4 @@
+import { localize } from "./i18n";
 import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor } from "./changesModel";
@@ -22,7 +23,7 @@ function gitMessage(e: unknown): string {
   // Put in a sentence that ends with its own period.
   return text.replace(/[.\s]+$/, "");
 }
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
 /**
  * VS Code's prompts, in one place: the integration suite answers them through a queue
@@ -119,6 +120,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   readonly ask: Ask;
   /** The last error shown (integration test seam). */
   private lastError: string | undefined;
+  private description = "";
 
   private showError(text: string): void {
     this.lastError = text;
@@ -133,7 +135,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   constructor(private readonly deps: UncommittedViewDeps) {
     this.ask = deps.ask;
     this.view = vscode.window.createTreeView("polylog.uncommitted", { treeDataProvider: this, showCollapseAll: true, canSelectMany: true });
-    this.disposables.push(this.view, deps.store.onDidChange(() => this.render()));
+    this.disposables.push(this.view, deps.store.onDidChange(() => this.render()), this.view.onDidChangeVisibility(() => { if (this.view.visible) this.render(); }));
     this.render();
   }
 
@@ -142,7 +144,8 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     this.roots = d.roots;
     this.message = d.message;
     this.view.message = d.message;
-    this.view.description = viewLabel(totals(this.deps.store.works()));
+    this.description = viewLabel(totals(this.deps.store.works()));
+    this.view.description = this.description;
     this.parents = new Map();
     const before = this.decorated;
     this.decorated = [];
@@ -171,7 +174,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
       `${"  ".repeat(depth)}${n.label} | ${n.description}${n.kind === "repo" ? ` [${n.contextValue}]` : ""}`,
       ...walk(n.children, depth + 1),
     ]);
-    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), lastError: this.lastError, visible: this.view.visible };
+    return { message: this.message, description: this.description, items: walk(this.roots, 0), lastError: this.lastError, visible: this.view.visible };
   }
 
   private uriFor(n: UNode): vscode.Uri {
@@ -211,7 +214,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     } else if (n.kind === "file") {
       item.resourceUri = this.uriFor(n);
       item.iconPath = vscode.ThemeIcon.File;
-      item.command = { command: "polylog.openUncommittedDiff", title: "Open Diff", arguments: [{ repoId: n.repoId, group: n.group, path: n.path }] };
+      item.command = { command: "polylog.openUncommittedDiff", title: localize("Open Diff"), arguments: [{ repoId: n.repoId, group: n.group, path: n.path }] };
     }
     return item;
   }
@@ -260,7 +263,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
       try {
         await run(r, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
       } catch (e) {
-        this.showError(`Polylog could not ${verb} ${r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file")} in ${r.work.name}: ${gitMessage(e)}.`);
+        this.showError(localize("Polylog could not {0} {1} in {2}: {3}.", localize(verb), r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file"), r.work.name, gitMessage(e)));
       }
     }
     await Promise.all(picks.map((r) => this.deps.store.readRepo(r.work.repoId)));
@@ -298,31 +301,31 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     const smart = git.get<boolean>("enableSmartCommit", false) === true;
     const step = commitStep(work.staged.length, work.changes.length, smart);
     if (step === "nothing") return;
-    if (step === "askStageAll" && !(await this.ask.warning(`There are no staged changes in ${work.name}.`, "Stage all changes and commit them?", "Stage All and Commit"))) return;
+    if (step === "askStageAll" && !(await this.ask.warning(localize("There are no staged changes in {0}.", work.name), localize("Stage all changes and commit them?"), localize("Stage All and Commit")))) return;
     // Commit all, as VS Code's own smart commit: git.smartCommitChanges "tracked" leaves new files out.
     const scope = git.get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
     const all: boolean | "tracked" = step === "message" ? false : scope === "tracked" ? "tracked" : true;
     const n = all ? commitCount(work, scope) : work.staged.length;
     if (n === 0) {
       // Smart commit of tracked files only, and only new files changed: git would say "nothing to commit".
-      void vscode.window.showInformationMessage(`Nothing to commit in ${work.name}: only new files changed, and git.smartCommitChanges is "tracked".`);
+      void vscode.window.showInformationMessage(localize("Nothing to commit in {0}: only new files changed, and git.smartCommitChanges is \"tracked\".", work.name));
       return;
     }
     // The Path box hides part of the repository; a commit takes all of it. Say so, with the true numbers.
     if (this.deps.store.filtered) {
       const w = await this.deps.store.whole(work.repoId);
       const real = !w ? n : !all ? w.staged : scope === "tracked" ? w.tracked : w.changes;
-      if (real > n && !(await this.ask.warning(`The commit takes ${plural(real, "file")} in ${work.name}, not ${n}.`,
-        `The Path box shows only part of the repository; ${plural(real - n, "file")} outside it would be committed too.`, `Commit ${plural(real, "File")}`))) return;
+      if (real > n && !(await this.ask.warning(localize("The commit takes {0} in {1}, not {2}.", plural(real, "file"), work.name, n),
+        localize("The Path box shows only part of the repository; {0} outside it would be committed too.", plural(real - n, "file")), localize("Commit {0}", plural(real, "File"))))) return;
     }
-    const message = await this.ask.input(`Commit message for ${work.name}`, `Message (${plural(n, "file")} ${all ? "to commit" : "staged"})`);
+    const message = await this.ask.input(localize("Commit message for {0}", work.name), localize("Message ({0} {1})", plural(n, "file"), all ? localize("to commit") : localize("staged")));
     if (!message || message.trim() === "") return;
     let ok = true;
     try {
       await this.deps.discovery.commit(work.root, message, all);
     } catch (e) {
       ok = false;
-      this.showError(`Polylog could not commit ${work.name}: ${gitMessage(e)}.`);
+      this.showError(localize("Polylog could not commit {0}: {1}.", work.name, gitMessage(e)));
     }
     await this.deps.store.readRepo(work.repoId);
     // Only a commit that landed changes the Log.
@@ -364,6 +367,6 @@ function side(work: RepoWork, file: FileChange, s: DiffSide, before: boolean): v
 export async function openWorkDiff(work: RepoWork, group: Group, file: FileChange, preserveFocus = false): Promise<void> {
   const alsoStaged = group === "changes" && work.staged.some((f) => f.path === file.path);
   const d = diffFor(group, file, alsoStaged);
-  const title = `${path.posix.basename(file.path)} (${group === "staged" ? "Index" : "Working Tree"}) — ${work.name}`;
+  const title = `${path.posix.basename(file.path)} (${group === "staged" ? localize("Index") : localize("Working Tree")}) — ${work.name}`;
   await vscode.commands.executeCommand("vscode.diff", side(work, file, d.left, true), side(work, file, d.right, false), title, { preview: true, preserveFocus });
 }
