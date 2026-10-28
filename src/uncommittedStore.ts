@@ -279,8 +279,12 @@ export class UncommittedStore implements vscode.Disposable {
 
   /** git status, then (only where something changed) the two numstat reads and the edit times. */
   private async readOne(r: Repo, specs: readonly string[], signal: AbortSignal, why: ReadCause, trusted: boolean): Promise<RepoWork> {
-    // Clean as VS Code's Git last found it, and its view is current: no git process at all.
-    const cleanHead = trusted ? this.deps.cleanHead?.(r.root) : undefined;
+    // Clean as VS Code's Git last found it, and its view is current: no git process at all. Only
+    // to confirm a repository already known clean: its event can come before it has read the
+    // working tree again, and its word must never erase changes git itself reported.
+    const known = this.map.get(r.id);
+    const knownClean = !known || known.staged.length + known.changes.length === 0;
+    const cleanHead = trusted && knownClean ? this.deps.cleanHead?.(r.root) : undefined;
     if (cleanHead !== undefined) return { repoId: r.id, root: r.root, name: r.name, head: cleanHead, staged: [], changes: [], editedAt: null, canStage: this.deps.canStage(r.root) };
     this.reads.push({ root: r.root, why });
     if (process.env.LINYRA_ITEST !== "1" && this.reads.length > 200) this.reads.splice(0, this.reads.length - 200);
