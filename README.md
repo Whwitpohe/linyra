@@ -121,15 +121,18 @@ an entire view. Folder and commit expansion uses the small arrow or keyboard act
 | --- | --- |
 | **File History** | Right-click a file in Explorer, an editor/tab or Changes. Follow renames in one file's history. Search, author and date filters are set aside and restored when you exit. |
 | **Combined Changes** | Ctrl/⌘-click or Shift-click commits, including commits from different repositories. Review each file once, with diffs limited to the selected changes where they can be separated. Overlapping unselected changes are marked. No history is rewritten. |
-| **Uncommitted work** | Use **Commits / Uncommitted** in the Log, or show the Uncommitted sidebar. Review working files across repositories. Explicit stage, unstage, discard and commit actions use VS Code's Git integration. |
-| **Branches sidebar** | Switch **Repositories / Branches** to browse local/remote branches, search and favorite them. Clicking a branch filters history. Context menus provide repository-scoped checkout, create, compare, rename, merge, rebase, worktree, fetch, pull, push and delete actions. |
+| **Uncommitted work** | Use **Commits / Uncommitted** in the Log. Review working files across repositories. Explicit stage, unstage, discard and commit actions use VS Code's Git integration. |
+| **Repositories tree** | Each repository opens onto its **Local**, **Remote**, **Tags** and **Stashes**; the search box finds branch names too. Clicking a branch filters history. Context menus provide repository-scoped checkout, create, compare, rename, merge, rebase, worktree, fetch, pull, push and delete actions, and Apply, Pop, Drop or Show Changes for a stash. |
+| **Commit actions** | Right-click a commit: cherry-pick (several selected commits at once, oldest first), revert, reset the current branch to here, check out the revision, or create a branch or tag there. On the checked-out commit: Undo Commit and Edit Commit Message. |
+| **Across repositories** | **Branches Across Repositories…** checks out, creates or merges one branch name in every ticked repository; **Push…** lists every repository's outgoing commits in one dialog; **Update Project** fetches, then merges or rebases each onto its upstream. With the Log focused: Ctrl+T (Update Project), Ctrl+Shift+K (Push…). |
 | **Repository profiles** | Save a repository selection and switch back to it later. Profiles use the shareable `linyra.profiles` workspace setting. |
 | **Fetch and pull** | Toolbar/context actions fetch when requested, show ahead/behind counts and select repositories behind their upstream. Pull-all uses fast-forward checks. |
 | **Blame and current file** | Native diff/revision editors show line attribution. **Open File** opens the current workspace file at the same line. |
 | **Copy and remote links** | Commit and file context menus expose copy actions and remote links for supported Git hosts. |
 
-The branch sidebar is another Linyra addition: search across local/remote branches,
-favorite them, or use repository-scoped actions without changing history by clicking a name.
+The Repositories tree groups each repository's branches, tags and stashes, as the JetBrains
+Branches panel does: search, favorite, or use repository-scoped actions without changing
+history by clicking a name.
 
 ![Linyra's searchable local and remote branch sidebar across three repositories](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-branch-sidebar.png)
 

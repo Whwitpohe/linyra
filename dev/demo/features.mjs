@@ -62,10 +62,11 @@ export async function recordFeatures(r) {
     await logView.click("#sort"); await logView.click(".sort-choice:nth-of-type(2)");
     await waitFor("topology sort",async()=>{const s=await snapshot();return s.filter.sort==="topo"&&s.done;});
     await hold(1.5);
-    await logView.click("#graph-collapse");
+    // Graph folding lives in the ⋯ menu.
+    await logView.click("#toolbar-more"); await logView.evaluate("[...doc.querySelectorAll('#toolbar-menu button')].find((b)=>b.textContent==='Collapse Linear Branches').click();return true;");
     await waitFor("folded paths",()=>logView.evaluate("return !!doc.querySelector('.folded-row');"));
     await hold(2); await shot("feature-folding",logRegion);
-    await logView.click("#graph-expand"); await hold(1.5);
+    await logView.click("#toolbar-more"); await logView.evaluate("[...doc.querySelectorAll('#toolbar-menu button')].find((b)=>b.textContent==='Expand Linear Branches').click();return true;"); await hold(1.5);
     await logView.click("#author");
     await waitFor("author checklist",()=>logView.evaluate("return doc.querySelectorAll('#author-picker input[data-author]').length>=2;"));
     await logView.evaluate("doc.querySelectorAll('#author-picker input[data-author]')[0].click();return true;");
