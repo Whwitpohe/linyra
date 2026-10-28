@@ -154,6 +154,40 @@ describe("Compare Branches", () => {
     });
   const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
 
+  it("colors each listed repository as the Log does, though Compare lists only some of them", async () => {
+    // A fourth repository with neither branch: Compare leaves it out, the Log does not. With it,
+    // hues assigned over only the listed repositories give acme-web another color than the Log's.
+    const mobile = path.join(path.dirname(roots["acme-web"]), "acme-mobile");
+    fs.mkdirSync(mobile, { recursive: true });
+    git(mobile, ["init", "-q"]);
+    git(mobile, ["update-ref", "HEAD", commitOn(mobile, null, { "app.json": "{}\n" }, "feat: scaffold mobile", T)]);
+    const folders = (change: () => boolean) => new Promise<void>((resolve, reject) => {
+      const d = vscode.workspace.onDidChangeWorkspaceFolders(() => { d.dispose(); resolve(); });
+      if (!change()) { d.dispose(); reject(new Error("workspace folders not changed")); }
+    });
+    await folders(() => vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders?.length ?? 0, 0, { uri: vscode.Uri.file(mobile) }));
+    try {
+      await send({ type: "refresh" });
+      const all = (await until("four repositories", (s) => s.repos.length === 4)).repos;
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("linyra.compareBranches");
+      const r = await until2("listed without acme-mobile", repos, (x) => x.open && x.roots.length === 2 && x.selected !== undefined);
+      assert.deepStrictEqual(r.roots, ["acme-api", "acme-web"]);
+      const { accentOf, assignAccents } = require("../webview/view") as typeof import("../webview/view");
+      const log = assignAccents(all), listed = assignAccents(all.filter((x) => x.name !== "acme-mobile" && x.name !== "acme-libs"));
+      assert.notDeepStrictEqual(["acme-api", "acme-web"].map((n) => accentOf(log, roots[n])), ["acme-api", "acme-web"].map((n) => accentOf(listed, roots[n])),
+        "the fixture tells the two assignments apart");
+      assert.deepStrictEqual(r.accents, ["acme-api", "acme-web"].map((n) => accentOf(log, roots[n])), "the Log's colors");
+    } finally {
+      const at = vscode.workspace.workspaceFolders?.findIndex((f) => f.uri.fsPath === vscode.Uri.file(mobile).fsPath) ?? -1;
+      if (at >= 0) await folders(() => vscode.workspace.updateWorkspaceFolders(at, 1));
+      await send({ type: "refresh" });
+      await until("three repositories again", (s) => s.repos.length === 3);
+      // Windows may still hold the folder; it is inside the temporary home, removed after the run.
+      try { fs.rmSync(mobile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* removed with the home */ }
+    }
+  });
+
   it("the Linyra Compare tab: Repositories with counts; selecting one fills both sides", async () => {
     await viewPick({ left: "release-1.4", right: "prod" });
     await vscode.commands.executeCommand("linyra.compareBranches");

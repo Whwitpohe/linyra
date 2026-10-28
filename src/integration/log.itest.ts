@@ -247,7 +247,15 @@ describe("Linyra panel", () => {
       const edit = new vscode.WorkspaceEdit();
       edit.insert(doc.uri, new vscode.Position(0, 0), "more ");
       await vscode.workspace.applyEdit(edit);
-      let mark = await snapshot();
+      // Refresh reads every repository twice (with the page, then forced once it is shown); on a
+      // slow runner the second can still be on its way. Counted from here, it looks like the save's.
+      const quiet = () => waitFor("git to go quiet", async () => {
+        const a = await snapshot();
+        await sleep(1500);
+        const b = await snapshot();
+        return b.spawnLog.length === a.spawnLog.length ? b : undefined;
+      });
+      let mark = await quiet();
       await doc.save();
       await until("the files after a save", (x) => work(x)?.changes.length === 3);
       // Only the saved file's repository is read again (VS Code's Git reports it too, a moment later).
@@ -271,12 +279,6 @@ describe("Linyra panel", () => {
 
       // A save outside every repository reads nothing. First let VS Code's Git finish reporting
       // the saves above (on a slow runner its report comes seconds later).
-      const quiet = () => waitFor("git to go quiet", async () => {
-        const a = await snapshot();
-        await sleep(1500);
-        const b = await snapshot();
-        return b.spawnLog.length === a.spawnLog.length ? b : undefined;
-      });
       mark = await quiet();
       const outside = path.join(require("os").tmpdir(), `linyra-outside-${Date.now()}.txt`);
       fs.writeFileSync(outside, "a\n");
