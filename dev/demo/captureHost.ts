@@ -4,11 +4,11 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 const allowed = new Set([
-  "polylog.open", "polylog.compareShow", "polylog.compareHide", "polylog.openDiff",
-  "polylog._itest.snapshot", "polylog._itest.send", "polylog._itest.changesMessage",
-  "polylog._itest.compareView", "polylog._itest.compare", "polylog._itest.compareStore", "polylog._itest.compareSelect",
-  "polylog._itest.compareMode", "polylog._itest.compareReposSend", "polylog._itest.compareSide",
-  "polylog._itest.expandChanges", "polylog._itest.branches",
+  "linyra.open", "linyra.compareShow", "linyra.compareHide", "linyra.openDiff",
+  "linyra._itest.snapshot", "linyra._itest.send", "linyra._itest.changesMessage",
+  "linyra._itest.compareView", "linyra._itest.compare", "linyra._itest.compareStore", "linyra._itest.compareSelect",
+  "linyra._itest.compareMode", "linyra._itest.compareReposSend", "linyra._itest.compareSide",
+  "linyra._itest.expandChanges", "linyra._itest.branches",
   "workbench.action.closeAllEditors", "workbench.action.closeSidebar",
   "workbench.action.closeAuxiliaryBar", "workbench.action.positionPanelBottom",
   "workbench.action.toggleMaximizedPanel", "workbench.action.focusPanel",
@@ -18,11 +18,11 @@ const allowed = new Set([
 
 export async function run(): Promise<void> {
   const control = process.env.LINYRA_CAPTURE_CONTROL;
-  if (!control || process.env.POLYLOG_ITEST !== "1") throw new Error("capture needs an isolated development host");
+  if (!control || process.env.LINYRA_ITEST !== "1") throw new Error("capture needs an isolated development host");
   await vscode.extensions.getExtension("whwitpohe.linyra")!.activate();
   await vscode.commands.executeCommand("workbench.action.closeSidebar");
   await vscode.commands.executeCommand("workbench.action.closeAuxiliaryBar");
-  await vscode.commands.executeCommand("polylog.open");
+  await vscode.commands.executeCommand("linyra.open");
   await fs.writeFile(path.join(control, "ready.json"), JSON.stringify({ ready: true }));
 
   await new Promise<void>((finish) => {
@@ -44,7 +44,7 @@ export async function run(): Promise<void> {
         } else if (request.op === "history") {
           const file = path.resolve(request.file);
           if (!vscode.workspace.getWorkspaceFolder(vscode.Uri.file(file))) throw new Error("history file must be in the demo workspace");
-          result = await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(file));
+          result = await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(file));
         } else if (request.op === "finish") {
           clearInterval(timer);
           finish();

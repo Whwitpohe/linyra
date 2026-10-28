@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     console.log("ok - ambiguity, non-commit objects, partial repository failures and cancellation are handled");
   }
 
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-hash-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-hash-"));
   const env = gitEnv(home);
   const git = (root: string, args: string[]) => execFileSync("git", args, { cwd: root, env, stdio: "pipe" }).toString().trim();
   const web = path.join(home, "acme-web"), libs = path.join(home, "acme-libs"), api = path.join(home, "acme-api");

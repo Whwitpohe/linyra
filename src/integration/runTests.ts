@@ -10,7 +10,7 @@ import { FIXTURE } from "./fixture";
 async function main(): Promise<void> {
   const repoRoot = path.resolve(__dirname, "..", ".."); // out/integration → repo root
   // Throwaway HOME: no real git config, no real VS Code state.
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-itest-home-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-itest-home-"));
   // The user's own identity, which the "Me" author button reads from git config.
   fs.writeFileSync(path.join(home, ".gitconfig"), "[user]\n\tname = dana\n\temail = dana@example.com\n");
   const ws = path.join(home, "ws");
@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   const env = gitEnv(home);
 
   await runTests({
-    vscodeExecutablePath: await downloadAndUnzipVSCode(process.env.POLYLOG_VSCODE_VERSION ?? "stable"),
+    vscodeExecutablePath: await downloadAndUnzipVSCode(process.env.LINYRA_VSCODE_VERSION ?? "stable"),
     extensionDevelopmentPath: repoRoot,
     extensionTestsPath: path.resolve(__dirname, "index.js"),
     launchArgs: [workspaceFile, "--disable-extensions", "--disable-workspace-trust", "--no-sandbox"],
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
       USERPROFILE: home,
       GIT_CONFIG_NOSYSTEM: env.GIT_CONFIG_NOSYSTEM,
       GIT_CONFIG_GLOBAL: env.GIT_CONFIG_GLOBAL,
-      POLYLOG_ITEST: "1",
+      LINYRA_ITEST: "1",
     },
   });
   fs.rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

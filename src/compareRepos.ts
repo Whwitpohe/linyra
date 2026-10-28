@@ -15,7 +15,7 @@ import { accentOf, assignAccents } from "./webview/view";
  * A webview: it needs the Branch boxes; the side views stay native trees (the file icon theme).
  */
 export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposable {
-  static readonly viewType = "polylog.compare";
+  static readonly viewType = "linyra.compare";
   private view: vscode.WebviewView | undefined;
   /** Compare with…: the left branch, waiting for the right one (never read). */
   private pending: Pair | null = null;
@@ -34,7 +34,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     );
     void this.setContext();
     // The Linyra Compare tab is hidden until Compare Branches is clicked (remembered per workspace).
-    void vscode.commands.executeCommand("setContext", "polylog.compareShown", this.state.get<boolean>(SHOWN, false));
+    void vscode.commands.executeCommand("setContext", "linyra.compareShown", this.state.get<boolean>(SHOWN, false));
   }
 
   private get state(): vscode.Memento {
@@ -50,10 +50,10 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       () => this.view?.visible === true && this.sideShown(side));
   }
 
-  private sideShown(side: "left" | "right"): boolean { return !this.state.get<boolean>(`polylog.compare.${side}Hidden`, false); }
+  private sideShown(side: "left" | "right"): boolean { return !this.state.get<boolean>(`linyra.compare.${side}Hidden`, false); }
 
   async setSideShown(side: "left" | "right", show: boolean, focus = false): Promise<void> {
-    await this.state.update(`polylog.compare.${side}Hidden`, !show);
+    await this.state.update(`linyra.compare.${side}Hidden`, !show);
     if (focus) await this.show();
     this.postState();
     this.sides?.[side].visibilityChanged();
@@ -61,7 +61,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   private layout(): CompareLayout {
-    const saved = this.state.get<Partial<CompareLayout>>("polylog.compare.layout", {});
+    const saved = this.state.get<Partial<CompareLayout>>("linyra.compare.layout", {});
     const size = (value: unknown, fallback: number, max: number, min = 120) => typeof value === "number" && Number.isFinite(value) ? Math.max(min, Math.min(max, Math.round(value))) : fallback;
     return { repositoriesWidth: size(saved.repositoriesWidth, 240, 1000, 160), leftWidth: size(saved.leftWidth, 480, 1600, 100), leftHeight: size(saved.leftHeight, 180, 1200, 80), sidesHeight: size(saved.sidesHeight, 280, 1200),
       orientation: saved.orientation === "sideBySide" || saved.orientation === "stacked" ? saved.orientation : "auto" };
@@ -105,7 +105,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   private async show(): Promise<void> {
     if (!this.state.get<boolean>(SHOWN, false)) {
       await this.state.update(SHOWN, true);
-      await vscode.commands.executeCommand("setContext", "polylog.compareShown", true);
+      await vscode.commands.executeCommand("setContext", "linyra.compareShown", true);
     }
     await vscode.commands.executeCommand(`${CompareRepos.viewType}.focus`);
     this.deps.log.toolbarChanged();
@@ -114,7 +114,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   /** Hides the Linyra Compare tab until Compare Branches is clicked again. */
   async close(): Promise<void> {
     await this.state.update(SHOWN, false);
-    await vscode.commands.executeCommand("setContext", "polylog.compareShown", false);
+    await vscode.commands.executeCommand("setContext", "linyra.compareShown", false);
     this.deps.log.toolbarChanged();
   }
 
@@ -248,7 +248,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   private async setContext(): Promise<void> {
-    await vscode.commands.executeCommand("setContext", "polylog.compareMode", this.mode);
+    await vscode.commands.executeCommand("setContext", "linyra.compareMode", this.mode);
   }
 
   private pairShown(): Pair | null {
@@ -284,8 +284,9 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   private rows(): CRepoRow[] {
-    const accents = assignAccents(this.deps.log.repoList);
-    return this.listed().map(({ repo, result }): CRepoRow => ({
+    const listed = this.listed();
+    const accents = assignAccents(listed.map(({ repo }) => repo));
+    return listed.map(({ repo, result }): CRepoRow => ({
       repoId: repo.id, name: repo.name, accent: accentOf(accents, repo.id), status: result.kind === "differs" ? "differs" : result.kind === "nobase" ? "nobase" : "error",
       left: result.kind === "differs" ? result.left : 0, right: result.kind === "differs" ? result.right : 0, same: result.kind === "differs" ? result.sameLeft : 0,
       reason: result.kind === "error" ? result.reason : undefined, behind: this.deps.log.isBehind(repo.id),
@@ -346,14 +347,14 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
           if ((m.side === "left" || m.side === "right") && typeof m.show === "boolean") await this.setSideShown(m.side, m.show);
           return;
         case "hideSame":
-          if (typeof m.hide === "boolean") await vscode.commands.executeCommand(m.hide ? "polylog.compareHideSame" : "polylog.compareShowSame");
+          if (typeof m.hide === "boolean") await vscode.commands.executeCommand(m.hide ? "linyra.compareHideSame" : "linyra.compareShowSame");
           return;
         case "close": return this.close();
         case "layout": {
           const layout = m.layout;
           if (!layout || (layout.orientation !== "auto" && layout.orientation !== "sideBySide" && layout.orientation !== "stacked")) return;
           if (![layout.repositoriesWidth, layout.leftWidth, layout.leftHeight, layout.sidesHeight].every((value) => typeof value === "number" && Number.isFinite(value))) return;
-          await this.state.update("polylog.compare.layout", layout);
+          await this.state.update("linyra.compare.layout", layout);
           return;
         }
         case "ready":

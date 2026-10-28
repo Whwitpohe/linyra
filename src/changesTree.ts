@@ -40,7 +40,7 @@ export interface ChangesSnapshot {
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
-const TREE_SCHEME = "polylog-tree";
+const TREE_SCHEME = "linyra-tree";
 
 /** The Changes view reuses the tree model and native commands in a resizable detail layout. */
 export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.FileDecorationProvider, vscode.Disposable {
@@ -129,10 +129,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       }
       if (m.action === "openOnRemote") {
         const details = commitDetails(this.state, this.combined);
-        if (details.length === 1) await vscode.commands.executeCommand("polylog.commitOpenOnRemote", { repoId: details[0].repoId, sha: details[0].sha });
+        if (details.length === 1) await vscode.commands.executeCommand("linyra.commitOpenOnRemote", { repoId: details[0].repoId, sha: details[0].sha });
         return;
       }
-      const command = m.action === "allFiles" ? "polylog.changesShowAll" : m.action === "changedFiles" ? "polylog.changesShowChanged" : m.action === "clearSelection" ? "polylog.clearSelection" : m.action === "openChangesEditor" ? "polylog.openChangesEditor" : undefined;
+      const command = m.action === "allFiles" ? "linyra.changesShowAll" : m.action === "changedFiles" ? "linyra.changesShowChanged" : m.action === "clearSelection" ? "linyra.clearSelection" : m.action === "openChangesEditor" ? "linyra.openChangesEditor" : undefined;
       if (command) await vscode.commands.executeCommand(command);
       return;
     }
@@ -148,7 +148,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       if (!detail) return;
       if (m.field === "sha") await vscode.env.clipboard.writeText(detail.sha);
       else if (this.state?.commit.sha === detail.sha && this.state.status === "ready") await vscode.env.clipboard.writeText(this.state.message || this.state.commit.subject);
-      else await vscode.commands.executeCommand("polylog.commitCopyMessage", { repoId: detail.repoId, sha: detail.sha });
+      else await vscode.commands.executeCommand("linyra.commitCopyMessage", { repoId: detail.repoId, sha: detail.sha });
       this.broadcast({ type: "copied" });
       return;
     }
@@ -334,7 +334,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     this.message = d.message;
     // Next to the title: which repository and commit this is, or its uncommitted work.
     this.description = combined ? combined.description : viewDescription(this.state);
-    void vscode.commands.executeCommand("setContext", "polylog.combined", combined !== undefined);
+    void vscode.commands.executeCommand("setContext", "linyra.combined", combined !== undefined);
     this.decorations = new Map();
     const before = this.decorated;
     this.decorated = [];
@@ -444,12 +444,12 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     }
     if (node.kind === "file" && node.unchanged) {
       // Not changed by the commit: the file as it was then, read-only.
-      item.command = { command: "polylog.openRevision", title: localize("Open File at Commit"), arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };
+      item.command = { command: "linyra.openRevision", title: localize("Open File at Commit"), arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };
     } else if (node.kind === "file" && node.combined) {
-      item.command = { command: "polylog.openCombinedDiff", title: localize("Open Diff"), arguments: [node.combined] };
+      item.command = { command: "linyra.openCombinedDiff", title: localize("Open Diff"), arguments: [node.combined] };
     } else if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status };
-      item.command = { command: "polylog.openDiff", title: localize("Open Diff"), arguments: [args] };
+      item.command = { command: "linyra.openDiff", title: localize("Open Diff"), arguments: [args] };
     }
     return item;
   }

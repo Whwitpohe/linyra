@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import { walkForRepos } from "./discoverWalk";
 
-const ws = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-walk-"));
+const ws = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-walk-"));
 const repoAt = (rel: string, kind: "dir" | "file" = "dir") => {
   const dir = path.join(ws, rel);
   fs.mkdirSync(dir, { recursive: true });

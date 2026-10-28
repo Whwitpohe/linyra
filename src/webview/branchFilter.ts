@@ -2,6 +2,7 @@ import { MAX_BRANCHES } from "../filterModel";
 import { localize } from "../i18n";
 import type { BranchName } from "../protocol";
 import { byId, h } from "./dom";
+import { PickerChips } from "./pickerChips";
 
 /** A searchable checkbox picker. Choosing a branch keeps it open for the next choice. */
 export class BranchFilter {
@@ -15,8 +16,10 @@ export class BranchFilter {
   private items: readonly BranchName[] = [];
   private selected: string[] = [];
   private loaded = false;
+  private readonly chips: PickerChips;
 
   constructor(private readonly onChange: (branches: string[]) => void, private readonly onWant: () => void) {
+    this.chips = new PickerChips(this.button, (name) => localize("Remove branch {0}", name), (name) => this.choose(this.selected.filter((branch) => branch !== name)));
     this.all.prepend(this.allCheck);
     this.panel.append(h("div", { class: "branch-picker-search" }, [this.search]), this.all, this.list, this.hint);
     document.body.append(this.panel);
@@ -52,6 +55,7 @@ export class BranchFilter {
     this.button.title = branches.length ? branches.join("\n") : localize("All local and remote branches");
     this.button.setAttribute("aria-label", localize("Filter branches: {0}", text));
     this.button.classList.toggle("filtered", branches.length > 0);
+    this.chips.update(branches.map((value) => ({ value, label: value })));
     this.allCheck.checked = branches.length === 0;
     this.all.setAttribute("aria-pressed", String(branches.length === 0));
     if (!this.panel.hidden) this.render();
@@ -114,7 +118,7 @@ export class BranchFilter {
   }
 
   private place(): void {
-    const r = this.button.getBoundingClientRect();
+    const r = this.chips.bounds();
     const width = Math.min(Math.max(320, r.width), window.innerWidth - 12);
     this.panel.style.width = `${width}px`;
     this.panel.style.left = `${Math.max(6, Math.min(r.left, window.innerWidth - width - 6))}px`;

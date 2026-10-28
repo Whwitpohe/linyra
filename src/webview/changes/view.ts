@@ -5,6 +5,7 @@ import { byId, h } from "../dom";
 import { attachSplitter } from "../splitter";
 import { absoluteTime, moveSelection } from "../view";
 import { filterFiles } from "./fileFilterModel";
+import { updateTreeToggle } from "../treeToggle";
 
 export interface SavedState { detailHeight?: number; key?: string; collapsed?: string[]; detailsCollapsed?: boolean; fileFilter?: string }
 export interface ChangesApi {
@@ -18,6 +19,7 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   const saved = api.getState();
   const app = byId("changes");
   const tree = byId("file-tree");
+  const treeToggle = byId<HTMLButtonElement>("changes-tree-toggle");
   const details = byId("commit-details");
   const splitter = byId("detail-splitter");
   const detailToggle = byId<HTMLButtonElement>("detail-toggle");
@@ -131,6 +133,8 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
       }
     };
     walk(filtered.roots, 1);
+    const branches = rows.filter((row) => row.node.kind !== "file");
+    updateTreeToggle(treeToggle, branches.length > 0, branches.some((row) => !activeCollapsed().has(row.node.id)));
     const visible = new Set(rows.map((r) => r.node.id));
     selected = new Set([...selected].filter((id) => visible.has(id)));
     if (focused && !visible.has(focused)) focused = undefined;
@@ -233,20 +237,16 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
       paintSelection();
     }
   });
-  byId("collapse").addEventListener("click", () => {
-    expandNewFolders = false;
-    const walk = (nodes: ChangeRow[]) => nodes.forEach((node) => { if (node.kind !== "file") { activeCollapsed().add(node.id); walk(node.children ?? []); } });
-    walk(fileFilter.value.trim() ? page?.searchRoots ?? page?.roots ?? [] : page?.roots ?? []);
-    save();
-    renderTree();
-  });
-
-  byId("expand").addEventListener("click", () => {
-    expandNewFolders = true;
-    activeCollapsed().clear();
+  treeToggle.addEventListener("click", () => {
+    const collapse = treeToggle.dataset.action === "collapse";
+    expandNewFolders = !collapse;
+    if (collapse) {
+      const walk = (nodes: ChangeRow[]) => nodes.forEach((node) => { if (node.kind !== "file") { activeCollapsed().add(node.id); walk(node.children ?? []); } });
+      walk(fileFilter.value.trim() ? page?.searchRoots ?? page?.roots ?? [] : page?.roots ?? []);
+    } else activeCollapsed().clear();
     renderTree();
     save();
-    if (page?.allFiles && !fileFilter.value.trim()) post({ type: "action", action: "expandAll" });
+    if (!collapse && page?.allFiles && !fileFilter.value.trim()) post({ type: "action", action: "expandAll" });
   });
 
   fileFilter.addEventListener("input", () => { searchCollapsed.clear(); tree.scrollTop = 0; renderTree(); save(); });

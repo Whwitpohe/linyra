@@ -43,11 +43,11 @@ export function moveSelection(key: string, index: number, total: number, pageRow
   }
 }
 
-/** Each accent as a theme color id, for native views (tree icons): the same hues as styles.css .accent-0 … .accent-5. */
-export const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
+/** Theme color ids shared by native tree icons and accents.css. */
+export const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan", "terminal.ansiMagenta", "terminal.ansiBrightYellow"];
 
-/** Six hues: five of VS Code's chart colors plus terminal cyan; see styles.css .accent-0 … .accent-5. */
-export const ACCENT_COUNT = 6;
+/** Eight theme hues, including terminal colors available in high contrast. */
+export const ACCENT_COUNT = ACCENT_COLORS.length;
 
 /** FNV-1a: a stable, well-spread hash of the repository name. */
 function hashName(name: string): number {
@@ -63,8 +63,8 @@ function hashName(name: string): number {
  * Each repository's baseline hue (maintainer decision, spec §18), independent of the filter.
  * The displayed list separately repairs adjacent-band collisions. Each repo starts from a hue derived
  * from its name; when that hue is taken, it moves on to the next one that is least used,
- * in name order. Up to six repositories therefore get six different hues, discovery order
- * does not matter, and past six hues are shared evenly. Adding a repository can move repos
+ * in name order. Up to eight repositories therefore get different hues, discovery order
+ * does not matter, and beyond eight hues are shared evenly. Adding a repository can move repos
  * that sort after it (the assignment is greedy); filtering never moves anything. The color
  * is only a marker: the name is always printed beside it.
  */
@@ -146,7 +146,7 @@ export function separateAdjacentAccents(rows: readonly { repoId: string }[], pre
     }
     pending.delete(next); placed.add(next);
   }
-  // More than six mutually adjacent repos cannot all differ with six theme hues.
+  // More mutually adjacent repositories than theme hues cannot all differ.
   return conflicts(colored) < conflicts(repaired) ? colored : repaired;
 }
 

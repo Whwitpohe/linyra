@@ -12,7 +12,7 @@ import { encodeRevision, SCHEME } from "./revisionUri";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedView";
 
-const STATE = "polylog.branchSidebar";
+const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
 export type BranchAction = "view" | "copy" | "favorite" | "compare" | "worktreeDiff" | "checkout" | "create" | "rename" | "delete" | "fetch" | "pull" | "push" | "merge" | "rebase" | "worktree" | "pullMerge" | "pullRebase";
 type SidebarPost = Extract<HostMessage, { type: "sidebarState" | "branchTree" }>;
@@ -221,7 +221,7 @@ export class BranchController implements vscode.Disposable {
         case "worktree": {
           const next = await name(localize("New branch for the worktree based on {0}", b.name));
           if (!next) return;
-          const folder = process.env.POLYLOG_ITEST === "1" && this.worktreePath ? vscode.Uri.file(this.worktreePath)
+          const folder = process.env.LINYRA_ITEST === "1" && this.worktreePath ? vscode.Uri.file(this.worktreePath)
             : await vscode.window.showSaveDialog({ title: localize("Folder for the new worktree"), saveLabel: localize("Create Worktree"),
               defaultUri: vscode.Uri.file(path.join(path.dirname(repo.root), `${path.basename(repo.root)}-${next.replace(/\//g, "-")}`)) });
           if (!folder || folder.scheme !== "file") return;

@@ -13,7 +13,7 @@ import { parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumst
 import { isAbortError } from "./pool";
 import { fetchPage } from "./logQuery";
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-git-test-"));
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-git-test-"));
 Object.assign(process.env, gitEnv(home)); // runGit inherits process.env
 const ALL: FilterState = { ...DEFAULT_FILTER, date: "all" };
 const git = (dir: string, args: string[]) => execFileSync("git", args, { cwd: dir, env: gitEnv(home), stdio: "pipe" }).toString().trim();
@@ -162,7 +162,7 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     console.log("ok - a merge commit lists files against its first parent");
   }
   {
-    const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-not-a-repo-"));
+    const notRepo = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-not-a-repo-"));
     await assert.rejects(runGit(notRepo, ["log"]), (e: unknown) =>
       e instanceof GitError && /not a git repository/i.test(e.message) && !e.message.startsWith("fatal:"));
     const sha = (await log(ALL))[0].sha;
@@ -221,7 +221,7 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   }
   {
     // Ahead/behind against a real upstream: one commit to pull, two not pushed; none without one.
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-upstream-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-upstream-"));
     const cwd = path.join(home, "repo");
     fs.mkdirSync(cwd);
     // An isolated HOME: the developer's own git config (signing, hooks) stays out.
@@ -244,8 +244,8 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   if (process.platform !== "win32") {
     // Fetch All's timeout: aborting kills git's whole process tree (ssh, remote helpers), not
     // only git. A shell alias stands in for a helper that keeps running.
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-tree-"));
-    const marker = `polylog-tree-${process.pid}-${Date.now()}`;
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-tree-"));
+    const marker = `linyra-tree-${process.pid}-${Date.now()}`;
     const ctl = new AbortController();
     const run = new GitRunner(() => ["git"]).run(cwd, ["-c", `alias.hang=!sh -c 'sleep 30; : ${marker}'`, "hang"], ctl.signal, { tree: true });
     await new Promise((r) => setTimeout(r, 300));
@@ -260,7 +260,7 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     // Aborted just after git exited but before its output closed, a run must still settle: a
     // promise left pending hangs whatever awaits it (a reload, Load More's in-progress flag).
     // A shell alias leaves a child holding stdout open, so "close" comes 400 ms after "exit".
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-abort-"));
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-abort-"));
     const ctl = new AbortController();
     const run = runGit(cwd, ["-c", "alias.lag=!(sleep 0.4 &)", "lag"], ctl.signal).then(() => "resolved", (e) => (isAbortError(e) ? "aborted" : `rejected: ${e}`));
     setTimeout(() => ctl.abort(), 150);

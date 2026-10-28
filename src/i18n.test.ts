@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
+import * as ts from "typescript";
 import { agoText } from "./blameModel";
 import { decorationFor, describeChanges, stat } from "./changesModel";
 import { summaryLabel } from "./compareModel";
@@ -49,6 +50,9 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
   const work: RepoWork = { repoId: "acme-api", root: "/work/acme-api", name: "acme-api", head: null, staged: [f], changes: [], editedAt: null, canStage: true };
   assert.deepStrictEqual(tags(work), ["全部已暂存"]);
   const tree = describeUncommitted([work]).roots[0];
+  assert.strictEqual(tree.children[0].children[0].description, "新增");
+  const binaryWork = { ...work, staged: [{ ...f, untracked: false, added: null, deleted: null }] };
+  assert.strictEqual(describeUncommitted([binaryWork]).roots[0].children[0].children[0].description, "二进制");
   assert.strictEqual(tree.children[0].label, "已暂存");
   assert.strictEqual(tree.children[0].group, "staged");
   const prompt = discardPrompt("acme-api", [f], true, [f]);
@@ -66,8 +70,8 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
     const html = render(opts);
     assert.ok(html.includes('<html lang="zh-cn">'));
     assert.ok(html.includes('aria-label="刷新"'));
-    assert.ok(html.indexOf('id="polylog-i18n"') < html.indexOf('src="webview.js"'));
-    const data = /<script id="polylog-i18n"[^>]*>([\s\S]*?)<\/script>/.exec(html)?.[1];
+    assert.ok(html.indexOf('id="linyra-i18n"') < html.indexOf('src="webview.js"'));
+    const data = /<script id="linyra-i18n"[^>]*>([\s\S]*?)<\/script>/.exec(html)?.[1];
     assert.ok(data);
     assert.deepStrictEqual(JSON.parse(data), { language: "zh-cn", bundle: zh });
   }
@@ -77,7 +81,7 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
   assert.ok(!html.includes(malicious));
   assert.ok(html.includes('&lt;/script&gt;&lt;img'));
   assert.ok(!html.includes('<html lang="en" onload='));
-  const data = /<script id="polylog-i18n"[^>]*>([\s\S]*?)<\/script>/.exec(html)![1];
+  const data = /<script id="linyra-i18n"[^>]*>([\s\S]*?)<\/script>/.exec(html)![1];
   assert.strictEqual(JSON.parse(data).bundle.Refresh, malicious);
   configureI18n("en");
   assert.ok(renderHtml(opts).includes('placeholder="Search messages or hash"'));
@@ -100,6 +104,15 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
           const key = JSON.parse(match[1]) as string;
           assert.ok(Object.prototype.hasOwnProperty.call(zh, key), `${file}: missing ${key}`);
         }
+        const literals = (node: ts.Expression): string[] => ts.isStringLiteral(node) ? [node.text]
+          : ts.isConditionalExpression(node) ? [...literals(node.whenTrue), ...literals(node.whenFalse)] : [];
+        const visit = (node: ts.Node): void => {
+          if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "localize" && node.arguments[0]) {
+            for (const key of literals(node.arguments[0])) assert.ok(Object.prototype.hasOwnProperty.call(zh, key), `${file}: missing conditional translation ${key}`);
+          }
+          ts.forEachChild(node, visit);
+        };
+        visit(ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true));
       }
     }
   }
@@ -107,6 +120,9 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
   const en = JSON.parse(fs.readFileSync(path.join(root, "package.nls.json"), "utf8")) as Record<string, string>;
   const manifestZh = JSON.parse(fs.readFileSync(path.join(root, "package.nls.zh-cn.json"), "utf8")) as Record<string, string>;
   assert.deepStrictEqual(Object.keys(en).sort(), Object.keys(manifestZh).sort());
+  for (const key of Object.keys(en).filter((key) => key.startsWith("command.") || key.startsWith("view."))) {
+    assert.notStrictEqual(manifestZh[key], en[key], `native menu or view was not translated: ${key}`);
+  }
   for (const match of fs.readFileSync(path.join(root, "package.json"), "utf8").matchAll(/%([^%]+)%/g)) {
     assert.ok(en[match[1]] && manifestZh[match[1]], `missing manifest token ${match[1]}`);
   }

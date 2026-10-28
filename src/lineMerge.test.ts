@@ -37,7 +37,7 @@ import { merge3 } from "./lineMerge";
 
 // The oracle: git merge-file decides clean versus conflict, on scratch files outside any repository.
 function oracle(base: string, ours: string, theirs: string): { ok: boolean; text: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-merge-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-merge-"));
   try {
     for (const [n, t] of [["base", base], ["ours", ours], ["theirs", theirs]]) fs.writeFileSync(path.join(dir, n), t);
     try {

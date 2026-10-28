@@ -210,7 +210,7 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     console.log("ok - an aborted query rejects with AbortError and spawns nothing");
   }
   {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-query-test-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-query-test-"));
     Object.assign(process.env, gitEnv(home));
     const repos = ["acme-web", "acme-api", "acme-libs"].map((name) => ({ id: path.join(home, name), root: path.join(home, name), name }));
     makeRepo(repos[0].root, [{ time: 100, author: "rin", message: "feat: scaffold web" }, { time: 400, author: "dana", message: "fix: guard nil response" }], home);

@@ -2,6 +2,7 @@ import { MAX_AUTHORS, type FilterState } from "../filterModel";
 import { localize } from "../i18n";
 import type { AuthorName } from "../protocol";
 import { byId, h } from "./dom";
+import { PickerChips } from "./pickerChips";
 
 /** The Author dropdown shares the branch picker's themed popup and checkbox rows. */
 export class AuthorFilter {
@@ -16,8 +17,12 @@ export class AuthorFilter {
   private selected: string[] = [];
   private mine = false;
   private loaded = false;
+  private readonly chips: PickerChips;
 
   constructor(private readonly onChange: (authors: string[], mine: boolean) => void, private readonly onWant: () => void) {
+    this.chips = new PickerChips(this.button, (name) => localize("Remove author {0}", name), (value) => {
+      this.onChange(value === "\0mine" ? this.selected : this.selected.filter((name) => name !== value), value === "\0mine" ? false : this.mine);
+    });
     this.all.prepend(this.allCheck);
     this.panel.append(h("div", { class: "branch-picker-search" }, [this.search]), this.all, this.list, this.hint);
     document.body.append(this.panel);
@@ -56,6 +61,7 @@ export class AuthorFilter {
     this.button.title = labels.length ? [...this.selected, ...(this.mine ? [localize("Me")] : [])].join("\n") : localize("All authors");
     this.button.setAttribute("aria-label", localize("Filter authors: {0}", text));
     this.button.classList.toggle("filtered", labels.length > 0);
+    this.chips.update([...this.selected.map((value, i) => ({ value, label: labels[i], title: value })), ...(this.mine ? [{ value: "\0mine", label: localize("Me") }] : [])]);
     this.allCheck.checked = labels.length === 0;
     this.all.setAttribute("aria-pressed", String(labels.length === 0));
     if (this.button.closest(".work")) this.close();
@@ -119,7 +125,7 @@ export class AuthorFilter {
   }
 
   private place(): void {
-    const r = this.button.getBoundingClientRect();
+    const r = this.chips.bounds();
     const width = Math.min(Math.max(320, r.width), window.innerWidth - 12);
     this.panel.style.width = `${width}px`;
     this.panel.style.left = `${Math.max(6, Math.min(r.left, window.innerWidth - width - 6))}px`;

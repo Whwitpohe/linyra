@@ -65,9 +65,9 @@ Linyra's checks are more than `npm test`. Run all of them:
 npm test                                             # unit tests (plain assert + "ok - …")
 npm run lint && npm run typecheck                    # 0 errors (warnings are the tests' console.log)
 npm run check:theme && npm run check:design          # constraint 2: only --vscode-* colors
-npm run check:denylist                               # constraint 3: needs .denylist or POLYLOG_DENYLIST
+npm run check:denylist                               # constraint 3: needs .denylist or LINYRA_DENYLIST
 xvfb-run -a npm run test:integration                 # real VS Code, stable
-POLYLOG_VSCODE_VERSION=1.85.0 xvfb-run -a npm run test:integration   # the engines floor
+LINYRA_VSCODE_VERSION=1.85.0 xvfb-run -a npm run test:integration   # the engines floor
 ```
 
 - **Denylist:** `check:denylist` refuses to pass with an empty list. Locally it reads the gitignored `.denylist`. **Never** write its entries into a committed file, this skill or a commit message.

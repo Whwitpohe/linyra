@@ -5,7 +5,7 @@ import { decodeRevision, encodeRevision, INDEX, SCHEME, workingFile, type Revisi
 const SHA = "a".repeat(40);
 
 {
-  assert.strictEqual(SCHEME, "polylog");
+  assert.strictEqual(SCHEME, "linyra");
   for (const r of [
     { root: "/ws/acme-api", ref: SHA, path: "internal/upload/upload.go" },
     { root: "C:\\src\\acme-web", ref: null, path: "sp ace é.txt" },
@@ -18,7 +18,7 @@ const SHA = "a".repeat(40);
 }
 
 {
-  const bad = (q: string) => assert.throws(() => decodeRevision("/x", q), /not a polylog revision/);
+  const bad = (q: string) => assert.throws(() => decodeRevision("/x", q), /not a linyra revision/);
   bad(JSON.stringify({ root: "/ws/acme-api", ref: "--output=/tmp/x" }));
   bad(JSON.stringify({ root: "/ws/acme-api", ref: "HEAD" }));
   bad(JSON.stringify({ ref: SHA }));
@@ -44,7 +44,7 @@ const SHA = "a".repeat(40);
   assert.deepStrictEqual(decodeRevision(e.path, e.query), r, "the index (staged version) round-trips");
   assert.throws(() => decodeRevision("/a", JSON.stringify({ root, ref: ":evil" })), "only the bare index marker");
   assert.strictEqual(workingFile(r, [root]), nodePath.join(root, "src", "app.ts"), "Open File works from a staged diff too");
-  console.log("ok - an index revision (the staged version) is a polylog: URI like any other");
+  console.log("ok - an index revision (the staged version) is a linyra: URI like any other");
 }
 {
   const root = nodePath.resolve("/ws/acme-web");

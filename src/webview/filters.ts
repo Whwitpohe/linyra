@@ -78,6 +78,7 @@ export class FilterBar {
     for (const id of ["author", "me", "path", "branch", "date", "from", "to", "sort"]) {
       (byId(id) as HTMLInputElement | HTMLButtonElement | HTMLSelectElement).disabled = !!hash;
     }
+    document.querySelectorAll<HTMLButtonElement>(".picker-chip-remove").forEach((button) => { button.disabled = !!hash; });
     this.search.title = localize("Paste a commit hash (7 or more characters), or use sha: with at least 4 characters.");
   }
 

@@ -65,8 +65,7 @@ function renderSide(side: "left" | "right"): string {
     <div class="compare-pane-heading"><span id="compare-${side}-description">${escapeHtml(label)}</span><span class="compare-pane-actions">
       <button id="compare-${side}-mode" class="icon-button compare-mode" type="button" title="${escapeHtml(localize("Show Commits"))}" aria-label="${escapeHtml(localize("Show Commits"))}" data-side="${side}">◉</button>
       <button id="compare-${side}-same" class="icon-button compare-same" type="button" title="${escapeHtml(localize("Hide Files Already on Both"))}" aria-label="${escapeHtml(localize("Hide Files Already on Both"))}" data-side="${side}">⏷</button>
-      <button id="compare-${side}-expand" class="icon-button" type="button" title="${escapeHtml(localize("Expand All"))}" aria-label="${escapeHtml(localize("Expand All"))}">⊞</button>
-      <button id="compare-${side}-collapse" class="icon-button" type="button" title="${escapeHtml(localize("Collapse All"))}" aria-label="${escapeHtml(localize("Collapse All"))}">⊟</button>
+      <button id="compare-${side}-tree-toggle" class="icon-button" type="button" aria-controls="compare-${side}-tree" aria-label="${escapeHtml(localize("Collapse All"))}" disabled></button>
     </span></div>
     <div id="compare-${side}-message" class="cmessage" role="status" hidden></div>
     <div id="compare-${side}-tree" class="compare-tree" role="tree" tabindex="0" aria-label="${escapeHtml(label)}"></div>

@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { configureI18n } from "./i18n";
+import { migratePrivateState } from "./stateMigration";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
 import { ChangesPanel } from "./changesPanel";
 import type { CombinedOpen } from "./changesModel";
@@ -24,14 +25,15 @@ import { Ask, UncommittedView } from "./uncommittedView";
 import { assignAccents } from "./webview/view";
 import { BranchController, type BranchAction } from "./branchController";
 
-const UNCOMMITTED_SHOWN = "polylog.uncommitted.shown";
+const UNCOMMITTED_SHOWN = "linyra.uncommitted.shown";
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  await Promise.all([migratePrivateState(context.workspaceState), migratePrivateState(context.globalState)]);
   configureI18n(vscode.env.language, vscode.l10n.bundle);
-  void vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false));
+  void vscode.commands.executeCommand("setContext", "linyra.uncommittedShown", context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false));
   const discovery = new RepoDiscovery();
   // All Files reads one folder at a time, through the Log's counted runner (the spawn log sees it).
-  const ALL_FILES_KEY = "polylog.changesAllFiles";
+  const ALL_FILES_KEY = "linyra.changesAllFiles";
   const changes: ChangesTree = new ChangesTree((root, args, signal) => log.countedRun(root, args, signal), context.globalState.get<boolean>(ALL_FILES_KEY, false), () => vscode.workspace.getConfiguration("linyra").get<number>("maxConcurrency", 16));
   const setAllFiles = (on: boolean) => {
     changes.setAllFiles(on);
@@ -112,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   log.branchSidebar = branchSidebar;
   for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase"] satisfies BranchAction[]) {
-    context.subscriptions.push(vscode.commands.registerCommand(`polylog.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
+    context.subscriptions.push(vscode.commands.registerCommand(`linyra.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
   }
   context.subscriptions.push(branchSidebar, log.onDidChangeRefs((id) => void branchSidebar.refresh(id)));
   const sides = { left: new CompareSide("left", compareDeps), right: new CompareSide("right", compareDeps) };
@@ -153,21 +155,21 @@ export function activate(context: vscode.ExtensionContext): void {
     discovery,
     changes,
     changesPanel,
-    vscode.commands.registerCommand("polylog.openChangesEditor", () => changesPanel.open()),
-    vscode.commands.registerCommand("polylog.changes.focus", () => log.showChanges(true, true)),
-    vscode.commands.registerCommand("polylog.changes.removeView", () => log.showChanges(false)),
+    vscode.commands.registerCommand("linyra.openChangesEditor", () => changesPanel.open()),
+    vscode.commands.registerCommand("linyra.changes.focus", () => log.showChanges(true, true)),
+    vscode.commands.registerCommand("linyra.changes.removeView", () => log.showChanges(false)),
     vscode.window.registerFileDecorationProvider(changes),
-    vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
-    vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
-    vscode.commands.registerCommand("polylog.copyFilePath", async (arg?: unknown) => {
+    vscode.commands.registerCommand("linyra.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
+    vscode.commands.registerCommand("linyra.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
+    vscode.commands.registerCommand("linyra.copyFilePath", async (arg?: unknown) => {
       const f = fileRow(arg);
       if (f) await vscode.env.clipboard.writeText(path.join(f.root, ...f.path.split("/")));
     }),
-    vscode.commands.registerCommand("polylog.copyRelativePath", async (arg?: unknown) => {
+    vscode.commands.registerCommand("linyra.copyRelativePath", async (arg?: unknown) => {
       const f = fileRow(arg);
       if (f) await vscode.env.clipboard.writeText(f.path);
     }),
-    vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
+    vscode.commands.registerCommand("linyra.showRepos", () => log.setGroupByRepo(true)),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("linyra.excludeRepos") || e.affectsConfiguration("linyra.scanDepth")) void log.reposSettingChanged();
       if (e.affectsConfiguration("linyra.profiles")) log.profilesChanged();
@@ -186,140 +188,142 @@ export function activate(context: vscode.ExtensionContext): void {
     sides.right,
     vscode.window.registerFileDecorationProvider(sides.left),
     vscode.window.registerFileDecorationProvider(sides.right),
-    vscode.commands.registerCommand("polylog.compareBranches", () => compareRepos.open()),
-    vscode.commands.registerCommand("polylog.compareWith", () => (log.branchBox ? compareRepos.compareWith(log.branchBox) : compareRepos.pick())),
-    vscode.commands.registerCommand("polylog.comparePick", () => compareRepos.pick()),
-    vscode.commands.registerCommand("polylog.compareClose", () => compareRepos.close()),
+    vscode.commands.registerCommand("linyra.compareBranches", () => compareRepos.open()),
+    vscode.commands.registerCommand("linyra.compareWith", () => (log.branchBox ? compareRepos.compareWith(log.branchBox) : compareRepos.pick())),
+    vscode.commands.registerCommand("linyra.comparePick", () => compareRepos.pick()),
+    vscode.commands.registerCommand("linyra.compareClose", () => compareRepos.close()),
     // The Log toolbar's toggles: the outline icon shows a view, the filled one (shown) hides it.
-    vscode.commands.registerCommand("polylog.compareShow", () => compareRepos.open()),
-    vscode.commands.registerCommand("polylog.compareHide", () => compareRepos.close()),
-    vscode.commands.registerCommand("polylog.uncommittedShow", () => vscode.commands.executeCommand("polylog.focusUncommitted")),
-    vscode.commands.registerCommand("polylog.uncommittedHide", () => vscode.commands.executeCommand("polylog.uncommittedClose")),
-    vscode.commands.registerCommand("polylog.compareSwap", () => compareRepos.swap()),
-    vscode.commands.registerCommand("polylog.compareShowCommits", () => compareRepos.setMode("commits")),
-    vscode.commands.registerCommand("polylog.compareShowFiles", () => compareRepos.setMode("files")),
-    vscode.commands.registerCommand("polylog.compareHideSame", () => setHideSame(true)),
-    vscode.commands.registerCommand("polylog.compareShowSame", () => setHideSame(false)),
-    vscode.commands.registerCommand("polylog.compareRefresh", () => compareRepos.refresh()),
-    vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: unknown) => {
+    vscode.commands.registerCommand("linyra.compareShow", () => compareRepos.open()),
+    vscode.commands.registerCommand("linyra.compareHide", () => compareRepos.close()),
+    vscode.commands.registerCommand("linyra.uncommittedShow", () => vscode.commands.executeCommand("linyra.focusUncommitted")),
+    vscode.commands.registerCommand("linyra.uncommittedHide", () => vscode.commands.executeCommand("linyra.uncommittedClose")),
+    vscode.commands.registerCommand("linyra.compareSwap", () => compareRepos.swap()),
+    vscode.commands.registerCommand("linyra.compareShowCommits", () => compareRepos.setMode("commits")),
+    vscode.commands.registerCommand("linyra.compareShowFiles", () => compareRepos.setMode("files")),
+    vscode.commands.registerCommand("linyra.compareHideSame", () => setHideSame(true)),
+    vscode.commands.registerCommand("linyra.compareShowSame", () => setHideSame(false)),
+    vscode.commands.registerCommand("linyra.compareRefresh", () => compareRepos.refresh()),
+    vscode.commands.registerCommand("linyra.compareOpenFile", (arg?: unknown) => {
       const value = compareNode(arg) as { side?: unknown } | undefined;
       return value?.side === "left" || value?.side === "right" ? sides[value.side].openFile(value) : undefined;
     }),
-    vscode.commands.registerCommand("polylog.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {
+    vscode.commands.registerCommand("linyra.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {
       // From the tree's right-click the argument is the row; from a test, { side, repoId, path }.
       const value = compareNode(arg) as typeof arg;
       const side = value?.side === "left" || value?.side === "right" ? value.side : undefined;
       return side ? sides[side].openSinceSplit(value) : undefined;
     }),
-    vscode.commands.registerCommand("polylog.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
+    vscode.commands.registerCommand("linyra.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
     ...(["left", "right"] as const).flatMap((side) => [
-      vscode.commands.registerCommand(`polylog.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
-      vscode.commands.registerCommand(`polylog.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),
+      vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
+      vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),
     ]),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,
     uncommittedView,
     vscode.window.registerFileDecorationProvider(uncommittedView),
     // The Linyra side bar (Uncommitted) is hidden until the user asks for it (remembered per workspace).
-    vscode.commands.registerCommand("polylog.focusUncommitted", async () => {
+    vscode.commands.registerCommand("linyra.focusUncommitted", async () => {
       await context.workspaceState.update(UNCOMMITTED_SHOWN, true);
-      await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", true);
-      await vscode.commands.executeCommand("polylog.uncommitted.focus");
+      await vscode.commands.executeCommand("setContext", "linyra.uncommittedShown", true);
+      await vscode.commands.executeCommand("linyra.uncommitted.focus");
       log.toolbarChanged();
     }),
-    vscode.commands.registerCommand("polylog.uncommittedClose", async () => {
+    vscode.commands.registerCommand("linyra.uncommittedClose", async () => {
       await context.workspaceState.update(UNCOMMITTED_SHOWN, false);
-      await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", false);
+      await vscode.commands.executeCommand("setContext", "linyra.uncommittedShown", false);
       log.toolbarChanged();
     }),
-    vscode.commands.registerCommand("polylog.refreshUncommitted", () => uncommitted.readAll(true)),
+    vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
+    vscode.commands.registerCommand("linyra.uncommittedCollapseAll", () => uncommittedView.setExpanded(false)),
+    vscode.commands.registerCommand("linyra.uncommittedExpandAll", () => uncommittedView.setExpanded(true)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
-    vscode.commands.registerCommand("polylog.stage", (arg?: unknown, many?: unknown[]) => uncommittedView.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
-    vscode.commands.registerCommand("polylog.unstage", (arg?: unknown, many?: unknown[]) => uncommittedView.unstage(inGroup(arg, "staged"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "staged")))),
-    vscode.commands.registerCommand("polylog.discard", (arg?: unknown, many?: unknown[]) => uncommittedView.discard(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
+    vscode.commands.registerCommand("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedView.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
+    vscode.commands.registerCommand("linyra.unstage", (arg?: unknown, many?: unknown[]) => uncommittedView.unstage(inGroup(arg, "staged"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "staged")))),
+    vscode.commands.registerCommand("linyra.discard", (arg?: unknown, many?: unknown[]) => uncommittedView.discard(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
     // A repository row (the Uncommitted view, the Log's Uncommitted side, or the Changes view's root): every file it lists.
-    vscode.commands.registerCommand("polylog.discardAll", (arg?: unknown) => uncommittedView.discard({ repoId: repoOf(arg) })),
-    vscode.commands.registerCommand("polylog.stageAll", (arg?: unknown) => uncommittedView.stage({ repoId: repoOf(arg), group: "changes" })),
-    vscode.commands.registerCommand("polylog.unstageAll", (arg?: unknown) => uncommittedView.unstage({ repoId: repoOf(arg), group: "staged" })),
-    vscode.commands.registerCommand("polylog.commitRepo", (arg?: unknown) => uncommittedView.commit(changesTarget(arg) ?? arg)),
-    vscode.commands.registerCommand("polylog.openUncommittedDiff", (arg?: unknown) => uncommittedView.openDiff(arg)),
-    vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
+    vscode.commands.registerCommand("linyra.discardAll", (arg?: unknown) => uncommittedView.discard({ repoId: repoOf(arg) })),
+    vscode.commands.registerCommand("linyra.stageAll", (arg?: unknown) => uncommittedView.stage({ repoId: repoOf(arg), group: "changes" })),
+    vscode.commands.registerCommand("linyra.unstageAll", (arg?: unknown) => uncommittedView.unstage({ repoId: repoOf(arg), group: "staged" })),
+    vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => uncommittedView.commit(changesTarget(arg) ?? arg)),
+    vscode.commands.registerCommand("linyra.openUncommittedDiff", (arg?: unknown) => uncommittedView.openDiff(arg)),
+    vscode.commands.registerCommand("linyra.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
-    vscode.commands.registerCommand("polylog.fetchAll", () => log.fetchAll()),
+    vscode.commands.registerCommand("linyra.fetchAll", () => log.fetchAll()),
     // The spinning button while Fetch All runs: already fetching, nothing more to do.
-    vscode.commands.registerCommand("polylog.fetching", () => undefined),
+    vscode.commands.registerCommand("linyra.fetching", () => undefined),
     // Right-click a commit row in the Log.
-    vscode.commands.registerCommand("polylog.commitCopySha", (arg?: unknown) => log.commitCopySha(commitArg(arg))),
-    vscode.commands.registerCommand("polylog.commitCopyMessage", (arg?: unknown) => log.commitCopyMessage(commitArg(arg))),
-    vscode.commands.registerCommand("polylog.commitOpenOnRemote", (arg?: unknown) => log.commitOpenOnRemote(commitArg(arg))),
-    vscode.commands.registerCommand("polylog.showBehind", () => log.showBehind()),
-    vscode.commands.registerCommand("polylog.pullAllBehind", () => log.pullAllBehind()),
-    vscode.commands.registerCommand("polylog.fetchAndPullAll", () => log.fetchAndPullAll()),
-    vscode.commands.registerCommand("polylog.repoPull", (arg?: unknown) => log.repoPull(arg)),
-    vscode.commands.registerCommand("polylog.repoShowOnly", (arg?: unknown) => log.repoShowOnly(arg)),
-    vscode.commands.registerCommand("polylog.repoHide", (arg?: unknown) => log.repoHide(arg)),
-    vscode.commands.registerCommand("polylog.repoShowAll", () => log.repoShowAll()),
-    vscode.commands.registerCommand("polylog.repoExclude", (arg?: unknown) => log.repoExclude(arg)),
-    vscode.commands.registerCommand("polylog.repoOpenFolder", (arg?: unknown) => log.repoOpenFolder(arg)),
-    vscode.commands.registerCommand("polylog.repoCopyPath", (arg?: unknown) => log.repoCopyPath(arg)),
-    vscode.commands.registerCommand("polylog.profileSwitch", () => log.profileSwitch()),
-    vscode.commands.registerCommand("polylog.profileShow", (arg?: unknown) => log.profileShow(arg)),
-    vscode.commands.registerCommand("polylog.profileSave", () => log.profileSave()),
-    vscode.commands.registerCommand("polylog.profileUpdate", (arg?: unknown) => log.profileUpdate(arg)),
-    vscode.commands.registerCommand("polylog.profileRename", (arg?: unknown) => log.profileRename(arg)),
-    vscode.commands.registerCommand("polylog.profileDelete", (arg?: unknown) => log.profileDelete(arg)),
-    vscode.commands.registerCommand("polylog.repoProfiles", (arg?: unknown) => log.repoProfiles(arg)),
+    vscode.commands.registerCommand("linyra.commitCopySha", (arg?: unknown) => log.commitCopySha(commitArg(arg))),
+    vscode.commands.registerCommand("linyra.commitCopyMessage", (arg?: unknown) => log.commitCopyMessage(commitArg(arg))),
+    vscode.commands.registerCommand("linyra.commitOpenOnRemote", (arg?: unknown) => log.commitOpenOnRemote(commitArg(arg))),
+    vscode.commands.registerCommand("linyra.showBehind", () => log.showBehind()),
+    vscode.commands.registerCommand("linyra.pullAllBehind", () => log.pullAllBehind()),
+    vscode.commands.registerCommand("linyra.fetchAndPullAll", () => log.fetchAndPullAll()),
+    vscode.commands.registerCommand("linyra.repoPull", (arg?: unknown) => log.repoPull(arg)),
+    vscode.commands.registerCommand("linyra.repoShowOnly", (arg?: unknown) => log.repoShowOnly(arg)),
+    vscode.commands.registerCommand("linyra.repoHide", (arg?: unknown) => log.repoHide(arg)),
+    vscode.commands.registerCommand("linyra.repoShowAll", () => log.repoShowAll()),
+    vscode.commands.registerCommand("linyra.repoExclude", (arg?: unknown) => log.repoExclude(arg)),
+    vscode.commands.registerCommand("linyra.repoOpenFolder", (arg?: unknown) => log.repoOpenFolder(arg)),
+    vscode.commands.registerCommand("linyra.repoCopyPath", (arg?: unknown) => log.repoCopyPath(arg)),
+    vscode.commands.registerCommand("linyra.profileSwitch", () => log.profileSwitch()),
+    vscode.commands.registerCommand("linyra.profileShow", (arg?: unknown) => log.profileShow(arg)),
+    vscode.commands.registerCommand("linyra.profileSave", () => log.profileSave()),
+    vscode.commands.registerCommand("linyra.profileUpdate", (arg?: unknown) => log.profileUpdate(arg)),
+    vscode.commands.registerCommand("linyra.profileRename", (arg?: unknown) => log.profileRename(arg)),
+    vscode.commands.registerCommand("linyra.profileDelete", (arg?: unknown) => log.profileDelete(arg)),
+    vscode.commands.registerCommand("linyra.repoProfiles", (arg?: unknown) => log.repoProfiles(arg)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root))),
     blame,
-    vscode.commands.registerCommand("polylog.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
-    vscode.commands.registerCommand("polylog.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
-    vscode.commands.registerCommand("polylog.openCombinedDiff", (o: CombinedOpen) => log.openCombinedDiff(o)),
-    vscode.commands.registerCommand("polylog.clearSelection", () => log.clearSelection()),
-    vscode.commands.registerCommand("polylog.openRevision", (arg?: unknown) => log.openRevision(arg)),
-    vscode.commands.registerCommand("polylog.changesShowAll", () => setAllFiles(true)),
-    vscode.commands.registerCommand("polylog.changesShowChanged", () => setAllFiles(false)),
-    vscode.commands.registerCommand("polylog.copySha", () => {
+    vscode.commands.registerCommand("linyra.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
+    vscode.commands.registerCommand("linyra.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
+    vscode.commands.registerCommand("linyra.openCombinedDiff", (o: CombinedOpen) => log.openCombinedDiff(o)),
+    vscode.commands.registerCommand("linyra.clearSelection", () => log.clearSelection()),
+    vscode.commands.registerCommand("linyra.openRevision", (arg?: unknown) => log.openRevision(arg)),
+    vscode.commands.registerCommand("linyra.changesShowAll", () => setAllFiles(true)),
+    vscode.commands.registerCommand("linyra.changesShowChanged", () => setAllFiles(false)),
+    vscode.commands.registerCommand("linyra.copySha", () => {
       const s = changes.current();
       if (s) void vscode.env.clipboard.writeText(s.commit.sha);
     }),
-    vscode.commands.registerCommand("polylog.copyMessage", () => {
+    vscode.commands.registerCommand("linyra.copyMessage", () => {
       const s = changes.current();
       if (s) void vscode.env.clipboard.writeText(s.message || s.commit.subject);
     }),
   );
   // Test seam for the integration suite only; never registered for users.
-  if (process.env.POLYLOG_ITEST === "1") {
+  if (process.env.LINYRA_ITEST === "1") {
     context.subscriptions.push(
-      vscode.commands.registerCommand("polylog._itest.branches", () => branchSidebar.snapshot()),
-      vscode.commands.registerCommand("polylog._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
-      vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
-      vscode.commands.registerCommand("polylog._itest.blame", () => blame.last),
-      vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
-      vscode.commands.registerCommand("polylog._itest.uncommitted", () => uncommittedView.snapshot()),
-      vscode.commands.registerCommand("polylog._itest.uncommittedShown", () => context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false)),
-      vscode.commands.registerCommand("polylog._itest.compareStore", () => ({
+      vscode.commands.registerCommand("linyra._itest.branches", () => branchSidebar.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
+      vscode.commands.registerCommand("linyra._itest.snapshot", () => log.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.blame", () => blame.last),
+      vscode.commands.registerCommand("linyra._itest.send", (m: WebviewMessage) => log.onMessage(m)),
+      vscode.commands.registerCommand("linyra._itest.uncommitted", () => uncommittedView.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.uncommittedShown", () => context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false)),
+      vscode.commands.registerCommand("linyra._itest.compareStore", () => ({
         pair: compare.pair, reading: compare.reading, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
       })),
-      vscode.commands.registerCommand("polylog._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
-      vscode.commands.registerCommand("polylog._itest.compareRefresh", () => compare.refresh()),
-      vscode.commands.registerCommand("polylog._itest.compareSwap", () => compare.swap()),
-      vscode.commands.registerCommand("polylog._itest.compare", () => compareRepos.snapshot()),
-      vscode.commands.registerCommand("polylog._itest.compareSide", (s: "left" | "right") => sides[s].snapshot()),
-      vscode.commands.registerCommand("polylog._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
-      vscode.commands.registerCommand("polylog._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
-      vscode.commands.registerCommand("polylog._itest.compareSelect", (id: string) => compareRepos.select(id)),
-      vscode.commands.registerCommand("polylog._itest.comparePosted", () => compareRepos.posted),
-      vscode.commands.registerCommand("polylog._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
-      vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
-      vscode.commands.registerCommand("polylog._itest.changesMessage", (message: unknown, viewId?: unknown) => changes.onMessage(message, viewId === "editor" ? "editor" : "main")),
-      vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
-      vscode.commands.registerCommand("polylog._itest.lastWarning", () => uncommittedView.ask.lastWarning),
-      vscode.commands.registerCommand("polylog._itest.asked", () => uncommittedView.ask.asked),
-      vscode.commands.registerCommand("polylog._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedView.ask.beforeAnswer = f)),
+      vscode.commands.registerCommand("linyra._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
+      vscode.commands.registerCommand("linyra._itest.compareRefresh", () => compare.refresh()),
+      vscode.commands.registerCommand("linyra._itest.compareSwap", () => compare.swap()),
+      vscode.commands.registerCommand("linyra._itest.compare", () => compareRepos.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.compareSide", (s: "left" | "right") => sides[s].snapshot()),
+      vscode.commands.registerCommand("linyra._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
+      vscode.commands.registerCommand("linyra._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
+      vscode.commands.registerCommand("linyra._itest.compareSelect", (id: string) => compareRepos.select(id)),
+      vscode.commands.registerCommand("linyra._itest.comparePosted", () => compareRepos.posted),
+      vscode.commands.registerCommand("linyra._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
+      vscode.commands.registerCommand("linyra._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
+      vscode.commands.registerCommand("linyra._itest.changesMessage", (message: unknown, viewId?: unknown) => changes.onMessage(message, viewId === "editor" ? "editor" : "main")),
+      vscode.commands.registerCommand("linyra._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
+      vscode.commands.registerCommand("linyra._itest.lastWarning", () => uncommittedView.ask.lastWarning),
+      vscode.commands.registerCommand("linyra._itest.asked", () => uncommittedView.ask.asked),
+      vscode.commands.registerCommand("linyra._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedView.ask.beforeAnswer = f)),
     );
   }
 }

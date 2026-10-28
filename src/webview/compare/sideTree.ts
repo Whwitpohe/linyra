@@ -2,6 +2,7 @@ import type { CompareSidePage, CompareTreeRow, ReposWebview } from "../../compar
 import { localize } from "../../i18n";
 import { byId, h } from "../dom";
 import { moveSelection } from "../view";
+import { updateTreeToggle } from "../treeToggle";
 
 const folderIcon = '<svg viewBox="0 0 16 16"><path d="M1.5 4V2.5h5L8 4h6.5v9.5h-13Z" fill="none" stroke="currentColor"/></svg>';
 const fileIcon = '<svg viewBox="0 0 16 16"><path d="M3 1.5h6l4 4v9H3Zm6 0V6h4" fill="none" stroke="currentColor"/></svg>';
@@ -55,8 +56,8 @@ export class CompareTree {
         else if (row.parent) this.select(row.parent);
       }
     });
-    byId(`compare-${side}-collapse`).addEventListener("click", () => this.collapseAll());
-    byId(`compare-${side}-expand`).addEventListener("click", () => this.expandAll());
+    const toggle = byId<HTMLButtonElement>(`compare-${side}-tree-toggle`);
+    toggle.addEventListener("click", () => toggle.dataset.action === "collapse" ? this.collapseAll() : this.expandAll());
   }
 
   receive(page: CompareSidePage): void {
@@ -131,6 +132,8 @@ export class CompareTree {
       }
     });
     walk(this.page?.rows ?? [], 1);
+    const branches = this.rows.filter(({ node }) => node.kind === "folder" || node.kind === "commit");
+    updateTreeToggle(byId<HTMLButtonElement>(`compare-${this.side}-tree-toggle`), branches.length > 0, branches.some(({ node }) => !this.closed.has(node.id)));
     const fragment = document.createDocumentFragment();
     for (const { node, depth } of this.rows) {
       const branch = node.kind === "folder" || node.kind === "commit";

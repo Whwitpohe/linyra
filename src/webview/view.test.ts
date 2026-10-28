@@ -44,8 +44,10 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   const repo = (name: string) => ({ id: `/ws/${name}`, name });
   const six = ["acme-api", "acme-docs", "acme-infra", "acme-libs", "acme-mobile", "acme-web"].map(repo);
   const a = assignAccents(six);
-  assert.strictEqual(ACCENT_COUNT, 6);
+  assert.strictEqual(ACCENT_COUNT, 8);
   assert.strictEqual(new Set(six.map((r) => a.get(r.id))).size, 6, "six repositories get six different hues");
+  const eight = [...six, repo("acme-worker"), repo("acme-zeta")];
+  assert.strictEqual(new Set(assignAccents(eight).values()).size, eight.length, "a comparison with seven or eight visible repositories does not reuse a hue");
   assert.deepStrictEqual(assignAccents([...six].reverse()), a, "the order repositories were discovered in does not matter");
   const withLast = assignAccents([...six, repo("acme-zeta")]);
   assert.ok(six.every((r) => withLast.get(r.id) === a.get(r.id)), "a repository that sorts last moves nobody");

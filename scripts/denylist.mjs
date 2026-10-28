@@ -1,5 +1,5 @@
 // Pure matching for the denylist check. The entries themselves never appear in
-// this repository: CI reads them from the POLYLOG_DENYLIST secret, a developer
+// this repository: CI reads them from the LINYRA_DENYLIST secret, a developer
 // machine from the gitignored .denylist file.
 
 /** Newline- or comma-separated entries; a line starting with `#` is a comment. */

@@ -17,7 +17,7 @@ concurrency:
 jobs:
   # Fails if a denylisted name (employer, internal repo/service/branch/ticket/module)
   # appears in tracked files, file names or commit metadata. The list lives in the
-  # POLYLOG_DENYLIST secret, never in the repo; an empty list fails, never passes.
+  # LINYRA_DENYLIST secret, never in the repo; an empty list fails, never passes.
   denylist:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -30,7 +30,7 @@ jobs:
           node-version: "20"
       - run: node scripts/check-denylist.mjs
         env:
-          POLYLOG_DENYLIST: ${{ secrets.POLYLOG_DENYLIST }}
+          LINYRA_DENYLIST: ${{ secrets.LINYRA_DENYLIST }}
 
   test:
     strategy:
@@ -60,7 +60,7 @@ jobs:
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:integration
         env:
-          POLYLOG_VSCODE_VERSION: "1.85.0"
+          LINYRA_VSCODE_VERSION: "1.85.0"
 
   # CLAUDE.md constraint 2 and spec §6: no literal colors or fonts, and
   # impeccable's detector rules (contrast, focus states, gray-on-color, nested
@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      POLYLOG_DENYLIST: ${{ secrets.POLYLOG_DENYLIST }}
+      LINYRA_DENYLIST: ${{ secrets.LINYRA_DENYLIST }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -92,10 +92,10 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
-      - run: npx vsce package --no-dependencies -o polylog.vsix
+      - run: npx vsce package --no-dependencies -o linyra.vsix
       # Scan what actually ships, not only the source it was built from.
-      - run: mkdir vsix && unzip -q polylog.vsix -d vsix && node scripts/check-denylist.mjs --dir vsix
+      - run: mkdir vsix && unzip -q linyra.vsix -d vsix && node scripts/check-denylist.mjs --dir vsix
       - uses: actions/upload-artifact@v4
         with:
-          name: polylog-vsix
-          path: polylog.vsix
+          name: linyra-vsix
+          path: linyra.vsix

@@ -43,7 +43,7 @@ console.log("ok - branch metadata distinguishes local/remote, current, upstream 
   console.log("ok - branch tree preserves repository/ref identities, favorites and searchable nested remotes");
 }
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-branches-"));
+const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-branches-"));
 try {
   fs.writeFileSync(path.join(home, ".gitconfig"), "[user]\n name = dana\n email = dana@example.com\n");
   const root = path.join(home, "acme-api"), bare = path.join(home, "acme-remote.git");

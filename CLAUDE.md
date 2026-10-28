@@ -15,8 +15,9 @@ is a non-goal.
 
 Publishing identity: `whwitpohe.linyra`; product name: **Linyra**. Preserve upstream copyright
 and license notices. Public settings use only `linyra.*`. Do not migrate, read or register
-legacy `polylog.*` settings. Existing command,
-view and URI identifiers remain compatibility interfaces. See `docs/PUBLISHING.md`
+legacy `polylog.*` settings. Commands, views, contexts, URI schemes and private state keys
+use Linyra identifiers; never register upstream aliases. Earlier Linyra private Memento
+keys are migrated inside this extension's own storage only. See `docs/PUBLISHING.md`
 for the fork publishing and migration procedure. The original v1 design is
 `docs/superpowers/specs/2026-09-23-polylog-design.md`. Read it before writing any code; this
 file records the standing rules, not the design.

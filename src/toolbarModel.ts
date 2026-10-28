@@ -12,16 +12,16 @@ export interface ToolbarState {
 /** Every old Log title action keeps its original command and implementation. */
 export function toolbarCommand(action: unknown, state: ToolbarState): string | undefined {
   switch (action) {
-    case "toggleRepos": return state.groupByRepo ? "polylog.hideRepos" : "polylog.showRepos";
-    case "toggleCompare": return state.compareShown ? "polylog.compareHide" : "polylog.compareShow";
-    case "toggleUncommitted": return state.uncommittedShown ? "polylog.uncommittedHide" : "polylog.uncommittedShow";
-    case "fetchAll": return state.fetching ? "polylog.fetching" : "polylog.fetchAll";
-    case "showBehind": return state.anyBehind ? "polylog.showBehind" : undefined;
-    case "fetchAndPullAll": return state.fetching ? undefined : "polylog.fetchAndPullAll";
-    case "pullAllBehind": return state.anyBehind && !state.fetching ? "polylog.pullAllBehind" : undefined;
-    case "profileSwitch": return "polylog.profileSwitch";
-    case "profileSave": return "polylog.profileSave";
-    case "openChangesEditor": return "polylog.openChangesEditor";
+    case "toggleRepos": return state.groupByRepo ? "linyra.hideRepos" : "linyra.showRepos";
+    case "toggleCompare": return state.compareShown ? "linyra.compareHide" : "linyra.compareShow";
+    case "toggleUncommitted": return state.uncommittedShown ? "linyra.uncommittedHide" : "linyra.uncommittedShow";
+    case "fetchAll": return state.fetching ? "linyra.fetching" : "linyra.fetchAll";
+    case "showBehind": return state.anyBehind ? "linyra.showBehind" : undefined;
+    case "fetchAndPullAll": return state.fetching ? undefined : "linyra.fetchAndPullAll";
+    case "pullAllBehind": return state.anyBehind && !state.fetching ? "linyra.pullAllBehind" : undefined;
+    case "profileSwitch": return "linyra.profileSwitch";
+    case "profileSave": return "linyra.profileSave";
+    case "openChangesEditor": return "linyra.openChangesEditor";
     default: return undefined;
   }
 }

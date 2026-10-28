@@ -3,7 +3,7 @@ import { isSha } from "./types";
 
 // Linyra's own scheme: the git extension's `git:` URIs are internal to
 // vscode.git and have changed between releases.
-export const SCHEME = "polylog";
+export const SCHEME = "linyra";
 
 /** The index (staging area): `git show :<path>` is the staged version of a file. */
 export const INDEX = ":";
@@ -35,11 +35,11 @@ export function decodeRevision(path: string, query: string): RevisionRef {
   try {
     q = JSON.parse(query) as { root?: unknown; ref?: unknown; blob?: unknown; without?: unknown };
   } catch {
-    throw new Error("not a polylog revision URI");
+    throw new Error("not a linyra revision URI");
   }
-  if (typeof q.root !== "string" || !(q.ref === null || q.ref === INDEX || isSha(q.ref))) throw new Error("not a polylog revision URI");
-  if (q.blob !== undefined && !isSha(q.blob)) throw new Error("not a polylog revision URI");
-  if (q.without !== undefined && !(Array.isArray(q.without) && q.without.length <= MAX_WITHOUT && q.without.every(isSha))) throw new Error("not a polylog revision URI");
+  if (typeof q.root !== "string" || !(q.ref === null || q.ref === INDEX || isSha(q.ref))) throw new Error("not a linyra revision URI");
+  if (q.blob !== undefined && !isSha(q.blob)) throw new Error("not a linyra revision URI");
+  if (q.without !== undefined && !(Array.isArray(q.without) && q.without.length <= MAX_WITHOUT && q.without.every(isSha))) throw new Error("not a linyra revision URI");
   const r: RevisionRef = { root: q.root, ref: q.ref, path: path.replace(/^\//, "") };
   if (typeof q.blob === "string") r.blob = q.blob;
   if (Array.isArray(q.without)) r.without = q.without as string[];

@@ -107,10 +107,10 @@ export async function recordFeatures(r) {
     await hold(1.5);
   });
 
-  await command("polylog.compareShow");
-  await command("polylog._itest.compareView",{left:"origin/release-1.4",right:"main"});
-  await waitFor("comparison ready",async()=>{const s=await command("polylog._itest.compareStore");return !s.reading&&s.rows?.length>0;});
-  await command("polylog._itest.compareSelect",web.id);
+  await command("linyra.compareShow");
+  await command("linyra._itest.compareView",{left:"origin/release-1.4",right:"main"});
+  await waitFor("comparison ready",async()=>{const s=await command("linyra._itest.compareStore");return !s.reading&&s.rows?.length>0;});
+  await command("linyra._itest.compareSelect",web.id);
   const compare=await webviewDriver(browser,"Repositories");
   await compare.key("#picker-search","Escape"); await compare.click("#compare-layout-horizontal");
   await compare.click("#compare-left-expand");await compare.click("#compare-right-expand");
@@ -123,7 +123,7 @@ export async function recordFeatures(r) {
   await clip("feature-compare",panelRect,async hold=>{
     await hold(2);await shot("feature-compare",panelRect);
     await compare.click("#mode-commits");
-    await waitFor("comparison commit mode",async()=> (await command("polylog._itest.compare")).mode==="commits");
+    await waitFor("comparison commit mode",async()=> (await command("linyra._itest.compare")).mode==="commits");
     await compare.click("#compare-right-expand");await hold(2);
     await compare.click("#mode-files");await hold(1.5);
     const api=(await snapshot()).repos.find(repo=>repo.name==="acme-api");

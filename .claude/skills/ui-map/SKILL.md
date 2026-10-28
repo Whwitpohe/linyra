@@ -1,11 +1,11 @@
 ---
 name: ui-map
-description: Open the Polylog UI Map, the page that names every part of the Polylog panel (Repo List, Log toolbar, Commit row, Changes view…), so the maintainer and Claude use the same words. Use when the maintainer asks to "show the UI map", "open the map", "what is this part called", or refers to a part by a map name; and after any change that adds, removes or renames a visible part, to bring the map up to date.
+description: Open the Linyra UI Map, the page that names every part of the Linyra panel (Repo List, Log toolbar, Commit row, Changes view…), so the maintainer and Claude use the same words. Use when the maintainer asks to "show the UI map", "open the map", "what is this part called", or refers to a part by a map name; and after any change that adds, removes or renames a visible part, to bring the map up to date.
 ---
 
-# Polylog UI Map
+# Linyra UI Map
 
-`dev/ui-map/index.html` draws the Polylog panel (VS Code's look, both themes) with a red box and
+`dev/ui-map/index.html` draws the Linyra panel (VS Code's look, both themes) with a red box and
 a number on every named part, and a glossary below: number, name, what it is. Clicking a box,
 its number or its glossary entry copies the name. Dev-only: `.vscodeignore` is an allowlist, so
 nothing in `dev/` ships.

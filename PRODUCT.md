@@ -43,7 +43,7 @@ product; everything else is a non-goal.
 ## Operating Context
 
 - Lives in the bottom panel beside Terminal; diffs open in the editor area above. Opened on
-  demand via `polylog.open`.
+  demand via `linyra.open`.
 - Workspaces range from a handful of repos to dozens (designed against 68 repos, 16k
   commits).
 - Keyboard-driven audience: ↑/↓ selection, Enter to open, `/` or Ctrl/Cmd+F to search,

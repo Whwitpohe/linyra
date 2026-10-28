@@ -40,6 +40,8 @@
   --vscode-charts-green: #89d185;
   --vscode-charts-purple: #b180d7;
   --vscode-terminal-ansiCyan: #00cdcd;
+  --vscode-terminal-ansiMagenta: #ff00ff;
+  --vscode-terminal-ansiBrightYellow: #ffff00;
   --vscode-panel-background: #000000;
   --vscode-sash-hoverBorder: #f38518;
   --vscode-list-focusBackground: transparent;

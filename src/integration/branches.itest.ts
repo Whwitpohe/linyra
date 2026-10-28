@@ -9,13 +9,13 @@ import type { LogSnapshot } from "../logView";
 
 describe("Branch sidebar", () => {
   let root: string, repoId: string, beforeHead: string, home: string, remote: string;
-  const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
-  const sidebar = () => vscode.commands.executeCommand<{ state: BranchSidebarState; repos: Record<string, Branches> }>("polylog._itest.branches");
+  const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("linyra._itest.snapshot");
+  const sidebar = () => vscode.commands.executeCommand<{ state: BranchSidebarState; repos: Record<string, Branches> }>("linyra._itest.branches");
   const git = (args: string[], cwd = root, input?: string) => execFileSync("git", args, { cwd, input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" } }).trim();
   const arg = (name: string, kind = "heads") => ({ repoId, ref: `refs/${kind}/${name}` });
-  const act = (action: string, name: string, kind?: string) => vscode.commands.executeCommand(`polylog.branch.${action}`, arg(name, kind));
-  const answer = (value: string) => vscode.commands.executeCommand("polylog._itest.answer", value);
+  const act = (action: string, name: string, kind?: string) => vscode.commands.executeCommand(`linyra.branch.${action}`, arg(name, kind));
+  const answer = (value: string) => vscode.commands.executeCommand("linyra._itest.answer", value);
   const read = () => parseBranches(git(branchArgs()), git(["remote"]).split(/\r?\n/).filter(Boolean));
   const child = (parent: string, file: string, content: string, message: string) => {
     const index = path.join(home, "fixture.index");
@@ -28,19 +28,19 @@ describe("Branch sidebar", () => {
   };
 
   before(async () => {
-    home = fs.mkdtempSync(path.join(process.env.HOME ?? os.tmpdir(), "polylog-branch-ui-"));
-    await vscode.commands.executeCommand("polylog.open");
+    home = fs.mkdtempSync(path.join(process.env.HOME ?? os.tmpdir(), "linyra-branch-ui-"));
+    await vscode.commands.executeCommand("linyra.open");
     for (let i = 0; i < 100; i++) { if ((await snapshot())?.repos.length >= 3) break; await new Promise((r) => setTimeout(r, 100)); }
     const repo = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
     assert.ok(repo); root = repo.root; repoId = repo.id; beforeHead = git(["rev-parse", "HEAD"]);
-    await vscode.commands.executeCommand("polylog._itest.send", { type: "filter", filter: { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" } });
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "filter", filter: { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" } });
     git(["update-ref", "refs/heads/ui-feature", child(beforeHead, "ui-feature.txt", "feature\n", "feat: sidebar feature")]);
     remote = path.join(home, "acme-remote.git"); git(["init", "--bare", "-q", remote]); git(["remote", "add", "branch-test", remote]);
     git(["push", "branch-test", `${beforeHead}:refs/heads/release-1.4`]);
   });
   after(async () => {
     if (!root) return;
-    await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+    await vscode.commands.executeCommand("linyra._itest.answer", undefined);
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     git(["checkout", "main", "--"]);
     const worktree = path.join(home, "worktree");
@@ -49,14 +49,14 @@ describe("Branch sidebar", () => {
       try { git(["branch", "-D", name]); } catch { /* already deleted */ }
     }
     git(["reset", "--hard", beforeHead]); git(["remote", "remove", "branch-test"]);
-    await vscode.commands.executeCommand("polylog._itest.send", { type: "filter", filter: { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" } });
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "filter", filter: { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" } });
     // The outer runner removes this fixture after VS Code exits; its worktree
     // watchers keep Windows handles open while the extension host is running.
   });
 
   it("loads local/remote refs lazily; selecting and favoriting a branch never checks it out", async () => {
     const initial = await sidebar(); assert.ok(!initial.repos[repoId]);
-    await vscode.commands.executeCommand("polylog._itest.send", { type: "branchSidebar", action: "load", repoId });
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
     assert.ok((await sidebar()).repos[repoId].branches.some((b) => b.name === "branch-test/release-1.4"));
     await act("view", "ui-feature");
     for (let i = 0; i < 100 && !(await snapshot()).rows.some((c) => c.subject === "feat: sidebar feature"); i++) await new Promise((r) => setTimeout(r, 100));
@@ -66,13 +66,13 @@ describe("Branch sidebar", () => {
     await act("favorite", "ui-feature"); assert.ok((await sidebar()).state.favorites.includes(branchKey(repoId, "refs/heads/ui-feature")));
     await act("favorite", "ui-feature"); assert.ok(!(await sidebar()).state.favorites.includes(branchKey(repoId, "refs/heads/ui-feature")));
     await act("copy", "ui-feature"); assert.strictEqual(await vscode.env.clipboard.readText(), "ui-feature");
-    await vscode.commands.executeCommand("polylog._itest.send", { type: "branchSidebar", action: "state", state: { mode: "branches", expanded: ["local"], favorites: [] } });
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "state", state: { mode: "branches", expanded: ["local"], favorites: [] } });
     assert.strictEqual((await sidebar()).state.mode, "branches");
   });
 
   it("branch compare and working-tree compare use the selected repository/ref", async () => {
     await act("compare", "ui-feature");
-    const compare = await vscode.commands.executeCommand<{ pair: { left: string; right: string } }>("polylog._itest.compare");
+    const compare = await vscode.commands.executeCommand<{ pair: { left: string; right: string } }>("linyra._itest.compare");
     assert.deepStrictEqual(compare.pair, { left: "ui-feature", right: "main" });
     await answer("ui-feature.txt"); await act("worktreeDiff", "ui-feature");
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
@@ -80,7 +80,7 @@ describe("Branch sidebar", () => {
     assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "feature\n");
     assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "");
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-    await vscode.commands.executeCommand("polylog.open");
+    await vscode.commands.executeCommand("linyra.open");
   });
 
   it("creates, checks out and renames a branch, and pushes that branch to the chosen remote", async () => {
@@ -101,7 +101,7 @@ describe("Branch sidebar", () => {
     git(["push", "branch-test", `${incoming}:refs/heads/release-1.4`]);
     await act("fetch", "branch-test/release-1.4", "remotes"); await act("pull", "ui-tracked");
     assert.strictEqual(git(["rev-parse", "HEAD"]), incoming);
-    await vscode.commands.executeCommand("polylog._itest.branchWorktreePath", path.join(home, "worktree"));
+    await vscode.commands.executeCommand("linyra._itest.branchWorktreePath", path.join(home, "worktree"));
     await answer("ui-worktree"); await act("worktree", "main");
     assert.strictEqual(git(["branch", "--show-current"], path.join(home, "worktree")), "ui-worktree");
     await answer("Delete"); await act("delete", "branch-test/ui-renamed", "remotes");
@@ -129,8 +129,8 @@ describe("Branch sidebar", () => {
     await answer("Delete"); await act("delete", "ui-unmerged"); assert.ok(read().branches.some((b) => b.name === "ui-unmerged"));
     const before = git(["show-ref"]);
     await answer("-invalid"); await act("create", "main");
-    await vscode.commands.executeCommand("polylog.branch.checkout", { repoId: "/not-in-workspace", ref: "refs/heads/main" });
-    await vscode.commands.executeCommand("polylog.branch.delete", { repoId, ref: "--all" });
+    await vscode.commands.executeCommand("linyra.branch.checkout", { repoId: "/not-in-workspace", ref: "refs/heads/main" });
+    await vscode.commands.executeCommand("linyra.branch.delete", { repoId, ref: "--all" });
     assert.strictEqual(git(["show-ref"]), before);
     assert.strictEqual(read().current, "main");
   });

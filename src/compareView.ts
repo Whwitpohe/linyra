@@ -11,14 +11,14 @@ import type { LogView } from "./logView";
 import { isAbortError, runPool } from "./pool";
 import type { FileChange, Repo } from "./types";
 
-export const PAIR = "polylog.compare.pair";
-export const RECENT = "polylog.compare.recent";
-export const FAVORITES = "polylog.compare.favorites";
-export const MODE = "polylog.compare.mode";
-export const SHOWN = "polylog.compare.shown";
+export const PAIR = "linyra.compare.pair";
+export const RECENT = "linyra.compare.recent";
+export const FAVORITES = "linyra.compare.favorites";
+export const MODE = "linyra.compare.mode";
+export const SHOWN = "linyra.compare.shown";
 /** globalState: Hide Files Already on Both (on unless the user turned it off). Also a context key. */
-export const HIDE_SAME = "polylog.compareHideSame";
-const SCHEME = "polylog-compare";
+export const HIDE_SAME = "linyra.compareHideSame";
+const SCHEME = "linyra-compare";
 
 export type { CompareMode };
 
@@ -396,8 +396,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         // Dimmed: the same at both tips, so it brings nothing to the merge.
         if (dec) this.decorations.set(item.resourceUri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(node.same ? "disabledForeground" : dec.color)));
         item.command = node.commit
-          ? { command: "polylog.openDiff", title: localize("Open Diff"), arguments: [{ repoId: node.repoId, sha: node.commit.sha, parent: node.commit.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status } satisfies OpenDiffArgs] }
-          : { command: "polylog.compareOpenFile", title: localize("Open Diff"), arguments: [{ side: this.side, repoId: node.repoId, path: node.file.path }] };
+          ? { command: "linyra.openDiff", title: localize("Open Diff"), arguments: [{ repoId: node.repoId, sha: node.commit.sha, parent: node.commit.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status } satisfies OpenDiffArgs] }
+          : { command: "linyra.compareOpenFile", title: localize("Open Diff"), arguments: [{ side: this.side, repoId: node.repoId, path: node.file.path }] };
         // Files mode adds Changes since the split; a deleted file has nothing to open in the workspace.
         item.contextValue = `${node.commit ? "compareCommitFile" : "compareFile"}${node.file.status === "D" ? ".deleted" : ""}`;
         return item;
@@ -414,7 +414,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       case "more": {
         const item = new vscode.TreeItem(localize("Show {0} more", COMMIT_PAGE), C.None);
         item.id = node.id;
-        item.command = { command: "polylog.compareMore", title: localize("Show more"), arguments: [this.side] };
+        item.command = { command: "linyra.compareMore", title: localize("Show more"), arguments: [this.side] };
         return item;
       }
     }

@@ -16,7 +16,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 const dir = resolve(process.argv[2] ?? join(tmpdir(), "linyra-demo"));
 const insideTemp = relative(resolve(tmpdir()), dir);
 if (!insideTemp || insideTemp.startsWith("..") || isAbsolute(insideTemp)
-  || !/^(?:linyra|polylog)-demo(?:[-/\\]|$)/.test(insideTemp)) {
+  || !/^(?:linyra|linyra)-demo(?:[-/\\]|$)/.test(insideTemp)) {
   throw new Error("seed only inside a named Linyra demo directory under the system temporary folder");
 }
 const marker = join(dir, ".linyra-demo");

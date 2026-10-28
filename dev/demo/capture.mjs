@@ -51,7 +51,7 @@ const child = spawn(code, [
 ], { cwd: root, windowsHide: false, stdio: ["ignore", log, log], env: {
   ...process.env, HOME: join(workspace, ".home"), USERPROFILE: join(workspace, ".home"),
   GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(workspace, ".home/.gitconfig"),
-  POLYLOG_ITEST: "1", LINYRA_CAPTURE_CONTROL: control,
+  LINYRA_ITEST: "1", LINYRA_CAPTURE_CONTROL: control,
 } });
 closeSync(log);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -71,7 +71,7 @@ async function call(op, values = {}) {
   }).then(r => r.value);
 }
 const command = (command, ...args) => call("command", { command, args });
-const snapshot = () => command("polylog._itest.snapshot");
+const snapshot = () => command("linyra._itest.snapshot");
 let browser;
 try {
   await waitFor("extension test host", () => existsSync(join(control, "ready.json")));
@@ -90,8 +90,8 @@ try {
   await waitFor("demo repositories", async () => { const s = await snapshot(); return s?.repos.length === 6 && s.readyCount > 0 && s.done && s.rows.length > 10; });
   console.log("Capture host ready; real repositories:", (await snapshot()).repos.map(r => r.name).join(", "));
   const base = { text: "", author: "", mine: false, branch: "", branches: [], repoIds: null, date: "24h", sort: "topo" };
-  await command("polylog._itest.send", { type: "filter", filter: base });
-  await command("polylog._itest.send", { type: "layout", repoPaneWidth: 180, changesPaneWidth: 620, changesPaneHeight: Math.round(nativeViewport.height*.45), showChanges: true, changesLayout:"sideBySide" });
+  await command("linyra._itest.send", { type: "filter", filter: base });
+  await command("linyra._itest.send", { type: "layout", repoPaneWidth: 180, changesPaneWidth: 620, changesPaneHeight: Math.round(nativeViewport.height*.45), showChanges: true, changesLayout:"sideBySide" });
   await command("notifications.clearAll");
   let state = await snapshot();
   const web = state.repos.find(r=>r.name==="acme-web");
@@ -104,9 +104,9 @@ try {
       const index = rows.findIndex(r=>r.repoId===commit.repoId&&r.sha===commit.sha);
       if (index<0) throw new Error("Commit is outside the current recording filter");
       await logView.click(`.row[data-index="${index}"] .subject`);
-    } else await command("polylog._itest.send",{type:"select",repoId:commit.repoId,sha:commit.sha});
+    } else await command("linyra._itest.send",{type:"select",repoId:commit.repoId,sha:commit.sha});
     await waitFor("selected commit details",async()=> (await snapshot()).changes.presentation?.details[0]?.sha===commit.sha);
-    if (file) await command("polylog.openDiff",{repoId:commit.repoId,sha:commit.sha,parent:commit.parents[0],path:file});
+    if (file) await command("linyra.openDiff",{repoId:commit.repoId,sha:commit.sha,parent:commit.parents[0],path:file});
     await sleep(450);
   }
   await select(target,"src/checkout/PaymentStep.tsx");
@@ -204,22 +204,22 @@ try {
     await shot("screenshot-uncommitted");
     await logView.click("#mode-commits");
 
-    await command("polylog.compareShow");
-    await command("polylog._itest.compareView",{left:"origin/release-1.4",right:"main"});
-    await waitFor("comparison repositories",async()=>{const s=await command("polylog._itest.compareStore");return !s.reading&&s.rows?.length>0;});
-    await command("polylog._itest.compareSelect",web.id);
+    await command("linyra.compareShow");
+    await command("linyra._itest.compareView",{left:"origin/release-1.4",right:"main"});
+    await waitFor("comparison repositories",async()=>{const s=await command("linyra._itest.compareStore");return !s.reading&&s.rows?.length>0;});
+    await command("linyra._itest.compareSelect",web.id);
     const compareView=await webviewDriver(browser,"Repositories");
     await compareView.key("#picker-search","Escape");
     await compareView.click("#compare-layout-horizontal");
     for(let i=0;i<37;i++) await compareView.key("#compare-side-splitter","ArrowRight");
     await compareView.evaluate("doc.activeElement?.blur();return true;");
-    await command("polylog._itest.compareReposSend",{type:"sideExpandAll",side:"left"});
-    await command("polylog._itest.compareReposSend",{type:"sideExpandAll",side:"right"});
+    await command("linyra._itest.compareReposSend",{type:"sideExpandAll",side:"left"});
+    await command("linyra._itest.compareReposSend",{type:"sideExpandAll",side:"right"});
     await sleep(600);await shot("screenshot-compare",panelRect);
-    await command("polylog._itest.compareMode","commits");await sleep(650);await shot("screenshot-compare-commits",panelRect);
+    await command("linyra._itest.compareMode","commits");await sleep(650);await shot("screenshot-compare-commits",panelRect);
     await compareView.close();
-    await command("polylog.compareHide");await command("polylog.open");
-    await command("polylog._itest.send",{type:"filter",filter:base});
+    await command("linyra.compareHide");await command("linyra.open");
+    await command("linyra._itest.send",{type:"filter",filter:base});
     await waitFor("restored log",async()=>{const s=await snapshot();return s.done&&s.rows.some(r=>r.sha===target.sha);});
     await select(target,"src/checkout/PaymentStep.tsx");
     for (const [name,value] of [["light","Default Light Modern"],["high-contrast","Default High Contrast"],["high-contrast-light","Default High Contrast Light"]]) {

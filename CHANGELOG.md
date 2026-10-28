@@ -9,6 +9,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.4.4] — 2026-10-28
+
+### Fixed
+
+- **Remove individual author and branch selections directly.** Selected filters now
+  have their own remove buttons, without reopening the multi-select dropdown.
+- **Fold and unfold file trees with one button.** Commit changes, uncommitted files
+  and both comparison sides show the next available action, with translated labels.
+- **Read comparison controls and repository markers more easily.** Branch selectors
+  stay compact, full names appear on hover, missing Chinese labels are translated,
+  and eight theme colors improve repository distinction.
+
+### Changed
+
+- **Linyra can coexist with the original Polylog extension.** Commands, views, menu
+  contexts, revision URIs and private state keys now use independent Linyra identifiers.
+  Earlier Linyra filter, layout and favorite state migrates inside its own storage.
+  Custom keybindings must use `linyra.*`; reopen old revision editors from Linyra and
+  adjust custom view docking if needed. Original Polylog settings and storage are untouched.
+- **Project links use the renamed Linyra repository.** Source, issue and publishing
+  documentation now consistently point to `Whwitpohe/linyra`.
+
 ## [1.4.3] — 2026-10-28
 
 ### Fixed

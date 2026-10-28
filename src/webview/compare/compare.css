@@ -46,7 +46,7 @@ button, input { font: inherit; }
 
 .cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 8px; }
 .cbar-pair, .cbar-show { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.cbar-pair { flex: 1 1 260px; }
+.cbar-pair { flex: 0 1 520px; max-width: 520px; }
 .cbar-show { flex-wrap: wrap; }
 .branch-box { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; }
 .branch-box .branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

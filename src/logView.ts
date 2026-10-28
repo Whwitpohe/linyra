@@ -29,16 +29,16 @@ import { SELECTION_LIMIT } from "./webview/selectionModel";
 import type { BranchController } from "./branchController";
 import { assignAccents, accentOf } from "./webview/view";
 
-const FILTER_KEY = "polylog.filter";
+const FILTER_KEY = "linyra.filter";
 /** globalState: true when the user turned Group by Repository off. */
-export const HIDE_REPOS_KEY = "polylog.hideRepos";
+export const HIDE_REPOS_KEY = "linyra.hideRepos";
 /** globalState: the Repositories pane width the user dragged to. */
-const PANE_WIDTH_KEY = "polylog.repoPaneWidth";
+const PANE_WIDTH_KEY = "linyra.repoPaneWidth";
 const DEFAULT_PANE_WIDTH = 190;
 /** For a git run that must finish once started (a merge rewriting the working tree). */
 const NEVER_ABORT = new AbortController().signal;
 /** Context key: Fetch All is running (the toolbar shows a spinning sync instead of the cloud). */
-const FETCHING_KEY = "polylog.fetching";
+const FETCHING_KEY = "linyra.fetching";
 /** Fetch All's answer; summary is the status-bar line shown when every fetch succeeded. */
 export interface FetchResult { fetched: number; failed: string[]; summary?: string }
 /** Pull All Behind's answer: the repositories pulled, and those left as they were (and why). */
@@ -106,7 +106,7 @@ export interface LogSnapshot {
 }
 
 /** Posts are measured only in integration runs: sizing a 1 MB page costs milliseconds. */
-const MEASURE_POSTS = process.env.POLYLOG_ITEST === "1";
+const MEASURE_POSTS = process.env.LINYRA_ITEST === "1";
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -116,7 +116,7 @@ const toUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRev
 /** The Log view in the Linyra panel. Registered with retainContextWhenHidden (extension.ts). */
 export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   branchSidebar: BranchController | undefined;
-  static readonly id = "polylog.log";
+  static readonly id = "linyra.log";
 
   private webviewView: vscode.WebviewView | undefined;
   private repos: Repo[] = [];
@@ -169,7 +169,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       // Production keeps a bounded trace. The full integration suite needs a stable
       // cursor into every test spawn; truncating its prefix makes later read-count
       // assertions incorrectly see an empty slice.
-      if (process.env.POLYLOG_ITEST !== "1" && this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
+      if (process.env.LINYRA_ITEST !== "1" && this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
       return deps.run(cwd, args, signal, opts);
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
@@ -298,10 +298,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
-        if (typeof m.changesPaneWidth === "number" && Number.isFinite(m.changesPaneWidth)) await this.context.globalState.update("polylog.changesPaneWidth", Math.max(180, Math.min(1600, Math.round(m.changesPaneWidth))));
-        if (typeof m.changesPaneHeight === "number" && Number.isFinite(m.changesPaneHeight)) await this.context.globalState.update("polylog.changesPaneHeight", Math.max(96, Math.min(1200, Math.round(m.changesPaneHeight))));
-        if (typeof m.showChanges === "boolean") await this.context.globalState.update("polylog.showChanges", m.showChanges);
-        if (m.changesLayout === "auto" || m.changesLayout === "sideBySide" || m.changesLayout === "stacked") await this.context.globalState.update("polylog.changesLayout", m.changesLayout);
+        if (typeof m.changesPaneWidth === "number" && Number.isFinite(m.changesPaneWidth)) await this.context.globalState.update("linyra.changesPaneWidth", Math.max(180, Math.min(1600, Math.round(m.changesPaneWidth))));
+        if (typeof m.changesPaneHeight === "number" && Number.isFinite(m.changesPaneHeight)) await this.context.globalState.update("linyra.changesPaneHeight", Math.max(96, Math.min(1200, Math.round(m.changesPaneHeight))));
+        if (typeof m.showChanges === "boolean") await this.context.globalState.update("linyra.showChanges", m.showChanges);
+        if (m.changesLayout === "auto" || m.changesLayout === "sideBySide" || m.changesLayout === "stacked") await this.context.globalState.update("linyra.changesLayout", m.changesLayout);
         if (typeof m.showChanges === "boolean") this.postInit();
         this.deps.changes.visibilityChanged();
         return;
@@ -324,10 +324,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return {
       repoPaneWidth: typeof width === "number" && Number.isFinite(width) ? width : DEFAULT_PANE_WIDTH,
       groupByRepo: !this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false),
-      changesPaneWidth: this.context.globalState.get<number>("polylog.changesPaneWidth", 360),
-      changesPaneHeight: this.context.globalState.get<number>("polylog.changesPaneHeight", 240),
-      showChanges: this.context.globalState.get<boolean>("polylog.showChanges", true),
-      changesLayout: this.context.globalState.get<ChangesLayout>("polylog.changesLayout", "auto"),
+      changesPaneWidth: this.context.globalState.get<number>("linyra.changesPaneWidth", 360),
+      changesPaneHeight: this.context.globalState.get<number>("linyra.changesPaneHeight", 240),
+      showChanges: this.context.globalState.get<boolean>("linyra.showChanges", true),
+      changesLayout: this.context.globalState.get<ChangesLayout>("linyra.changesLayout", "auto"),
     };
   }
 
@@ -343,7 +343,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   async showChanges(show: boolean, focus = false): Promise<void> {
-    await this.context.globalState.update("polylog.showChanges", show);
+    await this.context.globalState.update("linyra.showChanges", show);
     this.postInit();
     this.deps.changes.visibilityChanged();
     if (show && focus) {
@@ -362,7 +362,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /**
    * "Linyra: File History" from the Explorer, an editor, a diff or the Changes
-   * tree. Accepts a file: URI, a polylog: revision URI, a Changes file node, or
+   * tree. Accepts a file: URI, a linyra: revision URI, a Changes file node, or
    * nothing (the active editor).
    */
   async fileHistory(arg?: unknown): Promise<void> {
@@ -482,7 +482,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const on = this.filter.repoIds !== null;
     if (on === this.repoFiltered) return;
     this.repoFiltered = on;
-    void vscode.commands.executeCommand("setContext", "polylog.repoFiltered", on);
+    void vscode.commands.executeCommand("setContext", "linyra.repoFiltered", on);
   }
 
   /** Leave File History without reloading: restore the date range. */
@@ -711,7 +711,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (key(next) === key(this.sync)) return;
     this.sync = next;
     this.postSync();
-    void vscode.commands.executeCommand("setContext", "polylog.anyBehind", behindRepos([...next.keys()], Object.fromEntries(next)).length > 0);
+    void vscode.commands.executeCommand("setContext", "linyra.anyBehind", behindRepos([...next.keys()], Object.fromEntries(next)).length > 0);
   }
 
   private fetching: Promise<FetchResult> | undefined;
@@ -1006,7 +1006,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       return undefined;
     }
     // The integration suite checks the URL without launching a browser.
-    if (process.env.POLYLOG_ITEST !== "1") await vscode.env.openExternal(vscode.Uri.parse(url, true));
+    if (process.env.LINYRA_ITEST !== "1") await vscode.env.openExternal(vscode.Uri.parse(url, true));
     return url;
   }
 

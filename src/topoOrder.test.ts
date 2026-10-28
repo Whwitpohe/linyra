@@ -11,7 +11,7 @@ import { fetchPage, type QueryState } from "./logQuery";
 import { commitKey, type Commit, type Repo } from "./types";
 
 (async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-topo-order-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-topo-order-"));
   const previousEnv = { ...process.env };
   try {
     fs.writeFileSync(path.join(home, ".gitconfig"), "[user]\n name = dana\n email = dana@example.com\n");

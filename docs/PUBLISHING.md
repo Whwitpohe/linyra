@@ -13,7 +13,7 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | Publisher / Open VSX namespace | `whwitpohe` |
 | package name | `linyra` |
 | 完整扩展 ID | `whwitpohe.linyra` |
-| 当前包版本 | `1.4.3` |
+| 当前包版本 | `1.4.4` |
 | 源码 / Issues | `Whwitpohe/linyra` |
 
 Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
@@ -24,14 +24,15 @@ GitHub 登录与商店发布权限分别管理。Linyra 是新的扩展 ID，旧
 
 ## 切换安装
 
-1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.4.3.vsix`。
-2. 禁用或卸载旧的 `lntvan166.polylog-git`，只保留一个版本启用，然后重新加载窗口。
+1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.4.4.vsix`。
+2. 重新加载窗口。命令、视图、上下文和 URI 均使用 Linyra 标识，可与 `lntvan166.polylog-git` 共存。
 3. 设置使用 `linyra.*`，不读取、注册或迁移旧 `polylog.*` 配置，也不改写现有配置文件。
-   命令快捷键继续有效；筛选、布局等扩展私有状态按新 ID 单独保存，首次切换时可能需要重新调整。
+   自定义快捷键改用 `linyra.*` 命令；不再注册 `polylog.*` 命令别名。
 
-公开配置使用 Linyra 自己的命名空间。内部命令、视图、菜单上下文和 URI scheme 保留原标识。
-这些命令和视图是兼容接口，不随设置名称批量替换。
-因此两份扩展不适合同时启用。此策略不删除任何现有命令或配置项，也不修改原扩展的私有状态数据库。
+公开配置和内部标识均使用 Linyra 命名空间。激活时只在 `whwitpohe.linyra` 自己的
+workspaceState/globalState 内，将旧版 Linyra 的 `polylog.*` 键迁移为 `linyra.*`，保留筛选、
+布局及收藏，优先保留已存在的新键，写入成功后清理旧键。不打开或修改原扩展的私有状态数据库。
+视图 ID 已变更，自定义视图停靠位置可能需要重新调整；旧 `polylog:` 历史编辑器需从 Linyra 重新打开。
 
 ## 构建同一份商店包
 
@@ -44,8 +45,8 @@ npm run check:theme
 npm run check:design
 npm run check:denylist
 npm run test:integration
-npm run package -- --out whwitpohe.linyra-1.4.3.vsix
-Get-FileHash .\whwitpohe.linyra-1.4.3.vsix -Algorithm SHA256
+npm run package -- --out whwitpohe.linyra-1.4.4.vsix
+Get-FileHash .\whwitpohe.linyra-1.4.4.vsix -Algorithm SHA256
 ```
 
 还需验证最低支持版 VS Code 1.85.0，检查解压后的包内容与隐私扫描；本地词表通过忽略文件提供，CI 通过 Secret 提供。
@@ -59,7 +60,7 @@ Get-FileHash .\whwitpohe.linyra-1.4.3.vsix -Algorithm SHA256
 - `media/icon.svg` 是同配色的可编辑矢量参考；图形继承原 Polylog，保留上游版权及来源，不作为新的原创图形声称。
 - `media/icon.png` 是扩展商店使用的 256×256 PNG，随 VSIX 打包。
 - `media/publisher-icon.png` 是发布者表单使用的 128×128 PNG，不放进 VSIX。
-- `media/polylog.svg` 保留原三线合流的单色面板图形，通过 `currentColor` 跟随编辑器主题；文件名继续保持兼容。
+- `media/linyra.svg` 保留原三线合流的单色面板图形，通过 `currentColor` 跟随编辑器主题。
 - 更改品牌不改变编辑器的 Git 状态色、布局或任何功能入口。
 
 ## Visual Studio Marketplace

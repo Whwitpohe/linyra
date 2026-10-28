@@ -157,7 +157,17 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
   height: 26px;
 }
 .author-field .author-filter { flex: 1; min-width: 0; }
-.author-field:has(#me:not([hidden])) .author-filter { padding-right: 34px; }
+.author-field:has(#me:not([hidden])) .picker-field { padding-right: 32px; }
+.picker-field { flex: 1 1 125px; min-width: 90px; height: 26px; display: inline-flex; align-items: center; padding-left: 3px; border-radius: 2px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-input-background)); }
+.author-field > .picker-field { min-width: 0; }
+.picker-field.filtered { border-color: var(--vscode-inputOption-activeBorder, var(--vscode-focusBorder)); }
+.picker-field:focus-within { border-color: var(--vscode-focusBorder); }
+.picker-field .branch-filter { flex: 1 0 24px; min-width: 24px; height: 24px; border: 0; background: transparent; }
+.picker-chips { display: inline-flex; flex: 0 1 auto; min-width: 0; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+.picker-chip { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; height: 20px; max-width: 18ch; padding-left: 5px; border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.picker-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-chip-remove { flex: 0 0 18px; width: 18px; height: 18px; border: 0; padding: 0; background: transparent; color: inherit; line-height: 16px; }
+.picker-chip-remove:hover { background: var(--vscode-toolbar-hoverBackground); }
 .author-picker-identity { display: flex; flex-direction: column; gap: 2px; }
 .author-picker-name, .author-picker-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .author-picker-email { color: var(--vscode-descriptionForeground); font-size: 11px; }
@@ -361,7 +371,7 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
 .work-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 11px; line-height: 16px; text-align: center; }
 .work-totals { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The Uncommitted side: uncommitted work has no message, author, branch or date to filter on. */
-.app.work :is(#search, .author-field, #branch, #sort, #date, #custom-range, .hash-search-note) { display: none; }
+.app.work :is(#search, .author-field, .picker-field, #branch, #sort, #date, #custom-range, .hash-search-note) { display: none; }
 .app.work :is(#more, .footer .note, #count) { display: none; }
 .app.work #list { display: none; }
 .worklist { overflow-y: auto; height: 100%; outline: none; }

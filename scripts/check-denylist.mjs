@@ -8,11 +8,11 @@ import { join, relative } from "node:path";
 import { findHits, parsePatterns } from "./denylist.mjs";
 
 const source =
-  process.env.POLYLOG_DENYLIST || (existsSync(".denylist") ? readFileSync(".denylist", "utf8") : "");
+  process.env.LINYRA_DENYLIST || (existsSync(".denylist") ? readFileSync(".denylist", "utf8") : "");
 const patterns = parsePatterns(source);
 if (patterns.length === 0) {
   console.error(
-    "denylist: no entries. Set the POLYLOG_DENYLIST secret in CI, or create .denylist locally " +
+    "denylist: no entries. Set the LINYRA_DENYLIST secret in CI, or create .denylist locally " +
       "(one entry per line). Refusing to pass with an empty list.",
   );
   process.exit(1);

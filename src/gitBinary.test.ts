@@ -15,7 +15,7 @@ import { GitError, GitRunner } from "./git";
 }
 
 (async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-gitbin-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-gitbin-"));
   const missing = path.join(home, "no-such-git");
   {
     const runner = new GitRunner(() => [missing, "git"]);

@@ -2,7 +2,7 @@
   "name": "linyra",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "publisher": "whwitpohe",
   "icon": "media/icon.png",
   "galleryBanner": {
@@ -41,9 +41,9 @@
     "search commits"
   ],
   "activationEvents": [
-    "onCommand:polylog.fileHistory",
-    "onCommand:polylog.open",
-    "onView:polylog.log",
+    "onCommand:linyra.fileHistory",
+    "onCommand:linyra.open",
+    "onView:linyra.log",
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
@@ -54,498 +54,512 @@
     "viewsContainers": {
       "panel": [
         {
-          "id": "polylog",
+          "id": "linyra",
           "title": "Linyra",
-          "icon": "media/polylog.svg"
+          "icon": "media/linyra.svg"
         },
         {
-          "id": "polylog-compare",
-          "title": "%container.polylog-compare.title%",
+          "id": "linyra-compare",
+          "title": "%container.linyra-compare.title%",
           "icon": "media/compare.svg"
         }
       ],
       "activitybar": [
         {
-          "id": "polylog-side",
+          "id": "linyra-side",
           "title": "Linyra",
-          "icon": "media/polylog.svg"
+          "icon": "media/linyra.svg"
         }
       ]
     },
     "views": {
-      "polylog": [
+      "linyra": [
         {
           "type": "webview",
-          "id": "polylog.log",
-          "name": "%view.polylog.log.name%",
+          "id": "linyra.log",
+          "name": "%view.linyra.log.name%",
           "initialSize": 1100,
           "icon": "$(history)"
         }
       ],
-      "polylog-compare": [
+      "linyra-compare": [
         {
-          "id": "polylog.compare",
-          "name": "%view.polylog.compare.name%",
+          "id": "linyra.compare",
+          "name": "%view.linyra.compare.name%",
           "icon": "$(repo)",
-          "when": "polylog.compareShown",
+          "when": "linyra.compareShown",
           "type": "webview"
         }
       ],
-      "polylog-side": [
+      "linyra-side": [
         {
-          "id": "polylog.uncommitted",
-          "name": "%view.polylog.uncommitted.name%",
+          "id": "linyra.uncommitted",
+          "name": "%view.linyra.uncommitted.name%",
           "initialSize": 450,
           "icon": "$(diff-modified)",
-          "when": "polylog.uncommittedShown"
+          "when": "linyra.uncommittedShown"
         }
       ]
     },
     "commands": [
       {
-        "command": "polylog.open",
-        "title": "%command.polylog.open.title%",
+        "command": "linyra.open",
+        "title": "%command.linyra.open.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.openDiff",
-        "title": "%command.polylog.openDiff.title%",
+        "command": "linyra.openDiff",
+        "title": "%command.linyra.openDiff.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.openCombinedDiff",
-        "title": "%command.polylog.openCombinedDiff.title%",
+        "command": "linyra.openCombinedDiff",
+        "title": "%command.linyra.openCombinedDiff.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.clearSelection",
-        "title": "%command.polylog.clearSelection.title%",
+        "command": "linyra.clearSelection",
+        "title": "%command.linyra.clearSelection.title%",
         "category": "Linyra",
         "icon": "$(clear-all)"
       },
       {
-        "command": "polylog.copySha",
-        "title": "%command.polylog.copySha.title%",
+        "command": "linyra.copySha",
+        "title": "%command.linyra.copySha.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.copyMessage",
-        "title": "%command.polylog.copyMessage.title%",
+        "command": "linyra.copyMessage",
+        "title": "%command.linyra.copyMessage.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.showRepos",
-        "title": "%command.polylog.showRepos.title%",
+        "command": "linyra.showRepos",
+        "title": "%command.linyra.showRepos.title%",
         "category": "Linyra",
         "icon": "$(list-tree)"
       },
       {
-        "command": "polylog.hideRepos",
-        "title": "%command.polylog.hideRepos.title%",
+        "command": "linyra.hideRepos",
+        "title": "%command.linyra.hideRepos.title%",
         "category": "Linyra",
         "icon": "$(list-flat)"
       },
       {
-        "command": "polylog.fileHistory",
-        "title": "%command.polylog.fileHistory.title%",
+        "command": "linyra.fileHistory",
+        "title": "%command.linyra.fileHistory.title%",
         "icon": "$(history)"
       },
       {
-        "command": "polylog.openWorkingFile",
-        "title": "%command.polylog.openWorkingFile.title%",
+        "command": "linyra.openWorkingFile",
+        "title": "%command.linyra.openWorkingFile.title%",
         "category": "Linyra",
         "icon": "$(go-to-file)"
       },
       {
-        "command": "polylog.copyFilePath",
-        "title": "%command.polylog.copyFilePath.title%",
+        "command": "linyra.copyFilePath",
+        "title": "%command.linyra.copyFilePath.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.copyRelativePath",
-        "title": "%command.polylog.copyRelativePath.title%",
+        "command": "linyra.copyRelativePath",
+        "title": "%command.linyra.copyRelativePath.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoShowOnly",
-        "title": "%command.polylog.repoShowOnly.title%",
+        "command": "linyra.repoShowOnly",
+        "title": "%command.linyra.repoShowOnly.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoHide",
-        "title": "%command.polylog.repoHide.title%",
+        "command": "linyra.repoHide",
+        "title": "%command.linyra.repoHide.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoShowAll",
-        "title": "%command.polylog.repoShowAll.title%",
+        "command": "linyra.repoShowAll",
+        "title": "%command.linyra.repoShowAll.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoExclude",
-        "title": "%command.polylog.repoExclude.title%",
+        "command": "linyra.repoExclude",
+        "title": "%command.linyra.repoExclude.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoOpenFolder",
-        "title": "%command.polylog.repoOpenFolder.title%",
+        "command": "linyra.repoOpenFolder",
+        "title": "%command.linyra.repoOpenFolder.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoCopyPath",
-        "title": "%command.polylog.repoCopyPath.title%",
+        "command": "linyra.repoCopyPath",
+        "title": "%command.linyra.repoCopyPath.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.profileSwitch",
-        "title": "%command.polylog.profileSwitch.title%",
+        "command": "linyra.profileSwitch",
+        "title": "%command.linyra.profileSwitch.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.profileShow",
-        "title": "%command.polylog.profileShow.title%",
+        "command": "linyra.profileShow",
+        "title": "%command.linyra.profileShow.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.profileSave",
-        "title": "%command.polylog.profileSave.title%",
+        "command": "linyra.profileSave",
+        "title": "%command.linyra.profileSave.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.profileUpdate",
-        "title": "%command.polylog.profileUpdate.title%",
+        "command": "linyra.profileUpdate",
+        "title": "%command.linyra.profileUpdate.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.profileRename",
-        "title": "%command.polylog.profileRename.title%",
+        "command": "linyra.profileRename",
+        "title": "%command.linyra.profileRename.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.profileDelete",
-        "title": "%command.polylog.profileDelete.title%",
+        "command": "linyra.profileDelete",
+        "title": "%command.linyra.profileDelete.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoProfiles",
-        "title": "%command.polylog.repoProfiles.title%",
+        "command": "linyra.repoProfiles",
+        "title": "%command.linyra.repoProfiles.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.fetchAll",
-        "title": "%command.polylog.fetchAll.title%",
+        "command": "linyra.fetchAll",
+        "title": "%command.linyra.fetchAll.title%",
         "category": "Linyra",
         "icon": "$(cloud-download)"
       },
       {
-        "command": "polylog.fetching",
-        "title": "%command.polylog.fetching.title%",
+        "command": "linyra.fetching",
+        "title": "%command.linyra.fetching.title%",
         "category": "Linyra",
         "icon": "$(sync~spin)"
       },
       {
-        "command": "polylog.showBehind",
-        "title": "%command.polylog.showBehind.title%",
+        "command": "linyra.showBehind",
+        "title": "%command.linyra.showBehind.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.pullAllBehind",
-        "title": "%command.polylog.pullAllBehind.title%",
+        "command": "linyra.pullAllBehind",
+        "title": "%command.linyra.pullAllBehind.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.fetchAndPullAll",
-        "title": "%command.polylog.fetchAndPullAll.title%",
+        "command": "linyra.fetchAndPullAll",
+        "title": "%command.linyra.fetchAndPullAll.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.commitCopySha",
-        "title": "%command.polylog.commitCopySha.title%",
+        "command": "linyra.commitCopySha",
+        "title": "%command.linyra.commitCopySha.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.commitCopyMessage",
-        "title": "%command.polylog.commitCopyMessage.title%",
+        "command": "linyra.commitCopyMessage",
+        "title": "%command.linyra.commitCopyMessage.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.commitOpenOnRemote",
-        "title": "%command.polylog.commitOpenOnRemote.title%",
+        "command": "linyra.commitOpenOnRemote",
+        "title": "%command.linyra.commitOpenOnRemote.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.repoPull",
-        "title": "%command.polylog.repoPull.title%",
+        "command": "linyra.repoPull",
+        "title": "%command.linyra.repoPull.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.focusUncommitted",
-        "title": "%command.polylog.focusUncommitted.title%",
+        "command": "linyra.focusUncommitted",
+        "title": "%command.linyra.focusUncommitted.title%",
         "category": "Linyra",
         "icon": "$(diff-modified)"
       },
       {
-        "command": "polylog.refreshUncommitted",
-        "title": "%command.polylog.refreshUncommitted.title%",
+        "command": "linyra.refreshUncommitted",
+        "title": "%command.linyra.refreshUncommitted.title%",
         "category": "Linyra",
         "icon": "$(refresh)"
       },
       {
-        "command": "polylog.stage",
-        "title": "%command.polylog.stage.title%",
+        "command": "linyra.uncommittedCollapseAll",
+        "title": "%command.linyra.uncommittedCollapseAll.title%",
+        "category": "Linyra",
+        "icon": "$(collapse-all)",
+        "enablement": "linyra.uncommittedHasFolders"
+      },
+      {
+        "command": "linyra.uncommittedExpandAll",
+        "title": "%command.linyra.uncommittedExpandAll.title%",
+        "category": "Linyra",
+        "icon": "$(expand-all)",
+        "enablement": "linyra.uncommittedHasFolders"
+      },
+      {
+        "command": "linyra.stage",
+        "title": "%command.linyra.stage.title%",
         "category": "Linyra",
         "icon": "$(add)"
       },
       {
-        "command": "polylog.stageAll",
-        "title": "%command.polylog.stageAll.title%",
+        "command": "linyra.stageAll",
+        "title": "%command.linyra.stageAll.title%",
         "category": "Linyra",
         "icon": "$(add)"
       },
       {
-        "command": "polylog.unstage",
-        "title": "%command.polylog.unstage.title%",
+        "command": "linyra.unstage",
+        "title": "%command.linyra.unstage.title%",
         "category": "Linyra",
         "icon": "$(remove)"
       },
       {
-        "command": "polylog.unstageAll",
-        "title": "%command.polylog.unstageAll.title%",
+        "command": "linyra.unstageAll",
+        "title": "%command.linyra.unstageAll.title%",
         "category": "Linyra",
         "icon": "$(remove)"
       },
       {
-        "command": "polylog.discard",
-        "title": "%command.polylog.discard.title%",
+        "command": "linyra.discard",
+        "title": "%command.linyra.discard.title%",
         "category": "Linyra",
         "icon": "$(discard)"
       },
       {
-        "command": "polylog.discardAll",
-        "title": "%command.polylog.discardAll.title%",
+        "command": "linyra.discardAll",
+        "title": "%command.linyra.discardAll.title%",
         "category": "Linyra",
         "icon": "$(discard)"
       },
       {
-        "command": "polylog.commitRepo",
-        "title": "%command.polylog.commitRepo.title%",
+        "command": "linyra.commitRepo",
+        "title": "%command.linyra.commitRepo.title%",
         "category": "Linyra",
         "icon": "$(check)"
       },
       {
-        "command": "polylog.openUncommittedDiff",
-        "title": "%command.polylog.openUncommittedDiff.title%",
+        "command": "linyra.openUncommittedDiff",
+        "title": "%command.linyra.openUncommittedDiff.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.changesShowAll",
-        "title": "%command.polylog.changesShowAll.title%",
+        "command": "linyra.changesShowAll",
+        "title": "%command.linyra.changesShowAll.title%",
         "category": "Linyra",
         "icon": "$(list-tree)"
       },
       {
-        "command": "polylog.changesShowChanged",
-        "title": "%command.polylog.changesShowChanged.title%",
+        "command": "linyra.changesShowChanged",
+        "title": "%command.linyra.changesShowChanged.title%",
         "category": "Linyra",
         "icon": "$(diff)"
       },
       {
-        "command": "polylog.openRevision",
-        "title": "%command.polylog.openRevision.title%",
+        "command": "linyra.openRevision",
+        "title": "%command.linyra.openRevision.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.compareBranches",
-        "title": "%command.polylog.compareBranches.title%",
+        "command": "linyra.compareBranches",
+        "title": "%command.linyra.compareBranches.title%",
         "category": "Linyra",
         "icon": "$(git-compare)"
       },
       {
-        "command": "polylog.compareWith",
-        "title": "%command.polylog.compareWith.title%",
+        "command": "linyra.compareWith",
+        "title": "%command.linyra.compareWith.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.comparePick",
-        "title": "%command.polylog.comparePick.title%",
+        "command": "linyra.comparePick",
+        "title": "%command.linyra.comparePick.title%",
         "category": "Linyra",
         "icon": "$(git-branch)"
       },
       {
-        "command": "polylog.compareSwap",
-        "title": "%command.polylog.compareSwap.title%",
+        "command": "linyra.compareSwap",
+        "title": "%command.linyra.compareSwap.title%",
         "category": "Linyra",
         "icon": "$(arrow-swap)"
       },
       {
-        "command": "polylog.compareShowCommits",
-        "title": "%command.polylog.compareShowCommits.title%",
+        "command": "linyra.compareShowCommits",
+        "title": "%command.linyra.compareShowCommits.title%",
         "category": "Linyra",
         "icon": "$(git-commit)"
       },
       {
-        "command": "polylog.compareShowFiles",
-        "title": "%command.polylog.compareShowFiles.title%",
+        "command": "linyra.compareShowFiles",
+        "title": "%command.linyra.compareShowFiles.title%",
         "category": "Linyra",
         "icon": "$(files)"
       },
       {
-        "command": "polylog.compareHideSame",
-        "title": "%command.polylog.compareHideSame.title%",
+        "command": "linyra.compareHideSame",
+        "title": "%command.linyra.compareHideSame.title%",
         "category": "Linyra",
         "icon": "$(filter)"
       },
       {
-        "command": "polylog.compareShowSame",
-        "title": "%command.polylog.compareShowSame.title%",
+        "command": "linyra.compareShowSame",
+        "title": "%command.linyra.compareShowSame.title%",
         "category": "Linyra",
         "icon": "$(filter-filled)"
       },
       {
-        "command": "polylog.compareRefresh",
-        "title": "%command.polylog.compareRefresh.title%",
+        "command": "linyra.compareRefresh",
+        "title": "%command.linyra.compareRefresh.title%",
         "category": "Linyra",
         "icon": "$(refresh)"
       },
       {
-        "command": "polylog.compareOpenFile",
-        "title": "%command.polylog.compareOpenFile.title%",
+        "command": "linyra.compareOpenFile",
+        "title": "%command.linyra.compareOpenFile.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.compareMore",
-        "title": "%command.polylog.compareMore.title%",
+        "command": "linyra.compareMore",
+        "title": "%command.linyra.compareMore.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.compareClose",
-        "title": "%command.polylog.compareClose.title%",
+        "command": "linyra.compareClose",
+        "title": "%command.linyra.compareClose.title%",
         "category": "Linyra",
         "icon": "$(close)"
       },
       {
-        "command": "polylog.uncommittedClose",
-        "title": "%command.polylog.uncommittedClose.title%",
+        "command": "linyra.uncommittedClose",
+        "title": "%command.linyra.uncommittedClose.title%",
         "category": "Linyra",
         "icon": "$(close)"
       },
       {
-        "command": "polylog.uncommittedShow",
-        "title": "%command.polylog.uncommittedShow.title%",
+        "command": "linyra.uncommittedShow",
+        "title": "%command.linyra.uncommittedShow.title%",
         "category": "Linyra",
         "icon": "$(diff-modified)"
       },
       {
-        "command": "polylog.uncommittedHide",
-        "title": "%command.polylog.uncommittedHide.title%",
+        "command": "linyra.uncommittedHide",
+        "title": "%command.linyra.uncommittedHide.title%",
         "category": "Linyra",
         "icon": "$(diff-modified)"
       },
       {
-        "command": "polylog.compareShow",
-        "title": "%command.polylog.compareShow.title%",
+        "command": "linyra.compareShow",
+        "title": "%command.linyra.compareShow.title%",
         "category": "Linyra",
         "icon": "$(git-compare)"
       },
       {
-        "command": "polylog.compareHide",
-        "title": "%command.polylog.compareHide.title%",
+        "command": "linyra.compareHide",
+        "title": "%command.linyra.compareHide.title%",
         "category": "Linyra",
         "icon": "$(git-compare)"
       },
       {
-        "command": "polylog.compareOpenSinceSplit",
-        "title": "%command.polylog.compareOpenSinceSplit.title%",
+        "command": "linyra.compareOpenSinceSplit",
+        "title": "%command.linyra.compareOpenSinceSplit.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.view",
-        "title": "%command.polylog.branch.view.title%",
+        "command": "linyra.branch.view",
+        "title": "%command.linyra.branch.view.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.compare",
-        "title": "%command.polylog.branch.compare.title%",
+        "command": "linyra.branch.compare",
+        "title": "%command.linyra.branch.compare.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.worktreeDiff",
-        "title": "%command.polylog.branch.worktreeDiff.title%",
+        "command": "linyra.branch.worktreeDiff",
+        "title": "%command.linyra.branch.worktreeDiff.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.checkout",
-        "title": "%command.polylog.branch.checkout.title%",
+        "command": "linyra.branch.checkout",
+        "title": "%command.linyra.branch.checkout.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.create",
-        "title": "%command.polylog.branch.create.title%",
+        "command": "linyra.branch.create",
+        "title": "%command.linyra.branch.create.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.rename",
-        "title": "%command.polylog.branch.rename.title%",
+        "command": "linyra.branch.rename",
+        "title": "%command.linyra.branch.rename.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.fetch",
-        "title": "%command.polylog.branch.fetch.title%",
+        "command": "linyra.branch.fetch",
+        "title": "%command.linyra.branch.fetch.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.pull",
-        "title": "%command.polylog.branch.pull.title%",
+        "command": "linyra.branch.pull",
+        "title": "%command.linyra.branch.pull.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.push",
-        "title": "%command.polylog.branch.push.title%",
+        "command": "linyra.branch.push",
+        "title": "%command.linyra.branch.push.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.merge",
-        "title": "%command.polylog.branch.merge.title%",
+        "command": "linyra.branch.merge",
+        "title": "%command.linyra.branch.merge.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.rebase",
-        "title": "%command.polylog.branch.rebase.title%",
+        "command": "linyra.branch.rebase",
+        "title": "%command.linyra.branch.rebase.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.pullMerge",
-        "title": "%command.polylog.branch.pullMerge.title%",
+        "command": "linyra.branch.pullMerge",
+        "title": "%command.linyra.branch.pullMerge.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.pullRebase",
-        "title": "%command.polylog.branch.pullRebase.title%",
+        "command": "linyra.branch.pullRebase",
+        "title": "%command.linyra.branch.pullRebase.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.worktree",
-        "title": "%command.polylog.branch.worktree.title%",
+        "command": "linyra.branch.worktree",
+        "title": "%command.linyra.branch.worktree.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.favorite",
-        "title": "%command.polylog.branch.favorite.title%",
+        "command": "linyra.branch.favorite",
+        "title": "%command.linyra.branch.favorite.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.copy",
-        "title": "%command.polylog.branch.copy.title%",
+        "command": "linyra.branch.copy",
+        "title": "%command.linyra.branch.copy.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.branch.delete",
-        "title": "%command.polylog.branch.delete.title%",
+        "command": "linyra.branch.delete",
+        "title": "%command.linyra.branch.delete.title%",
         "category": "Linyra"
       },
       {
-        "command": "polylog.openChangesEditor",
-        "title": "%command.polylog.openChangesEditor.title%",
+        "command": "linyra.openChangesEditor",
+        "title": "%command.linyra.openChangesEditor.title%",
         "category": "Linyra",
         "icon": "$(open-preview)"
       }
@@ -553,982 +567,992 @@
     "menus": {
       "view/item/context": [
         {
-          "command": "polylog.openWorkingFile",
-          "when": "view == polylog.changes && viewItem =~ /^file(\\.|$)/",
+          "command": "linyra.openWorkingFile",
+          "when": "view == linyra.changes && viewItem =~ /^file(\\.|$)/",
           "group": "1_open@1"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "view == polylog.changes && viewItem =~ /^file/",
+          "command": "linyra.fileHistory",
+          "when": "view == linyra.changes && viewItem =~ /^file/",
           "group": "2_history@1"
         },
         {
-          "command": "polylog.discard",
-          "when": "view == polylog.changes && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "command": "linyra.discard",
+          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable/",
           "group": "3_modification@3"
         },
         {
-          "command": "polylog.stage",
-          "when": "view == polylog.changes && viewItem =~ /^file(Deleted)?\\.discardable.*\\.changed$/",
+          "command": "linyra.stage",
+          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable.*\\.changed$/",
           "group": "3_modification@1"
         },
         {
-          "command": "polylog.unstage",
-          "when": "view == polylog.changes && viewItem =~ /^file(Deleted)?\\.discardable\\.staged/",
+          "command": "linyra.unstage",
+          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable\\.staged/",
           "group": "3_modification@2"
         },
         {
-          "command": "polylog.commitRepo",
-          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable/",
+          "command": "linyra.commitRepo",
+          "when": "view == linyra.changes && viewItem =~ /^uncommitted\\.discardable/",
           "group": "1_modification@1"
         },
         {
-          "command": "polylog.discardAll",
-          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable/",
+          "command": "linyra.discardAll",
+          "when": "view == linyra.changes && viewItem =~ /^uncommitted\\.discardable/",
           "group": "1_modification@5"
         },
         {
-          "command": "polylog.commitRepo",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
+          "command": "linyra.commitRepo",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable/",
           "group": "inline@1"
         },
         {
-          "command": "polylog.discard",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
+          "command": "linyra.discard",
+          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
           "group": "inline@1"
         },
         {
-          "command": "polylog.stage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
+          "command": "linyra.stage",
+          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
           "group": "inline@2"
         },
         {
-          "command": "polylog.unstage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
+          "command": "linyra.unstage",
+          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
           "group": "inline@2"
         },
         {
-          "command": "polylog.commitRepo",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
+          "command": "linyra.commitRepo",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable/",
           "group": "1_modification@1"
         },
         {
-          "command": "polylog.stage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
+          "command": "linyra.stage",
+          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
           "group": "1_modification@2"
         },
         {
-          "command": "polylog.unstage",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
+          "command": "linyra.unstage",
+          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
           "group": "1_modification@2"
         },
         {
-          "command": "polylog.discard",
-          "when": "view == polylog.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
+          "command": "linyra.discard",
+          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
           "group": "1_modification@3"
         },
         {
-          "command": "polylog.discardAll",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
+          "command": "linyra.discardAll",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable/",
           "group": "1_modification@2"
         },
         {
-          "command": "polylog.repoPull",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./ && viewItem =~ /\\.behind$/",
+          "command": "linyra.repoPull",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./ && viewItem =~ /\\.behind$/",
           "group": "0_sync@1"
         },
         {
-          "command": "polylog.repoShowOnly",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "command": "linyra.repoShowOnly",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
           "group": "5_filter@1"
         },
         {
-          "command": "polylog.repoHide",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "command": "linyra.repoHide",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
           "group": "5_filter@2"
         },
         {
-          "command": "polylog.repoOpenFolder",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "command": "linyra.repoOpenFolder",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
           "group": "6_open@1"
         },
         {
-          "command": "polylog.repoCopyPath",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "command": "linyra.repoCopyPath",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
           "group": "7_copy@1"
         },
         {
-          "command": "polylog.openWorkingFile",
-          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
+          "command": "linyra.openWorkingFile",
+          "when": "view == linyra.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
           "group": "2_open@1"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.deleted)?(\\.readonly)?$/",
+          "command": "linyra.fileHistory",
+          "when": "view == linyra.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.deleted)?(\\.readonly)?$/",
           "group": "3_history@1"
         },
         {
-          "command": "polylog.compareOpenSinceSplit",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compareFile/",
+          "command": "linyra.compareOpenSinceSplit",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compareFile/",
           "group": "1_open@1"
         },
         {
-          "command": "polylog.commitCopySha",
-          "when": "view == polylog.changes && viewItem == commit || (view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareCommit",
+          "command": "linyra.commitCopySha",
+          "when": "view == linyra.changes && viewItem == commit || (view == linyra.compareLeft || view == linyra.compareRight) && viewItem == compareCommit",
           "group": "0_commit@1"
         },
         {
-          "command": "polylog.commitCopyMessage",
-          "when": "view == polylog.changes && viewItem == commit || (view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareCommit",
+          "command": "linyra.commitCopyMessage",
+          "when": "view == linyra.changes && viewItem == commit || (view == linyra.compareLeft || view == linyra.compareRight) && viewItem == compareCommit",
           "group": "0_commit@2"
         },
         {
-          "command": "polylog.commitOpenOnRemote",
-          "when": "view == polylog.changes && viewItem == commit || (view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareCommit",
+          "command": "linyra.commitOpenOnRemote",
+          "when": "view == linyra.changes && viewItem == commit || (view == linyra.compareLeft || view == linyra.compareRight) && viewItem == compareCommit",
           "group": "0_commit@3"
         },
         {
-          "command": "polylog.openWorkingFile",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File$/",
+          "command": "linyra.openWorkingFile",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File$/",
           "group": "1_open@2"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File/",
+          "command": "linyra.fileHistory",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File/",
           "group": "2_history@1"
         },
         {
-          "command": "polylog.copyFilePath",
-          "when": "(view == polylog.changes && viewItem =~ /^(file|folder)/) || (view == polylog.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File/)",
+          "command": "linyra.copyFilePath",
+          "when": "(view == linyra.changes && viewItem =~ /^(file|folder)/) || (view == linyra.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File/)",
           "group": "8_copy@1"
         },
         {
-          "command": "polylog.copyRelativePath",
-          "when": "(view == polylog.changes && viewItem =~ /^(file|folder)/) || (view == polylog.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == polylog.compareLeft || view == polylog.compareRight) && viewItem =~ /^compare(Commit)?File/)",
+          "command": "linyra.copyRelativePath",
+          "when": "(view == linyra.changes && viewItem =~ /^(file|folder)/) || (view == linyra.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File/)",
           "group": "8_copy@2"
         },
         {
-          "command": "polylog.stageAll",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasChanges/",
+          "command": "linyra.stageAll",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasChanges/",
           "group": "1_modification@3"
         },
         {
-          "command": "polylog.unstageAll",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasStaged/",
+          "command": "linyra.unstageAll",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasStaged/",
           "group": "1_modification@4"
         },
         {
-          "command": "polylog.repoShowAll",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./ && polylog.repoFiltered",
+          "command": "linyra.repoShowAll",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./ && linyra.repoFiltered",
           "group": "5_filter@3"
         },
         {
-          "command": "polylog.repoExclude",
-          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "command": "linyra.repoExclude",
+          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
           "group": "8_exclude@1"
         },
         {
-          "command": "polylog.stageAll",
-          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
+          "command": "linyra.stageAll",
+          "when": "view == linyra.changes && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
           "group": "1_modification@3"
         },
         {
-          "command": "polylog.unstageAll",
-          "when": "view == polylog.changes && viewItem =~ /^uncommitted\\.discardable\\.staged/",
+          "command": "linyra.unstageAll",
+          "when": "view == linyra.changes && viewItem =~ /^uncommitted\\.discardable\\.staged/",
           "group": "1_modification@4"
         },
         {
-          "command": "polylog.stage",
-          "when": "view == polylog.changes && viewItem =~ /^folder\\.discardable.*\\.changed/",
+          "command": "linyra.stage",
+          "when": "view == linyra.changes && viewItem =~ /^folder\\.discardable.*\\.changed/",
           "group": "3_modification@1"
         },
         {
-          "command": "polylog.unstage",
-          "when": "view == polylog.changes && viewItem =~ /^folder\\.discardable\\.staged/",
+          "command": "linyra.unstage",
+          "when": "view == linyra.changes && viewItem =~ /^folder\\.discardable\\.staged/",
           "group": "3_modification@2"
         },
         {
-          "command": "polylog.discard",
-          "when": "view == polylog.changes && viewItem =~ /^folder\\.discardable/",
+          "command": "linyra.discard",
+          "when": "view == linyra.changes && viewItem =~ /^folder\\.discardable/",
           "group": "3_modification@3"
         },
         {
-          "command": "polylog.openWorkingFile",
-          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
+          "command": "linyra.openWorkingFile",
+          "when": "view == linyra.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
           "group": "inline@0"
         }
       ],
       "commandPalette": [
         {
-          "command": "polylog.openDiff",
+          "command": "linyra.openDiff",
           "when": "false"
         },
         {
-          "command": "polylog.openCombinedDiff",
+          "command": "linyra.openCombinedDiff",
           "when": "false"
         },
         {
-          "command": "polylog.clearSelection",
+          "command": "linyra.clearSelection",
           "when": "false"
         },
         {
-          "command": "polylog.copySha",
+          "command": "linyra.copySha",
           "when": "false"
         },
         {
-          "command": "polylog.copyMessage",
+          "command": "linyra.copyMessage",
           "when": "false"
         },
         {
-          "command": "polylog.fetching",
+          "command": "linyra.fetching",
           "when": "false"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "resourceScheme == file || resourceScheme == polylog"
+          "command": "linyra.fileHistory",
+          "when": "resourceScheme == file || resourceScheme == linyra"
         },
         {
-          "command": "polylog.openWorkingFile",
-          "when": "resourceScheme == polylog"
+          "command": "linyra.openWorkingFile",
+          "when": "resourceScheme == linyra"
         },
         {
-          "command": "polylog.repoShowOnly",
+          "command": "linyra.repoShowOnly",
           "when": "false"
         },
         {
-          "command": "polylog.repoHide",
+          "command": "linyra.repoHide",
           "when": "false"
         },
         {
-          "command": "polylog.repoShowAll",
+          "command": "linyra.repoShowAll",
           "when": "false"
         },
         {
-          "command": "polylog.repoExclude",
+          "command": "linyra.repoExclude",
           "when": "false"
         },
         {
-          "command": "polylog.repoOpenFolder",
+          "command": "linyra.repoOpenFolder",
           "when": "false"
         },
         {
-          "command": "polylog.repoCopyPath",
+          "command": "linyra.repoCopyPath",
           "when": "false"
         },
         {
-          "command": "polylog.commitCopySha",
+          "command": "linyra.commitCopySha",
           "when": "false"
         },
         {
-          "command": "polylog.commitCopyMessage",
+          "command": "linyra.commitCopyMessage",
           "when": "false"
         },
         {
-          "command": "polylog.commitOpenOnRemote",
+          "command": "linyra.commitOpenOnRemote",
           "when": "false"
         },
         {
-          "command": "polylog.repoPull",
+          "command": "linyra.repoPull",
           "when": "false"
         },
         {
-          "command": "polylog.stage",
+          "command": "linyra.stage",
           "when": "false"
         },
         {
-          "command": "polylog.unstage",
+          "command": "linyra.unstage",
           "when": "false"
         },
         {
-          "command": "polylog.discard",
+          "command": "linyra.discard",
           "when": "false"
         },
         {
-          "command": "polylog.discardAll",
+          "command": "linyra.discardAll",
           "when": "false"
         },
         {
-          "command": "polylog.commitRepo",
+          "command": "linyra.commitRepo",
           "when": "false"
         },
         {
-          "command": "polylog.openUncommittedDiff",
+          "command": "linyra.openUncommittedDiff",
           "when": "false"
         },
         {
-          "command": "polylog.openRevision",
+          "command": "linyra.openRevision",
           "when": "false"
         },
         {
-          "command": "polylog.compareWith",
+          "command": "linyra.compareWith",
           "when": "false"
         },
         {
-          "command": "polylog.compareSwap",
+          "command": "linyra.compareSwap",
           "when": "false"
         },
         {
-          "command": "polylog.compareShowCommits",
+          "command": "linyra.compareShowCommits",
           "when": "false"
         },
         {
-          "command": "polylog.compareShowFiles",
+          "command": "linyra.compareShowFiles",
           "when": "false"
         },
         {
-          "command": "polylog.compareRefresh",
+          "command": "linyra.compareRefresh",
           "when": "false"
         },
         {
-          "command": "polylog.compareOpenFile",
+          "command": "linyra.compareOpenFile",
           "when": "false"
         },
         {
-          "command": "polylog.compareMore",
+          "command": "linyra.compareMore",
           "when": "false"
         },
         {
-          "command": "polylog.uncommittedShow",
+          "command": "linyra.uncommittedShow",
           "when": "false"
         },
         {
-          "command": "polylog.uncommittedHide",
+          "command": "linyra.uncommittedHide",
           "when": "false"
         },
         {
-          "command": "polylog.compareShow",
+          "command": "linyra.compareShow",
           "when": "false"
         },
         {
-          "command": "polylog.compareHide",
+          "command": "linyra.compareHide",
           "when": "false"
         },
         {
-          "command": "polylog.uncommittedClose",
-          "when": "polylog.uncommittedShown"
+          "command": "linyra.uncommittedClose",
+          "when": "linyra.uncommittedShown"
         },
         {
-          "command": "polylog.compareOpenSinceSplit",
+          "command": "linyra.compareOpenSinceSplit",
           "when": "false"
         },
         {
-          "command": "polylog.comparePick",
-          "when": "polylog.compareShown"
+          "command": "linyra.comparePick",
+          "when": "linyra.compareShown"
         },
         {
-          "command": "polylog.compareHideSame",
-          "when": "polylog.compareShown && polylog.compareMode != commits && !polylog.compareHideSame"
+          "command": "linyra.compareHideSame",
+          "when": "linyra.compareShown && linyra.compareMode != commits && !linyra.compareHideSame"
         },
         {
-          "command": "polylog.compareShowSame",
-          "when": "polylog.compareShown && polylog.compareMode != commits && polylog.compareHideSame"
+          "command": "linyra.compareShowSame",
+          "when": "linyra.compareShown && linyra.compareMode != commits && linyra.compareHideSame"
         },
         {
-          "command": "polylog.compareClose",
-          "when": "polylog.compareShown"
+          "command": "linyra.compareClose",
+          "when": "linyra.compareShown"
         },
         {
-          "command": "polylog.refreshUncommitted",
-          "when": "polylog.uncommittedShown"
+          "command": "linyra.refreshUncommitted",
+          "when": "linyra.uncommittedShown"
         },
         {
-          "command": "polylog.showRepos",
-          "when": "polylog.hideRepos"
+          "command": "linyra.showRepos",
+          "when": "linyra.hideRepos"
         },
         {
-          "command": "polylog.hideRepos",
-          "when": "!polylog.hideRepos"
+          "command": "linyra.hideRepos",
+          "when": "!linyra.hideRepos"
         },
         {
-          "command": "polylog.showBehind",
-          "when": "polylog.anyBehind"
+          "command": "linyra.showBehind",
+          "when": "linyra.anyBehind"
         },
         {
-          "command": "polylog.pullAllBehind",
-          "when": "polylog.anyBehind && !polylog.fetching"
+          "command": "linyra.pullAllBehind",
+          "when": "linyra.anyBehind && !linyra.fetching"
         },
         {
-          "command": "polylog.changesShowAll",
-          "when": "!polylog.changesAllFiles && !polylog.combined"
+          "command": "linyra.changesShowAll",
+          "when": "!linyra.changesAllFiles && !linyra.combined"
         },
         {
-          "command": "polylog.changesShowChanged",
-          "when": "polylog.changesAllFiles && !polylog.combined"
+          "command": "linyra.changesShowChanged",
+          "when": "linyra.changesAllFiles && !linyra.combined"
         },
         {
-          "command": "polylog.stageAll",
+          "command": "linyra.stageAll",
           "when": "false"
         },
         {
-          "command": "polylog.unstageAll",
+          "command": "linyra.unstageAll",
           "when": "false"
         },
         {
-          "command": "polylog.copyFilePath",
+          "command": "linyra.copyFilePath",
           "when": "false"
         },
         {
-          "command": "polylog.copyRelativePath",
+          "command": "linyra.copyRelativePath",
           "when": "false"
         },
         {
-          "command": "polylog.profileShow",
+          "command": "linyra.profileShow",
           "when": "false"
         },
         {
-          "command": "polylog.profileUpdate",
+          "command": "linyra.profileUpdate",
           "when": "false"
         },
         {
-          "command": "polylog.profileRename",
+          "command": "linyra.profileRename",
           "when": "false"
         },
         {
-          "command": "polylog.profileDelete",
+          "command": "linyra.profileDelete",
           "when": "false"
         },
         {
-          "command": "polylog.repoProfiles",
+          "command": "linyra.repoProfiles",
           "when": "false"
         },
         {
-          "command": "polylog.branch.view",
+          "command": "linyra.branch.view",
           "when": "false"
         },
         {
-          "command": "polylog.branch.compare",
+          "command": "linyra.branch.compare",
           "when": "false"
         },
         {
-          "command": "polylog.branch.worktreeDiff",
+          "command": "linyra.branch.worktreeDiff",
           "when": "false"
         },
         {
-          "command": "polylog.branch.checkout",
+          "command": "linyra.branch.checkout",
           "when": "false"
         },
         {
-          "command": "polylog.branch.create",
+          "command": "linyra.branch.create",
           "when": "false"
         },
         {
-          "command": "polylog.branch.rename",
+          "command": "linyra.branch.rename",
           "when": "false"
         },
         {
-          "command": "polylog.branch.fetch",
+          "command": "linyra.branch.fetch",
           "when": "false"
         },
         {
-          "command": "polylog.branch.pull",
+          "command": "linyra.branch.pull",
           "when": "false"
         },
         {
-          "command": "polylog.branch.push",
+          "command": "linyra.branch.push",
           "when": "false"
         },
         {
-          "command": "polylog.branch.merge",
+          "command": "linyra.branch.merge",
           "when": "false"
         },
         {
-          "command": "polylog.branch.rebase",
+          "command": "linyra.branch.rebase",
           "when": "false"
         },
         {
-          "command": "polylog.branch.pullMerge",
+          "command": "linyra.branch.pullMerge",
           "when": "false"
         },
         {
-          "command": "polylog.branch.pullRebase",
+          "command": "linyra.branch.pullRebase",
           "when": "false"
         },
         {
-          "command": "polylog.branch.worktree",
+          "command": "linyra.branch.worktree",
           "when": "false"
         },
         {
-          "command": "polylog.branch.favorite",
+          "command": "linyra.branch.favorite",
           "when": "false"
         },
         {
-          "command": "polylog.branch.copy",
+          "command": "linyra.branch.copy",
           "when": "false"
         },
         {
-          "command": "polylog.branch.delete",
+          "command": "linyra.branch.delete",
           "when": "false"
         }
       ],
       "view/title": [
         {
-          "command": "polylog.showBehind",
-          "when": "view == polylog.log && polylog.anyBehind",
+          "command": "linyra.showBehind",
+          "when": "view == linyra.log && linyra.anyBehind",
           "group": "1_filter@1"
         },
         {
-          "command": "polylog.fetchAndPullAll",
-          "when": "view == polylog.log && !polylog.fetching",
+          "command": "linyra.fetchAndPullAll",
+          "when": "view == linyra.log && !linyra.fetching",
           "group": "0_sync@1"
         },
         {
-          "command": "polylog.pullAllBehind",
-          "when": "view == polylog.log && polylog.anyBehind && !polylog.fetching",
+          "command": "linyra.pullAllBehind",
+          "when": "view == linyra.log && linyra.anyBehind && !linyra.fetching",
           "group": "0_sync@2"
         },
         {
-          "command": "polylog.refreshUncommitted",
-          "when": "view == polylog.uncommitted",
+          "command": "linyra.refreshUncommitted",
+          "when": "view == linyra.uncommitted",
           "group": "navigation@1"
         },
         {
-          "command": "polylog.clearSelection",
-          "when": "view == polylog.changes && polylog.combined",
+          "command": "linyra.uncommittedCollapseAll",
+          "when": "view == linyra.uncommitted && linyra.uncommittedCanCollapse",
+          "group": "navigation@2"
+        },
+        {
+          "command": "linyra.uncommittedExpandAll",
+          "when": "view == linyra.uncommitted && !linyra.uncommittedCanCollapse",
+          "group": "navigation@2"
+        },
+        {
+          "command": "linyra.clearSelection",
+          "when": "view == linyra.changes && linyra.combined",
           "group": "navigation@0"
         },
         {
-          "command": "polylog.changesShowAll",
-          "when": "view == polylog.changes && !polylog.changesAllFiles && !polylog.combined",
+          "command": "linyra.changesShowAll",
+          "when": "view == linyra.changes && !linyra.changesAllFiles && !linyra.combined",
           "group": "navigation@1"
         },
         {
-          "command": "polylog.changesShowChanged",
-          "when": "view == polylog.changes && polylog.changesAllFiles && !polylog.combined",
+          "command": "linyra.changesShowChanged",
+          "when": "view == linyra.changes && linyra.changesAllFiles && !linyra.combined",
           "group": "navigation@1"
         },
         {
-          "command": "polylog.compareShowCommits",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode != commits",
+          "command": "linyra.compareShowCommits",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && linyra.compareMode != commits",
           "group": "navigation@1"
         },
         {
-          "command": "polylog.compareShowFiles",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode == commits",
+          "command": "linyra.compareShowFiles",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && linyra.compareMode == commits",
           "group": "navigation@1"
         },
         {
-          "command": "polylog.compareHideSame",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode != commits && !polylog.compareHideSame",
+          "command": "linyra.compareHideSame",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && linyra.compareMode != commits && !linyra.compareHideSame",
           "group": "navigation@0"
         },
         {
-          "command": "polylog.compareShowSame",
-          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode != commits && polylog.compareHideSame",
+          "command": "linyra.compareShowSame",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && linyra.compareMode != commits && linyra.compareHideSame",
           "group": "navigation@0"
         },
         {
-          "command": "polylog.compareClose",
-          "when": "view == polylog.compare",
+          "command": "linyra.compareClose",
+          "when": "view == linyra.compare",
           "group": "navigation@9"
         },
         {
-          "command": "polylog.uncommittedClose",
-          "when": "view == polylog.uncommitted",
+          "command": "linyra.uncommittedClose",
+          "when": "view == linyra.uncommitted",
           "group": "navigation@9"
         },
         {
-          "command": "polylog.profileSwitch",
-          "when": "view == polylog.log",
+          "command": "linyra.profileSwitch",
+          "when": "view == linyra.log",
           "group": "2_profile@1"
         },
         {
-          "command": "polylog.profileSave",
-          "when": "view == polylog.log",
+          "command": "linyra.profileSave",
+          "when": "view == linyra.log",
           "group": "2_profile@2"
         }
       ],
       "explorer/context": [
         {
-          "command": "polylog.fileHistory",
+          "command": "linyra.fileHistory",
           "when": "!explorerResourceIsFolder",
-          "group": "polylog@1"
+          "group": "linyra@1"
         }
       ],
       "editor/title/context": [
         {
-          "command": "polylog.fileHistory",
+          "command": "linyra.fileHistory",
           "when": "resourceScheme == file",
-          "group": "polylog@1"
+          "group": "linyra@1"
         }
       ],
       "editor/context": [
         {
-          "command": "polylog.fileHistory",
+          "command": "linyra.fileHistory",
           "when": "resourceScheme == file",
-          "group": "polylog@1"
+          "group": "linyra@1"
         }
       ],
       "editor/title": [
         {
-          "command": "polylog.openWorkingFile",
-          "when": "resourceScheme == polylog",
+          "command": "linyra.openWorkingFile",
+          "when": "resourceScheme == linyra",
           "group": "navigation@98"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "resourceScheme == file || resourceScheme == polylog",
+          "command": "linyra.fileHistory",
+          "when": "resourceScheme == file || resourceScheme == linyra",
           "group": "navigation@99"
         }
       ],
       "webview/context": [
         {
-          "command": "polylog.commitCopySha",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "command": "linyra.commitCopySha",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
           "group": "0_commit@1"
         },
         {
-          "command": "polylog.commitCopyMessage",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "command": "linyra.commitCopyMessage",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
           "group": "0_commit@2"
         },
         {
-          "command": "polylog.commitOpenOnRemote",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "command": "linyra.commitOpenOnRemote",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
           "group": "0_commit@3"
         },
         {
-          "command": "polylog.compareWith",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'commit'",
+          "command": "linyra.compareWith",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'commit'",
           "group": "0_commit@4"
         },
         {
-          "command": "polylog.repoPull",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && behind",
+          "command": "linyra.repoPull",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && behind",
           "group": "0_sync@1"
         },
         {
-          "command": "polylog.commitRepo",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage",
+          "command": "linyra.commitRepo",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && canStage",
           "group": "0_modification@1"
         },
         {
-          "command": "polylog.stageAll",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage && hasChanges",
+          "command": "linyra.stageAll",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && canStage && hasChanges",
           "group": "0_modification@2"
         },
         {
-          "command": "polylog.unstageAll",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage && hasStaged",
+          "command": "linyra.unstageAll",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && canStage && hasStaged",
           "group": "0_modification@3"
         },
         {
-          "command": "polylog.discardAll",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'uncommitted' && canStage",
+          "command": "linyra.discardAll",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && canStage",
           "group": "0_modification@4"
         },
         {
-          "command": "polylog.repoShowOnly",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "command": "linyra.repoShowOnly",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "1_filter@1"
         },
         {
-          "command": "polylog.repoHide",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "command": "linyra.repoHide",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "1_filter@2"
         },
         {
-          "command": "polylog.repoShowAll",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && polylog.repoFiltered",
+          "command": "linyra.repoShowAll",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && linyra.repoFiltered",
           "group": "1_filter@3"
         },
         {
-          "command": "polylog.showBehind",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && polylog.anyBehind",
+          "command": "linyra.showBehind",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && linyra.anyBehind",
           "group": "1_filter@4"
         },
         {
-          "command": "polylog.pullAllBehind",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'repo' && polylog.anyBehind && !polylog.fetching",
+          "command": "linyra.pullAllBehind",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && linyra.anyBehind && !linyra.fetching",
           "group": "0_sync@2"
         },
         {
-          "command": "polylog.repoOpenFolder",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "command": "linyra.repoOpenFolder",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "2_open@1"
         },
         {
-          "command": "polylog.repoCopyPath",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "command": "linyra.repoCopyPath",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "3_copy@1"
         },
         {
-          "command": "polylog.repoExclude",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "command": "linyra.repoExclude",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "4_exclude@1"
         },
         {
-          "command": "polylog.repoPull",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo' && behind",
+          "command": "linyra.repoPull",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo' && behind",
           "group": "0_sync@1"
         },
         {
-          "command": "polylog.repoShowOnly",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "command": "linyra.repoShowOnly",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
           "group": "1_filter@1"
         },
         {
-          "command": "polylog.repoHide",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "command": "linyra.repoHide",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
           "group": "1_filter@2"
         },
         {
-          "command": "polylog.repoOpenFolder",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "command": "linyra.repoOpenFolder",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
           "group": "2_open@1"
         },
         {
-          "command": "polylog.repoCopyPath",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "command": "linyra.repoCopyPath",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
           "group": "3_copy@1"
         },
         {
-          "command": "polylog.repoShowAll",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo' && polylog.repoFiltered",
+          "command": "linyra.repoShowAll",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo' && linyra.repoFiltered",
           "group": "1_filter@3"
         },
         {
-          "command": "polylog.repoExclude",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "command": "linyra.repoExclude",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
           "group": "4_exclude@1"
         },
         {
-          "command": "polylog.profileShow",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
+          "command": "linyra.profileShow",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'profile'",
           "group": "0_profile@1"
         },
         {
-          "command": "polylog.profileUpdate",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'profile' && updatable",
+          "command": "linyra.profileUpdate",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'profile' && updatable",
           "group": "1_profileEdit@1"
         },
         {
-          "command": "polylog.profileRename",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
+          "command": "linyra.profileRename",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'profile'",
           "group": "1_profileEdit@2"
         },
         {
-          "command": "polylog.profileDelete",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'profile'",
+          "command": "linyra.profileDelete",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'profile'",
           "group": "1_profileEdit@3"
         },
         {
-          "command": "polylog.profileSave",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repoList|repo|profile)$/",
+          "command": "linyra.profileSave",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repoList|repo|profile)$/",
           "group": "9_profile@1"
         },
         {
-          "command": "polylog.repoProfiles",
-          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
+          "command": "linyra.repoProfiles",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "9_profile@2"
         },
         {
-          "command": "polylog.openWorkingFile",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(\\.|$)/",
+          "command": "linyra.openWorkingFile",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(\\.|$)/",
           "group": "1_open@1"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file/",
+          "command": "linyra.fileHistory",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file/",
           "group": "2_history@1"
         },
         {
-          "command": "polylog.discard",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "command": "linyra.discard",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable/",
           "group": "3_modification@3"
         },
         {
-          "command": "polylog.stage",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable.*\\.changed$/",
+          "command": "linyra.stage",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable.*\\.changed$/",
           "group": "3_modification@1"
         },
         {
-          "command": "polylog.unstage",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable\\.staged/",
+          "command": "linyra.unstage",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable\\.staged/",
           "group": "3_modification@2"
         },
         {
-          "command": "polylog.commitRepo",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable/",
+          "command": "linyra.commitRepo",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable/",
           "group": "1_modification@1"
         },
         {
-          "command": "polylog.discardAll",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable/",
+          "command": "linyra.discardAll",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable/",
           "group": "1_modification@5"
         },
         {
-          "command": "polylog.copyFilePath",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
+          "command": "linyra.copyFilePath",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
           "group": "8_copy@1"
         },
         {
-          "command": "polylog.copyRelativePath",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
+          "command": "linyra.copyRelativePath",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
           "group": "8_copy@2"
         },
         {
-          "command": "polylog.stageAll",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
+          "command": "linyra.stageAll",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
           "group": "1_modification@3"
         },
         {
-          "command": "polylog.unstageAll",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable\\.staged/",
+          "command": "linyra.unstageAll",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^uncommitted\\.discardable\\.staged/",
           "group": "1_modification@4"
         },
         {
-          "command": "polylog.stage",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable.*\\.changed/",
+          "command": "linyra.stage",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable.*\\.changed/",
           "group": "3_modification@1"
         },
         {
-          "command": "polylog.unstage",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable\\.staged/",
+          "command": "linyra.unstage",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable\\.staged/",
           "group": "3_modification@2"
         },
         {
-          "command": "polylog.discard",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable/",
+          "command": "linyra.discard",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder\\.discardable/",
           "group": "3_modification@3"
         },
         {
-          "command": "polylog.commitCopySha",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "command": "linyra.commitCopySha",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
           "group": "0_commit"
         },
         {
-          "command": "polylog.commitCopyMessage",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "command": "linyra.commitCopyMessage",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
           "group": "0_commit"
         },
         {
-          "command": "polylog.commitOpenOnRemote",
-          "when": "webviewId =~ /^polylog\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "command": "linyra.commitOpenOnRemote",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
           "group": "0_commit"
         },
         {
-          "command": "polylog.branch.view",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.view",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "0_view@1"
         },
         {
-          "command": "polylog.branch.compare",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "command": "linyra.branch.compare",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
           "group": "0_view@2"
         },
         {
-          "command": "polylog.branch.worktreeDiff",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.worktreeDiff",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "0_view@3"
         },
         {
-          "command": "polylog.branch.checkout",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "command": "linyra.branch.checkout",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
           "group": "1_branch@1"
         },
         {
-          "command": "polylog.branch.create",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.create",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "1_branch@2"
         },
         {
-          "command": "polylog.branch.rename",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchLocal",
+          "command": "linyra.branch.rename",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchLocal",
           "group": "1_branch@3"
         },
         {
-          "command": "polylog.branch.fetch",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.fetch",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "2_sync@1"
         },
         {
-          "command": "polylog.branch.pull",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchCurrent",
+          "command": "linyra.branch.pull",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchCurrent",
           "group": "2_sync@2"
         },
         {
-          "command": "polylog.branch.push",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchLocal",
+          "command": "linyra.branch.push",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchLocal",
           "group": "2_sync@3"
         },
         {
-          "command": "polylog.branch.merge",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "command": "linyra.branch.merge",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
           "group": "3_integrate@1"
         },
         {
-          "command": "polylog.branch.rebase",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "command": "linyra.branch.rebase",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
           "group": "3_integrate@2"
         },
         {
-          "command": "polylog.branch.pullMerge",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchRemote",
+          "command": "linyra.branch.pullMerge",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchRemote",
           "group": "3_integrate@3"
         },
         {
-          "command": "polylog.branch.pullRebase",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && branchRemote",
+          "command": "linyra.branch.pullRebase",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchRemote",
           "group": "3_integrate@4"
         },
         {
-          "command": "polylog.branch.worktree",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.worktree",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "4_worktree@1"
         },
         {
-          "command": "polylog.branch.favorite",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.favorite",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "5_tools@1"
         },
         {
-          "command": "polylog.branch.copy",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch'",
+          "command": "linyra.branch.copy",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
           "group": "5_tools@2"
         },
         {
-          "command": "polylog.branch.delete",
-          "when": "webviewId == 'polylog.log' && webviewSection == 'branch' && !branchCurrent",
+          "command": "linyra.branch.delete",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
           "group": "9_delete@1"
         },
         {
-          "command": "polylog.commitCopySha",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "command": "linyra.commitCopySha",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
           "group": "0_commit@1"
         },
         {
-          "command": "polylog.commitCopyMessage",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "command": "linyra.commitCopyMessage",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
           "group": "0_commit@2"
         },
         {
-          "command": "polylog.commitOpenOnRemote",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "command": "linyra.commitOpenOnRemote",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
           "group": "0_commit@3"
         },
         {
-          "command": "polylog.openWorkingFile",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File$/",
+          "command": "linyra.openWorkingFile",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File$/",
           "group": "1_open@1"
         },
         {
-          "command": "polylog.fileHistory",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
+          "command": "linyra.fileHistory",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
           "group": "2_history@1"
         },
         {
-          "command": "polylog.copyFilePath",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
+          "command": "linyra.copyFilePath",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
           "group": "8_copy@1"
         },
         {
-          "command": "polylog.copyRelativePath",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
+          "command": "linyra.copyRelativePath",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File/",
           "group": "8_copy@2"
         },
         {
-          "command": "polylog.compareOpenSinceSplit",
-          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile/",
+          "command": "linyra.compareOpenSinceSplit",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile/",
           "group": "1_open@2"
         }
       ]
@@ -1593,7 +1617,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
-    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs && esbuild src/lineMerge.test.ts --bundle --platform=node --format=cjs --outfile=out/lineMerge.test.cjs && node out/lineMerge.test.cjs && esbuild src/webview/selectionModel.test.ts --bundle --platform=node --format=cjs --outfile=out/selectionModel.test.cjs && node out/selectionModel.test.cjs && esbuild src/combinedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedModel.test.cjs && node out/combinedModel.test.cjs && esbuild src/combinedRead.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedRead.test.cjs && node out/combinedRead.test.cjs && esbuild src/i18n.test.ts --bundle --platform=node --format=cjs --outfile=out/i18n.test.cjs && node out/i18n.test.cjs && esbuild src/changesPresentation.test.ts --bundle --platform=node --format=cjs --outfile=out/changesPresentation.test.cjs && node out/changesPresentation.test.cjs && esbuild src/commitReferences.test.ts --bundle --platform=node --format=cjs --outfile=out/commitReferences.test.cjs && node out/commitReferences.test.cjs && esbuild src/webview/graphModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphModel.test.cjs && node out/graphModel.test.cjs && esbuild src/branchModel.test.ts --bundle --platform=node --format=cjs --outfile=out/branchModel.test.cjs && node out/branchModel.test.cjs && esbuild src/webview/graphFoldModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphFoldModel.test.cjs && node out/graphFoldModel.test.cjs && esbuild src/hashSearch.test.ts --bundle --platform=node --format=cjs --outfile=out/hashSearch.test.cjs && node out/hashSearch.test.cjs && esbuild src/webview/changes/fileFilterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/fileFilterModel.test.cjs && node out/fileFilterModel.test.cjs && esbuild src/topoOrder.test.ts --bundle --platform=node --format=cjs --outfile=out/topoOrder.test.cjs && node out/topoOrder.test.cjs && esbuild src/toolbarModel.test.ts --bundle --platform=node --format=cjs --outfile=out/toolbarModel.test.cjs && node out/toolbarModel.test.cjs && esbuild src/webview/compare/html.test.ts --bundle --platform=node --format=cjs --outfile=out/compareHtml.test.cjs && node out/compareHtml.test.cjs",
+    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs && esbuild src/lineMerge.test.ts --bundle --platform=node --format=cjs --outfile=out/lineMerge.test.cjs && node out/lineMerge.test.cjs && esbuild src/webview/selectionModel.test.ts --bundle --platform=node --format=cjs --outfile=out/selectionModel.test.cjs && node out/selectionModel.test.cjs && esbuild src/combinedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedModel.test.cjs && node out/combinedModel.test.cjs && esbuild src/combinedRead.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedRead.test.cjs && node out/combinedRead.test.cjs && esbuild src/i18n.test.ts --bundle --platform=node --format=cjs --outfile=out/i18n.test.cjs && node out/i18n.test.cjs && esbuild src/changesPresentation.test.ts --bundle --platform=node --format=cjs --outfile=out/changesPresentation.test.cjs && node out/changesPresentation.test.cjs && esbuild src/commitReferences.test.ts --bundle --platform=node --format=cjs --outfile=out/commitReferences.test.cjs && node out/commitReferences.test.cjs && esbuild src/webview/graphModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphModel.test.cjs && node out/graphModel.test.cjs && esbuild src/branchModel.test.ts --bundle --platform=node --format=cjs --outfile=out/branchModel.test.cjs && node out/branchModel.test.cjs && esbuild src/webview/graphFoldModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphFoldModel.test.cjs && node out/graphFoldModel.test.cjs && esbuild src/hashSearch.test.ts --bundle --platform=node --format=cjs --outfile=out/hashSearch.test.cjs && node out/hashSearch.test.cjs && esbuild src/webview/changes/fileFilterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/fileFilterModel.test.cjs && node out/fileFilterModel.test.cjs && esbuild src/topoOrder.test.ts --bundle --platform=node --format=cjs --outfile=out/topoOrder.test.cjs && node out/topoOrder.test.cjs && esbuild src/toolbarModel.test.ts --bundle --platform=node --format=cjs --outfile=out/toolbarModel.test.cjs && node out/toolbarModel.test.cjs && esbuild src/webview/compare/html.test.ts --bundle --platform=node --format=cjs --outfile=out/compareHtml.test.cjs && node out/compareHtml.test.cjs && esbuild src/stateMigration.test.ts --bundle --platform=node --format=cjs --outfile=out/stateMigration.test.cjs && node out/stateMigration.test.cjs && esbuild src/identity.test.ts --bundle --platform=node --format=cjs --outfile=out/identity.test.cjs && node out/identity.test.cjs",
     "test": "npm run test:unit",
     "package": "vsce package --no-dependencies",
     "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",

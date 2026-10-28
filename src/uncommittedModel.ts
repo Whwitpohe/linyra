@@ -145,8 +145,8 @@ export interface UNode {
 }
 
 function fileStat(f: FileChange): string {
-  if (f.untracked) return "new";
-  if (f.added === null) return "binary";
+  if (f.untracked) return localize("new");
+  if (f.added === null) return localize("binary");
   const counts = `+${f.added} −${f.deleted}`;
   return f.oldPath ? `← ${f.oldPath}  ${counts}` : counts;
 }

@@ -46,7 +46,9 @@ const state: ChangesState = {
   assert.ok(html.includes('role="separator" aria-orientation="horizontal"'));
   assert.ok(html.includes('aria-controls="commit-details" tabindex="0"'));
   assert.ok(html.includes('role="tree" aria-multiselectable="true"'));
+  assert.ok(html.includes('id="changes-tree-toggle"'));
+  assert.ok(!html.includes('id="expand"') && !html.includes('id="collapse"'), "one button alternates the tree action");
   assert.ok(html.includes("default-src 'none'"));
-  assert.ok(html.indexOf('id="polylog-i18n"') < html.indexOf('src="changes.js"'));
+  assert.ok(html.indexOf('id="linyra-i18n"') < html.indexOf('src="changes.js"'));
   console.log("ok - changes shell exposes the keyboard divider and tree under the webview CSP");
 }

@@ -15,7 +15,7 @@ interface Target { repoId: string; group?: Group; path?: string }
 /** What an action takes in one repository: its files, those of them from the Staged group, and whether it is one file. */
 interface Pick { work: RepoWork; files: FileChange[]; staged: FileChange[]; one: boolean }
 
-const TREE_SCHEME = "polylog-tree";
+const TREE_SCHEME = "linyra-tree";
 /** vscode.git's errors say "Failed to execute git"; git's own words are in their stderr. */
 function gitMessage(e: unknown): string {
   const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
@@ -27,11 +27,11 @@ const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}",
 
 /**
  * VS Code's prompts, in one place: the integration suite answers them through a queue
- * (POLYLOG_ITEST only), since a modal dialog cannot be clicked from a test.
+ * (LINYRA_ITEST only), since a modal dialog cannot be clicked from a test.
  */
 export class Ask {
   private readonly answers: (string | undefined)[] = [];
-  private readonly testing = process.env.POLYLOG_ITEST === "1";
+  private readonly testing = process.env.LINYRA_ITEST === "1";
   /** Test seam: runs once, as if while the dialog is open, before a queued answer is given. */
   beforeAnswer: (() => Promise<void>) | undefined;
   /** Test seam: the last warning asked, and how many questions were asked. */
@@ -121,6 +121,10 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   /** The last error shown (integration test seam). */
   private lastError: string | undefined;
   private description = "";
+  private readonly collapsed = new Set<string>();
+  private branchIds = new Set<string>();
+  private collapseNewNodes = false;
+  private canCollapse = false;
 
   private showError(text: string): void {
     this.lastError = text;
@@ -134,8 +138,11 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
 
   constructor(private readonly deps: UncommittedViewDeps) {
     this.ask = deps.ask;
-    this.view = vscode.window.createTreeView("polylog.uncommitted", { treeDataProvider: this, showCollapseAll: true, canSelectMany: true });
-    this.disposables.push(this.view, deps.store.onDidChange(() => this.render()), this.view.onDidChangeVisibility(() => { if (this.view.visible) this.render(); }));
+    this.view = vscode.window.createTreeView("linyra.uncommitted", { treeDataProvider: this, showCollapseAll: false, canSelectMany: true });
+    this.view.title = localize("Uncommitted");
+    this.disposables.push(this.view, deps.store.onDidChange(() => this.render()), this.view.onDidChangeVisibility(() => { if (this.view.visible) this.render(); }),
+      this.view.onDidCollapseElement(({ element }) => { this.collapsed.add(element.id); this.updateTreeActions(); }),
+      this.view.onDidExpandElement(({ element }) => { this.collapsed.delete(element.id); this.updateTreeActions(); }));
     this.render();
   }
 
@@ -147,11 +154,17 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     this.description = viewLabel(totals(this.deps.store.works()));
     this.view.description = this.description;
     this.parents = new Map();
+    const previousBranches = this.branchIds;
+    this.branchIds = new Set();
     const before = this.decorated;
     this.decorated = [];
     this.decorations = new Map();
     const walk = (nodes: UNode[], parent?: UNode): void => nodes.forEach((n) => {
       if (parent) this.parents.set(n, parent);
+      if (n.kind !== "file") {
+        this.branchIds.add(n.id);
+        if (this.collapseNewNodes && !previousBranches.has(n.id)) this.collapsed.add(n.id);
+      }
       if (n.kind === "file" && n.file) {
         const dec = decorationFor(n.file.untracked ? "A" : n.file.status);
         if (dec) {
@@ -163,18 +176,50 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
       walk(n.children, n);
     });
     walk(this.roots);
+    for (const id of this.collapsed) if (!this.branchIds.has(id)) this.collapsed.delete(id);
+    this.updateTreeActions();
     this.emitter.fire(undefined);
     const changed = [...before, ...this.decorated];
     if (changed.length > 0) this.decorationsChanged.fire(changed);
   }
 
+  private updateTreeActions(): void {
+    this.canCollapse = this.roots.some((node) => node.kind !== "file" && !this.collapsed.has(node.id));
+    void vscode.commands.executeCommand("setContext", "linyra.uncommittedCanCollapse", this.canCollapse);
+    void vscode.commands.executeCommand("setContext", "linyra.uncommittedHasFolders", this.branchIds.size > 0);
+  }
+
+  async setExpanded(expanded: boolean): Promise<void> {
+    this.collapseNewNodes = !expanded;
+    this.collapsed.clear();
+    if (!expanded) for (const id of this.branchIds) this.collapsed.add(id);
+    this.updateTreeActions();
+    this.emitter.fire(undefined);
+    if (!expanded) {
+      await vscode.commands.executeCommand("workbench.actions.treeView.linyra.uncommitted.collapseAll");
+      return;
+    }
+    const roots = this.roots;
+    const expand = async (nodes: UNode[]): Promise<void> => {
+      for (const node of nodes) {
+        if (roots !== this.roots) return;
+        if (node.kind === "file") continue;
+        await this.view.reveal(node, { expand: true, select: false, focus: false });
+        await expand(node.children);
+      }
+    };
+    await expand(roots);
+    if (roots === this.roots && roots[0]) await this.view.reveal(roots[0], { select: false, focus: false });
+  }
+
   /** "label | description", indented, repo rows with their contextValue (integration test seam). */
-  snapshot(): { message: string | undefined; description: string; items: string[]; lastError: string | undefined; visible: boolean } {
+  snapshot(): { message: string | undefined; description: string; items: string[]; lastError: string | undefined; visible: boolean; title: string; collapsed: string[]; canCollapse: boolean } {
     const walk = (nodes: UNode[], depth: number): string[] => nodes.flatMap((n) => [
       `${"  ".repeat(depth)}${n.label} | ${n.description}${n.kind === "repo" ? ` [${n.contextValue}]` : ""}`,
       ...walk(n.children, depth + 1),
     ]);
-    return { message: this.message, description: this.description, items: walk(this.roots, 0), lastError: this.lastError, visible: this.view.visible };
+    return { message: this.message, description: this.description, items: walk(this.roots, 0), lastError: this.lastError, visible: this.view.visible,
+      title: this.view.title ?? "", collapsed: [...this.collapsed], canCollapse: this.canCollapse };
   }
 
   private uriFor(n: UNode): vscode.Uri {
@@ -194,7 +239,8 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   }
 
   getTreeItem(n: UNode): vscode.TreeItem {
-    const item = new vscode.TreeItem(n.label, n.kind === "file" ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Expanded);
+    const item = new vscode.TreeItem(n.label, n.kind === "file" ? vscode.TreeItemCollapsibleState.None
+      : this.collapsed.has(n.id) ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded);
     item.id = n.id;
     item.description = n.description;
     item.tooltip = n.tooltip;
@@ -214,7 +260,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     } else if (n.kind === "file") {
       item.resourceUri = this.uriFor(n);
       item.iconPath = vscode.ThemeIcon.File;
-      item.command = { command: "polylog.openUncommittedDiff", title: localize("Open Diff"), arguments: [{ repoId: n.repoId, group: n.group, path: n.path }] };
+      item.command = { command: "linyra.openUncommittedDiff", title: localize("Open Diff"), arguments: [{ repoId: n.repoId, group: n.group, path: n.path }] };
     }
     return item;
   }

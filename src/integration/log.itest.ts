@@ -12,8 +12,8 @@ import { UNCOMMITTED, type Commit } from "../types";
 import { EXPECTED_ORDER } from "./fixture";
 
 const EXTENSION_ID = "whwitpohe.linyra";
-const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
-const send = (m: WebviewMessage) => vscode.commands.executeCommand("polylog._itest.send", m);
+const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("linyra._itest.snapshot");
+const send = (m: WebviewMessage) => vscode.commands.executeCommand("linyra._itest.send", m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ALL = { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" as const };
 
@@ -22,7 +22,7 @@ async function removeTestDirectory(target: string): Promise<void> {
   const absolute = testPath.resolve(target);
   const relative = testPath.relative(testOs.tmpdir(), absolute);
   assert.ok(relative && !relative.startsWith("..") && !testPath.isAbsolute(relative)
-    && relative.split(testPath.sep)[0].startsWith("polylog-"), "cleanup must stay inside a named temporary Linyra fixture");
+    && relative.split(testPath.sep)[0].startsWith("linyra-"), "cleanup must stay inside a named temporary Linyra fixture");
   await testFs.promises.rm(absolute, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
 
@@ -48,7 +48,7 @@ const until = (what: string, ok: (s: LogSnapshot) => boolean) =>
 const diffTab = () =>
   waitFor("a diff editor", () => {
     const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-    return input instanceof vscode.TabInputTextDiff && (input.modified.scheme === "git" || input.modified.scheme === "polylog") ? input : undefined;
+    return input instanceof vscode.TabInputTextDiff && (input.modified.scheme === "git" || input.modified.scheme === "linyra") ? input : undefined;
   });
 const tabCount = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
 const closeEditors = () => vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -57,7 +57,7 @@ const bySubject = (s: LogSnapshot, prefix: string) => s.rows.find((r) => r.subje
 
 describe("Linyra panel", () => {
   before(async () => {
-    await vscode.commands.executeCommand("polylog.open");
+    await vscode.commands.executeCommand("linyra.open");
     await until("the Log webview", (s) => s.readyCount >= 1 && s.repos.length === 3);
     await send({ type: "filter", filter: ALL });
   });
@@ -71,6 +71,24 @@ describe("Linyra panel", () => {
     const properties = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties;
     assert.strictEqual(Object.keys(properties).length, 6);
     assert.ok(Object.keys(properties).every((key) => key.startsWith("linyra.")), "only Linyra settings are registered");
+  });
+
+  it("leaves upstream commands and revision URIs available to their owner", async () => {
+    const legacyOpen = vscode.commands.registerCommand("polylog.open", () => "upstream command");
+    const legacyContent = vscode.workspace.registerTextDocumentContentProvider("polylog", {
+      provideTextDocumentContent: () => "upstream revision",
+    });
+    try {
+      await vscode.commands.executeCommand("linyra.open");
+      assert.strictEqual(await vscode.commands.executeCommand("polylog.open"), "upstream command");
+      const upstream = await vscode.workspace.openTextDocument(vscode.Uri.parse("polylog:/namespace-isolation.txt"));
+      assert.strictEqual(upstream.getText(), "upstream revision");
+      const state = await until("Linyra remains available beside upstream registrations", (s) => s.rows.length === 6);
+      assert.ok(state.repos.length === 3);
+    } finally {
+      legacyContent.dispose();
+      legacyOpen.dispose();
+    }
   });
 
   it("narrows by message and by repository", async () => {
@@ -111,7 +129,7 @@ describe("Linyra panel", () => {
     await send({ type: "filter", filter: ALL });
     await until("all rows again", (x) => x.rows.length === 6);
     const targetRepo = start.repos.find((repo) => repo.id === target.repoId)!;
-    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.joinPath(vscode.Uri.file(targetRepo.root), "upload.go"));
+    await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.joinPath(vscode.Uri.file(targetRepo.root), "upload.go"));
     s = await until("file history before hash lookup", (x) => x.history?.path === "upload.go");
     await send({ type: "filter", filter: { ...s.filter, text: target.sha } });
     await until("hash lookup leaves File History", (x) => x.history === null && x.rows.length === 1 && x.rows[0].sha === target.sha);
@@ -135,7 +153,7 @@ describe("Linyra panel", () => {
 
   it("one native view keeps Log permanently expanded and remembers the integrated Changes layout", async () => {
     const manifest = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON;
-    assert.deepStrictEqual(manifest.contributes.views.polylog.map((view: { id: string }) => view.id), ["polylog.log"]);
+    assert.deepStrictEqual(manifest.contributes.views.linyra.map((view: { id: string }) => view.id), ["linyra.log"]);
     const before = await snapshot();
     await send({ type: "layout", repoPaneWidth: before.layout.repoPaneWidth, changesPaneWidth: 420, changesPaneHeight: 260, showChanges: true });
     let state = await until("integrated changes visible", (x) => x.changesVisible && x.layout.changesPaneWidth === 420);
@@ -161,18 +179,18 @@ describe("Linyra panel", () => {
       assert.strictEqual((await snapshot()).layout.changesLayout, changesLayout);
     }
     for (const mode of ["commits", "files"] as const) {
-      await vscode.commands.executeCommand(mode === "files" ? "polylog.compareShowFiles" : "polylog.compareShowCommits");
-      const compare = await vscode.commands.executeCommand<{ mode: string }>("polylog._itest.compare");
+      await vscode.commands.executeCommand(mode === "files" ? "linyra.compareShowFiles" : "linyra.compareShowCommits");
+      const compare = await vscode.commands.executeCommand<{ mode: string }>("linyra._itest.compare");
       assert.strictEqual(compare?.mode, mode, "Show Files / Show Commits is retained in branch comparison");
     }
     await closeEditors();
     await send({ type: "toolbarAction", action: "openChangesEditor" });
     await waitFor("a movable changes editor tab", () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
-      .some((tab) => tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes("polylog.changesEditor")) ? true : undefined);
+      .some((tab) => tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes("linyra.changesEditor")) ? true : undefined);
     await closeEditors();
-    await vscode.commands.executeCommand("polylog.changes.removeView");
+    await vscode.commands.executeCommand("linyra.changes.removeView");
     assert.strictEqual((await snapshot()).layout.showChanges, false);
-    await vscode.commands.executeCommand("polylog.changes.focus");
+    await vscode.commands.executeCommand("linyra.changes.focus");
     await until("legacy focus command reaches integrated changes", (x) => x.layout.showChanges === true && x.changesVisible);
   });
 
@@ -186,9 +204,9 @@ describe("Linyra panel", () => {
 
   it("Group by Repository is on by default and can be turned off and on", async () => {
     assert.strictEqual((await snapshot()).layout.groupByRepo, true);
-    await vscode.commands.executeCommand("polylog.hideRepos");
+    await vscode.commands.executeCommand("linyra.hideRepos");
     assert.strictEqual((await snapshot()).layout.groupByRepo, false);
-    await vscode.commands.executeCommand("polylog.showRepos");
+    await vscode.commands.executeCommand("linyra.showRepos");
     assert.strictEqual((await snapshot()).layout.groupByRepo, true);
   });
 
@@ -235,7 +253,7 @@ describe("Linyra panel", () => {
     await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
     await until("client.ts's commits", (x) => x.rows.length === 2);
     const api = s.repos.find((r) => r.name === "acme-api")!;
-    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
     s = await until("upload.go history, whatever the path filter", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
     await send({ type: "exitHistory" });
     s = await until("the path filter back", (x) => x.history === null && x.rows.length === 2);
@@ -263,7 +281,7 @@ describe("Linyra panel", () => {
       assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED), "the Commit list shows only commits");
 
       await closeEditors();
-      await vscode.commands.executeCommand("polylog.openDiff", { repoId: web.id, sha: UNCOMMITTED, parent: head, path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.openDiff", { repoId: web.id, sha: UNCOMMITTED, parent: head, path: "client.ts" });
       const input = await waitFor("a working-tree diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
         return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
@@ -307,7 +325,7 @@ describe("Linyra panel", () => {
         return b.spawnLog.length === a.spawnLog.length ? b : undefined;
       });
       mark = await quiet();
-      const outside = path.join(require("os").tmpdir(), `polylog-outside-${Date.now()}.txt`);
+      const outside = path.join(require("os").tmpdir(), `linyra-outside-${Date.now()}.txt`);
       fs.writeFileSync(outside, "a\n");
       const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
       const edit3 = new vscode.WorkspaceEdit();
@@ -371,8 +389,8 @@ describe("Linyra panel", () => {
     const who = { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root, env: who }).toString().trim();
     const head = git("rev-parse", "HEAD");
-    const view = () => vscode.commands.executeCommand<{ message?: string; items: string[] }>("polylog._itest.uncommitted");
-    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    const view = () => vscode.commands.executeCommand<{ message?: string; items: string[] }>("linyra._itest.uncommitted");
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", v);
     const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
     const staged = () => git("diff", "--cached", "--name-only").split("\n").filter(Boolean).sort();
     fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 2;\n");
@@ -381,37 +399,50 @@ describe("Linyra panel", () => {
     git("add", "extra.ts");
     const smart = vscode.workspace.getConfiguration("git");
     try {
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       await send({ type: "refresh" });
       let items = await seen("acme-web's uncommitted files", (i) => i.includes("acme-web | 3 files [repo.stageable]") && i.includes("  Staged | 1") && i.includes("  Changes | 2"));
       assert.ok(items.includes("    notes.md | new"), "untracked files say new");
 
-      await vscode.commands.executeCommand("polylog.stage", { repoId: web.id, group: "changes", path: "client.ts" });
+      const treeState = () => vscode.commands.executeCommand<{ collapsed: string[]; canCollapse: boolean; title: string }>("linyra._itest.uncommitted");
+      await vscode.commands.executeCommand("linyra.uncommittedCollapseAll");
+      await waitFor("the single tree action can expand the collapsed view", async () => {
+        const value = await treeState(); return !value.canCollapse && value.collapsed.length > 0 ? true : undefined;
+      });
+      await vscode.commands.executeCommand("linyra.refreshUncommitted");
+      assert.strictEqual((await treeState()).canCollapse, false, "a data refresh preserves the collapsed tree");
+      await vscode.commands.executeCommand("linyra.uncommittedExpandAll");
+      await waitFor("all uncommitted groups expanded again", async () => {
+        const value = await treeState(); return value.canCollapse && value.collapsed.length === 0 ? true : undefined;
+      });
+      assert.ok((await treeState()).title, "the native view has a runtime-localized title");
+
+      await vscode.commands.executeCommand("linyra.stage", { repoId: web.id, group: "changes", path: "client.ts" });
       assert.deepStrictEqual(staged(), ["client.ts", "extra.ts"], "git add, as git itself sees it");
       await seen("client.ts staged", (i) => i.includes("  Staged | 2") && i.includes("  Changes | 1"));
-      await vscode.commands.executeCommand("polylog.unstage", { repoId: web.id, group: "staged", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.unstage", { repoId: web.id, group: "staged", path: "client.ts" });
       assert.deepStrictEqual(staged(), ["extra.ts"], "unstaged again");
       await seen("client.ts back in Changes", (i) => i.includes("  Staged | 1") && i.includes("  Changes | 2"));
 
       // A file row's right-click: Open File opens the workspace copy.
-      await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.openWorkingFile", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
       await waitFor("client.ts open", () => (vscode.window.activeTextEditor?.document.uri.fsPath === path.join(web.root, "client.ts") ? true : undefined));
       await closeEditors();
 
       // Discard asks first; Cancel changes nothing.
       await answer("Cancel");
-      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes", path: "notes.md" });
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "notes.md" });
       assert.ok(fs.existsSync(path.join(web.root, "notes.md")), "Cancel keeps the file");
       await answer("Discard File");
-      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes", path: "notes.md" });
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "notes.md" });
       assert.ok(!fs.existsSync(path.join(web.root, "notes.md")), "a new file is deleted when discarded");
       await seen("notes.md gone", (i) => !i.some((x) => x.includes("notes.md")));
 
       // Commit… with a message: the staged files only.
-      await vscode.commands.executeCommand("polylog.stage", { repoId: web.id, group: "changes", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.stage", { repoId: web.id, group: "changes", path: "client.ts" });
       await seen("both staged", (i) => i.includes("  Staged | 2"));
       await answer("feat: commit from the view");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       assert.strictEqual(git("log", "-1", "--format=%s"), "feat: commit from the view");
       await until("the new commit at the top of the Log", (x) => x.rows[0]?.subject === "feat: commit from the view");
       await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
@@ -423,7 +454,7 @@ describe("Linyra panel", () => {
       await smart.update("enableSmartCommit", false, vscode.ConfigurationTarget.Global);
       const before = git("rev-parse", "HEAD");
       await answer("Cancel");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       assert.strictEqual(git("rev-parse", "HEAD"), before, "Cancel: nothing committed");
     } finally {
       await smart.update("enableSmartCommit", undefined, vscode.ConfigurationTarget.Global);
@@ -464,7 +495,7 @@ describe("Linyra panel", () => {
       assert.deepStrictEqual(s.changes.items.slice(1).sort(), ["  notes.md | new", "  upload.go | +1 −1"]);
       // Its files open the same diffs as the Uncommitted view.
       await closeEditors();
-      await vscode.commands.executeCommand("polylog.openDiff", { repoId: api.id, sha: UNCOMMITTED, parent: git(api.root, "rev-parse", "HEAD"), path: "upload.go" });
+      await vscode.commands.executeCommand("linyra.openDiff", { repoId: api.id, sha: UNCOMMITTED, parent: git(api.root, "rev-parse", "HEAD"), path: "upload.go" });
       await waitFor("a working-tree diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
         return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" && t.modified.fsPath.endsWith(path.join("acme-api", "upload.go")) ? true : undefined;
@@ -486,10 +517,10 @@ describe("Linyra panel", () => {
   });
 
   it("All Files in the Changes view: the commit's whole tree, one folder read at a time", async () => {
-    await vscode.commands.executeCommand("polylog.open");
-    await vscode.commands.executeCommand("polylog.changes.focus");
+    await vscode.commands.executeCommand("linyra.open");
+    await vscode.commands.executeCommand("linyra.changes.focus");
     await until("Changes visible before reading All Files", (x) => x.changesVisible);
-    await vscode.commands.executeCommand("polylog.changesShowChanged");
+    await vscode.commands.executeCommand("linyra.changesShowChanged");
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const cp = require("child_process") as typeof import("child_process");
@@ -519,7 +550,7 @@ describe("Linyra panel", () => {
       await until("its changed files", (x) => x.changes.items.some((i) => i.includes("one.ts")));
 
       let mark = await snapshot();
-      await vscode.commands.executeCommand("polylog.changesShowAll");
+      await vscode.commands.executeCommand("linyra.changesShowAll");
       let s = await until("the whole tree", (x) => x.changes.items.some((i) => i.trim().startsWith("package.json")) && x.changes.items.some((i) => i.trim().startsWith("one.ts")));
       const items = s.changes.items.map((i) => i.trim());
       assert.ok(items.includes("package.json |"), `an unchanged file, plain (${items.join(" / ")})`);
@@ -534,28 +565,28 @@ describe("Linyra panel", () => {
       assert.strictEqual(one?.path, "src/a/one.ts", "file filtering sees the full changed path in All Files mode");
       assert.ok(!searchable.some((node) => node.label === "package.json"), "changed-file search does not claim to search unopened unchanged folders");
       await closeEditors();
-      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "open", id: one!.id });
+      await vscode.commands.executeCommand("linyra._itest.changesMessage", { type: "open", id: one!.id });
       await diffTab();
       await closeEditors();
 
       mark = s;
-      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "action", action: "expandAll" });
+      await vscode.commands.executeCommand("linyra._itest.changesMessage", { type: "action", action: "expandAll" });
       s = await until("lib's files", (x) => x.changes.items.some((i) => i.trim() === "x.ts |"));
       assert.strictEqual(lsTrees(mark, s), 1, "opening a folder reads that folder only");
 
       await closeEditors();
-      await vscode.commands.executeCommand("polylog.openRevision", { repoId: libs.id, sha, path: "package.json" });
+      await vscode.commands.executeCommand("linyra.openRevision", { repoId: libs.id, sha, path: "package.json" });
       const doc = await waitFor("package.json at that commit", () => {
         const d = vscode.window.activeTextEditor?.document;
-        return (d?.uri.scheme === "git" || d?.uri.scheme === "polylog") && d.uri.path.endsWith("package.json") ? d : undefined;
+        return (d?.uri.scheme === "git" || d?.uri.scheme === "linyra") && d.uri.path.endsWith("package.json") ? d : undefined;
       });
       assert.strictEqual(doc.getText(), git("show", `${sha}:package.json`) + "\n", "the file as it was at that commit");
 
-      await vscode.commands.executeCommand("polylog.changesShowChanged");
+      await vscode.commands.executeCommand("linyra.changesShowChanged");
       s = await until("changed files only", (x) => !x.changes.items.some((i) => i.trim().startsWith("package.json")));
       assert.ok(s.changes.items.some((i) => i.includes("one.ts")));
     } finally {
-      await Promise.resolve(vscode.commands.executeCommand("polylog.changesShowChanged")).catch(() => undefined);
+      await Promise.resolve(vscode.commands.executeCommand("linyra.changesShowChanged")).catch(() => undefined);
       await closeEditors();
       git("reset", "-q", "--hard", head);
       git("clean", "-fdq");
@@ -574,8 +605,8 @@ describe("Linyra panel", () => {
     const who = { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root, env: who }).toString().trim();
     const head = git("rev-parse", "HEAD");
-    const view = () => vscode.commands.executeCommand<{ message?: string; items: string[]; lastError?: string }>("polylog._itest.uncommitted");
-    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    const view = () => vscode.commands.executeCommand<{ message?: string; items: string[]; lastError?: string }>("linyra._itest.uncommitted");
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", v);
     const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
     const write = (f: string, text: string) => fs.writeFileSync(path.join(web.root, f), text);
     const gitCfg = () => vscode.workspace.getConfiguration("git");
@@ -585,7 +616,7 @@ describe("Linyra panel", () => {
       return (await vscode.workspace.openTextDocument(t.modified)).getText();
     };
     try {
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       // Review Focus 1: staged, then edited again: in both groups; the Staged diff shows the staged text, fresh after each stage.
       write("client.ts", "export const ok = 1;\n");
       git("add", "client.ts");
@@ -593,12 +624,12 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await seen("client.ts in both groups", (i) => i.includes("  Staged | 1") && i.includes("  Changes | 1"));
       await closeEditors();
-      await vscode.commands.executeCommand("polylog.openUncommittedDiff", { repoId: web.id, group: "staged", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.openUncommittedDiff", { repoId: web.id, group: "staged", path: "client.ts" });
       assert.strictEqual(await rightText(), "export const ok = 1;\n", "Staged: the index's version");
-      await vscode.commands.executeCommand("polylog.stage", { repoId: web.id, group: "changes", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.stage", { repoId: web.id, group: "changes", path: "client.ts" });
       await seen("one Staged row, no Changes row", (i) => i.includes("  Staged | 1") && !i.includes("  Changes | 1"));
       // The first diff is still open: a stale index document would show here.
-      await vscode.commands.executeCommand("polylog.openUncommittedDiff", { repoId: web.id, group: "staged", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.openUncommittedDiff", { repoId: web.id, group: "staged", path: "client.ts" });
       assert.strictEqual(await rightText(), "export const ok = 2;\n", "staged again: the new index version, not a stale document");
       await closeEditors();
 
@@ -608,14 +639,14 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await seen("two new files", (i) => i.some((x) => x.includes("one.md")) && i.some((x) => x.includes("two.md")));
       await answer("Discard All");
-      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes" });
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes" });
       assert.ok(!fs.existsSync(path.join(web.root, "one.md")) && !fs.existsSync(path.join(web.root, "two.md")), "both new files deleted");
 
       // A failing pre-commit hook: git's own words, and the staged files stay staged.
       const hook = path.join(web.root, ".git", "hooks", "pre-commit");
       fs.writeFileSync(hook, "#!/bin/sh\necho 'acme hook says no' >&2\nexit 1\n", { mode: 0o755 });
       await answer("feat: blocked by the hook");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       fs.rmSync(hook);
       const err = (await view()).lastError ?? "";
       assert.match(err, /acme hook says no/, `the hook's message (${err})`);
@@ -626,7 +657,7 @@ describe("Linyra panel", () => {
       const repo = api.getRepository(vscode.Uri.file(web.root))!;
       repo.inputBox.value = "draft: half-written";
       await answer("feat: committed from Linyra");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       assert.strictEqual(git("log", "-1", "--format=%s"), "feat: committed from Linyra");
       assert.strictEqual(repo.inputBox.value, "draft: half-written", "the Source Control draft is kept");
 
@@ -638,7 +669,7 @@ describe("Linyra panel", () => {
       await gitCfg().update("enableSmartCommit", true, vscode.ConfigurationTarget.Global);
       await gitCfg().update("smartCommitChanges", "tracked", vscode.ConfigurationTarget.Global);
       await answer("feat: smart, tracked only");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       assert.strictEqual(git("log", "-1", "--format=%s"), "feat: smart, tracked only", "no question asked: the only answer was the message");
       assert.match(git("status", "--porcelain"), /\?\? scratch\.md/, "the new file was left out");
     } finally {
@@ -660,37 +691,37 @@ describe("Linyra panel", () => {
     const cp = require("child_process") as typeof import("child_process");
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const web = s0.repos.find((r) => r.name === "acme-web")!;
-    const view = () => vscode.commands.executeCommand<{ items: string[] }>("polylog._itest.uncommitted");
+    const view = () => vscode.commands.executeCommand<{ items: string[] }>("linyra._itest.uncommitted");
     const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
     const at = (f: string) => path.join(web.root, f);
     const cfg = vscode.workspace.getConfiguration("git");
     try {
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       fs.writeFileSync(at("listed.md"), "1\n");
       await send({ type: "refresh" });
       await seen("listed.md", (i) => i.some((l) => l.includes("listed.md")));
       // While the confirmation is open, a build writes another new file: it was not in the prompt.
-      await vscode.commands.executeCommand("polylog._itest.beforeAnswer", async () => {
+      await vscode.commands.executeCommand("linyra._itest.beforeAnswer", async () => {
         fs.writeFileSync(at("late.md"), "2\n");
-        await vscode.commands.executeCommand("polylog.refreshUncommitted");
+        await vscode.commands.executeCommand("linyra.refreshUncommitted");
         await seen("late.md read", (i) => i.some((l) => l.includes("late.md")));
       });
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
-      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes" });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes" });
       await waitFor("listed.md gone", () => (fs.existsSync(at("listed.md")) ? undefined : true));
       assert.ok(fs.existsSync(at("late.md")), "a file that appeared while the prompt was open is kept");
       // git.untrackedChanges hidden: VS Code's Git does not list new files, Linyra still deletes the one confirmed.
       fs.rmSync(at("late.md"));
       await cfg.update("untrackedChanges", "hidden", vscode.ConfigurationTarget.Global);
       fs.writeFileSync(at("hidden-new.md"), "3\n");
-      await vscode.commands.executeCommand("polylog.refreshUncommitted");
+      await vscode.commands.executeCommand("linyra.refreshUncommitted");
       await seen("hidden-new.md", (i) => i.some((l) => l.includes("hidden-new.md")));
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard File");
-      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes", path: "hidden-new.md" });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard File");
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "hidden-new.md" });
       await waitFor("hidden-new.md deleted", () => (fs.existsSync(at("hidden-new.md")) ? undefined : true));
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.beforeAnswer", undefined);
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.beforeAnswer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       await cfg.update("untrackedChanges", undefined, vscode.ConfigurationTarget.Global);
       for (const f of ["listed.md", "late.md", "hidden-new.md"]) fs.rmSync(at(f), { force: true });
       cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
@@ -705,22 +736,22 @@ describe("Linyra panel", () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const web = s0.repos.find((r) => r.name === "acme-web")!;
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
-    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("polylog._itest.uncommitted");
+    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("linyra._itest.uncommitted");
     const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
     const at = (f: string) => path.join(web.root, f);
     const committed = git("show", "HEAD:client.ts");
     // An earlier test's error stays as the last one shown; Discard must not add its own.
     const errorBefore = (await view()).lastError;
     try {
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       // One staged file: its staged change and its working-tree change both go.
       fs.writeFileSync(at("client.ts"), "export const ok = 1;\n");
       git("add", "client.ts");
       fs.writeFileSync(at("client.ts"), "export const ok = 2;\n");
       await send({ type: "refresh" });
       await seen("client.ts staged and changed", (i) => i.includes("  Staged | 1") && i.includes("  Changes | 1"));
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard File");
-      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "staged", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard File");
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "staged", path: "client.ts" });
       await waitFor("client.ts restored", () => (fs.readFileSync(at("client.ts"), "utf8") === `${committed}\n` ? true : undefined));
       assert.strictEqual(git("status", "--porcelain"), "", "nothing staged, nothing changed");
 
@@ -732,14 +763,14 @@ describe("Linyra panel", () => {
       fs.writeFileSync(at("loose.md"), "x\n");
       await send({ type: "refresh" });
       await seen("four files", (i) => i.includes("acme-web | 4 files [repo.stageable]"));
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
-      await vscode.commands.executeCommand("polylog.discardAll", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("linyra.discardAll", { repoId: web.id });
       await waitFor("acme-web clean", () => (git("status", "--porcelain") === "" ? true : undefined));
       assert.ok(!fs.existsSync(at("added.ts")) && !fs.existsSync(at("loose.md")), "new files deleted, staged or not");
       await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
       assert.strictEqual((await view()).lastError, errorBefore, "no error from Discard");
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       git("reset", "-q", "--hard");
       git("clean", "-fdq");
     }
@@ -767,12 +798,12 @@ describe("Linyra panel", () => {
       await until("acme-api's files in the Changes view", (x) => x.changes.items[0]?.startsWith("acme-api | 2 files") === true);
       // Stage and Unstage from a Changes view row: each takes its own half of the file.
       const node = (p: string) => ({ kind: "file", path: p, owner: { repoId: api.id, sha: UNCOMMITTED, parent: null } });
-      await vscode.commands.executeCommand("polylog.stage", node("notes.md"));
+      await vscode.commands.executeCommand("linyra.stage", node("notes.md"));
       await waitFor("notes.md staged", () => (git(api.root, "diff", "--cached", "--name-only").split("\n").includes("notes.md") ? true : undefined));
-      await vscode.commands.executeCommand("polylog.unstage", node("upload.go"));
+      await vscode.commands.executeCommand("linyra.unstage", node("upload.go"));
       await waitFor("upload.go unstaged", () => (git(api.root, "diff", "--cached", "--name-only") === "notes.md" ? true : undefined));
       assert.strictEqual(fs.readFileSync(at("upload.go"), "utf8"), "edited again\n", "Unstage keeps the working-tree edit");
-      await vscode.commands.executeCommand("polylog.unstage", node("notes.md"));
+      await vscode.commands.executeCommand("linyra.unstage", node("notes.md"));
       await waitFor("nothing staged", () => (git(api.root, "diff", "--cached", "--name-only") === "" ? true : undefined));
       git(api.root, "add", "upload.go");
       fs.writeFileSync(at("upload.go"), "edited again, after staging\n");
@@ -782,17 +813,17 @@ describe("Linyra panel", () => {
         return w !== undefined && w.staged.includes("upload.go") && w.changes.includes("upload.go");
       });
       // A file node as the Changes view passes it: staged and edited again is still "Discard File".
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard File");
-      await vscode.commands.executeCommand("polylog.discard", { kind: "file", path: "upload.go", owner: { repoId: api.id, sha: UNCOMMITTED, parent: null } });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard File");
+      await vscode.commands.executeCommand("linyra.discard", { kind: "file", path: "upload.go", owner: { repoId: api.id, sha: UNCOMMITTED, parent: null } });
       await waitFor("upload.go restored", () => (fs.readFileSync(at("upload.go"), "utf8") === `${committed}\n` ? true : undefined));
       assert.strictEqual(git(api.root, "status", "--porcelain"), "?? notes.md", "only the other file is left");
       // The root row: everything in the repository.
       await until("acme-api down to one file", (x) => x.changes.items[0]?.startsWith("acme-api | 1 file") === true);
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
-      await vscode.commands.executeCommand("polylog.discardAll", { kind: "commit" });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("linyra.discardAll", { kind: "commit" });
       await waitFor("acme-api clean", () => (git(api.root, "status", "--porcelain") === "" ? true : undefined));
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       git(api.root, "reset", "-q", "--hard");
       git(api.root, "clean", "-fdq");
       await send({ type: "logMode", mode: "commits" });
@@ -803,18 +834,18 @@ describe("Linyra panel", () => {
   it("bad input is ignored, not thrown: a null message, a malformed File History URI, a ../ diff path, a foreign revision", async () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const c = bySubject(s0, "feat: add retry");
-    // A null message from the webview, and a malformed polylog: URI for File History.
+    // A null message from the webview, and a malformed linyra: URI for File History.
     await send(null as unknown as WebviewMessage);
-    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.parse("polylog:/%E0%A4%A?x=%"));
+    await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.parse("linyra:/%E0%A4%A?x=%"));
     // A diff of a path that climbs out of the repository: refused, nothing opened.
     const before = vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
-    const opened = await vscode.commands.executeCommand("polylog.openDiff", { repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: "../../etc/passwd" });
+    const opened = await vscode.commands.executeCommand("linyra.openDiff", { repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: "../../etc/passwd" });
     assert.strictEqual(opened, undefined);
     assert.strictEqual(vscode.window.tabGroups.all.flatMap((g) => g.tabs).length, before);
     // A revision document for a folder that is not one of the repositories: empty, no git run.
     const { encodeRevision } = require("../revisionUri") as typeof import("../revisionUri");
     const spawns = (await snapshot()).spawnLog.length;
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.from({ scheme: "polylog", ...encodeRevision({ root: "/not/a/repo", ref: c.sha, path: "x.ts" }) }));
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.from({ scheme: "linyra", ...encodeRevision({ root: "/not/a/repo", ref: c.sha, path: "x.ts" }) }));
     assert.strictEqual(doc.getText(), "");
     assert.ok(!(await snapshot()).spawnLog.slice(spawns).some((x) => x.root === "/not/a/repo"), "no git for a foreign root");
     assert.strictEqual((await snapshot()).rows.length, 6, "the Log is unharmed");
@@ -861,11 +892,11 @@ describe("Linyra panel", () => {
     const web = s0.repos.find((r) => r.name === "acme-web")!;
     const folder = vscode.workspace.workspaceFolders!.find((f) => f.uri.fsPath === web.root)!;
     const cfg = vscode.workspace.getConfiguration("git", folder.uri);
-    const asked = () => vscode.commands.executeCommand<number>("polylog._itest.asked");
-    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("polylog._itest.uncommitted");
+    const asked = () => vscode.commands.executeCommand<number>("linyra._itest.asked");
+    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("linyra._itest.uncommitted");
     const hook = path.join(web.root, ".git", "hooks", "pre-commit");
     try {
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       // This folder's own settings (not the user's): smart commit, tracked files only.
       await cfg.update("enableSmartCommit", true, vscode.ConfigurationTarget.WorkspaceFolder);
       await cfg.update("smartCommitChanges", "tracked", vscode.ConfigurationTarget.WorkspaceFolder);
@@ -873,7 +904,7 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await waitFor("brand-new.md", async () => ((await view()).items.some((i) => i.includes("brand-new.md")) ? true : undefined));
       const before = await asked();
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       assert.strictEqual(await asked(), before, "only a new file and tracked-only smart commit: nothing to commit, nothing asked");
       // A failed commit: git's words, and no Log reload.
       fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 5;\n");
@@ -882,16 +913,16 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await waitFor("staged", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
       const reloads = (await snapshot()).stats.reloads;
-      await vscode.commands.executeCommand("polylog._itest.answer", "feat: blocked");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra._itest.answer", "feat: blocked");
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
       const err = (await view()).lastError ?? "";
       assert.match(err, /acme hook says no/);
       assert.ok(!err.endsWith(".."), `one period (${err})`);
       assert.strictEqual((await snapshot()).stats.reloads, reloads, "a failed commit does not reload the Log");
       const pal = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus.commandPalette as { command: string; when: string }[];
-      assert.strictEqual(pal.find((m) => m.command === "polylog.uncommittedClose")?.when, "polylog.uncommittedShown", "Close only while shown");
+      assert.strictEqual(pal.find((m) => m.command === "linyra.uncommittedClose")?.when, "linyra.uncommittedShown", "Close only while shown");
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       fs.rmSync(hook, { force: true });
       await cfg.update("enableSmartCommit", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
       await cfg.update("smartCommitChanges", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
@@ -912,9 +943,9 @@ describe("Linyra panel", () => {
     const web = s0.repos.find((r) => r.name === "acme-web")!;
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
     const head = git("rev-parse", "HEAD");
-    const view = () => vscode.commands.executeCommand<{ items: string[] }>("polylog._itest.uncommitted");
+    const view = () => vscode.commands.executeCommand<{ items: string[] }>("linyra._itest.uncommitted");
     try {
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 7;\n");
       fs.writeFileSync(path.join(web.root, "outside.md"), "x\n");
       git("add", "client.ts", "outside.md");
@@ -923,12 +954,12 @@ describe("Linyra panel", () => {
       await waitFor("both staged", async () => ((await view()).items.some((i) => i.includes("Staged | 2")) ? true : undefined));
       await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
       await waitFor("only client.ts shown", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
-      await vscode.commands.executeCommand("polylog._itest.answer", "Cancel");
-      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
-      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), "The commit takes 2 files in acme-web, not 1.");
+      await vscode.commands.executeCommand("linyra._itest.answer", "Cancel");
+      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "The commit takes 2 files in acme-web, not 1.");
       assert.strictEqual(git("rev-parse", "HEAD"), head, "declined: nothing committed");
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       await send({ type: "filter", filter: ALL });
       git("reset", "-q");
       fs.rmSync(path.join(web.root, "outside.md"), { force: true });
@@ -949,14 +980,14 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await until("acme-web behind the switch", (x) => x.workRows.length === 1);
       const uv = await waitFor("the Uncommitted title reflects the refreshed work", async () => {
-        const current = await vscode.commands.executeCommand<{ description: string }>("polylog._itest.uncommitted");
+        const current = await vscode.commands.executeCommand<{ description: string }>("linyra._itest.uncommitted");
         return current.description === "1 file · 1 repository" ? current : undefined;
       });
       assert.strictEqual(uv.description, "1 file · 1 repository", "the Uncommitted view's title counts the work");
       // File History from the Uncommitted side goes back to the Commit list.
       await send({ type: "logMode", mode: "uncommitted" });
       await until("Uncommitted", (x) => x.logMode === "uncommitted");
-      await vscode.commands.executeCommand("polylog.fileHistory", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
+      await vscode.commands.executeCommand("linyra.fileHistory", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
       let s = await until("File History on the Commit list", (x) => x.history?.path === "client.ts" && x.logMode === "commits");
       await until("the history's commits in the Changes view", (x) => !x.changes.items[0]?.includes("not committed") && x.rows.length > 0);
       await send({ type: "exitHistory" });
@@ -969,14 +1000,14 @@ describe("Linyra panel", () => {
       // The removed setting is gone (VS Code refuses to write an unregistered one), and the
       // Commit list has no Uncommitted row.
       const props = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties as Record<string, unknown>;
-      assert.strictEqual(props["polylog.showUncommitted"], undefined);
+      assert.strictEqual(props["linyra.showUncommitted"], undefined);
       await send({ type: "refresh" });
       s = await until("only commits", (x) => x.rows.length === 6);
       assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED));
       // The Repo menu on the Uncommitted view's repository rows.
       const menus = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
-      for (const c of ["polylog.repoShowOnly", "polylog.repoOpenFolder", "polylog.repoCopyPath", "polylog.repoPull"]) {
-        assert.ok(menus.some((m) => m.command === c && m.when.includes("view == polylog.uncommitted") && m.when.includes("repo")), `${c} on a repository row of the Uncommitted view`);
+      for (const c of ["linyra.repoShowOnly", "linyra.repoOpenFolder", "linyra.repoCopyPath", "linyra.repoPull"]) {
+        assert.ok(menus.some((m) => m.command === c && m.when.includes("view == linyra.uncommitted") && m.when.includes("repo")), `${c} on a repository row of the Uncommitted view`);
       }
     } finally {
       cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
@@ -991,7 +1022,7 @@ describe("Linyra panel", () => {
     const cp = require("child_process") as typeof import("child_process");
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const libs = s0.repos.find((r) => r.name === "acme-libs")!;
-    const view = () => vscode.commands.executeCommand<{ items: string[] }>("polylog._itest.uncommitted");
+    const view = () => vscode.commands.executeCommand<{ items: string[] }>("linyra._itest.uncommitted");
     const row = (suffix: string) => waitFor(`acme-libs ${suffix}`, async () => ((await view()).items.some((i) => i.startsWith("acme-libs") && i.endsWith(suffix)) ? true : undefined));
     fs.writeFileSync(path.join(libs.root, "package.json"), "{ \"x\": 1 }\n");
     try {
@@ -1022,28 +1053,28 @@ describe("Linyra panel", () => {
     const [web, api, libs] = ["acme-web", "acme-api", "acme-libs"].map((n) => s0.repos.find((r) => r.name === n)!);
     // What VS Code passes from a webview right-click: the element's data-vscode-context.
     const on = (repoId: string, section = "repo") => ({ webviewSection: section, repoId });
-    await vscode.commands.executeCommand("polylog.repoShowOnly", on(web.id, "commit"));
+    await vscode.commands.executeCommand("linyra.repoShowOnly", on(web.id, "commit"));
     let s = await until("acme-web only", (x) => x.rows.length === 2 && x.rows.every((r) => r.repoId === web.id));
     assert.deepStrictEqual(s.filter.repoIds, [web.id], "from a commit row too, and the filter is the pane's");
-    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await vscode.commands.executeCommand("linyra.repoShowAll");
     await until("every repository", (x) => x.rows.length === 6 && x.filter.repoIds === null);
-    await vscode.commands.executeCommand("polylog.repoHide", on(api.id));
+    await vscode.commands.executeCommand("linyra.repoHide", on(api.id));
     s = await until("all but acme-api", (x) => x.rows.length > 0 && !x.rows.some((r) => r.repoId === api.id));
     assert.deepStrictEqual(s.filter.repoIds, s0.repos.map((r) => r.id).filter((id) => id !== api.id), "the others stay ticked");
-    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await vscode.commands.executeCommand("linyra.repoShowAll");
     await until("every repository again", (x) => x.filter.repoIds === null && x.rows.length === 6);
-    await vscode.commands.executeCommand("polylog.repoShowOnly", on("/not/a/repo"));
+    await vscode.commands.executeCommand("linyra.repoShowOnly", on("/not/a/repo"));
     assert.strictEqual((await snapshot()).filter.repoIds, null, "an id that is not a listed repository is ignored");
 
-    await vscode.commands.executeCommand("polylog.repoCopyPath", on(libs.id));
+    await vscode.commands.executeCommand("linyra.repoCopyPath", on(libs.id));
     assert.strictEqual(await vscode.env.clipboard.readText(), libs.root);
 
     // With the pane hidden, a commit row's Show Only brings the pane back: no invisible filter.
-    await vscode.commands.executeCommand("polylog.hideRepos");
-    await vscode.commands.executeCommand("polylog.repoShowOnly", on(web.id, "commit"));
+    await vscode.commands.executeCommand("linyra.hideRepos");
+    await vscode.commands.executeCommand("linyra.repoShowOnly", on(web.id, "commit"));
     s = await until("acme-web only, pane shown", (x) => x.filter.repoIds?.length === 1 && x.rows.length === 2);
     assert.strictEqual(s.layout.groupByRepo, true, "the filter is never one the user cannot see");
-    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await vscode.commands.executeCommand("linyra.repoShowAll");
     await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
 
     const cfg = () => vscode.workspace.getConfiguration("linyra");
@@ -1051,9 +1082,9 @@ describe("Linyra panel", () => {
     await cfg().update("excludeRepos", ["no-such-repo-*"], vscode.ConfigurationTarget.Global);
     try {
       // Excluding the repo shown alone must not leave a filter that matches nothing.
-      await vscode.commands.executeCommand("polylog.repoShowOnly", on(libs.id));
+      await vscode.commands.executeCommand("linyra.repoShowOnly", on(libs.id));
       await until("acme-libs only", (x) => x.filter.repoIds?.[0] === libs.id);
-      await vscode.commands.executeCommand("polylog.repoExclude", on(libs.id));
+      await vscode.commands.executeCommand("linyra.repoExclude", on(libs.id));
       s = await until("acme-libs left out", (x) => x.repos.length === 2 && !x.repos.some((r) => r.id === libs.id));
       const inspected = cfg().inspect<string[]>("excludeRepos");
       assert.deepStrictEqual(inspected?.globalValue, ["no-such-repo-*", libs.root.replace(/\\/g, "/")], "its exact path, added to the user's own list (not a workspace file inside a repo)");
@@ -1076,7 +1107,7 @@ describe("Linyra panel", () => {
     const web = s0.repos.find((r) => r.name === "acme-web")!;
     const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
     const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
-    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-pull-"));
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-pull-"));
     const branch = git(web.root, "rev-parse", "--abbrev-ref", "HEAD");
     const before = git(web.root, "rev-parse", "HEAD");
     try {
@@ -1087,11 +1118,11 @@ describe("Linyra panel", () => {
       git(web.root, "branch", `--set-upstream-to=origin/${branch}`, branch);
       const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "chore: pulled from the remote");
       git(bare, "update-ref", `refs/heads/${branch}`, theirs);
-      await vscode.commands.executeCommand("polylog.fetchAll");
+      await vscode.commands.executeCommand("linyra.fetchAll");
       await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
 
       const mark = await snapshot();
-      await vscode.commands.executeCommand("polylog.repoPull", { webviewSection: "repo", repoId: web.id });
+      await vscode.commands.executeCommand("linyra.repoPull", { webviewSection: "repo", repoId: web.id });
       await waitFor("the branch at the remote's commit", () => (git(web.root, "rev-parse", "HEAD") === theirs ? true : undefined));
       const ours = (await snapshot()).spawnLog.slice(mark.spawnLog.length).filter((x) => x.cmd === "pull");
       assert.deepStrictEqual(ours, [], "VS Code's own Git pulled it (its Pull, with its settings and messages), not Linyra's fallback");
@@ -1117,7 +1148,7 @@ describe("Linyra panel", () => {
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
     const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
-    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-pullall-"));
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-pullall-"));
     const repos = Object.fromEntries(["acme-web", "acme-api", "acme-libs"].map((n) => {
       const r = s0.repos.find((x) => x.name === n)!;
       return [n, { ...r, branch: git(r.root, "rev-parse", "--abbrev-ref", "HEAD"), before: git(r.root, "rev-parse", "HEAD") }];
@@ -1148,7 +1179,7 @@ describe("Linyra panel", () => {
       // merge.autoStash would stash the edit, fast-forward and apply it back with conflict markers.
       git(libs.root, "config", "merge.autoStash", "true");
 
-      const result = await vscode.commands.executeCommand<{ pulled: string[]; skipped: { name: string; reason: string }[] }>("polylog.fetchAndPullAll");
+      const result = await vscode.commands.executeCommand<{ pulled: string[]; skipped: { name: string; reason: string }[] }>("linyra.fetchAndPullAll");
       assert.deepStrictEqual(result.pulled, ["acme-web"]);
       assert.deepStrictEqual(result.skipped.map((x) => `${x.name}: ${x.reason}`).sort(), ["acme-api: it has diverged from its upstream", "acme-libs: local changes to the same files"]);
       assert.strictEqual(git(web.root, "rev-parse", "HEAD"), theirs["acme-web"], "fast-forwarded to the remote's commit");
@@ -1180,23 +1211,23 @@ describe("Linyra panel", () => {
     const c = bySubject(s, "feat: add retry to uploader");
     const repo = s.repos.find((r) => r.id === c.repoId)!;
     const on = { webviewSection: "commit", repoId: c.repoId, sha: c.sha };
-    await vscode.commands.executeCommand("polylog.commitCopySha", on);
+    await vscode.commands.executeCommand("linyra.commitCopySha", on);
     assert.strictEqual(await vscode.env.clipboard.readText(), c.sha);
-    await vscode.commands.executeCommand("polylog.commitCopyMessage", on);
+    await vscode.commands.executeCommand("linyra.commitCopyMessage", on);
     const full = cp.execFileSync("git", ["show", "-s", "--format=%B", c.sha], { cwd: repo.root }).toString().trim();
     assert.strictEqual(await vscode.env.clipboard.readText(), full, "the whole message, not only the subject the row shows");
 
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: repo.root }).toString().trim();
-    assert.strictEqual(await vscode.commands.executeCommand("polylog.commitOpenOnRemote", on), undefined, "no remote: nothing to open");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra.commitOpenOnRemote", on), undefined, "no remote: nothing to open");
     git("remote", "add", "origin", "git@github.com:acme/acme-api.git");
     try {
-      assert.strictEqual(await vscode.commands.executeCommand("polylog.commitOpenOnRemote", on), `https://github.com/acme/acme-api/commit/${c.sha}`);
+      assert.strictEqual(await vscode.commands.executeCommand("linyra.commitOpenOnRemote", on), `https://github.com/acme/acme-api/commit/${c.sha}`);
     } finally {
       git("remote", "remove", "origin");
     }
     await vscode.env.clipboard.writeText("unchanged");
-    await vscode.commands.executeCommand("polylog.commitCopySha", { ...on, sha: "not-a-sha" });
-    await vscode.commands.executeCommand("polylog.commitCopySha", { ...on, sha: UNCOMMITTED });
+    await vscode.commands.executeCommand("linyra.commitCopySha", { ...on, sha: "not-a-sha" });
+    await vscode.commands.executeCommand("linyra.commitCopySha", { ...on, sha: UNCOMMITTED });
     assert.strictEqual(await vscode.env.clipboard.readText(), "unchanged", "only a real commit of a listed repository");
   });
 
@@ -1209,8 +1240,8 @@ describe("Linyra panel", () => {
     const theirs = cp.execFileSync("git", ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "theirs"], {
       cwd: web.root, env: { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" },
     }).toString().trim();
-    git("update-ref", "refs/heads/polylog-up", theirs);
-    git("branch", "--set-upstream-to=polylog-up", branch);
+    git("update-ref", "refs/heads/linyra-up", theirs);
+    git("branch", "--set-upstream-to=linyra-up", branch);
     try {
       // No Refresh: VS Code's Git reports the new upstream; that repo is read again. Its file
       // watcher may not see a .git/config change on every runner, so ask it to look (its own status).
@@ -1221,7 +1252,7 @@ describe("Linyra panel", () => {
       assert.ok(Object.keys(s.sync).every((id) => id === web.id), "repositories without an upstream show nothing");
     } finally {
       git("branch", "--unset-upstream", branch);
-      git("branch", "-D", "polylog-up");
+      git("branch", "-D", "linyra-up");
     }
     // Cleanup, not what is tested: Refresh reads every repository again (VS Code's Git may
     // report the removed upstream late on a busy runner).
@@ -1240,7 +1271,7 @@ describe("Linyra panel", () => {
     const api = s0.repos.find((r) => r.name === "acme-api")!;
     const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
     const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
-    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-remote-"));
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-remote-"));
     const branch = git(web.root, "rev-parse", "--abbrev-ref", "HEAD");
     try {
       git(remote, "clone", "-q", "--bare", web.root, "web.git");
@@ -1254,21 +1285,21 @@ describe("Linyra panel", () => {
       const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "theirs");
       git(bare, "update-ref", `refs/heads/${branch}`, theirs);
       assert.strictEqual((await snapshot()).sync[web.id], undefined, "not known before a fetch: Linyra never fetches on its own");
-      const running = vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("polylog.fetchAll");
+      const running = vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("linyra.fetchAll");
       assert.strictEqual((await snapshot()).fetching, true, "the toolbar shows it is fetching");
       const result = await running;
       assert.deepStrictEqual(result, { fetched: 2, failed: ["acme-api"] }, "every repository fetched; the unreachable one named");
       assert.strictEqual((await snapshot()).fetching, false);
       // The unreachable remote gone: every fetch succeeds, and the status bar says what it found.
       git(api.root, "remote", "remove", "origin");
-      const ok = await vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("polylog.fetchAll");
+      const ok = await vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("linyra.fetchAll");
       assert.strictEqual(ok.summary, "Linyra: fetched 3 repositories · 1 behind its upstream");
       const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
       assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
 
-      await vscode.commands.executeCommand("polylog.showBehind");
+      await vscode.commands.executeCommand("linyra.showBehind");
       await until("only the repository behind", (x) => x.filter.repoIds?.join() === web.id && x.rows.every((r) => r.repoId === web.id));
-      await vscode.commands.executeCommand("polylog.repoShowAll");
+      await vscode.commands.executeCommand("linyra.repoShowAll");
       await until("every repository including the fetched remote tip", (x) => x.filter.repoIds === null && x.rows.length === 7);
       assert.ok((await snapshot()).rows.some((row) => row.sha === theirs), "all-branches mode includes a fetched commit before it is pulled");
     } finally {
@@ -1287,10 +1318,10 @@ describe("Linyra panel", () => {
     const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
     await send({ type: "filter", filter: { ...ALL, repoIds: [web.id] } });
     await until("acme-web only", (x) => x.rows.length === 2);
-    await vscode.commands.executeCommand("polylog.hideRepos");
+    await vscode.commands.executeCommand("linyra.hideRepos");
     const s = await until("every repo again", (x) => x.rows.length === 6);
     assert.strictEqual(s.filter.repoIds, null, "no invisible filter left behind");
-    await vscode.commands.executeCommand("polylog.showRepos");
+    await vscode.commands.executeCommand("linyra.showRepos");
   });
 
   it("fills the native Changes tree when a commit is selected", async () => {
@@ -1319,7 +1350,7 @@ describe("Linyra panel", () => {
   it("opens a file's diff in the editor area", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");
-    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    await vscode.commands.executeCommand("linyra.openDiff", args(c, "upload.go"));
     const input = await diffTab();
     assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "package upload\n");
     assert.match((await vscode.workspace.openTextDocument(input.modified)).getText(), /func Retry/);
@@ -1328,10 +1359,10 @@ describe("Linyra panel", () => {
   it("Open File on a diff opens the file as it is in the workspace now", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: scaffold api");
-    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    await vscode.commands.executeCommand("linyra.openDiff", args(c, "upload.go"));
     const input = await diffTab();
     // The editor title button passes the diff's modified side.
-    await vscode.commands.executeCommand("polylog.openWorkingFile", input.modified);
+    await vscode.commands.executeCommand("linyra.openWorkingFile", input.modified);
     const editor = await waitFor("the workspace file", () => {
       const e = vscode.window.activeTextEditor;
       return e?.document.uri.scheme === "file" ? e : undefined;
@@ -1347,7 +1378,7 @@ describe("Linyra panel", () => {
     await send({ type: "select", repoId: c.repoId, sha: c.sha });
     await until("the tree for that commit", (x) => x.changes.items.some((i) => i.includes("client.ts")));
     // The tree passes its file node, as for File History.
-    await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", path: "client.ts" });
+    await vscode.commands.executeCommand("linyra.openWorkingFile", { kind: "file", path: "client.ts" });
     const editor = await waitFor("the workspace file", () => {
       const e = vscode.window.activeTextEditor;
       return e?.document.uri.scheme === "file" ? e : undefined;
@@ -1375,36 +1406,36 @@ describe("Linyra panel", () => {
     const repo = s.repos.find((r) => r.id === c.repoId)!;
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: repo.root }).toString().trim();
     try {
-      git("branch", "polylog-detail-ref", c.sha);
-      git("tag", "-a", "polylog-detail-tag", "-m", "detail reference fixture", c.sha);
-      git("update-ref", "refs/remotes/polylog-detail-remote/preview", c.sha);
+      git("branch", "linyra-detail-ref", c.sha);
+      git("tag", "-a", "linyra-detail-tag", "-m", "detail reference fixture", c.sha);
+      git("update-ref", "refs/remotes/linyra-detail-remote/preview", c.sha);
       await send({ type: "refresh" });
       const refreshed = await until("new branch, remote and annotated tag references", (x) => {
         const refs = x.changes.presentation?.details[0]?.refs ?? [];
-        return refs.some((r) => r.kind === "local" && r.name === "polylog-detail-ref")
-          && refs.some((r) => r.kind === "remote" && r.name === "polylog-detail-remote/preview")
-          && refs.some((r) => r.kind === "tag" && r.name === "polylog-detail-tag");
+        return refs.some((r) => r.kind === "local" && r.name === "linyra-detail-ref")
+          && refs.some((r) => r.kind === "remote" && r.name === "linyra-detail-remote/preview")
+          && refs.some((r) => r.kind === "tag" && r.name === "linyra-detail-tag");
       });
-      assert.ok(refreshed.changes.presentation!.details[0].containingBranches?.includes("polylog-detail-ref"));
-      assert.ok(!refreshed.changes.presentation!.details[0].containingBranches?.includes("polylog-detail-tag"), "tags do not inflate the branch count");
+      assert.ok(refreshed.changes.presentation!.details[0].containingBranches?.includes("linyra-detail-ref"));
+      assert.ok(!refreshed.changes.presentation!.details[0].containingBranches?.includes("linyra-detail-tag"), "tags do not inflate the branch count");
     } finally {
-      git("branch", "-D", "polylog-detail-ref");
-      git("tag", "-d", "polylog-detail-tag");
-      git("update-ref", "-d", "refs/remotes/polylog-detail-remote/preview");
+      git("branch", "-D", "linyra-detail-ref");
+      git("tag", "-d", "linyra-detail-tag");
+      git("update-ref", "-d", "refs/remotes/linyra-detail-remote/preview");
       await send({ type: "refresh" });
     }
     assert.ok(!page.roots.some((r) => r.label === c.subject), "commit title does not occupy a file row");
     const row = page.roots.find((r) => r.label === "client.ts")!;
-    const message = (value: unknown) => vscode.commands.executeCommand("polylog._itest.changesMessage", value);
+    const message = (value: unknown) => vscode.commands.executeCommand("linyra._itest.changesMessage", value);
     await message({ type: "copy", sha: c.sha, field: "sha" });
     assert.strictEqual(await vscode.env.clipboard.readText(), c.sha);
     await message({ type: "copy", sha: "f".repeat(40), field: "message" });
     assert.strictEqual(await vscode.env.clipboard.readText(), c.sha, "unknown commits cannot copy arbitrary data");
     await message({ type: "copy", sha: c.sha, field: "message" });
     assert.strictEqual(await vscode.env.clipboard.readText(), c.subject);
-    await vscode.commands.executeCommand("polylog.copyRelativePath", { changesNodeId: row.id });
+    await vscode.commands.executeCommand("linyra.copyRelativePath", { changesNodeId: row.id });
     assert.strictEqual(await vscode.env.clipboard.readText(), "client.ts");
-    await vscode.commands.executeCommand("polylog.copyRelativePath", { changesNodeId: "stale-row", kind: "file", path: "forged.ts" });
+    await vscode.commands.executeCommand("linyra.copyRelativePath", { changesNodeId: "stale-row", kind: "file", path: "forged.ts" });
     assert.strictEqual(await vscode.env.clipboard.readText(), "client.ts");
     await message({ type: "selection", ids: [row.id, "stale-row"] });
     assert.deepStrictEqual((await snapshot()).changes.selected, ["client.ts"]);
@@ -1425,21 +1456,21 @@ describe("Linyra panel", () => {
     // The Changes view's root row (a commit): Copy Commit ID and Copy Message, as on the Log's row.
     await send({ type: "select", repoId: c.repoId, sha: c.sha });
     await until("the tree for that commit", (x) => x.changes.items.some((i) => i.includes("client.ts")));
-    await vscode.commands.executeCommand("polylog.commitCopySha", { kind: "commit" });
+    await vscode.commands.executeCommand("linyra.commitCopySha", { kind: "commit" });
     assert.strictEqual(await clip(), c.sha);
-    await vscode.commands.executeCommand("polylog.commitCopyMessage", { kind: "commit" });
+    await vscode.commands.executeCommand("linyra.commitCopyMessage", { kind: "commit" });
     assert.strictEqual(await clip(), "fix: guard nil response");
     // A Compare commit row passes its node: { kind, repoId, commit }.
     await vscode.env.clipboard.writeText("");
-    await vscode.commands.executeCommand("polylog.commitCopySha", { kind: "commit", id: "x", repoId: c.repoId, commit: { sha: c.sha } });
+    await vscode.commands.executeCommand("linyra.commitCopySha", { kind: "commit", id: "x", repoId: c.repoId, commit: { sha: c.sha } });
     assert.strictEqual(await clip(), c.sha);
     // Copy Path and Copy Relative Path from a Changes file row.
-    await vscode.commands.executeCommand("polylog.copyRelativePath", { kind: "file", path: "client.ts" });
+    await vscode.commands.executeCommand("linyra.copyRelativePath", { kind: "file", path: "client.ts" });
     assert.strictEqual(await clip(), "client.ts");
-    await vscode.commands.executeCommand("polylog.copyFilePath", { kind: "file", path: "client.ts" });
+    await vscode.commands.executeCommand("linyra.copyFilePath", { kind: "file", path: "client.ts" });
     assert.strictEqual(await clip(), path.join(web.root, "client.ts"));
     // File History from a Compare file row (it has a side).
-    await vscode.commands.executeCommand("polylog.fileHistory", { kind: "file", id: "x", repoId: web.id, side: "left", path: "client.ts", name: "client.ts", file: { path: "client.ts", added: 1, deleted: 0 }, both: false });
+    await vscode.commands.executeCommand("linyra.fileHistory", { kind: "file", id: "x", repoId: web.id, side: "left", path: "client.ts", name: "client.ts", file: { path: "client.ts", added: 1, deleted: 0 }, both: false });
     await until("File History from Compare", (x) => x.history?.path === "client.ts");
     await send({ type: "exitHistory" });
     await until("history closed", (x) => x.history === null);
@@ -1450,10 +1481,10 @@ describe("Linyra panel", () => {
       fs.writeFileSync(path.join(web.root, "extra.md"), "x\n");
       await send({ type: "refresh" });
       await until("two changed files", (x) => x.uncommitted.find((u) => u.repoId === web.id)?.changes.length === 2);
-      await vscode.commands.executeCommand("polylog.stageAll", { kind: "repo", repoId: web.id });
+      await vscode.commands.executeCommand("linyra.stageAll", { kind: "repo", repoId: web.id });
       await waitFor("both staged", () => (git("diff", "--cached", "--name-only").split("\n").sort().join(",") === "client.ts,extra.md" ? true : undefined));
       await until("both staged in the store", (x) => x.uncommitted.find((u) => u.repoId === web.id)?.staged.length === 2);
-      await vscode.commands.executeCommand("polylog.unstageAll", { kind: "repo", repoId: web.id });
+      await vscode.commands.executeCommand("linyra.unstageAll", { kind: "repo", repoId: web.id });
       await waitFor("nothing staged", () => (git("diff", "--cached", "--name-only") === "" ? true : undefined));
     } finally {
       git("reset", "-q", "--hard");
@@ -1481,7 +1512,7 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await until("work in both", (x) => work(x, web.id)?.changes.length === 3 && work(x, api.id)?.changes.length === 1);
       // Stage two selected rows: the right-clicked one and the rest of the selection.
-      await vscode.commands.executeCommand("polylog.stage", row(web.id, "docs/a.md"), [row(web.id, "docs/a.md"), row(web.id, "client.ts")]);
+      await vscode.commands.executeCommand("linyra.stage", row(web.id, "docs/a.md"), [row(web.id, "docs/a.md"), row(web.id, "client.ts")]);
       await waitFor("two staged", () => (git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "client.ts,docs/a.md" ? true : undefined));
       git(web.root, "reset", "-q");
       await send({ type: "refresh" });
@@ -1491,31 +1522,31 @@ describe("Linyra panel", () => {
       await until("the Uncommitted side", (x) => x.logMode === "uncommitted");
       await send({ type: "selectWork", repoId: web.id });
       await until("acme-web in the Changes view", (x) => x.changes.items[0]?.startsWith("acme-web") === true);
-      await vscode.commands.executeCommand("polylog.stage", { kind: "folder", path: "docs" });
+      await vscode.commands.executeCommand("linyra.stage", { kind: "folder", path: "docs" });
       await waitFor("docs staged", () => (git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "docs/a.md,docs/b.md" ? true : undefined));
       const flatten = (nodes: ChangeRow[]): ChangeRow[] => nodes.flatMap((n) => [n, ...flatten(n.children ?? [])]);
       const docRows = (x: LogSnapshot) => flatten(x.changes.presentation?.roots ?? []).filter((n) => n.label === "a.md" || n.label === "b.md");
       const staged = await until("staged document rows in the webview", (x) => docRows(x).length === 2 && docRows(x).every((n) => n.contextValue.includes(".staged")));
       const ids = docRows(staged).map((n) => n.id);
-      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "selection", ids: [] });
-      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "selection", ids }, "editor");
-      await vscode.commands.executeCommand("polylog.unstage", { changesNodeId: ids[0], changesViewId: "editor" });
+      await vscode.commands.executeCommand("linyra._itest.changesMessage", { type: "selection", ids: [] });
+      await vscode.commands.executeCommand("linyra._itest.changesMessage", { type: "selection", ids }, "editor");
+      await vscode.commands.executeCommand("linyra.unstage", { changesNodeId: ids[0], changesViewId: "editor" });
       await waitFor("both webview-selected files unstaged", () => git(web.root, "diff", "--cached", "--name-only") === "" ? true : undefined);
       await until("unstaged document rows in the webview", (x) => docRows(x).length === 2 && docRows(x).every((n) => !n.contextValue.includes(".staged")));
-      await vscode.commands.executeCommand("polylog._itest.changesMessage", { type: "selection", ids });
-      await vscode.commands.executeCommand("polylog.stage", { changesNodeId: ids[0] });
+      await vscode.commands.executeCommand("linyra._itest.changesMessage", { type: "selection", ids });
+      await vscode.commands.executeCommand("linyra.stage", { changesNodeId: ids[0] });
       await waitFor("both webview-selected files staged", () => git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(",") === "docs/a.md,docs/b.md" ? true : undefined);
       await send({ type: "logMode", mode: "commits" });
       await send({ type: "refresh" });
       await until("docs staged in the store", (x) => work(x, web.id)?.staged.length === 2);
       // Discard rows of two repositories: one prompt for all of them.
-      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
-      await vscode.commands.executeCommand("polylog.discard", row(web.id, "client.ts"), [row(web.id, "client.ts"), row(api.id, "upload.go")]);
-      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), "Discard changes in 2 files in 2 repositories?");
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("linyra.discard", row(web.id, "client.ts"), [row(web.id, "client.ts"), row(api.id, "upload.go")]);
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Discard changes in 2 files in 2 repositories?");
       await waitFor("both restored", () => (git(web.root, "status", "--porcelain", "--", "client.ts") === "" && git(api.root, "status", "--porcelain") === "" ? true : undefined));
       assert.strictEqual(git(web.root, "diff", "--cached", "--name-only").split("\n").sort().join(","), "docs/a.md,docs/b.md", "rows not selected are left alone");
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       await send({ type: "logMode", mode: "commits" });
       for (const r of [web, api]) {
         git(r.root, "reset", "-q", "--hard");
@@ -1538,17 +1569,17 @@ describe("Linyra panel", () => {
       ], "a malformed profile is skipped; a missing repository is reported, not an error");
       // A filter set beforehand stays: a profile changes only the repositories.
       await send({ type: "filter", filter: { ...s.filter, author: "dana" } });
-      await vscode.commands.executeCommand("polylog.profileShow", { webviewSection: "profile", profile: "backend" });
+      await vscode.commands.executeCommand("linyra.profileShow", { webviewSection: "profile", profile: "backend" });
       s = await until("backend ticked", (x) => x.filter.repoIds?.join() === [id("acme-api"), id("acme-libs")].join());
       assert.strictEqual(s.filter.author, "dana", "Author kept");
-      await vscode.commands.executeCommand("polylog._itest.answer", "web");
-      await vscode.commands.executeCommand("polylog.profileSwitch");
+      await vscode.commands.executeCommand("linyra._itest.answer", "web");
+      await vscode.commands.executeCommand("linyra.profileSwitch");
       await until("web ticked", (x) => x.filter.repoIds?.join() === id("acme-web"));
-      await vscode.commands.executeCommand("polylog._itest.answer", "All repositories");
-      await vscode.commands.executeCommand("polylog.profileSwitch");
+      await vscode.commands.executeCommand("linyra._itest.answer", "All repositories");
+      await vscode.commands.executeCommand("linyra.profileSwitch");
       await until("All again", (x) => x.filter.repoIds === null);
     } finally {
-      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
       await send({ type: "filter", filter: ALL });
     }
@@ -1560,41 +1591,41 @@ describe("Linyra panel", () => {
     const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
     const cfg = vscode.workspace.getConfiguration("linyra");
     const saved = () => cfg.inspect<Record<string, string[]>>("profiles")?.workspaceValue;
-    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", v);
     try {
       await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api"), id("acme-libs")] } });
       await answer("backend");
-      await vscode.commands.executeCommand("polylog.profileSave");
+      await vscode.commands.executeCommand("linyra.profileSave");
       await waitFor("backend saved", () => (saved()?.backend?.join() === "acme-api,acme-libs" ? true : undefined));
       await until("backend resolved", (x) => x.profiles.some((p) => p.name === "backend"));
       // A repository's Profiles…: add acme-web to backend and make a new profile with it.
       await answer(JSON.stringify(["backend", "New profile with acme-web…"]));
       await answer("web");
-      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await vscode.commands.executeCommand("linyra.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
       await waitFor("memberships", () => (saved()?.backend?.join() === "acme-api,acme-libs,acme-web" && saved()?.web?.join() === "acme-web" ? true : undefined));
       // ...and take it out again: unticked = removed.
       await answer(JSON.stringify([]));
-      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await vscode.commands.executeCommand("linyra.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
       await waitFor("removed", () => (saved()?.backend?.join() === "acme-api,acme-libs" && saved()?.web?.length === 0 ? true : undefined));
       // Update to Current Selection.
       await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api")] } });
-      await vscode.commands.executeCommand("polylog.profileUpdate", { webviewSection: "profile", profile: "backend" });
+      await vscode.commands.executeCommand("linyra.profileUpdate", { webviewSection: "profile", profile: "backend" });
       await waitFor("updated", () => (saved()?.backend?.join() === "acme-api" ? true : undefined));
       // Rename to a taken name (any case) changes nothing; to a free one, renames.
       await answer("WEB");
-      await vscode.commands.executeCommand("polylog.profileRename", { webviewSection: "profile", profile: "backend" });
+      await vscode.commands.executeCommand("linyra.profileRename", { webviewSection: "profile", profile: "backend" });
       assert.ok(saved()?.backend && !saved()?.WEB, "a taken name is refused");
       await answer("api");
-      await vscode.commands.executeCommand("polylog.profileRename", { webviewSection: "profile", profile: "backend" });
+      await vscode.commands.executeCommand("linyra.profileRename", { webviewSection: "profile", profile: "backend" });
       await waitFor("renamed", () => (saved()?.api?.join() === "acme-api" && !saved()?.backend ? true : undefined));
       // Delete asks; Cancel keeps it.
       await answer("Cancel");
-      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "api" });
+      await vscode.commands.executeCommand("linyra.profileDelete", { webviewSection: "profile", profile: "api" });
       assert.ok(saved()?.api, "Cancel keeps it");
       await answer("Delete");
-      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "api" });
+      await vscode.commands.executeCommand("linyra.profileDelete", { webviewSection: "profile", profile: "api" });
       await waitFor("deleted", () => (saved()?.api === undefined ? true : undefined));
-      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), 'Delete profile "api"?');
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), 'Delete profile "api"?');
     } finally {
       await answer(undefined);
       await cfg.update("profiles", undefined, vscode.ConfigurationTarget.Workspace);
@@ -1607,23 +1638,23 @@ describe("Linyra panel", () => {
     const id = (name: string) => s0.repos.find((r) => r.name === name)!.id;
     const cfg = vscode.workspace.getConfiguration("linyra");
     const ws = () => vscode.workspace.getConfiguration("linyra").inspect<Record<string, string[]>>("profiles")?.workspaceValue;
-    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", v);
     try {
       await cfg.update("profiles", { personal: ["acme-web"] }, vscode.ConfigurationTarget.Global);
       await until("the User profile is listed", (x) => x.profiles.some((p) => p.name === "personal"));
       // Accepting Profiles… unchanged writes no workspace setting at all.
       await answer(JSON.stringify(["personal"]));
-      await vscode.commands.executeCommand("polylog.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
+      await vscode.commands.executeCommand("linyra.repoProfiles", { webviewSection: "repo", repoId: id("acme-web") });
       assert.strictEqual(ws(), undefined, "nothing changed: nothing written");
       // Saving a workspace profile writes only it.
       await send({ type: "filter", filter: { ...ALL, repoIds: [id("acme-api")] } });
       await answer("backend");
-      await vscode.commands.executeCommand("polylog.profileSave");
+      await vscode.commands.executeCommand("linyra.profileSave");
       await waitFor("backend saved", () => (ws()?.backend ? true : undefined));
       assert.deepStrictEqual(ws(), { backend: ["acme-api"] }, "the User profile is not copied into the workspace");
       // Deleting a User-level profile from here leaves both scopes as they were.
       await answer("Delete");
-      await vscode.commands.executeCommand("polylog.profileDelete", { webviewSection: "profile", profile: "personal" });
+      await vscode.commands.executeCommand("linyra.profileDelete", { webviewSection: "profile", profile: "personal" });
       assert.deepStrictEqual(ws(), { backend: ["acme-api"] });
       assert.deepStrictEqual(cfg.inspect<Record<string, string[]>>("profiles")?.globalValue, { personal: ["acme-web"] });
     } finally {
@@ -1638,7 +1669,7 @@ describe("Linyra panel", () => {
   it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");
-    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    await vscode.commands.executeCommand("linyra.openDiff", args(c, "upload.go"));
     const input = await diffTab();
     const editor = await waitFor("the modified side focused", () => {
       const e = vscode.window.activeTextEditor;
@@ -1647,7 +1678,7 @@ describe("Linyra panel", () => {
     const blameOn = (line: number, re: RegExp) => {
       editor.selection = new vscode.Selection(line, 0, line, 0);
       return waitFor(`blame on line ${line + 1}`, async () => {
-        const b = await vscode.commands.executeCommand<{ line: number; text: string } | undefined>("polylog._itest.blame");
+        const b = await vscode.commands.executeCommand<{ line: number; text: string } | undefined>("linyra._itest.blame");
         return b && b.line === line && re.test(b.text) ? b : undefined;
       });
     };
@@ -1656,7 +1687,7 @@ describe("Linyra panel", () => {
     const config = vscode.workspace.getConfiguration("linyra");
     await config.update("blame", false, vscode.ConfigurationTarget.Global);
     try {
-      await waitFor("blame cleared when turned off", async () => ((await vscode.commands.executeCommand("polylog._itest.blame")) === undefined ? true : undefined));
+      await waitFor("blame cleared when turned off", async () => ((await vscode.commands.executeCommand("linyra._itest.blame")) === undefined ? true : undefined));
     } finally {
       await config.update("blame", undefined, vscode.ConfigurationTarget.Global);
     }
@@ -1665,7 +1696,7 @@ describe("Linyra panel", () => {
   it("shows an empty before side for a root commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: scaffold api");
-    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    await vscode.commands.executeCommand("linyra.openDiff", args(c, "upload.go"));
     const input = await diffTab();
     assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "");
   });
@@ -1726,8 +1757,8 @@ describe("Linyra panel", () => {
   it("rejects refs that are not SHAs", async () => {
     await closeEditors();
     const c = (await snapshot()).rows[0];
-    const bad = "--output=/tmp/polylog-pwned";
-    await vscode.commands.executeCommand("polylog.openDiff", { ...args(c, "x"), sha: bad });
+    const bad = "--output=/tmp/linyra-pwned";
+    await vscode.commands.executeCommand("linyra.openDiff", { ...args(c, "x"), sha: bad });
     await send({ type: "openFirst", repoId: c.repoId, sha: bad });
     await send({ type: "select", repoId: c.repoId, sha: bad });
     await sleep(300);
@@ -1738,7 +1769,7 @@ describe("Linyra panel", () => {
     await closeEditors();
     await send({ type: "filter", filter: { ...ALL, date: "7d" } });
     const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
-    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
     let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
     assert.strictEqual(s.filter.date, "all", "file history shows all time");
     assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"]);
@@ -1748,7 +1779,7 @@ describe("Linyra panel", () => {
     await send({ type: "select", repoId: older.repoId, sha: older.sha });
     const input = await waitFor("the older revision's diff", () => {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-      return tab instanceof vscode.TabInputTextDiff && (tab.modified.scheme === "git" || tab.modified.scheme === "polylog") && tab.modified.query.includes(older.sha) ? tab : undefined;
+      return tab instanceof vscode.TabInputTextDiff && (tab.modified.scheme === "git" || tab.modified.scheme === "linyra") && tab.modified.query.includes(older.sha) ? tab : undefined;
     });
     assert.strictEqual((await vscode.workspace.openTextDocument(input.modified)).getText(), "package upload\n");
     await until("the file is highlighted in Changes", (x) => x.changes.focused === "upload.go" && x.changes.items[0]?.startsWith("feat: scaffold api") === true);
@@ -1765,7 +1796,7 @@ describe("Linyra panel", () => {
     await send({ type: "filter", filter: { ...ALL, text: "retry", author: "rin", mine: true, authors: ["noor"] } });
     await until("the filtered log", (x) => x.filter.text === "retry");
     const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
-    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
     let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
     assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"], "dana's commit shows too, and so does the one that never says retry");
     assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine, s.filter.authors], ["", "", false, undefined], "the boxes and chips are empty while in the history");
@@ -1783,7 +1814,7 @@ describe("Linyra panel", () => {
     await cfg.update("enablePreview", false, vscode.ConfigurationTarget.Global);
     try {
       const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
-      await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+      await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
       const s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
       // The Log selects row 0 on its own; on a slow host that can land after a step below.
       await until("the newest revision is shown", (x) => x.changes.items[0]?.startsWith("feat: add retry") === true);
@@ -1807,7 +1838,7 @@ describe("Linyra panel", () => {
       await until("all commits again", (x) => x.history === null);
       // A later File History is a new session: it must not close the diff this one left open.
       const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
-      await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(web.root, "client.ts")));
+      await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(require("path").join(web.root, "client.ts")));
       const w = await until("client.ts history", (x) => x.history?.path === "client.ts" && x.rows.length === 2);
       await until("its newest revision is shown", (x) => x.changes.items[0]?.startsWith("fix: guard nil") === true);
       await send({ type: "select", repoId: w.rows[1].repoId, sha: w.rows[1].sha });
@@ -1826,7 +1857,7 @@ describe("Linyra panel", () => {
   it("File History never overwrites the saved date range, and ends if its repo leaves", async () => {
     await send({ type: "filter", filter: { ...ALL, date: "7d" } });
     const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
-    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
     let s = await until("history", (x) => x.history !== null);
     assert.strictEqual(s.filter.date, "all");
     assert.strictEqual(s.persistedFilter?.date, "7d", "a window reload now would bring back 7 days, not all time");
@@ -1884,7 +1915,7 @@ describe("Linyra panel", () => {
     const before = (await snapshot()).readyCount;
     await vscode.commands.executeCommand("workbench.action.terminal.focus");
     await sleep(500);
-    await vscode.commands.executeCommand("polylog.open");
+    await vscode.commands.executeCommand("linyra.open");
     await sleep(1000);
     assert.strictEqual((await snapshot()).readyCount, before, "the webview was destroyed and re-created");
   });
@@ -1894,7 +1925,7 @@ describe("Linyra panel", () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const os = require("os") as typeof import("os");
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-gitpath-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-gitpath-"));
     const calls = path.join(dir, "calls.log");
     const wrapper = path.join(dir, "git-wrapper");
     // Records every call, then runs the real git from PATH.
@@ -1953,14 +1984,14 @@ describe("Linyra panel", () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const cp = require("child_process") as typeof import("child_process");
-    const store = () => vscode.commands.executeCommand<{ pair: Pair | null; reading: boolean; rows: string[] }>("polylog._itest.compareStore");
-    const pick = (p: Pair | null) => vscode.commands.executeCommand("polylog._itest.comparePick", p);
+    const store = () => vscode.commands.executeCommand<{ pair: Pair | null; reading: boolean; rows: string[] }>("linyra._itest.compareStore");
+    const pick = (p: Pair | null) => vscode.commands.executeCommand("linyra._itest.comparePick", p);
     const git = (root: string, args: string[], input?: string) => cp.execFileSync("git", args, { cwd: root, input, env: { ...process.env, ...ID } }).toString().trim();
     const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
     let n = 0;
     /** A commit on top of `parent` with these files, made without touching the working tree or the checked-out branch. */
     function commitOn(root: string, parent: string | null, files: Record<string, string>, message: string, time: number): string {
-      const idx = path.join(os.tmpdir(), `polylog-itest-index-${process.pid}-${n++}`);
+      const idx = path.join(os.tmpdir(), `linyra-itest-index-${process.pid}-${n++}`);
       const env = { ...process.env, ...ID, GIT_INDEX_FILE: idx, GIT_AUTHOR_DATE: `${time} +0000`, GIT_COMMITTER_DATE: `${time} +0000` };
       const run = (args: string[], input?: string) => cp.execFileSync("git", args, { cwd: root, input, env }).toString().trim();
       try {
@@ -2013,7 +2044,7 @@ describe("Linyra panel", () => {
       assert.ok(s.rows.includes("acme-libs identical"));
       // A branch one repository lacks.
       cp.spawnSync("git", ["update-ref", "-d", "refs/heads/prod"], { cwd: roots["acme-libs"] });
-      await vscode.commands.executeCommand("polylog._itest.compareRefresh");
+      await vscode.commands.executeCommand("linyra._itest.compareRefresh");
       await waitFor("acme-libs missing", async () => ((await store()).rows.includes("acme-libs missing") ? true : undefined));
       git(roots["acme-libs"], ["update-ref", "refs/heads/prod", "HEAD"]);
     });
@@ -2079,10 +2110,10 @@ describe("Linyra panel", () => {
 
     type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; accents: number[] };
     type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[]; dimmed: string[] };
-    const repos = () => vscode.commands.executeCommand<Repos>("polylog._itest.compare");
-    const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("polylog._itest.compareSide", s);
-    const viewPick = (p: Pair) => vscode.commands.executeCommand("polylog._itest.compareView", p);
-    const select = (id: string) => vscode.commands.executeCommand("polylog._itest.compareSelect", id);
+    const repos = () => vscode.commands.executeCommand<Repos>("linyra._itest.compare");
+    const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("linyra._itest.compareSide", s);
+    const viewPick = (p: Pair) => vscode.commands.executeCommand("linyra._itest.compareView", p);
+    const select = (id: string) => vscode.commands.executeCommand("linyra._itest.compareSelect", id);
     const until2 = <T>(what: string, get: () => Thenable<T>, ok: (x: T) => boolean) =>
       waitFor(what, async () => {
         const x = await get();
@@ -2092,7 +2123,7 @@ describe("Linyra panel", () => {
 
     it("the Linyra Compare tab: Repositories with counts; selecting one fills both sides", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compareBranches");
+      await vscode.commands.executeCommand("linyra.compareBranches");
       const r = await until2("listed", repos, (x) => x.open && x.roots.length === 2 && x.selected !== undefined);
       assert.strictEqual(r.description, "release-1.4 ↔ prod");
       assert.deepStrictEqual(r.roots, ["acme-api", "acme-web"], "names only: commit counts mislead when changes travel by cherry-pick (they are in the tooltip)");
@@ -2104,21 +2135,21 @@ describe("Linyra panel", () => {
       const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
       const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
       assert.deepStrictEqual(pkg.viewsContainers, {
-        panel: [{ id: "polylog", title: "Linyra", icon: "media/polylog.svg" }, { id: "polylog-compare", title: "Linyra Compare", icon: "media/compare.svg" }],
-        activitybar: [{ id: "polylog-side", title: "Linyra", icon: "media/polylog.svg" }],
+        panel: [{ id: "linyra", title: "Linyra", icon: "media/linyra.svg" }, { id: "linyra-compare", title: "Linyra Compare", icon: "media/compare.svg" }],
+        activitybar: [{ id: "linyra-side", title: "Linyra", icon: "media/linyra.svg" }],
       });
       assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
-        polylog: [["polylog.log", "$(history)"]],
-        "polylog-compare": [["polylog.compare", "$(repo)"]],
-        "polylog-side": [["polylog.uncommitted", "$(diff-modified)"]],
+        linyra: [["linyra.log", "$(history)"]],
+        "linyra-compare": [["linyra.compare", "$(repo)"]],
+        "linyra-side": [["linyra.uncommitted", "$(diff-modified)"]],
       }, "one native surface per panel prevents accidental header collapsing; Uncommitted keeps its sidebar");
-      assert.strictEqual(views["polylog-compare"][0].type, "webview", "the unified comparison retains repositories and both sides");
+      assert.strictEqual(views["linyra-compare"][0].type, "webview", "the unified comparison retains repositories and both sides");
       const menus = pkg.menus["webview/context"] as { command: string; when: string }[];
-      for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
-        assert.ok(menus.some((m) => m.command === c && m.when.includes("webviewId == 'polylog.compare'")), `${c} on a Compare repository row`);
+      for (const c of ["linyra.repoPull", "linyra.repoShowOnly", "linyra.repoHide", "linyra.repoOpenFolder", "linyra.repoCopyPath"]) {
+        assert.ok(menus.some((m) => m.command === c && m.when.includes("webviewId == 'linyra.compare'")), `${c} on a Compare repository row`);
       }
       // The page's Branch boxes and rows: a pick and a click reach the host.
-      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", m);
+      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("linyra._itest.compareReposSend", m);
       await rsend({ type: "pick", pair: { left: "prod", right: "release-1.4" } });
       await until2("picked in the page", repos, (x) => x.description === "prod ↔ release-1.4" && x.roots.length === 2);
       await rsend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
@@ -2135,7 +2166,7 @@ describe("Linyra panel", () => {
       assert.strictEqual(right.title, "prod only");
       assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "timeout.go | +1 −0"]);
       // Show Files Already on Both: listed again, dimmed; Hide puts it back.
-      await vscode.commands.executeCommand("polylog.compareShowSame");
+      await vscode.commands.executeCommand("linyra.compareShowSame");
       try {
         const shown = await until2("left with retry.go", () => sideOf("left"), (x) => x.tree.length === 2);
         assert.strictEqual(shown.description, "acme-api · 2 files");
@@ -2144,10 +2175,10 @@ describe("Linyra panel", () => {
         const rshown = await until2("right with retry.go", () => sideOf("right"), (x) => x.tree.length === 3);
         assert.deepStrictEqual(rshown.dimmed, ["retry.go"]);
       } finally {
-        await vscode.commands.executeCommand("polylog.compareHideSame");
+        await vscode.commands.executeCommand("linyra.compareHideSame");
       }
       await until2("left hides it again", () => sideOf("left"), (x) => x.tree.length === 1);
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
+      await vscode.commands.executeCommand("linyra.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
       const tab = await waitFor("a diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
@@ -2158,7 +2189,7 @@ describe("Linyra panel", () => {
       assert.match(vscode.window.tabGroups.activeTabGroup.activeTab!.label, /\(release-1\.4 ↔ prod\)/);
       // limit.go, changed on both sides: both halves in one diff.
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "limit.go" });
+      await vscode.commands.executeCommand("linyra.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "limit.go" });
       const both = await waitFor("limit.go between branches", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
@@ -2167,7 +2198,7 @@ describe("Linyra panel", () => {
       assert.strictEqual((await vscode.workspace.openTextDocument(both.modified)).getText(), "package limit // prod\n");
       // Right-click → Changes since the split: merge base ↔ that side (what the merge brings).
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-      await vscode.commands.executeCommand("polylog.compareOpenSinceSplit", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
+      await vscode.commands.executeCommand("linyra.compareOpenSinceSplit", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
       const since = await waitFor("since the split", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
@@ -2175,7 +2206,7 @@ describe("Linyra panel", () => {
       assert.strictEqual((await vscode.workspace.openTextDocument(since.original)).getText(), "");
       assert.strictEqual((await vscode.workspace.openTextDocument(since.modified)).getText(), "package timeout\n");
       const items = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
-      assert.ok(items.some((m) => m.command === "polylog.compareOpenSinceSplit" && m.when.includes("viewItem =~ /^compareFile/")));
+      assert.ok(items.some((m) => m.command === "linyra.compareOpenSinceSplit" && m.when.includes("viewItem =~ /^compareFile/")));
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       // Another repository: both sides follow; a file of the old one no longer opens.
       await select(roots["acme-web"]);
@@ -2183,39 +2214,39 @@ describe("Linyra panel", () => {
       assert.strictEqual((await sideOf("right")).message, "No changes on this side.");
       // A click from acme-api's tree, landing after the selection moved: billing.ts is acme-web's, not acme-api's.
       const before = tabs();
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "billing.ts" });
+      await vscode.commands.executeCommand("linyra.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "billing.ts" });
       await sleep(300);
       assert.strictEqual(tabs(), before, "a file opens only from the repository whose files are shown");
     });
 
     it("unified comparison retains side context actions, mode switching, layout memory and forged-row guards", async () => {
       type SideWithRows = { presentation?: import("../compareProtocol").CompareSidePage; tree: string[]; open: boolean };
-      const current = (side: "left" | "right") => vscode.commands.executeCommand<SideWithRows>("polylog._itest.compareSide", side);
-      const rsend = (message: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", message);
+      const current = (side: "left" | "right") => vscode.commands.executeCommand<SideWithRows>("linyra._itest.compareSide", side);
+      const rsend = (message: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("linyra._itest.compareReposSend", message);
       await viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compareShowFiles");
-      await vscode.commands.executeCommand("polylog.compareHideSame");
-      await vscode.commands.executeCommand("polylog.compareLeft.focus");
-      await vscode.commands.executeCommand("polylog.compareRight.focus");
+      await vscode.commands.executeCommand("linyra.compareShowFiles");
+      await vscode.commands.executeCommand("linyra.compareHideSame");
+      await vscode.commands.executeCommand("linyra.compareLeft.focus");
+      await vscode.commands.executeCommand("linyra.compareRight.focus");
       await select(roots["acme-api"]);
       const files = await until2("left tree serialized for its webview", () => current("left"), (side) => !!side.presentation?.rows.some((row) => row.label === "limit.go"));
       const row = files.presentation!.rows.find((row) => row.label === "limit.go")!;
       const context = { compareSide: "left", compareNodeId: row.id };
-      await vscode.commands.executeCommand("polylog.copyRelativePath", context);
+      await vscode.commands.executeCommand("linyra.copyRelativePath", context);
       assert.strictEqual(await vscode.env.clipboard.readText(), "limit.go");
-      await vscode.commands.executeCommand("polylog.copyRelativePath", { compareSide: "left", compareNodeId: "forged", kind: "file", repoId: roots["acme-api"], path: "secret.txt" });
+      await vscode.commands.executeCommand("linyra.copyRelativePath", { compareSide: "left", compareNodeId: "forged", kind: "file", repoId: roots["acme-api"], path: "secret.txt" });
       assert.strictEqual(await vscode.env.clipboard.readText(), "limit.go", "the host ignores forged row fields");
       await closeEditors();
       await rsend({ type: "sideOpen", side: "left", id: row.id });
       await diffTab();
       await closeEditors();
-      await vscode.commands.executeCommand("polylog.compareOpenSinceSplit", context);
+      await vscode.commands.executeCommand("linyra.compareOpenSinceSplit", context);
       await diffTab();
       await closeEditors();
       await rsend({ type: "mode", mode: "commits" });
       const commits = await until2("commit rows serialized", () => current("left"), (side) => !!side.presentation?.rows.some((item) => item.kind === "commit"));
       const commit = commits.presentation!.rows.find((item) => item.kind === "commit")!;
-      await vscode.commands.executeCommand("polylog.commitCopySha", { compareSide: "left", compareNodeId: commit.id });
+      await vscode.commands.executeCommand("linyra.commitCopySha", { compareSide: "left", compareNodeId: commit.id });
       assert.ok(/^[a-f\d]{40}$/.test(await vscode.env.clipboard.readText()));
       await rsend({ type: "sideExpand", side: "left", id: commit.id });
       await rsend({ type: "sideExpandAll", side: "left" });
@@ -2223,7 +2254,7 @@ describe("Linyra panel", () => {
       const layout = { repositoriesWidth: 260, leftWidth: 420, leftHeight: 160, sidesHeight: 290, orientation: "stacked" as const };
       await rsend({ type: "layout", layout });
       await rsend({ type: "ready" });
-      const posted = await vscode.commands.executeCommand<{ state?: { layout?: typeof layout } }>("polylog._itest.comparePosted");
+      const posted = await vscode.commands.executeCommand<{ state?: { layout?: typeof layout } }>("linyra._itest.comparePosted");
       assert.deepStrictEqual(posted.state?.layout, layout);
       await rsend({ type: "layout", layout: { ...layout, orientation: "auto" } });
       await rsend({ type: "sideVisibility", side: "left", show: false });
@@ -2236,12 +2267,12 @@ describe("Linyra panel", () => {
 
     it("Repositories says what it knows: nothing before the read, 'the same files' only once it is done, ticks followed", async () => {
       type Posted = { repos?: { empty?: string; message?: string; rows: unknown[] } };
-      const posted = () => vscode.commands.executeCommand<Posted>("polylog._itest.comparePosted");
+      const posted = () => vscode.commands.executeCommand<Posted>("linyra._itest.comparePosted");
       await viewPick({ left: "release-1.4", right: "release-1.4" });
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("same names", repos, (x) => x.message?.startsWith("Pick two different") === true);
       // Not yet read: no claim.
-      await vscode.commands.executeCommand("polylog._itest.compareView", { left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("linyra._itest.compareView", { left: "release-1.4", right: "prod" });
       const during = await posted();
       assert.notStrictEqual(during.repos?.empty, "release-1.4 and prod have the same files in every repository.", "no claim before the read is done");
       // Nothing ticked: the message follows the ticks.
@@ -2258,16 +2289,16 @@ describe("Linyra panel", () => {
 
     it("Compare minors: one read per show, Compare with… clears the sides, a half pair keeps its guidance, no wasted side reads", async () => {
       type Posted = { repos?: { message?: string }; state?: { pair: Pair | null } };
-      const posted = () => vscode.commands.executeCommand<Posted>("polylog._itest.comparePosted");
-      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", m);
+      const posted = () => vscode.commands.executeCommand<Posted>("linyra._itest.comparePosted");
+      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("linyra._itest.compareReposSend", m);
       await viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("listed", repos, (x) => x.open && x.roots.length === 2);
       // Hide and show again: each ticked repository's branches are resolved once, not twice.
       await vscode.commands.executeCommand("workbench.action.terminal.toggleTerminal");
       await until2("hidden", repos, (x) => !x.open);
       const before = (await snapshot()).spawnLog.length;
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("read again", repos, (x) => x.open && x.roots.length === 2);
       await sleep(300);
       const log = (await snapshot()).spawnLog.slice(before);
@@ -2282,21 +2313,21 @@ describe("Linyra panel", () => {
       await rsend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
       await until2("picked", repos, (x) => x.roots.length === 2);
       const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON;
-      assert.ok(!JSON.stringify(pkg.contributes.menus).includes("polylog.comparePair"));
+      assert.ok(!JSON.stringify(pkg.contributes.menus).includes("linyra.comparePair"));
     });
 
     it("the picked repository survives a panel tab switch; duplicates are always answered", async () => {
       type Posted = { dups?: { repoId: string; items: unknown[] } };
-      const posted = () => vscode.commands.executeCommand<Posted>("polylog._itest.comparePosted");
-      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", m);
+      const posted = () => vscode.commands.executeCommand<Posted>("linyra._itest.comparePosted");
+      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("linyra._itest.compareReposSend", m);
       await viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("listed", repos, (x) => x.open && x.roots.length === 2);
       await rsend({ type: "select", repoId: roots["acme-web"] });
       await until2("acme-web picked", repos, (x) => x.selected === roots["acme-web"]);
       await vscode.commands.executeCommand("workbench.action.terminal.toggleTerminal");
       await until2("tab hidden", repos, (x) => !x.open);
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("back, read again", repos, (x) => x.open && x.roots.length === 2);
       await until2("still acme-web, not the first row", repos, (x) => x.selected === roots["acme-web"]);
       // A repository with no result (or a read that fails): the page still gets an answer.
@@ -2307,12 +2338,12 @@ describe("Linyra panel", () => {
     it("the active file diff follows branch picks and swaps without another file click", async () => {
       const api = roots["acme-api"];
       await viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("listed", repos, (x) => x.open && x.roots.length === 2);
       await select(api);
       await until2("timeout.go listed", () => sideOf("right"), (x) => x.tree.some((l) => l.startsWith("timeout.go")));
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: api, path: "timeout.go" });
+      await vscode.commands.executeCommand("linyra.compareOpenFile", { side: "right", repoId: api, path: "timeout.go" });
       const check = async (left: string, right: string, original: string, modified: string) => {
         const tab = await waitFor("diff matches the branch boxes", () => {
           const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
@@ -2324,63 +2355,63 @@ describe("Linyra panel", () => {
       };
       await check("release-1.4", "prod", "", "package timeout\n");
       // The same message as choosing the branches in the webview.
-      await vscode.commands.executeCommand("polylog._itest.compareReposSend", { type: "pick", pair: { left: "prod", right: "release-1.4" } });
+      await vscode.commands.executeCommand("linyra._itest.compareReposSend", { type: "pick", pair: { left: "prod", right: "release-1.4" } });
       await check("prod", "release-1.4", "package timeout\n", "");
-      await vscode.commands.executeCommand("polylog.compareSwap");
+      await vscode.commands.executeCommand("linyra.compareSwap");
       await check("release-1.4", "prod", "", "package timeout\n");
       // Choosing a different pair also updates the active file when the tips are identical.
       git(api, ["update-ref", "refs/heads/follow-same", "prod"]);
       try {
-        await vscode.commands.executeCommand("polylog._itest.compareReposSend", { type: "pick", pair: { left: "prod", right: "follow-same" } });
+        await vscode.commands.executeCommand("linyra._itest.compareReposSend", { type: "pick", pair: { left: "prod", right: "follow-same" } });
         await check("prod", "follow-same", "package timeout\n", "package timeout\n");
       } finally {
         cp.spawnSync("git", ["update-ref", "-d", "refs/heads/follow-same"], { cwd: api });
       }
       const other = await vscode.workspace.openTextDocument({ content: "keep this editor active" });
       await vscode.window.showTextDocument(other);
-      await vscode.commands.executeCommand("polylog.compareSwap");
+      await vscode.commands.executeCommand("linyra.compareSwap");
       assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), other.uri.toString());
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     });
 
     it("after Refresh, a file in Left or Right still opens its diff", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("listed", repos, (x) => x.open && x.roots.length === 2);
       await select(roots["acme-api"]);
       await until2("api right", () => sideOf("right"), (x) => x.tree.some((l) => l.startsWith("timeout.go")));
-      await vscode.commands.executeCommand("polylog.compareRefresh");
+      await vscode.commands.executeCommand("linyra.compareRefresh");
       await sleep(400);
       // No snapshot in between: it would read the side again and hide the bug.
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
+      await vscode.commands.executeCommand("linyra.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
       await waitFor("a diff after Refresh", () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTextDiff ? true : undefined), 3000);
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     });
 
     it("the Linyra Compare tab is hidden until Compare Branches is clicked, and × hides it again", async () => {
       const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
-      for (const v of pkg.views["polylog-compare"] as { id: string; when?: string }[]) assert.strictEqual(v.when, "polylog.compareShown", `${v.id} is hidden by default`);
-      assert.ok((pkg.menus["view/title"] as { command: string; when: string }[]).some((m) => m.command === "polylog.compareClose" && m.when.includes("view == polylog.compare")));
-      await vscode.commands.executeCommand("polylog.compareClose");
+      for (const v of pkg.views["linyra-compare"] as { id: string; when?: string }[]) assert.strictEqual(v.when, "linyra.compareShown", `${v.id} is hidden by default`);
+      assert.ok((pkg.menus["view/title"] as { command: string; when: string }[]).some((m) => m.command === "linyra.compareClose" && m.when.includes("view == linyra.compare")));
+      await vscode.commands.executeCommand("linyra.compareClose");
       await until2("hidden", repos, (x) => !x.open);
-      await vscode.commands.executeCommand("polylog.compareBranches");
+      await vscode.commands.executeCommand("linyra.compareBranches");
       await until2("shown again", repos, (x) => x.open && x.roots.length === 2);
     });
 
     it("the Linyra side bar is hidden until the Log's Uncommitted button, and × hides it again", async () => {
       const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
-      assert.strictEqual((pkg.views["polylog-side"] as { when?: string }[])[0].when, "polylog.uncommittedShown");
+      assert.strictEqual((pkg.views["linyra-side"] as { when?: string }[])[0].when, "linyra.uncommittedShown");
       // The remembered side bar and Compare tab need their context keys after a reload, before any Linyra view opens.
       assert.ok((vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.activationEvents as string[]).includes("onStartupFinished"));
       const titles = pkg.menus["view/title"] as { command: string; when: string; group: string }[];
-      assert.ok(titles.some((m) => m.command === "polylog.uncommittedClose" && m.when.includes("view == polylog.uncommitted")));
-      const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
-      await vscode.commands.executeCommand("polylog.uncommittedClose");
+      assert.ok(titles.some((m) => m.command === "linyra.uncommittedClose" && m.when.includes("view == linyra.uncommitted")));
+      const shown = () => vscode.commands.executeCommand<boolean>("linyra._itest.uncommittedShown");
+      await vscode.commands.executeCommand("linyra.uncommittedClose");
       assert.strictEqual(await shown(), false);
-      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await vscode.commands.executeCommand("linyra.focusUncommitted");
       assert.strictEqual(await shown(), true);
-      await waitFor("the view on screen", async () => ((await vscode.commands.executeCommand<{ visible: boolean }>("polylog._itest.uncommitted")).visible ? true : undefined));
+      await waitFor("the view on screen", async () => ((await vscode.commands.executeCommand<{ visible: boolean }>("linyra._itest.uncommitted")).visible ? true : undefined));
     });
 
     it("the Log toolbar's two toggles: click to show, click again to hide; the icon says which", async () => {
@@ -2391,31 +2422,31 @@ describe("Linyra panel", () => {
       assert.ok(shell.indexOf('id="toolbar-compare"') < shell.indexOf('id="toolbar-uncommitted"'), "the two fixed toolbar buttons never trade places");
       assert.strictEqual((shell.match(/id="toolbar-compare"/g) ?? []).length, 1);
       assert.strictEqual((shell.match(/id="toolbar-uncommitted"/g) ?? []).length, 1);
-      assert.deepStrictEqual([icon("polylog.uncommittedShow"), icon("polylog.uncommittedHide")], ["$(diff-modified)", "$(diff-modified)"]);
-      assert.deepStrictEqual([icon("polylog.compareShow"), icon("polylog.compareHide")], ["$(git-compare)", "$(git-compare)"]);
-      const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
-      await vscode.commands.executeCommand("polylog.uncommittedShow");
+      assert.deepStrictEqual([icon("linyra.uncommittedShow"), icon("linyra.uncommittedHide")], ["$(diff-modified)", "$(diff-modified)"]);
+      assert.deepStrictEqual([icon("linyra.compareShow"), icon("linyra.compareHide")], ["$(git-compare)", "$(git-compare)"]);
+      const shown = () => vscode.commands.executeCommand<boolean>("linyra._itest.uncommittedShown");
+      await vscode.commands.executeCommand("linyra.uncommittedShow");
       assert.strictEqual(await shown(), true);
-      await vscode.commands.executeCommand("polylog.uncommittedHide");
+      await vscode.commands.executeCommand("linyra.uncommittedHide");
       assert.strictEqual(await shown(), false);
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("compare shown", repos, (x) => x.open);
-      await vscode.commands.executeCommand("polylog.compareHide");
+      await vscode.commands.executeCommand("linyra.compareHide");
       await until2("compare hidden", repos, (x) => !x.open);
-      await vscode.commands.executeCommand("polylog.compareShow");
+      await vscode.commands.executeCommand("linyra.compareShow");
       await until2("compare shown again", repos, (x) => x.open);
     });
 
     it("Commits mode, swap, a new pair, and hiding the tab mid-read", async () => {
       await select(roots["acme-api"]);
-      await vscode.commands.executeCommand("polylog._itest.compareMode", "commits");
+      await vscode.commands.executeCommand("linyra._itest.compareMode", "commits");
       let left = await until2("commits", () => sideOf("left"), (x) => x.tree.some((l) => l.startsWith("feat: rate limit")));
       assert.strictEqual(left.description, "acme-api · 1 commit");
       assert.deepStrictEqual(left.tree.map((l) => l.replace(/ · .*$/, "")), ["feat: rate limit per client | dana", "  limit.go | +1 −0"]);
-      await vscode.commands.executeCommand("polylog.compareSwap");
+      await vscode.commands.executeCommand("linyra.compareSwap");
       left = await until2("swapped", () => sideOf("left"), (x) => x.title === "prod only" && x.tree[0]?.startsWith("hotfix") === true);
       assert.ok((await repos()).roots.includes("acme-web"));
-      await vscode.commands.executeCommand("polylog._itest.compareMode", "files");
+      await vscode.commands.executeCommand("linyra._itest.compareMode", "files");
       // A new pair: the old pair's files are gone at once.
       await viewPick({ left: "prod", right: "prod" });
       const same = await until2("same", repos, (x) => x.message?.startsWith("Pick two different") === true);
@@ -2425,7 +2456,7 @@ describe("Linyra panel", () => {
       void viewPick({ left: "release-1.4", right: "prod" });
       await vscode.commands.executeCommand("workbench.action.closePanel");
       await until2("hidden", repos, (x) => !x.open);
-      await vscode.commands.executeCommand("polylog.compareBranches");
+      await vscode.commands.executeCommand("linyra.compareBranches");
       const back = await until2("shown and read", repos, (x) => x.open && x.roots.length === 2);
       assert.strictEqual(back.pair?.left, "release-1.4", "the last pair is remembered");
     });
@@ -2439,7 +2470,7 @@ describe("Linyra panel", () => {
       const tip = git(web, ["rev-parse", "refs/heads/release-1.4"]);
       git(web, ["update-ref", "refs/heads/release-1.4", commitOn(web, tip, { "export.ts": "export {};\n" }, "feat: export CSV", T + 60)]);
       try {
-        await vscode.commands.executeCommand("polylog.fetchAll");
+        await vscode.commands.executeCommand("linyra.fetchAll");
         await until2("read again", () => sideOf("left"), (x) => x.tree.includes("export.ts | +1 −0"));
       } finally {
         git(web, ["update-ref", "refs/heads/release-1.4", tip]);
@@ -2459,7 +2490,7 @@ describe("Linyra panel", () => {
       const before = (await snapshot()).spawnLog.length;
       await select(web);
       // The list changes while web's files are read: no read starts again.
-      for (let i = 0; i < 4; i++) void vscode.commands.executeCommand("polylog._itest.compareRefresh");
+      for (let i = 0; i < 4; i++) void vscode.commands.executeCommand("linyra._itest.compareRefresh");
       await until2("web left", () => sideOf("left"), (x) => x.tree.join() === "billing.ts | +1 −0");
       await until2("web right", () => sideOf("right"), (x) => x.message === "No changes on this side.");
       await sleep(500);
@@ -2471,7 +2502,7 @@ describe("Linyra panel", () => {
       const api = roots["acme-api"];
       const relTip = git(api, ["rev-parse", "refs/heads/release-1.4"]);
       // ren: release-1.4 with limit.go renamed (same content) to rate.go.
-      const idx = path.join(os.tmpdir(), `polylog-ren-${process.pid}.index`);
+      const idx = path.join(os.tmpdir(), `linyra-ren-${process.pid}.index`);
       const env = { ...process.env, GIT_INDEX_FILE: idx };
       cp.execFileSync("git", ["read-tree", relTip], { cwd: api, env });
       const blob = cp.execFileSync("git", ["rev-parse", `${relTip}:limit.go`], { cwd: api }).toString().trim();
@@ -2487,7 +2518,7 @@ describe("Linyra panel", () => {
         await select(api);
         await until2("ren left", () => sideOf("left"), (x) => x.tree.some((t) => t.startsWith("rate.go")));
         await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-        await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: api, path: "rate.go" });
+        await vscode.commands.executeCommand("linyra.compareOpenFile", { side: "left", repoId: api, path: "rate.go" });
         const tab = await waitFor("a diff", () => {
           const t = vscode.window.tabGroups.activeTabGroup.activeTab;
           return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
@@ -2496,7 +2527,7 @@ describe("Linyra panel", () => {
         assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package limit\n");
         assert.strictEqual(tab.original.path, "/rate.go", "the left branch has the renamed path");
         assert.strictEqual(tab.modified.path, "/limit.go", "the right branch still has the old path");
-        await vscode.commands.executeCommand("polylog.compareSwap");
+        await vscode.commands.executeCommand("linyra.compareSwap");
         const swapped = await waitFor("renamed diff follows swap", () => {
           const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
           return input instanceof vscode.TabInputTextDiff && input.original.path === "/limit.go" && input.modified.path === "/rate.go" ? input : undefined;
@@ -2535,7 +2566,7 @@ describe("Linyra panel", () => {
     it("a hidden side reads nothing; shown again, it reads the selected repository", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
       await until2("listed", repos, (x) => x.roots.length === 2);
-      await vscode.commands.executeCommand("polylog.compareLeft.removeView");
+      await vscode.commands.executeCommand("linyra.compareLeft.removeView");
       await until2("left hidden", () => sideOf("left"), (x) => !x.open);
       const before = (await snapshot()).spawnLog.length;
       await select(roots["acme-web"]);
@@ -2543,13 +2574,13 @@ describe("Linyra panel", () => {
       const diffs = (await snapshot()).spawnLog.slice(before).filter((x) => x.cmd === "diff").length;
       // readFiles runs both sides' diffs and the tips' in one call: 3 spawns for one side reading, 6 if both read.
       assert.strictEqual(diffs, 3, "only the shown (right) side read its files");
-      await vscode.commands.executeCommand("polylog.compareLeft.focus");
+      await vscode.commands.executeCommand("linyra.compareLeft.focus");
       await until2("left shown and read", () => sideOf("left"), (x) => x.open && x.tree.join() === "billing.ts | +1 −0");
     });
 
     it("a swap while the list is still being read reads what it lacks", async () => {
       const p = pick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog._itest.compareSwap");
+      await vscode.commands.executeCommand("linyra._itest.compareSwap");
       await p;
       const s = await waitFor("all rows after the swap", async () => {
         const x = await store();
@@ -2634,7 +2665,7 @@ describe("Linyra panel", () => {
       assert.deepStrictEqual(c.combined.map((o) => `${o.path} ${o.mode}`).sort(), ["routes/status.ts fast", "src/header.css fallback", "src/header.ts merge"]);
 
       const ts = c.combined.find((o) => o.path === "src/header.ts")!;
-      await vscode.commands.executeCommand("polylog.openCombinedDiff", ts);
+      await vscode.commands.executeCommand("linyra.openCombinedDiff", ts);
       const tab = await diffTab();
       const left = (await vscode.workspace.openTextDocument(tab.original)).getText();
       const right = (await vscode.workspace.openTextDocument(tab.modified)).getText();
@@ -2644,7 +2675,7 @@ describe("Linyra panel", () => {
 
       const cssOpen = c.combined.find((o) => o.path === "src/header.css")!;
       await closeEditors();
-      await vscode.commands.executeCommand("polylog.openCombinedDiff", cssOpen);
+      await vscode.commands.executeCommand("linyra.openCombinedDiff", cssOpen);
       const tab2 = await diffTab();
       assert.strictEqual(JSON.parse(tab2.original.query).ref, sha["web: header base"], "the fallback starts before the first selected commit");
       assert.ok(vscode.window.tabGroups.activeTabGroup.activeTab?.label.includes("includes 1 unselected commit"));
@@ -2683,7 +2714,7 @@ describe("Linyra panel", () => {
     it("Clear Selection goes back to the focused commit", async () => {
       await send({ type: "selectMany", items: [ref("fix(header): c", web), ref("fix(header): a", web)], focus: ref("fix(header): a", web) });
       await waitFor("combined", async () => ((await changes()).description === "2 commits · 1 repository" ? true : undefined));
-      await vscode.commands.executeCommand("polylog.clearSelection");
+      await vscode.commands.executeCommand("linyra.clearSelection");
       await waitFor("the focused commit alone", async () => ((await changes()).items[0]?.startsWith("fix(header): a |") ? true : undefined));
     });
   });

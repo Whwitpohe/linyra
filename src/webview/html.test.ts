@@ -7,7 +7,7 @@ const html = renderHtml({ cspSource: "vscode-resource:", nonce: "n0nce", scriptU
 
 {
   const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"));
-  assert.deepStrictEqual(manifest.contributes.views.polylog.map((view: { id: string }) => view.id), ["polylog.log"], "one native view removes the collapsible Log section header");
+  assert.deepStrictEqual(manifest.contributes.views.linyra.map((view: { id: string }) => view.id), ["linyra.log"], "one native view removes the collapsible Log section header");
   assert.ok(html.includes('id="workspace"') && html.includes('id="changes-pane"') && html.includes('id="changes-splitter"'));
   const toggle = /<button id="detail-toggle"[\s\S]*?<\/button>/.exec(html)![0];
   assert.ok(!toggle.includes(">Commit details<"), "only the detail arrow is inside the fold button");

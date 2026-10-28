@@ -27,13 +27,13 @@ export function escapeHtml(value: string): string {
 /** JSON data, not executable code; escaping '<' also prevents a closing script tag. */
 export function localizationScript(nonce: string): string {
   const json = JSON.stringify(localization).replace(/[<>&\u2028\u2029]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
-  return `<script id="polylog-i18n" type="application/json" nonce="${escapeHtml(nonce)}">${json}</script>`;
+  return `<script id="linyra-i18n" type="application/json" nonce="${escapeHtml(nonce)}">${json}</script>`;
 }
 
 // The host puts the locale before the bundled webview script, so even module-level
 // initialization sees it. Pure Node tests and the browser harness default to English.
 if (typeof document !== "undefined") {
-  const data = document.getElementById("polylog-i18n")?.textContent;
+  const data = document.getElementById("linyra-i18n")?.textContent;
   if (data) {
     const value = JSON.parse(data) as Localization;
     configureI18n(value.language, value.bundle);

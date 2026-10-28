@@ -18,7 +18,7 @@ PRODUCT.md.bak
 dev/harness/dist/
 
 # Denylist entries (employer, internal repo/service/branch/ticket/module names).
-# Never committed; CI reads the same list from the POLYLOG_DENYLIST secret.
+# Never committed; CI reads the same list from the LINYRA_DENYLIST secret.
 .denylist
 
 # Browser-automation snapshots and console logs (can capture whatever was on screen).

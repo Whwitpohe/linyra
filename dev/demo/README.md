@@ -37,7 +37,7 @@ node dev/demo/capture.mjs
 
 `seed.mjs` creates six neutral repositories with 208 real commits, parallel branch
 histories, merges, release-branch divergence and uncommitted review examples. It only
-resets a named `linyra-demo*` / `polylog-demo*` directory inside the system temporary
+resets a named `linyra-demo*` / `linyra-demo*` directory inside the system temporary
 folder; an existing directory must also have the seeder's marker. Do not point it at a
 real workspace.
 

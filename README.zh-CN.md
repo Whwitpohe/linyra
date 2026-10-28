@@ -151,8 +151,9 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 ## 从 Polylog 切换
 
 Linyra 基于 **lntvan166** 创建的 [Polylog](https://github.com/lntvan166/polylog) 独立维护，
-扩展 ID 为 **`whwitpohe.linyra`**。切换时禁用或卸载 `lntvan166.polylog-git`，重新加载窗口，只启用一个版本。
-设置改用 `linyra.*`，命令快捷键继续使用；筛选和面板大小属于各扩展私有状态，首次切换可能需重新设置。
+扩展 ID 为 **`whwitpohe.linyra`**。设置、命令、视图及历史版本 URI 均使用独立的 `linyra` 命名空间，
+可与 `lntvan166.polylog-git` 共存。自定义快捷键需使用 `linyra.*` 命令 ID。
+旧版 Linyra 保存的筛选和面板大小会在自身私有存储内迁移；原版扩展的设置及私有存储保持独立。
 
 原 `v1.4.0` GitHub Release 保留历史 Polylog 安装包，后续 Linyra 版本使用与源码匹配的新标签和 VSIX 名称。
 

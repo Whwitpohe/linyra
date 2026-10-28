@@ -6,3 +6,5 @@
 .accent-4 { --accent: var(--vscode-charts-purple); }
 /* Not charts-orange: it aliases a translucent minimap color and is unset in high contrast. */
 .accent-5 { --accent: var(--vscode-terminal-ansiCyan); }
+.accent-6 { --accent: var(--vscode-terminal-ansiMagenta); }
+.accent-7 { --accent: var(--vscode-terminal-ansiBrightYellow); }

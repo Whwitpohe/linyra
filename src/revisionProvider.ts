@@ -4,7 +4,7 @@ import type { RunGit } from "./logQuery";
 import { leftSide } from "./combinedRead";
 import { decodeRevision, INDEX } from "./revisionUri";
 
-/** Serves `polylog:` URIs: the content of <ref>:<path> in one repository. */
+/** Serves `linyra:` URIs: the content of <ref>:<path> in one repository. */
 export class RevisionProvider implements vscode.TextDocumentContentProvider {
   constructor(private readonly run: RunGit, private readonly roots: () => readonly string[] = () => []) {}
 

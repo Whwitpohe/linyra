@@ -387,6 +387,7 @@
   "The working tree matches {0}.": "工作区与 {0} 相同。",
   "File to compare with {0}": "选择与 {0} 比较的文件",
   "{0} ({1} ↔ Working Tree) — {2}": "{0}（{1} ↔ 工作区）— {2}",
+  "Remove branch {0}": "移除分支 {0}",
   "All authors": "全部作者",
   "Filter authors": "筛选作者",
   "Filter authors: {0}": "筛选作者：{0}",

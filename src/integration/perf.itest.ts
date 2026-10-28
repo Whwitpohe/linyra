@@ -2,14 +2,14 @@
 import * as vscode from "vscode";
 import type { LogSnapshot } from "../logView";
 
-const snapshot = () => vscode.commands.executeCommand<LogSnapshot | undefined>("polylog._itest.snapshot");
+const snapshot = () => vscode.commands.executeCommand<LogSnapshot | undefined>("linyra._itest.snapshot");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe("Linyra startup", () => {
   it("measures time to first rows and the load work done", async function () {
     this.timeout(180000);
     const t0 = Date.now();
-    await vscode.commands.executeCommand("polylog.open");
+    await vscode.commands.executeCommand("linyra.open");
     let first: LogSnapshot | undefined;
     for (;;) {
       const s = await snapshot();
@@ -42,7 +42,7 @@ describe("Linyra startup", () => {
     // Uncommitted work is read in the background; Refresh reads every repository again.
     const known = (s: LogSnapshot | undefined) => (s ? s.uncommitted.filter((w) => w.changes.length + w.staged.length > 0).length : 0);
     const t1 = Date.now();
-    void vscode.commands.executeCommand("polylog._itest.send", { type: "refresh" });
+    void vscode.commands.executeCommand("linyra._itest.send", { type: "refresh" });
     let msFirstPinned = -1;
     for (;;) {
       const n = known(await snapshot());
@@ -71,7 +71,7 @@ describe("Linyra startup", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     // Stage one file from the Uncommitted view: one repository read again, nothing else.
     const beforeStage = (await snapshot())!;
-    await vscode.commands.executeCommand("polylog.stage", { repoId: dirty[0].id, group: "changes", path: "UNCOMMITTED.md" });
+    await vscode.commands.executeCommand("linyra.stage", { repoId: dirty[0].id, group: "changes", path: "UNCOMMITTED.md" });
     const afterStage = (await snapshot())!;
     const stage = {
       spawns: afterStage.spawnLog.length - beforeStage.spawnLog.length,
@@ -79,19 +79,19 @@ describe("Linyra startup", () => {
     };
     // All Files on the newest commit: time to its first level.
     const top = afterStage.rows[0];
-    await vscode.commands.executeCommand("polylog._itest.send", { type: "select", repoId: top.repoId, sha: top.sha });
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "select", repoId: top.repoId, sha: top.sha });
     for (let i = 0; i < 400 && !(await snapshot())!.changes.items.length; i++) await sleep(5);
-    await vscode.commands.executeCommand("polylog.changes.focus");
+    await vscode.commands.executeCommand("linyra.changes.focus");
     const tAll = Date.now();
     const headerOnly = (await snapshot())!.changes.items.length;
-    await vscode.commands.executeCommand("polylog.changesShowAll");
+    await vscode.commands.executeCommand("linyra.changesShowAll");
     let msAllFiles = -1;
     for (;;) {
       const n = (await snapshot())!.changes.items.length;
       if (n > headerOnly || Date.now() - tAll > 10000) { msAllFiles = n > headerOnly ? Date.now() - tAll : -1; break; }
       await sleep(5);
     }
-    await vscode.commands.executeCommand("polylog.changesShowChanged");
+    await vscode.commands.executeCommand("linyra.changesShowChanged");
     const cp = require("child_process") as typeof import("child_process");
     cp.execFileSync("git", ["reset", "-q", "--", "UNCOMMITTED.md"], { cwd: dirty[0].root });
     for (const r of dirty) fs.rmSync(path.join(r.root, "UNCOMMITTED.md"));
@@ -108,14 +108,14 @@ describe("Linyra startup", () => {
     const compareRead = async (left: string) => {
       const before = (await snapshot())!.spawnLog.length;
       const t = Date.now();
-      await vscode.commands.executeCommand("polylog._itest.comparePick", { left, right: "perf-right" });
+      await vscode.commands.executeCommand("linyra._itest.comparePick", { left, right: "perf-right" });
       const ms = Date.now() - t;
       const log = (await snapshot())!.spawnLog.slice(before);
       return { ms, spawnsByCmd: log.reduce<Record<string, number>>((m, x) => ({ ...m, [x.cmd]: (m[x.cmd] ?? 0) + 1 }), {}) };
     };
     const small = await compareRead("perf-left");
     const long = await compareRead("perf-root");
-    await vscode.commands.executeCommand("polylog._itest.comparePick", null);
+    await vscode.commands.executeCommand("linyra._itest.comparePick", null);
     // A diff: time until both sides are read and the diff tab is active. Idle, then while Compare reads.
     const diffTime = async () => {
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -123,7 +123,7 @@ describe("Linyra startup", () => {
       const root = settled.repos.find((r) => r.id === c.repoId)!.root;
       const file = cp.execFileSync("git", ["show", "--name-only", "--format=", c.sha], { cwd: root }).toString().trim().split("\n")[0];
       const t = Date.now();
-      await vscode.commands.executeCommand("polylog.openDiff", { repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: file });
+      await vscode.commands.executeCommand("linyra.openDiff", { repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: file });
       for (let i = 0; i < 2000; i++) {
         const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
         if (tab?.input instanceof vscode.TabInputTextDiff) {
@@ -136,10 +136,10 @@ describe("Linyra startup", () => {
       return Date.now() - t;
     };
     const msDiffIdle = await diffTime();
-    void vscode.commands.executeCommand("polylog._itest.comparePick", { left: "perf-root", right: "perf-right" });
+    void vscode.commands.executeCommand("linyra._itest.comparePick", { left: "perf-root", right: "perf-right" });
     await sleep(20);
     const msDiffDuringCompare = await diffTime();
-    await vscode.commands.executeCommand("polylog._itest.comparePick", null);
+    await vscode.commands.executeCommand("linyra._itest.comparePick", null);
     const msDiffIdle2 = await diffTime();
     for (const root of roots) for (const b of ["perf-left", "perf-right", "perf-root"]) cp.spawnSync("git", ["update-ref", "-d", `refs/heads/${b}`], { cwd: root });
     console.log("PERF " + JSON.stringify({

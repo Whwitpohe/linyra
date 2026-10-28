@@ -31,7 +31,7 @@ const latency = scenario === "slow" ? 1500 : 25;
 const repos = mockRepos(scenario);
 const all = mockCommits(repos, scenario);
 let filter: FilterState = DEFAULT_FILTER;
-let layout: Layout = { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off", ...JSON.parse(sessionStorage.getItem("polylog-layout") ?? "{}") };
+let layout: Layout = { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off", ...JSON.parse(sessionStorage.getItem("linyra-layout") ?? "{}") };
 const toolbarState: ToolbarState = { groupByRepo: layout.groupByRepo, compareShown: false, uncommittedShown: false, fetching: false, anyBehind: true };
 let history: { repoName: string; path: string } | null = params.get("history") ? { repoName: "acme-web", path: params.get("history")! } : null;
 let matched: Commit[] = [];
@@ -144,7 +144,7 @@ function handle(m: WebviewMessage): void {
     case "logMode": logMode = m.mode; console.info(`[harness] ${m.type}`, m); return;
     case "selectWork": console.info(`[harness] ${m.type}`, m); return;
     case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout, history, logMode, profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); reload(); return;
-    case "layout": layout = { ...layout, ...m }; sessionStorage.setItem("polylog-layout", JSON.stringify(layout)); return;
+    case "layout": layout = { ...layout, ...m }; sessionStorage.setItem("linyra-layout", JSON.stringify(layout)); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;
     case "loadMore": page(true); return;
@@ -156,6 +156,6 @@ function handle(m: WebviewMessage): void {
 
 (window as unknown as { acquireVsCodeApi: () => VsCodeApi }).acquireVsCodeApi = () => ({
   postMessage: (m: unknown) => handle(m as WebviewMessage),
-  getState: () => JSON.parse(sessionStorage.getItem("polylog-host-state") ?? "null"),
-  setState: (value) => sessionStorage.setItem("polylog-host-state", JSON.stringify(value)),
+  getState: () => JSON.parse(sessionStorage.getItem("linyra-host-state") ?? "null"),
+  setState: (value) => sessionStorage.setItem("linyra-host-state", JSON.stringify(value)),
 });

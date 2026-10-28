@@ -176,10 +176,11 @@ debounced and superseded Git reads are cancelled.
 
 Linyra is an independently maintained fork of
 [Polylog](https://github.com/lntvan166/polylog), originally created by **lntvan166**.
-Its extension ID is **`whwitpohe.linyra`**. Disable or uninstall
-`lntvan166.polylog-git` and reload the window when switching: enable one at a time.
-Settings use `linyra.*`; command keybindings remain compatible. Saved filters and pane
-sizes belong to each extension's private state and may need to be set again once.
+Its extension ID is **`whwitpohe.linyra`**. Settings, commands, views and revision URIs
+use the independent `linyra` namespace, so Linyra and `lntvan166.polylog-git` can coexist.
+Custom keybindings for Linyra must use `linyra.*` command IDs. Filters and pane sizes
+saved by earlier Linyra builds are migrated within Linyra's own private storage;
+the upstream extension's settings and private storage are left untouched.
 
 The original `v1.4.0` GitHub release retains its historical Polylog package. New Linyra
 releases use their own matching source tags and VSIX filenames.

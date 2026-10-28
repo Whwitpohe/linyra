@@ -216,6 +216,8 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
 function renderState(message?: string): void {
   byId("name-left").textContent = pair?.left || localize("Pick a branch");
   byId("name-right").textContent = pair?.right || localize("Pick a branch");
+  byId("branch-left").title = `${localize("The branch to merge from")}${pair?.left ? `\n${pair.left}` : ""}`;
+  byId("branch-right").title = `${localize("The branch it goes into")}${pair?.right ? `\n${pair.right}` : ""}`;
   byId("mode-files").setAttribute("aria-pressed", String(mode === "files"));
   byId("mode-commits").setAttribute("aria-pressed", String(mode === "commits"));
   for (const id of ["compare-hide-same", "compare-left-same", "compare-right-same"]) {

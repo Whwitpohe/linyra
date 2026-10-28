@@ -2,8 +2,8 @@
 # Captures the README screenshots and demo GIF from a real VS Code, on a virtual
 # display, against the seeded demo workspace (dev/demo/seed.mjs). Linux-only, dev-only.
 #
-#   npm run compile && npx @vscode/vsce package -o /tmp/polylog.vsix
-#   dev/demo/capture.sh /tmp/polylog.vsix          # → dev/demo/out/*.png, demo.gif
+#   npm run compile && npx @vscode/vsce package -o /tmp/linyra.vsix
+#   dev/demo/capture.sh /tmp/linyra.vsix          # → dev/demo/out/*.png, demo.gif
 #
 # Needs Xvfb, xdotool, ImageMagick (import) and ffmpeg. Uses the VS Code that the
 # integration tests download into .vscode-test/, with a throwaway profile and HOME:
@@ -12,11 +12,11 @@
 # against the step screenshots in dev/demo/out/.
 set -euo pipefail
 
-VSIX=${1:?usage: capture.sh <polylog.vsix>}
+VSIX=${1:?usage: capture.sh <linyra.vsix>}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=$ROOT/dev/demo/out
-WS=/tmp/polylog-demo
-PROFILE=/tmp/polylog-shoot
+WS=/tmp/linyra-demo
+PROFILE=/tmp/linyra-shoot
 CODE=$(ls -d "$ROOT"/.vscode-test/vscode-linux-x64-*/ | sort -V | tail -1)
 export DISPLAY=:99
 mkdir -p "$OUT"
@@ -70,7 +70,7 @@ typein() { click "$1" "$2" 1 0.3; xdotool key ctrl+a BackSpace; [ -n "$3" ] && x
 theme() { settings "$1"; sleep 2.5; }
 
 cmd "View: Close Primary Side Bar"
-cmd "Polylog: Open Merged Log"
+cmd "Linyra: Open Merged Log"
 sleep 3
 # Panel sash up to y=390: the Log gets half the window, the diff the other half. A fresh
 # profile's panel height varies, so find its top edge: the first pixel down column 300 that
@@ -105,7 +105,7 @@ kill -INT $FF; wait $FF || true
 shot 02-search
 
 # 3. File History of the diff on screen (the same command as a Changes file's right-click).
-cmd "Polylog: File History"
+cmd "Linyra: File History"
 sleep 1.5
 typein 330 547 ""                  # in history mode the filters sit under the mode bar and the switch
 shot 03-file-history
