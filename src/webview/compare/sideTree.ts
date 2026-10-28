@@ -1,12 +1,10 @@
 import type { CompareSidePage, CompareTreeRow, ReposWebview } from "../../compareProtocol";
 import { localize } from "../../i18n";
+import { codicon, codiconElement } from "../codicons";
 import { byId, h } from "../dom";
 import { moveSelection } from "../view";
 import { updateTreeToggle } from "../treeToggle";
 
-const folderIcon = '<svg viewBox="0 0 16 16"><path d="M1.5 4V2.5h5L8 4h6.5v9.5h-13Z" fill="none" stroke="currentColor"/></svg>';
-const fileIcon = '<svg viewBox="0 0 16 16"><path d="M3 1.5h6l4 4v9H3Zm6 0V6h4" fill="none" stroke="currentColor"/></svg>';
-const commitIcon = '<svg viewBox="0 0 16 16"><path d="M1 8h4m6 0h4" stroke="currentColor"/><circle cx="8" cy="8" r="3" stroke="currentColor" fill="none"/></svg>';
 
 export class CompareTree {
   private readonly root: HTMLElement;
@@ -143,14 +141,14 @@ export class CompareTree {
         "aria-level": String(depth), "aria-selected": String(this.selected === node.id), "aria-expanded": branch ? String(expanded) : undefined,
         "data-vscode-context": JSON.stringify({ webviewSection: "compareSideRow", compareSide: this.side, compareNodeId: node.id, viewItem: node.contextValue, preventDefaultContextMenuItems: true }) });
       row.style.paddingLeft = `${5 + (depth - 1) * 14}px`;
-      const arrow = branch ? h("button", { type: "button", class: "compare-twisty", tabindex: "-1", "data-expand": "true", "aria-label": localize(expanded ? "Collapse {0}" : "Expand {0}", node.label) }, [expanded ? "▾" : "▸"])
+      const arrow = branch ? h("button", { type: "button", class: "compare-twisty", tabindex: "-1", "data-expand": "true", "aria-label": localize(expanded ? "Collapse {0}" : "Expand {0}", node.label) }, [codiconElement(expanded ? "chevron-down" : "chevron-right")])
         : h("span", { class: "compare-twisty", "aria-hidden": "true" });
       const icon = h("span", { class: "compare-file-icon", "aria-hidden": "true" });
       const ext = node.label.split(".").pop()?.toLowerCase();
       if (node.kind === "file" && ["js", "jsx", "ts", "tsx", "vue", "json", "css"].includes(ext ?? "")) {
         icon.textContent = ext === "vue" ? "V" : ext === "json" ? "{}" : ext!.toUpperCase();
         icon.classList.add(`filetype-${ext}`);
-      } else icon.innerHTML = node.kind === "folder" ? folderIcon : node.kind === "commit" ? commitIcon : fileIcon;
+      } else icon.innerHTML = codicon(node.kind === "folder" ? "folder" : node.kind === "commit" ? "git-commit" : "file");
       row.append(arrow, icon, h("span", { class: `compare-node-label${node.kind === "more" ? " load-more" : ""}` }, [node.label]), h("span", { class: "compare-node-description" }, [node.description]));
       this.elements.set(node.id, row);
       fragment.append(row);

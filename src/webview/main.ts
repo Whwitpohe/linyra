@@ -21,6 +21,7 @@ import { PaneWidth } from "./repoPaneModel";
 import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
 import { WorkList } from "./workList";
 import { LogToolbar, type ViewOptions } from "./toolbar";
+import { codicon } from "./codicons";
 import type { ChangesLayout } from "../toolbarModel";
 
 const vscode = acquireVsCodeApi();
@@ -134,6 +135,9 @@ function applyChangesLayout(): void {
   changesSplitter.hidden = !showChanges || stacked;
   changesVerticalSplitter.hidden = !showChanges || !stacked;
   changesToggle.setAttribute("aria-pressed", String(showChanges));
+  // The icon shows where the changed files sit: the right side, or the panel below.
+  const toggleIcon = stacked ? "layout-panel" : "layout-sidebar-right";
+  if (changesToggle.dataset.icon !== toggleIcon) { changesToggle.dataset.icon = toggleIcon; changesToggle.innerHTML = codicon(toggleIcon); }
   changesSplitter.setAttribute("aria-valuenow", String(size));
   changesVerticalSplitter.setAttribute("aria-valuenow", String(size));
   toolbar.updateLayout(changesLayout);

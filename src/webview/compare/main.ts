@@ -3,6 +3,7 @@ import "./compare.css";
 import { setRemoteNames, type Duplicate, type Pair, type PickerItem, type Side } from "../../compareModel";
 import type { CompareMode, CompareLayout, CRepoRow, ReposHost, ReposWebview } from "../../compareProtocol";
 import { byId, clear, h } from "../dom";
+import { codicon, codiconElement } from "../codicons";
 import { BranchPicker } from "./picker";
 import { CompareTree } from "./sideTree";
 import { attachSplitter } from "../splitter";
@@ -224,6 +225,7 @@ function renderState(message?: string): void {
   hideButton.title = localize(hideSame ? "Show Files Already on Both" : "Hide Files Already on Both");
   hideButton.setAttribute("aria-label", hideButton.title);
   hideButton.setAttribute("aria-pressed", String(hideSame));
+  hideButton.innerHTML = codicon(hideSame ? "filter-filled" : "filter");
   const msg = byId("message");
   msg.hidden = message === undefined;
   msg.textContent = message ?? "";
@@ -258,7 +260,7 @@ function renderRows(): void {
       title: r.status === "differs" ? localize("{0}: {1} only on {2}, {3} only on {4}, {5} on both (merges not counted)", r.name, r.left, pair?.left ?? "", r.right, pair?.right ?? "", r.same) : r.reason ?? r.name,
       "data-vscode-context": JSON.stringify({ webviewSection: "compareRepo", repoId: r.repoId, behind: r.behind, preventDefaultContextMenuItems: true }),
     }, [
-      dups ? h("button", { class: "twisty", type: "button", tabindex: "-1", "data-twisty": r.repoId, "aria-expanded": String(unfolded), "aria-label": localize(unfolded ? "Collapse {0}" : "Expand {0}", r.name) }, [unfolded ? "▾" : "▸"]) : h("span", { class: "twisty", "aria-hidden": "true" }),
+      dups ? h("button", { class: "twisty", type: "button", tabindex: "-1", "data-twisty": r.repoId, "aria-expanded": String(unfolded), "aria-label": localize(unfolded ? "Collapse {0}" : "Expand {0}", r.name) }, [codiconElement(unfolded ? "chevron-down" : "chevron-right")]) : h("span", { class: "twisty", "aria-hidden": "true" }),
       h("span", { class: `repo-dot accent-${r.accent}`, "aria-hidden": "true" }),
       h("span", { class: "repo-name" }, [r.name]),
       // Names only: commit counts mislead when the same change travels by cherry-pick (they are in the tooltip).

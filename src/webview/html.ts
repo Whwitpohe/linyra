@@ -1,5 +1,6 @@
 import { escapeHtml, language, localizationScript, localize } from "../i18n";
 import { renderChangesBody } from "./changes/html";
+import { codicon } from "./codicons";
 export interface HtmlOptions {
   cspSource: string;
   nonce: string;
@@ -7,11 +8,7 @@ export interface HtmlOptions {
   styleUri: string;
 }
 
-// Inline SVG, not a codicon: the codicon font would be a bundled webfont.
-const REFRESH_ICON =
-  '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
-  '<path fill="none" stroke="currentColor" stroke-width="1.3" d="M13 8a5 5 0 1 1-1.46-3.54"/>' +
-  '<path fill="currentColor" d="M13.5 2v4h-4z"/></svg>';
+
 
 /** The one markup source for both the extension host and the browser harness. */
 export function renderHtml(o: HtmlOptions): string {
@@ -30,8 +27,8 @@ export function renderHtml(o: HtmlOptions): string {
   <aside id="repo-pane" class="repo-pane" aria-label="${escapeHtml(localize("Repositories"))}">
     <div class="repo-search">
       <input id="repo-filter" class="repo-filter" type="search" placeholder="${escapeHtml(localize("Find repo or branch"))}" aria-label="${escapeHtml(localize("Search repositories or branches"))}" autocomplete="off" spellcheck="false">
-      <button id="repo-expand-all" class="icon-button" type="button" title="${escapeHtml(localize("Expand All"))}" aria-label="${escapeHtml(localize("Expand All Repositories"))}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4.5 1.5h10v10M1.5 4.5h9v10h-9ZM6 7v5M3.5 9.5h5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
-      <button id="repo-collapse-all" class="icon-button" type="button" title="${escapeHtml(localize("Collapse All"))}" aria-label="${escapeHtml(localize("Collapse All Repositories"))}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4.5 1.5h10v10M1.5 4.5h9v10h-9ZM3.5 9.5h5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+      <button id="repo-expand-all" class="icon-button" type="button" title="${escapeHtml(localize("Expand All"))}" aria-label="${escapeHtml(localize("Expand All Repositories"))}">${codicon("expand-all")}</button>
+      <button id="repo-collapse-all" class="icon-button" type="button" title="${escapeHtml(localize("Collapse All"))}" aria-label="${escapeHtml(localize("Collapse All Repositories"))}">${codicon("collapse-all")}</button>
     </div>
     <div id="repo-rows" class="repo-rows" role="tree" aria-multiselectable="true" aria-label="${escapeHtml(localize("Repositories and branches"))}" tabindex="0"></div>
   </aside>
@@ -39,8 +36,8 @@ export function renderHtml(o: HtmlOptions): string {
   <div class="log">
     <div id="modebar" class="modebar" role="toolbar" aria-label="${escapeHtml(localize("Log mode"))}" hidden>
       <button id="mode-all" class="mode" type="button">${escapeHtml(localize("All commits"))}</button>
-      <span id="mode-history" class="mode active" aria-current="true"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><span>${escapeHtml(localize("File history:"))}</span><span id="history-path" class="history-path"></span>
-        <button id="history-close" class="icon-button mode-close" type="button" aria-label="${escapeHtml(localize("Close file history"))}" title="${escapeHtml(localize("Back to all commits"))}">×</button>
+      <span id="mode-history" class="mode active" aria-current="true">${codicon("history")}<span>${escapeHtml(localize("File history:"))}</span><span id="history-path" class="history-path"></span>
+        <button id="history-close" class="icon-button mode-close" type="button" aria-label="${escapeHtml(localize("Close file history"))}" title="${escapeHtml(localize("Back to all commits"))}">${codicon("close")}</button>
       </span>
     </div>
     <!-- One header row, as the JetBrains Log keeps it: the switch, the filters, then the actions.
@@ -54,8 +51,8 @@ export function renderHtml(o: HtmlOptions): string {
       <form id="filters" class="filters" role="search" aria-label="${escapeHtml(localize("Filter commits"))}">
         <span id="search-field" class="search-field">
           <input id="search" class="search" type="search" placeholder="${escapeHtml(localize("Search messages or hash"))}" aria-label="${escapeHtml(localize("Search commit messages or hash"))}" aria-describedby="hash-search-note" autocomplete="off" spellcheck="false">
-          <button id="match-case" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Case"))}" aria-label="${escapeHtml(localize("Match Case"))}">Aa</button>
-          <button id="use-regex" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Use Regular Expression"))}" aria-label="${escapeHtml(localize("Use Regular Expression"))}">.*</button>
+          <button id="match-case" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Case"))}" aria-label="${escapeHtml(localize("Match Case"))}">${codicon("case-sensitive")}</button>
+          <button id="use-regex" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Use Regular Expression"))}" aria-label="${escapeHtml(localize("Use Regular Expression"))}">${codicon("regex")}</button>
         </span>
         <span id="author-field" class="author-field">
           <button id="author" class="branch-filter author-filter" type="button" aria-expanded="false" aria-controls="author-picker" aria-haspopup="dialog" aria-label="${escapeHtml(localize("Filter authors"))}">${escapeHtml(localize("All authors"))}</button>
@@ -71,25 +68,25 @@ export function renderHtml(o: HtmlOptions): string {
             <option value="all">${escapeHtml(localize("All time"))}</option>
             <option value="custom">${escapeHtml(localize("Custom range"))}</option>
           </select>
-          <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          ${codicon("chevron-down", "chevron")}
         </span>
         <span id="custom-range" class="custom-range" hidden>
           <input id="from" type="date" aria-label="${escapeHtml(localize("From date"))}">
           <span aria-hidden="true">–</span>
           <input id="to" type="date" aria-label="${escapeHtml(localize("To date"))}">
         </span>
-        <button id="sort" class="icon-button" type="button" aria-label="${escapeHtml(localize("Sort"))}" aria-haspopup="menu" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12m-2-2 2 2 2-2M9 3h5M9 7h4M9 11h2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
-        <button id="refresh" class="icon-button" type="button" aria-label="${escapeHtml(localize("Refresh"))}" title="${escapeHtml(localize("Refresh"))}">${REFRESH_ICON}</button>
+        <button id="sort" class="icon-button" type="button" aria-label="${escapeHtml(localize("Sort"))}" aria-haspopup="menu" aria-expanded="false">${codicon("sort-precedence")}</button>
+        <button id="refresh" class="icon-button" type="button" aria-label="${escapeHtml(localize("Refresh"))}" title="${escapeHtml(localize("Refresh"))}">${codicon("refresh")}</button>
       </form>
       <span class="header-actions" role="toolbar" aria-label="${escapeHtml(localize("Log actions"))}">
-        <button id="toggle-changes" class="icon-button" type="button" title="${escapeHtml(localize("Show or hide changed files"))}" aria-label="${escapeHtml(localize("Show or hide changed files"))}" aria-pressed="true">◧</button>
+        <button id="toggle-changes" class="icon-button" type="button" title="${escapeHtml(localize("Show or hide changed files"))}" aria-label="${escapeHtml(localize("Show or hide changed files"))}" aria-pressed="true">${codicon("layout-sidebar-right")}</button>
         <span class="toolbar-divider" aria-hidden="true"></span>
         <button id="toolbar-repos" class="icon-button" type="button" aria-label="${escapeHtml(localize("Group by Repository"))}"></button>
         <button id="toolbar-compare" class="icon-button" type="button" aria-label="${escapeHtml(localize("Compare Branches"))}"></button>
         <button id="toolbar-fetch" class="icon-button" type="button" aria-label="${escapeHtml(localize("Fetch All Repositories"))}"></button>
         <button id="toolbar-update" class="icon-button" type="button" aria-label="${escapeHtml(localize("Update Project…"))}" title="${escapeHtml(localize("Update Project…"))}"></button>
         <button id="toolbar-push" class="icon-button" type="button" aria-label="${escapeHtml(localize("Push…"))}" title="${escapeHtml(localize("Push…"))}"></button>
-        <button id="toolbar-more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="${escapeHtml(localize("More Log Actions"))}" aria-label="${escapeHtml(localize("More Log Actions"))}">⋯</button>
+        <button id="toolbar-more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="${escapeHtml(localize("More Log Actions"))}" aria-label="${escapeHtml(localize("More Log Actions"))}">${codicon("ellipsis")}</button>
       </span>
     </div>
     <div id="hash-search-note" class="hash-search-note" role="status" hidden>${escapeHtml(localize("Hash lookup: searching selected repositories. Other filters are temporarily ignored."))}</div>

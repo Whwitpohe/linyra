@@ -2,6 +2,7 @@ import { localize } from "../../i18n";
 import { detailHeight } from "../../changesPresentation";
 import type { ChangeRow, ChangesMessage, ChangesPage, CommitDetails } from "../../changesProtocol";
 import { byId, h } from "../dom";
+import { codicon, codiconElement } from "../codicons";
 import { attachSplitter } from "../splitter";
 import { absoluteTime, moveSelection } from "../view";
 import { filterFiles } from "./fileFilterModel";
@@ -74,18 +75,10 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   detailToggle.addEventListener("click", () => { detailsCollapsed = !detailsCollapsed; resize(); save(); });
   new ResizeObserver(resize).observe(app);
 
-  const icons = {
-    tag: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m1.5 9 7-7h5.7v5.7l-7 7Z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11.5" cy="4.7" r=".8" fill="currentColor"/></svg>',
-    tags: '<svg viewBox="0 0 18 16" aria-hidden="true"><path d="m1 9 7-7h4v5l-7 7Zm5 1 7-8h4v5l-7 7" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>',
-    copy: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4.5h8v9h-8Zm-3 6h-1v-9h8v1" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
-    twisty: '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="m3 1 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>',
-    folder: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4V2.5h5L8 4h6.5v9.5h-13Z" fill="none" stroke="currentColor"/></svg>',
-    file: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h6l4 4v9H3Zm6 0V6h4" fill="none" stroke="currentColor"/></svg>',
-  };
+  // VS Code's own icons; "tags" (several references) is the same tag.
+  const icons = { tag: "tag", tags: "tag", copy: "copy", twisty: "chevron-right", folder: "folder", file: "file" } as const;
   function icon(name: keyof typeof icons, className: string): HTMLElement {
-    const span = h("span", { class: className, "aria-hidden": "true" });
-    span.innerHTML = icons[name];
-    return span;
+    return h("span", { class: className, "aria-hidden": "true" }, [codiconElement(icons[name])]);
   }
 
   function fileIcon(node: ChangeRow): HTMLElement {
@@ -324,7 +317,7 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
     allFiles.title = localize(page.allFiles ? "Show Changed Files" : "Show All Files");
     allFiles.setAttribute("aria-label", allFiles.title);
     allFiles.setAttribute("aria-pressed", String(!!page.allFiles));
-    allFiles.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="' + (page.allFiles ? "M2 4h12M2 8h12M2 12h12M5 2v4m5 4v4" : "M2 2v10h4M2 6h4m2-2h6v4H8Zm0 6h6v4H8Z") + '" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+    allFiles.innerHTML = codicon("files");
     allFiles.disabled = page.details.length !== 1;
     byId<HTMLButtonElement>("changes-clear-selection").disabled = page.details.length < 2;
     for (const id of ["changes-copy-sha", "changes-copy-message", "changes-open-remote"]) byId<HTMLButtonElement>(id).disabled = page.details.length !== 1;

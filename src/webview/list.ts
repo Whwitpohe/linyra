@@ -1,6 +1,7 @@
 import { commitKey, type Commit } from "../types";
 import { localize } from "../i18n";
 import { referenceLabels } from "../commitReferences";
+import { codiconElement } from "./codicons";
 import { clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { renderGraph, type FoldAction } from "./graph";
@@ -37,12 +38,6 @@ export interface ListProps {
 
 const SKELETON_ROWS = 8;
 
-/** A reference badge's tag icon: parsed once, cloned per badge. */
-const REF_ICON = (() => {
-  const t = document.createElement("template");
-  t.innerHTML = '<svg viewBox="0 0 16 16"><path d="m1.5 9 7-7h5.7v5.7l-7 7Z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11.5" cy="4.7" r=".8" fill="currentColor"/></svg>';
-  return t.content.firstChild as SVGElement;
-})();
 
 /**
  * Virtualized commit grid. Only visible rows exist in the DOM. The grid is one
@@ -339,7 +334,7 @@ export class CommitList {
           const badge = h("span", { class: `row-ref ref-${ref.kinds.at(-1)}`, title: ref.title });
           const marks = h("span", { class: "row-ref-icons" });
           for (const kind of ref.kinds) {
-            marks.append(h("span", { class: `row-ref-icon ref-${kind}`, "aria-hidden": "true" }, [REF_ICON.cloneNode(true)]));
+            marks.append(h("span", { class: `row-ref-icon ref-${kind}`, "aria-hidden": "true" }, [codiconElement("tag")]));
           }
           badge.append(marks, h("span", { class: "row-ref-label" }, [ref.label]));
           return badge;

@@ -29,7 +29,7 @@ button, input { font: inherit; }
 .compare-tree:focus .compare-tree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
 .compare-twisty { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; width: 18px; height: 21px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .compare-file-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; font-size: 9px; font-weight: 600; font-family: var(--vscode-editor-font-family); color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
-.compare-file-icon svg { width: 15px; height: 15px; }
+.compare-file-icon svg { width: 16px; height: 16px; }
 .compare-node-label { flex: 0 1 auto; min-width: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compare-node-description { flex: 0 1 auto; min-width: 0; margin-left: auto; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .compare-tree-row.status-A, .compare-tree-row.status-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }

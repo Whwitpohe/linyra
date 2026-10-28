@@ -1,3 +1,5 @@
+import { codiconElement } from "./codicons";
+
 type Child = Node | string | null | undefined | false;
 
 /**
@@ -19,15 +21,9 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
-/** The dropdown arrow every picker and select in the filter bar shares (parsed once, cloned). */
-const CHEVRON = (() => {
-  const t = document.createElement("template");
-  t.innerHTML = '<svg class="chevron" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  return t.content.firstChild as SVGElement;
-})();
-
+/** The dropdown arrow every picker and select in the filter bar shares. */
 export function chevron(): SVGElement {
-  return CHEVRON.cloneNode(true) as SVGElement;
+  return codiconElement("chevron-down", "chevron");
 }
 
 export function clear(el: Element): void {

@@ -1,4 +1,5 @@
 import { escapeHtml, language, localizationScript, localize } from "../../i18n";
+import { codicon } from "../codicons";
 import type { HtmlOptions } from "../html";
 
 export function renderChangesHtml(o: HtmlOptions): string {
@@ -24,10 +25,10 @@ export function renderChangesBody(): string {
 <main id="changes" class="changes">
   <section id="files-pane" class="files-pane" aria-label="${escapeHtml(localize("Changed files"))}">
     <div id="changes-heading" class="files-heading"><span id="summary"></span>
-      <button id="changes-clear-selection" class="icon-button" type="button" title="${escapeHtml(localize("Clear Selection"))}" aria-label="${escapeHtml(localize("Clear Selection"))}" disabled><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10M3 7h6M3 11h4m3-2 4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button id="changes-clear-selection" class="icon-button" type="button" title="${escapeHtml(localize("Clear Selection"))}" aria-label="${escapeHtml(localize("Clear Selection"))}" disabled>${codicon("clear-all")}</button>
       <button id="changes-all-files" class="icon-button" type="button" aria-label="${escapeHtml(localize("Show All Files"))}"></button>
       <button id="changes-tree-toggle" class="icon-button" type="button" aria-controls="file-tree" aria-label="${escapeHtml(localize("Collapse All"))}" disabled></button>
-      <button id="changes-more" class="icon-button" type="button" title="${escapeHtml(localize("More Changes Actions"))}" aria-label="${escapeHtml(localize("More Changes Actions"))}" aria-haspopup="menu" aria-expanded="false">⋯</button>
+      <button id="changes-more" class="icon-button" type="button" title="${escapeHtml(localize("More Changes Actions"))}" aria-label="${escapeHtml(localize("More Changes Actions"))}" aria-haspopup="menu" aria-expanded="false">${codicon("ellipsis")}</button>
     </div>
     <div class="files-filter"><input id="file-filter" type="search" placeholder="${escapeHtml(localize("Filter changed files by name or path"))}" aria-label="${escapeHtml(localize("Filter changed files by name or path"))}" aria-controls="file-tree" autocomplete="off" spellcheck="false"><span id="file-filter-count" class="file-filter-count" role="status" hidden></span></div>
     <div id="notice" class="notice" role="status" hidden></div>

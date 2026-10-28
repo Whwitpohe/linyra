@@ -3,6 +3,7 @@ import { branchGroupKey, branchRevision, DEFAULT_BRANCH_SIDEBAR, sidebarState, t
 import { selectedBranches, type FilterState } from "../filterModel";
 import type { HostMessage, WebviewMessage } from "../protocol";
 import type { Repo } from "../types";
+import { codiconElement } from "./codicons";
 import { byId, clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo } from "./repoPaneModel";
@@ -255,7 +256,7 @@ export class RepoPane {
   }
 
   private twisty(expanded: boolean | undefined): HTMLElement {
-    return h("span", { class: "tree-twisty", "aria-hidden": "true" }, [expanded === undefined ? "" : expanded ? "▾" : "▸"]);
+    return h("span", { class: "tree-twisty", "aria-hidden": "true" }, expanded === undefined ? [] : [codiconElement(expanded ? "chevron-down" : "chevron-right")]);
   }
 
   private render(reveal = true): void {
@@ -294,10 +295,10 @@ export class RepoPane {
             branchTag: b.kind === "tag", branchCurrent: b.current, preventDefaultContextMenuItems: true }),
         }, [
           this.twisty(undefined),
-          h("span", { class: `branch-mark${b.current ? " current" : ""}`, "aria-hidden": "true" }, [b.current ? "✓" : b.kind === "tag" ? "⌗" : "◇"]),
+          h("span", { class: `branch-mark${b.current ? " current" : ""}`, "aria-hidden": "true" }, [codiconElement(b.current ? "check" : b.kind === "tag" ? "tag" : "git-branch")]),
           h("span", { class: "branch-name" }, [row.label]),
           h("button", { class: `branch-star${row.favorite ? " favorite" : ""}`, type: "button", tabindex: "-1", "aria-pressed": String(row.favorite),
-            title: localize(row.favorite ? "Remove from Favorites" : "Add to Favorites"), "aria-label": localize("Favorite branch {0}", b.name) }, [row.favorite ? "★" : "☆"]),
+            title: localize(row.favorite ? "Remove from Favorites" : "Add to Favorites"), "aria-label": localize("Favorite branch {0}", b.name) }, [codiconElement(row.favorite ? "star-full" : "star-empty")]),
         ])));
         return;
       }

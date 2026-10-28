@@ -88,21 +88,25 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .app.history .repo-pane { opacity: 0.5; pointer-events: none; }
 
 /* ── Repositories pane ──────────────────────────────────────────────────── */
-.repo-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+/* minmax(0, 1fr): the column is the pane's width, never the search box's intrinsic size. */
+.repo-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; }
 /* Same height and bottom line as the Log's filter bar, so the two panes' rows line up. */
 .repo-search { display: flex; align-items: center; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
 .repo-filter { flex: 1 1 auto; min-width: 0; width: auto; }
+.repo-search .icon-button { flex: 0 0 22px; width: 22px; height: 22px; }
 /* The tree's rows below a repository: groups, remotes and branches. */
-.tree-twisty { width: 10px; flex: 0 0 10px; margin-right: -3px; color: var(--vscode-descriptionForeground); font-size: 10px; }
+/* Icons are VS Code's codicons (16 px), as its own trees and toolbars draw them. */
+.codicon { display: block; flex: none; }
+.tree-twisty { display: inline-flex; width: 16px; flex: 0 0 16px; margin-right: -4px; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
 .repo-row.tree-group .repo-name { color: var(--vscode-descriptionForeground); }
 .repo-row.branch-row { gap: 5px; cursor: default; }
 .repo-row.branch-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
 .branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .branch-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.branch-mark { flex: 0 0 13px; color: var(--vscode-textLink-foreground); }
+.branch-mark { display: inline-flex; flex: 0 0 16px; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
 .branch-mark.current { color: var(--vscode-charts-green); }
 .branch-message { color: var(--vscode-descriptionForeground); font-size: 0.92em; }
-.branch-star { width: 20px; height: 22px; flex: 0 0 20px; padding: 0; border: 0; background: transparent; color: var(--vscode-descriptionForeground); opacity: 0; }
+.branch-star { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 22px; flex: 0 0 20px; padding: 0; border: 0; background: transparent; color: var(--vscode-descriptionForeground); opacity: 0; }
 .branch-row:hover .branch-star, .branch-star.favorite, .branch-star:focus-visible { opacity: 1; }
 .branch-star.favorite { color: var(--vscode-charts-yellow); }
 .repo-rows { overflow-y: auto; min-height: 0; padding: 2px 0 6px; }
@@ -110,7 +114,7 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .repo-sync { margin-left: auto; flex: none; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
 .repo-sync.behind { color: var(--vscode-foreground); font-weight: 600; }
 .repo-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
-.repo-row { display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 10px; cursor: pointer; white-space: nowrap; }
+.repo-row { display: flex; align-items: center; gap: 7px; height: 22px; min-width: 0; padding: 0 10px; overflow: hidden; cursor: pointer; white-space: nowrap; }
 .repo-row:hover { background: var(--vscode-list-hoverBackground); }
 .repo-rows:focus .repo-row.active { background: var(--vscode-list-focusBackground, var(--vscode-list-hoverBackground)); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
 .repo-row[aria-selected="false"] .repo-name { color: var(--vscode-descriptionForeground); }
@@ -118,7 +122,7 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
    row as a click on .repo-check (tick/untick); the row re-renders the box's state. */
 .repo-check { flex: none; }
 .repo-dot { width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--accent); }
-.repo-dot.all { background: transparent; border: 1px solid var(--vscode-descriptionForeground); }
+.repo-dot.all { visibility: hidden; }
 /* Profiles: a small list glyph drawn with the text color (no icon font). */
 .profile-icon { width: 10px; height: 9px; flex: none; background: linear-gradient(currentColor 0 0) 0 0 / 100% 1px no-repeat, linear-gradient(currentColor 0 0) 0 4px / 100% 1px no-repeat, linear-gradient(currentColor 0 0) 0 8px / 100% 1px no-repeat; opacity: .8; }
 .profile-row.current { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, inherit); }
@@ -127,7 +131,7 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .profile-missing { color: var(--vscode-editorWarning-foreground); }
 .repo-divider { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); margin: 4px 10px; }
 body.vscode-high-contrast .profile-row.current { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
-.repo-name { overflow: hidden; text-overflow: ellipsis; }
+.repo-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .repo-name .hit { color: var(--vscode-list-highlightForeground); font-weight: 600; }
 
 /* The divider: a visible theme line that lights up like VS Code's own sash. */
@@ -330,9 +334,9 @@ body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, tran
 /* Adjacent commits of one repository share a single uninterrupted color band. */
 .repo-band {
   align-self: stretch; display: flex; align-items: flex-start; min-width: 0; overflow: hidden;
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
-body.vscode-light .repo-band { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+body.vscode-light .repo-band { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .repo-band.band-start { border-top: 1px solid var(--vscode-panel-background, var(--vscode-editor-background)); border-top-left-radius: 3px; border-top-right-radius: 3px; }
 .repo-band.band-end { border-bottom: 1px solid var(--vscode-panel-background, var(--vscode-editor-background)); border-bottom-left-radius: 3px; border-bottom-right-radius: 3px; }
 .repo-band .repo-label, body.vscode-light .repo-band .repo-label { background: transparent; border-radius: 0; line-height: var(--row-height); padding: 0 6px; }
@@ -391,8 +395,8 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
 }
 
 /* The Log's Commits | Uncommitted switch (VS Code's segmented look, theme colors only). */
-.switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 6px; background: var(--vscode-input-background); }
-.switch-tab { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer; }
+.switch { box-sizing: border-box; display: inline-flex; align-items: stretch; gap: 2px; height: 26px; padding: 1px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 4px; background: var(--vscode-input-background); }
+.switch-tab { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 0; border-radius: 3px; background: transparent; color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer; }
 .switch-tab:hover { color: var(--vscode-foreground); }
 .switch-tab[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-contrastActiveBorder, transparent); }
 .switch-tab:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }

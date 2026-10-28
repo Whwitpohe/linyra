@@ -1,15 +1,16 @@
 import { localize } from "../i18n";
 import type { ChangesLayout, ToolbarAction, ToolbarState } from "../toolbarModel";
+import { codicon } from "./codicons";
 import { byId, h } from "./dom";
 
-const glyph = (path: string) => `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="${path}" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+/** VS Code's own icons for the same actions its Source Control and Git use. */
 const icons = {
-  repos: glyph("M2 3h4m3 0h5M2 7h4m3 0h5M2 11h4m3 0h5"),
-  compare: glyph("M4 2v10m-2-2 2 2 2-2M12 14V4m-2 2 2-2 2 2M4 4h3m2 8h3"),
-  fetch: glyph("M4 11a3 3 0 1 1 .4-6A4 4 0 0 1 12 5a3 3 0 0 1 1 6M8 7v7m-2-2 2 2 2-2"),
-  sync: glyph("M13 5A5 5 0 0 0 3 5m0-3v3h3M3 11a5 5 0 0 0 10 0m0 3v-3h-3"),
-  update: glyph("M8 2v8m-3-3 3 3 3-3M3 13h10"),
-  push: glyph("M8 12V4m-3 3 3-3 3 3M3 14h10"),
+  repos: codicon("layout-sidebar-left"),
+  compare: codicon("git-compare"),
+  fetch: codicon("cloud-download"),
+  sync: codicon("sync"),
+  update: codicon("repo-pull"),
+  push: codicon("repo-push"),
 };
 
 /** The Log's view options (the ⋯ menu), saved by the host. */
