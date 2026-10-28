@@ -255,7 +255,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.suggestions.replay();
         if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
         this.postUncommitted();
-        if (this.queryState === null) await this.reload();
+        // A reload on its way posts its page to this webview too.
+        if (this.queryState === null) { if (!this.reloading) await this.reload(); }
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
       case "filter": {
@@ -607,7 +608,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (key === this.backgroundFor) return;
     this.backgroundFor = key;
     void this.loadMe();
-    void this.upstream.read();
+    void this.upstream.read(undefined, true); // VS Code's Git has counted the repositories it watches
     // Uncommitted work: once, after the first page (the switch's badge), then kept current by events.
     void this.deps.uncommitted.readAll();
     // Suggestions are read when their box is first focused (wantSuggestions), not here.
@@ -651,7 +652,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       changed = true;
     }
     this.postInit();
-    if (force || changed || this.queryState === null) await this.reload();
+    // No page yet and none on its way: read one. A reload in flight (queryState is null until its
+    // page lands) already reads these repositories: restarting it would only throw its work away.
+    if (force || changed || (this.queryState === null && !this.reloading)) await this.reload();
     // Refresh also re-reads how far each repo is from its upstream (a fetch may have moved it).
     if (force) {
       void this.upstream.read();
@@ -823,18 +826,26 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return this.run;
   }
 
+  /** The reload whose first page is on its way (until it lands, fails, or a newer one aborts it). */
+  private reloadCtl: AbortController | undefined;
+  private get reloading(): boolean {
+    return this.reloadCtl !== undefined && !this.reloadCtl.signal.aborted;
+  }
+
   private async reload(): Promise<void> {
     this.stats.reloads++;
     this.query.abort();
     this.queryState = null; // Load More waits for this reload's first page
     const ctl = (this.query = new AbortController());
+    this.reloadCtl = ctl;
     const s = this.settings();
     this.post({ type: "loading" });
     const t = Date.now();
-    // Uncommitted work follows the ticked repositories and the Path box; once the background
-    // read has run, each reload reads what no event keeps current (never before the page).
+    // Uncommitted work follows the ticked repositories and the Path box. A reload reads it only
+    // when that scope changed (a filter does not change the working tree), and after the page so
+    // the two never compete, unless the Log shows the Uncommitted side.
     this.syncScope();
-    if (this.deps.uncommitted.started) void this.deps.uncommitted.readAll();
+    if (this.logMode === "uncommitted") void this.deps.uncommitted.readIfScopeChanged();
     try {
       // Me needs each repository's user.email, or the first page is empty and read twice.
       if (this.filter.mine && !hashQuery(this.filter.text) && this.meFor !== this.repos.map((r) => r.id).join("\0")) {
@@ -863,6 +874,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not read the log: {0}", messageOf(e)));
     }
+    if (this.reloadCtl === ctl) this.reloadCtl = undefined;
+    if (!ctl.signal.aborted) void this.deps.uncommitted.readIfScopeChanged();
   }
 
   private async loadMore(): Promise<void> {
@@ -1237,6 +1250,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.commitsTree = this.deps.changes.current();
       this.commitsCombined = this.deps.changes.currentCombined();
       this.showWorkTree();
+      // What no event keeps current is read again when it is looked at.
+      void this.deps.uncommitted.readUnreported();
     } else {
       if (this.commitsCombined) this.deps.changes.setCombined(this.commitsCombined);
       else this.deps.changes.set(this.commitsTree);

@@ -48,6 +48,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const uncommitted: UncommittedStore = new UncommittedStore({
     run: (cwd, args, signal, opts): Promise<string> => log.countedRun(cwd, args, signal, opts),
     reportsChanges: (root) => discovery.reportsChanges(root),
+    cleanHead: (root) => discovery.cleanHead(root),
+    awaitingReport: (root) => discovery.awaitingReport(root),
+    firstReport: (root, ms) => discovery.firstReport(root, ms),
     canStage: (root) => discovery.vsCodeGitHas(root),
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
   });
@@ -232,7 +235,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
       vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),
     ]),
-    vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
+    vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath, true)),
+    // Back from another program (a terminal, a Git client): what VS Code's Git does not watch may have changed.
+    vscode.window.onDidChangeWindowState((state) => { if (state.focused) void uncommitted.readUnreported(); }),
     uncommitted,
     // Uncommitted work has one home: the Log's Uncommitted side (this command opens it).
     vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),

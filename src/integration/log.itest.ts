@@ -309,15 +309,20 @@ describe("Linyra panel", () => {
       await sleep(300);
       const reread = statusSince(mark, await snapshot()).filter((root) => mark.reported.includes(root) && root !== web.root);
       assert.deepStrictEqual(reread, [], "the working tree is not read again for a date change");
-      // Where VS Code's Git reports nothing (here git.autorefresh off), no event keeps them
-      // current: those repositories are read every time.
+      // Where VS Code's Git reports nothing (here git.autorefresh off), no event keeps them current.
+      // A filter still cannot change the working tree, so a reload reads none of them; they are
+      // read when the Uncommitted side is shown (and when the window regains focus, and on Refresh).
       const gitCfg = () => vscode.workspace.getConfiguration("git");
       await gitCfg().update("autorefresh", false, vscode.ConfigurationTarget.Global);
       try {
         mark = await snapshot();
         await send({ type: "filter", filter: { ...ALL, date: "7d" } });
         await until("the 7-day page", (x) => x.filter.date === "7d" && x.stats.reloads > mark.stats.reloads);
-        await waitFor("every repository read again", async () => (new Set(statusSince(mark, await snapshot())).size === mark.repos.length ? true : undefined));
+        await sleep(300);
+        assert.deepStrictEqual(statusSince(mark, await snapshot()), [], "a reload reads no working tree, reported on or not");
+        await send({ type: "logMode", mode: "uncommitted" });
+        await waitFor("every repository read when the Uncommitted side is shown", async () => (new Set(statusSince(mark, await snapshot())).size === mark.repos.length ? true : undefined));
+        await send({ type: "logMode", mode: "commits" });
       } finally {
         await gitCfg().update("autorefresh", undefined, vscode.ConfigurationTarget.Global);
       }

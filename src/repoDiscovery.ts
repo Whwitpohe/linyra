@@ -25,7 +25,16 @@ export interface BranchRepository {
 }
 interface GitRepository extends BranchRepository {
   rootUri: vscode.Uri;
-  state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> };
+  state?: {
+    HEAD?: GitBranch;
+    onDidChange?: vscode.Event<void>;
+    // vscode.git's API v1: what its last status found. untrackedChanges only when git.untrackedChanges is "separate".
+    indexChanges?: readonly unknown[];
+    workingTreeChanges?: readonly unknown[];
+    mergeChanges?: readonly unknown[];
+    untrackedChanges?: readonly unknown[];
+    remotes?: readonly { name: string }[];
+  };
   status?(): Promise<void>;
   // Absolute file paths; in vscode.git's API v1 since before 1.85.
   add?(paths: string[]): Promise<void>;
@@ -115,6 +124,60 @@ export class RepoDiscovery implements vscode.Disposable {
 
   vsCodeGitHas(root: string): boolean {
     return this.vsCodeGitRepo(root) !== undefined;
+  }
+
+  /**
+   * The HEAD commit of a repository VS Code's Git watches and has found clean: no staged,
+   * unstaged, merge or untracked change in its last status. undefined when that is not known
+   * (not watched, no status yet, untracked files hidden from it): then git is asked. Its events
+   * keep it current, so a clean repository needs no git process of Linyra's own.
+   */
+  cleanHead(root: string): string | undefined {
+    if (!this.reportsChanges(root)) return;
+    const state = this.vsCodeGitRepo(root)?.state;
+    if (!state?.HEAD?.commit) return;
+    const untracked = vscode.workspace.getConfiguration("git", vscode.Uri.file(root)).get<string>("untrackedChanges", "mixed");
+    if (untracked === "hidden" || (untracked === "separate" && state.untrackedChanges === undefined)) return;
+    const lists = [state.indexChanges, state.workingTreeChanges, state.mergeChanges, state.untrackedChanges ?? []];
+    return lists.every((list) => list !== undefined && list.length === 0) ? state.HEAD.commit : undefined;
+  }
+
+  /** VS Code's Git watches the repository but has not finished its first status of it yet. */
+  awaitingReport(root: string): boolean {
+    const state = this.reportsChanges(root) ? this.vsCodeGitRepo(root)?.state : undefined;
+    return state?.onDidChange !== undefined && state.HEAD === undefined;
+  }
+
+  /**
+   * Resolves once VS Code's Git has reported the repository (its first status), or after `ms`.
+   * Right after startup it is still reading every repository: its answer spares a git process.
+   */
+  firstReport(root: string, ms: number): Promise<void> {
+    const state = this.reportsChanges(root) ? this.vsCodeGitRepo(root)?.state : undefined;
+    if (!state?.onDidChange || state.HEAD) return Promise.resolve();
+    const onDidChange = state.onDidChange;
+    return new Promise((resolve) => {
+      let sub: vscode.Disposable | undefined;
+      const finish = () => { clearTimeout(timer); sub?.dispose(); resolve(); };
+      const timer = setTimeout(finish, ms);
+      sub = onDidChange(() => { if (state.HEAD) finish(); });
+    });
+  }
+
+  /** The remote names VS Code's Git has for a repository it watches (undefined: ask git). */
+  remotes(root: string): string[] | undefined {
+    if (!this.reportsChanges(root)) return;
+    const state = this.vsCodeGitRepo(root)?.state;
+    return state?.HEAD && state.remotes ? state.remotes.map((r) => r.name) : undefined;
+  }
+
+  /** Ahead/behind its upstream as VS Code's Git last found it (undefined: not watched, no status yet). */
+  aheadBehind(root: string): { ahead: number; behind: number; upstream: boolean } | undefined {
+    if (!this.reportsChanges(root)) return;
+    const head = this.vsCodeGitRepo(root)?.state?.HEAD;
+    if (!head) return;
+    if (!head.upstream) return { ahead: 0, behind: 0, upstream: false };
+    return head.ahead === undefined || head.behind === undefined ? undefined : { ahead: head.ahead, behind: head.behind, upstream: true };
   }
 
   branchRepository(root: string): BranchRepository | undefined {

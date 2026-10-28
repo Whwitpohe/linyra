@@ -18,6 +18,15 @@ export interface StoreDeps {
   run: RunGit;
   /** VS Code's Git reports this repository's changes (else it is read on every full read). */
   reportsChanges(root: string): boolean;
+  /**
+   * The HEAD commit when VS Code's Git has found the repository clean (undefined: unknown).
+   * Trusted only where its view is current: see `read`.
+   */
+  cleanHead?(root: string): string | undefined;
+  /** VS Code's Git watches it but has not reported it yet (right after startup). */
+  awaitingReport?(root: string): boolean;
+  /** Resolves when VS Code's Git has reported it, or after `ms`. */
+  firstReport?(root: string, ms: number): Promise<void>;
   /** VS Code's Git has the repository open: Stage, Discard and Commit work there. */
   canStage(root: string): boolean;
   concurrency(): number;
@@ -33,6 +42,10 @@ interface Entry extends RepoWork {
 
 /** Changed files whose modification time decides "edited N ago". */
 const EDITED_SAMPLE = 50;
+/** How long a read waits for VS Code's Git's first report of a repository before asking git itself. */
+const FIRST_REPORT_MS = 3000;
+/** Unreported repositories are read again on focus at most this often (alt-tabbing is bursty). */
+const UNREPORTED_INTERVAL_MS = 5000;
 
 async function newestMtime(root: string, paths: readonly string[]): Promise<number | null> {
   const stats = await Promise.allSettled(paths.map((p) => fs.stat(path.join(root, ...p.split("/")))));
@@ -72,10 +85,14 @@ export class UncommittedStore implements vscode.Disposable {
   private inFlight: string | undefined;
   private reading: Promise<void> | undefined;
   private readonly touched = new Set<string>();
+  /** Touched by a save: VS Code's Git has not looked yet, so its "clean" is not trusted for these. */
+  private readonly saved = new Set<string>();
   private readonly touchedSoon = debounce(() => {
     const ids = new Set(this.touched);
+    const trusted = new Set([...ids].filter((id) => !this.saved.has(id)));
     this.touched.clear();
-    void this.read(ids, "touched");
+    this.saved.clear();
+    void this.read(ids, "touched", trusted);
   }, 400);
   /** Each repository read and why (integration test seam: a save reads only its own repository). */
   readonly reads: { root: string; why: ReadCause }[] = [];
@@ -110,15 +127,47 @@ export class UncommittedStore implements vscode.Disposable {
   readAll(force = false): Promise<void> {
     this.started = true;
     if (force) this.done = this.inFlight = this.reading = undefined;
-    return this.read();
+    // Refresh asks git itself; the first read and a new scope take VS Code's Git's word for clean repositories.
+    return this.read(undefined, "all", force ? undefined : "all");
+  }
+
+  /**
+   * A Log reload: read every repository only when the scope (ticked repositories, Path box) is
+   * not the one read already. A filter change does not change the working tree, so a reload
+   * never reads the same scope again.
+   */
+  readIfScopeChanged(): Promise<void> | undefined {
+    if (!this.started) return;
+    const key = this.scopeKey();
+    if (key === this.done || key === this.inFlight) return;
+    return this.read(undefined, "all", "all");
+  }
+
+  /**
+   * The repositories VS Code's Git reports nothing on, read again: when the window regains focus
+   * (git may have run in another program) and when the Uncommitted side is shown. At most once
+   * every few seconds, and never while a read of every repository is on its way.
+   */
+  readUnreported(): Promise<void> | undefined {
+    if (!this.started || this.scopeKey() !== this.done || Date.now() - this.unreportedAt < UNREPORTED_INTERVAL_MS) return;
+    const unreported = this.scope.repos.filter((r) => !this.deps.reportsChanges(r.root));
+    if (unreported.length === 0) return;
+    this.unreportedAt = Date.now();
+    return this.read(new Set(unreported.map((r) => r.id)), "all");
+  }
+  private unreportedAt = 0;
+
+  private scopeKey(): string {
+    return `${this.scope.pathspecs.join("\0")}\n${this.scope.repos.map((r) => r.id).join("\0")}`;
   }
 
   /** A save, or VS Code's Git reporting a repository: read that repository again after a burst. */
-  touch(fsPath: string): void {
+  touch(fsPath: string, saved = false): void {
     if (!this.started) return;
     const repo = this.innermost(fsPath);
     if (!repo) return; // outside every ticked repository
     this.touched.add(repo.id);
+    if (saved) this.saved.add(repo.id);
     this.touchedSoon();
   }
 
@@ -162,7 +211,12 @@ export class UncommittedStore implements vscode.Disposable {
       .sort((a, b) => a.rel.length - b.rel.length)[0]?.r;
   }
 
-  private async read(only?: ReadonlySet<string>, why: ReadCause = only ? "repo" : "all"): Promise<void> {
+  /**
+   * `trust`: the repositories for which VS Code's Git's "clean" is current enough to skip git ("all",
+   * or their ids): the first read, a new scope, its own reports. Never after a save, a Refresh or an
+   * action of Linyra's: those ask git.
+   */
+  private async read(only?: ReadonlySet<string>, why: ReadCause = only ? "repo" : "all", trust?: "all" | ReadonlySet<string>): Promise<void> {
     const specs = this.scope.pathspecs;
     const spec = specs.join("\0");
     let repos = [...this.scope.repos];
@@ -173,12 +227,12 @@ export class UncommittedStore implements vscode.Disposable {
       repos = repos.filter((r) => only.has(r.id));
       ctl = this.repoReads;
     } else {
-      const key = `${spec}\n${repos.map((r) => r.id).join("\0")}`;
+      const key = this.scopeKey();
       if (key === this.inFlight && !this.fullRead.signal.aborted && this.reading) return this.reading;
       if (key === this.done) {
         // Kept current by VS Code's Git and saves, except where it reports nothing: read those.
         const unreported = repos.filter((r) => !this.deps.reportsChanges(r.root));
-        if (unreported.length > 0) await this.read(new Set(unreported.map((r) => r.id)), "all");
+        if (unreported.length > 0) await this.read(new Set(unreported.map((r) => r.id)), "all", trust);
         return;
       }
       this.done = undefined;
@@ -198,18 +252,26 @@ export class UncommittedStore implements vscode.Disposable {
       }
       this.spec = spec;
     }
-    const reading = runPool(repos, this.deps.concurrency(), async (r, signal) => {
+    const trusted = (r: Repo) => trust === "all" || (trust?.has(r.id) ?? false);
+    const readInto = async (r: Repo, signal: AbortSignal) => {
       const seq = ++this.seq;
-      this.reads.push({ root: r.root, why });
-      if (process.env.LINYRA_ITEST !== "1" && this.reads.length > 200) this.reads.splice(0, this.reads.length - 200);
-      const work = await this.readOne(r, specs, signal);
+      const work = await this.readOne(r, specs, signal, why, trusted(r));
       if (ctl.signal.aborted) return;
       const old = this.map.get(r.id);
       if (old && old.seq > seq) return;
       this.map.set(r.id, { ...work, seq });
       // Show each repository as soon as it is read, rather than after the slowest one.
       if (!sameWork(old, work)) this.changedSoon();
-    }, ctl.signal);
+    };
+    // Right after startup VS Code's Git is still reading the repositories it watches: wait (briefly)
+    // for its answer instead of running the same git status beside it. The others are read at once.
+    const waiting = repos.filter((r) => trusted(r) && (this.deps.awaitingReport?.(r.root) ?? false));
+    const now = repos.filter((r) => !waiting.includes(r));
+    const reading = Promise.all([
+      runPool(now, this.deps.concurrency(), readInto, ctl.signal),
+      Promise.all(waiting.map((r) => this.deps.firstReport!(r.root, FIRST_REPORT_MS)))
+        .then(() => runPool(waiting, this.deps.concurrency(), readInto, ctl.signal)),
+    ]).then(([a, b]) => [...a, ...b]);
     if (only) {
       await reading;
       return;
@@ -230,7 +292,12 @@ export class UncommittedStore implements vscode.Disposable {
   }
 
   /** git status, then (only where something changed) the two numstat reads and the edit times. */
-  private async readOne(r: Repo, specs: readonly string[], signal: AbortSignal): Promise<RepoWork> {
+  private async readOne(r: Repo, specs: readonly string[], signal: AbortSignal, why: ReadCause, trusted: boolean): Promise<RepoWork> {
+    // Clean as VS Code's Git last found it, and its view is current: no git process at all.
+    const cleanHead = trusted ? this.deps.cleanHead?.(r.root) : undefined;
+    if (cleanHead !== undefined) return { repoId: r.id, root: r.root, name: r.name, head: cleanHead, staged: [], changes: [], editedAt: null, canStage: this.deps.canStage(r.root) };
+    this.reads.push({ root: r.root, why });
+    if (process.env.LINYRA_ITEST !== "1" && this.reads.length > 200) this.reads.splice(0, this.reads.length - 200);
     // One call for a clean repository: --branch carries the last commit's id too.
     const out = await this.deps.run(r.root, statusArgs(specs), signal);
     const head = headOf(out);
