@@ -7,7 +7,7 @@ import { FAVORITES, MODE, modeOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSam
 import { outputLog } from "./outputLog";
 import { isAbortError } from "./pool";
 import { renderReposHtml } from "./webview/compare/html";
-import { accentOf, assignAccents } from "./webview/view";
+import { accentOf } from "./webview/view";
 
 /**
  * Repositories, in the Linyra Compare tab: the two Branch boxes (◀ left ▾ ⇄ ▶ right ▾) with
@@ -286,7 +286,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
 
   private rows(): CRepoRow[] {
     const listed = this.listed();
-    const accents = assignAccents(listed.map(({ repo }) => repo));
+    // The Log's colors: hues assigned over only the listed repositories would differ from it.
+    const accents = this.deps.log.accents();
     return listed.map(({ repo, result }): CRepoRow => ({
       repoId: repo.id, name: repo.name, accent: accentOf(accents, repo.id), status: result.kind === "differs" ? "differs" : result.kind === "nobase" ? "nobase" : "error",
       left: result.kind === "differs" ? result.left : 0, right: result.kind === "differs" ? result.right : 0, same: result.kind === "differs" ? result.sameLeft : 0,

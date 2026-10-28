@@ -675,6 +675,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return selectRepos(this.filter, this.repos);
   }
 
+  /**
+   * Each repository's color, assigned over every repository as the Log's bands and Repo List
+   * dots are: a view that showed only some of them and assigned its own would recolor them.
+   */
+  accents(): ReadonlyMap<string, number> {
+    return assignAccents(this.repos);
+  }
+
   /** The Branch box's name ("" when empty): Compare with… starts from it. */
   get branchBox(): string {
     const branches = selectedBranches(this.filter);
@@ -917,7 +925,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const { commit, repo } = found;
     const key = commitKey(commit);
     if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
-    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path, repoAccent: accentOf(assignAccents(this.repos), repoId) };
+    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path, repoAccent: accentOf(this.accents(), repoId) };
     // File history: the diff follows the selection, in one preview tab, keeping focus in the Log.
     if (this.history && commit.file) void this.openHistoryDiff(commit);
     this.setCommitTree({ ...base, status: "loading" });
@@ -1064,7 +1072,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const groups = this.repos
       .map((repo) => ({ repo, commits: found.filter((f) => f.repo.id === repo.id).map((f) => f.commit).reverse() }))
       .filter((g) => g.commits.length > 0);
-    const accents = assignAccents(this.repos);
+    const accents = this.accents();
     const base = { repos: [], noNetChange: [], count: found.length, unselected: {} };
     this.setCombinedTree({ ...base, status: "loading" });
     try {
