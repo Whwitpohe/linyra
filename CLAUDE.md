@@ -73,6 +73,14 @@ improve on 25 ms.
 repo subset). Git does the searching; JavaScript only merges already-filtered streams. Any
 change that starts filtering in JavaScript has thrown the architecture away — reject it.
 
+**Count git processes, not git work.** On Windows a git process costs ~7 ms to start and starts
+are effectively serial: 68 `git --version` take as long as 68 `git log` (~450 ms), and raising
+concurrency past 16 buys nothing. So start no process whose answer VS Code's Git already holds
+for a repository it watches (clean or not, ahead/behind, remotes), never re-read what a step
+cannot have changed (a filter does not change the working tree), and order background reads by
+what is on screen. Measure with `npm run perf:startup` (68 repositories; `PERF_VSCODE_GIT=off`
+for unwatched ones) and `dev/perf/webviewBench.ts`, three runs each: single runs vary ±15%.
+
 ### 2. All color and type come from VS Code theme variables
 
 No hard-coded hex. No bundled webfont. No assumption of light or dark. Use
