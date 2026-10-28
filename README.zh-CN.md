@@ -2,7 +2,7 @@
 
 **在一条时间线里查看工作区内所有仓库的 Git 历史。**
 
-[English](https://github.com/Whwitpohe/polylog/blob/main/README.md) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [下载 VSIX](https://github.com/Whwitpohe/polylog/releases) · [反馈问题](https://github.com/Whwitpohe/polylog/issues)
+[English](https://github.com/Whwitpohe/linyra/blob/main/README.md) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [下载 VSIX](https://github.com/Whwitpohe/linyra/releases) · [反馈问题](https://github.com/Whwitpohe/linyra/issues)
 
 一个需求改了前端、API、公共库和文档？搜索一次，就能看到所选仓库里的相关提交。
 沿着真实分支图追踪合并，阅读完整提交说明，再用 VS Code 原生 Diff 核对每个文件。
@@ -11,7 +11,7 @@
 更完整的提交详情、分支侧栏，以及带明确折叠控件的可调面板。下面专门演示这些能力，
 也保留从 Polylog 继承的多仓库合并时间线。
 
-![多选分支和作者，切换日期／拓扑排序，并折叠和展开线性历史](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-branches.gif)
+![多选分支和作者，切换日期／拓扑排序，并折叠和展开线性历史](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-branches.gif)
 
 演示使用六个中性的示例仓库和真实 Git 提交。静态图片均可打开查看原始分辨率。
 
@@ -28,14 +28,14 @@ code --install-extension whwitpohe.linyra
 
 默认范围是**最近 24 小时、全部分支**。要找更早的提交，先把时间改为**全部时间**；
 左侧仓库复选框可限制查看范围。使用其他扩展注册中心的编辑器，可以先从
-[GitHub Releases](https://github.com/Whwitpohe/polylog/releases) 下载 VSIX 安装；Open VSX 尚未完成发布。
+[GitHub Releases](https://github.com/Whwitpohe/linyra/releases) 下载 VSIX 安装；Open VSX 尚未完成发布。
 
 ## 一次搜索，串起多个仓库的改动
 
 输入需求编号、关键词或提交信息，各仓库结果集中展示，左侧色带标明所属仓库。
 选择提交后，右侧同步显示更改文件；点击文件，在上方原生编辑器里查看差异。
 
-![完整工作区：上方原生 Diff，下方多仓库日志、真实分支轨道与更改文件](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-log.png)
+![完整工作区：上方原生 Diff，下方多仓库日志、真实分支轨道与更改文件](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-log.png)
 
 - **信息搜索与哈希定位。** 普通文字按提交信息匹配，不区分大小写。
   完整哈希或至少七位十六进制前缀可直接定位提交，`sha:abcd` 支持至少四位前缀。
@@ -54,14 +54,14 @@ code --install-extension whwitpohe.linyra
 **不用重设筛选，也能定位旧提交。** 粘贴哈希，即使时间选着“最近 24 小时”，仍能找到三个月前的提交；
 清空哈希后恢复之前的日志。
 
-![粘贴短哈希定位旧提交，清空后恢复原筛选](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-hash-lookup.gif)
+![粘贴短哈希定位旧提交，清空后恢复原筛选](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-hash-lookup.gif)
 
 ## 看清完整提交说明
 
 文件下方单独展示标题、正文段落、共同作者等尾注，以及作者／邮箱、时间、可复制哈希和仓库标记。
 HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能展开查看包含此提交的分支。
 
-![查看完整提交与彩色引用，调整或隐藏说明区域，并搜索更改文件](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-commit-review.gif)
+![查看完整提交与彩色引用，调整或隐藏说明区域，并搜索更改文件](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-commit-review.gif)
 
 **演示步骤：**查看 HEAD／本地分支／远程分支／标签的图标和颜色，展开包含分支，隐藏并恢复说明，
 拖动分隔线，再把更改文件筛到 `PaymentStep`。
@@ -78,7 +78,7 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 从日志工具栏或 **Linyra: 比较分支** 打开比较面板。
 只需选择一次左右分支，就能查看所选仓库中各自的差异，并明确列出缺少分支的仓库。
 
-![切换文件／提交、展开提交文件、选择仓库、交换分支并调整左右大小](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-compare.gif)
+![切换文件／提交、展开提交文件、选择仓库、交换分支并调整左右大小](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-compare.gif)
 
 **演示步骤：**发布分支和主分支各有独立改动；切换“文件／提交”，展开提交的文件，选择另一仓库，
 左右交换并调整区域大小。三个区域保持在稳定的同一视图中，原有操作入口继续保留。
@@ -107,9 +107,9 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 分支侧栏也是 Linyra 的新增能力：在本地／远程分支间搜索和收藏，再从明确仓库范围的菜单执行操作。
 点击分支名称用于查看历史，不会直接检出分支。
 
-![在三个仓库中搜索本地和远程分支的侧栏](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-branch-sidebar.png)
+![在三个仓库中搜索本地和远程分支的侧栏](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-branch-sidebar.png)
 
-![文件历史与跟随选择的原生 Diff](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-file-history.png)
+![文件历史与跟随选择的原生 Diff](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-file-history.png)
 
 ## 键盘、主题与语言
 
@@ -124,7 +124,7 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 界面颜色和字体跟随 VS Code，支持浅色、深色及两种高对比度主题。
 语言随编辑器显示语言切换，支持英文和简体中文，其他语言回退为英文。
 
-![同一真实工作区的深色、浅色及两种高对比度主题](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-themes.png)
+![同一真实工作区的深色、浅色及两种高对比度主题](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-themes.png)
 
 ## 设置与运行要求
 
@@ -143,7 +143,7 @@ HEAD、本地分支、远程分支及标签带有对应图标和颜色；还能�
 从 1.4.2 开始，设置只使用 **`linyra.*`**，不读取或迁移旧 `polylog.*` 设置。
 需要自定义时使用新名称配置；现有配置文件保持原样。
 
-![VS Code 原生设置页展示 Linyra 自己的六项设置](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-settings.png)
+![VS Code 原生设置页展示 Linyra 自己的六项设置](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-settings.png)
 
 筛选条件交给 Git，读取结果分页合并；不维护持久化历史索引或数据库，不后台获取远程更新。
 输入筛选有防抖，新查询会取消被替代的 Git 读取。
@@ -158,8 +158,8 @@ Linyra 基于 **lntvan166** 创建的 [Polylog](https://github.com/lntvan166/pol
 
 ## 开发与许可证
 
-参见[开发与发布](https://github.com/Whwitpohe/polylog/blob/main/docs/PUBLISHING.md)和
-[演示素材录制说明](https://github.com/Whwitpohe/polylog/blob/main/dev/demo/README.md)。
-问题和贡献可提交至 [Whwitpohe/polylog](https://github.com/Whwitpohe/polylog)。
+参见[开发与发布](https://github.com/Whwitpohe/linyra/blob/main/docs/PUBLISHING.md)和
+[演示素材录制说明](https://github.com/Whwitpohe/linyra/blob/main/dev/demo/README.md)。
+问题和贡献可提交至 [Whwitpohe/linyra](https://github.com/Whwitpohe/linyra)。
 
-**MIT**。保留 Polylog 原作者版权、[LICENSE](https://github.com/Whwitpohe/polylog/blob/main/LICENSE) 与第三方声明。
+**MIT**。保留 Polylog 原作者版权、[LICENSE](https://github.com/Whwitpohe/linyra/blob/main/LICENSE) 与第三方声明。

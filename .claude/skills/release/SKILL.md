@@ -151,7 +151,7 @@ The VSIX ships no README images (`.vscodeignore` is an allowlist). Both registri
 
 ```bash
 for u in demo.gif screenshot-log.png screenshot-file-history.png screenshot-branch.png screenshot-themes.png; do
-  printf "%-30s %s\n" "$u" "$(curl -s -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/$u)"
+  printf "%-30s %s\n" "$u" "$(curl -s -o /dev/null -w '%{http_code}' https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/$u)"
 done   # expect 200 on every line
 ```
 

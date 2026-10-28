@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   readiness:
-    if: github.repository == 'Whwitpohe/polylog'
+    if: github.repository == 'Whwitpohe/linyra'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     outputs:

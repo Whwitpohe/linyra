@@ -12,12 +12,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Whwitpohe/polylog"
+    "url": "https://github.com/Whwitpohe/linyra"
   },
   "bugs": {
-    "url": "https://github.com/Whwitpohe/polylog/issues"
+    "url": "https://github.com/Whwitpohe/linyra/issues"
   },
-  "homepage": "https://github.com/Whwitpohe/polylog#readme",
+  "homepage": "https://github.com/Whwitpohe/linyra#readme",
   "engines": {
     "vscode": "^1.85.0"
   },

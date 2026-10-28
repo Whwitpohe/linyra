@@ -14,7 +14,7 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | package name | `linyra` |
 | 完整扩展 ID | `whwitpohe.linyra` |
 | 当前包版本 | `1.4.3` |
-| 源码 / Issues | `Whwitpohe/polylog` |
+| 源码 / Issues | `Whwitpohe/linyra` |
 
 Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
 Open VSX 当前因命名空间未验证而未激活；不要将它列为公开可安装。
@@ -95,7 +95,7 @@ Get-FileHash .\whwitpohe.linyra-1.4.3.vsix -Algorithm SHA256
 | Namespace / Extension | `whwitpohe` / `linyra` |
 | Provider | GitHub Actions |
 | Organization or User name | `Whwitpohe` |
-| Repository name | `polylog` |
+| Repository name | `linyra` |
 | Workflow filename | `publish-open-vsx.yml` |
 | Environment name | 留空 |
 

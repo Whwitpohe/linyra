@@ -2,7 +2,7 @@
 
 **One Git timeline for every repository in your workspace.**
 
-[简体中文](https://github.com/Whwitpohe/polylog/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Download VSIX](https://github.com/Whwitpohe/polylog/releases) · [Report an issue](https://github.com/Whwitpohe/polylog/issues)
+[简体中文](https://github.com/Whwitpohe/linyra/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Download VSIX](https://github.com/Whwitpohe/linyra/releases) · [Report an issue](https://github.com/Whwitpohe/linyra/issues)
 
 Find a change that spans your frontend, API, shared libraries and documentation with one
 search. Follow its branches and merges, read the complete commit message, and open each
@@ -13,7 +13,7 @@ topological sorting and history folding, hash lookup, richer commit details, a b
 sidebar and resizable panes with explicit collapse controls. The clips below demonstrate
 these additions, beyond the merged timeline inherited from Polylog.
 
-![Select several branches and authors, switch date/topological order, then fold and expand linear history](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-branches.gif)
+![Select several branches and authors, switch date/topological order, then fold and expand linear history](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-branches.gif)
 
 The recording uses six neutral example repositories and real Git history. Screenshots
 below can be opened at full resolution.
@@ -35,7 +35,7 @@ The initial range is **Last 24 hours** and **All branches**. Choose **All time**
 older history. Use the repository checkboxes to narrow the workspace.
 
 For editors using another registry, install the VSIX from
-[GitHub Releases](https://github.com/Whwitpohe/polylog/releases). Open VSX publication
+[GitHub Releases](https://github.com/Whwitpohe/linyra/releases). Open VSX publication
 has not been completed.
 
 ## Review a change across repositories
@@ -44,7 +44,7 @@ Search a ticket number, phrase or commit message once. Results from the selected
 repositories appear together; repository color bands show where each commit belongs.
 Click a commit to see its changed files, then click a file to open its native diff.
 
-![Merged history with real branch lanes, repository bands, changed files and a native diff above](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-log.png)
+![Merged history with real branch lanes, repository bands, changed files and a native diff above](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-log.png)
 
 - **Message or hash.** Ordinary text searches commit messages, case-insensitively. A full
   hash or hexadecimal prefix of at least seven characters locates a commit directly;
@@ -67,7 +67,7 @@ remain visible. Defaults are all local/remote branches and all authors.
 **Find an old commit without resetting your filters.** Paste a hash; the lookup finds a
 three-month-old commit even with **Last 24 hours** selected. Clear it to restore the log.
 
-![Paste a short hash to locate an old commit, then clear it to restore the previous filters](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-hash-lookup.gif)
+![Paste a short hash to locate an old commit, then clear it to restore the previous filters](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-hash-lookup.gif)
 
 ## Read the complete commit
 
@@ -75,7 +75,7 @@ The Changes area includes the subject, paragraphs and trailers, author/email, ti
 copyable hash, repository marker and colored HEAD, branch and tag references. Expand the
 list of branches containing a commit when you need to find where it landed.
 
-![Read colored references and complete metadata, resize or hide the details, and search the commit's files](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-commit-review.gif)
+![Read colored references and complete metadata, resize or hide the details, and search the commit's files](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-commit-review.gif)
 
 **In the clip:** inspect HEAD/local/remote/tag icons and containing branches, hide and
 restore the details, drag the divider, then filter the selected commit to `PaymentStep`.
@@ -95,7 +95,7 @@ Open **Linyra: Compare Branches** or use the comparison button in the Log toolba
 Choose the left and right branches once to compare them in the selected repositories.
 The repository list identifies differences and reports missing branches.
 
-![Switch comparison between Files and Commits, expand a commit, change repository, swap branches and resize the sides](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-compare.gif)
+![Switch comparison between Files and Commits, expand a commit, change repository, swap branches and resize the sides](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-compare.gif)
 
 **In the clip:** the release and main branches each have their own changes. Switch
 **Files / Commits**, expand commit files, select another repository, swap the pair and
@@ -127,9 +127,9 @@ an entire view. Folder and commit expansion uses the small arrow or keyboard act
 The branch sidebar is another Linyra addition: search across local/remote branches,
 favorite them, or use repository-scoped actions without changing history by clicking a name.
 
-![Linyra's searchable local and remote branch sidebar across three repositories](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-branch-sidebar.png)
+![Linyra's searchable local and remote branch sidebar across three repositories](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-branch-sidebar.png)
 
-![File History follows the selected file while its native diff stays open](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-file-history.png)
+![File History follows the selected file while its native diff stays open](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-file-history.png)
 
 ## Keyboard and appearance
 
@@ -145,7 +145,7 @@ Colors and typography follow your VS Code theme, including light, dark and both
 high-contrast themes. Linyra follows the display language: English and Simplified Chinese
 are supported, with English as the fallback.
 
-![The same real workspace in dark, light and both high-contrast themes](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/screenshot-themes.png)
+![The same real workspace in dark, light and both high-contrast themes](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/screenshot-themes.png)
 
 ## Settings and requirements
 
@@ -166,7 +166,7 @@ From 1.4.2, settings use only **`linyra.*`**. Old `polylog.*` settings are not r
 migrated. Set Linyra preferences under the new keys if needed; existing configuration
 files are left untouched.
 
-![The native VS Code Settings editor shows Linyra's six settings under its own name](https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.2/feature-settings.png)
+![The native VS Code Settings editor shows Linyra's six settings under its own name](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.2/feature-settings.png)
 
 Filters are passed to Git; results are merged as pages arrive. There is no persistent
 history index or database, and Linyra does not fetch in the background. Filter input is
@@ -186,9 +186,9 @@ releases use their own matching source tags and VSIX filenames.
 
 ## Development and license
 
-See [development and publishing](https://github.com/Whwitpohe/polylog/blob/main/docs/PUBLISHING.md)
-and [media capture instructions](https://github.com/Whwitpohe/polylog/blob/main/dev/demo/README.md).
-Issues and contributions are welcome at [Whwitpohe/polylog](https://github.com/Whwitpohe/polylog).
+See [development and publishing](https://github.com/Whwitpohe/linyra/blob/main/docs/PUBLISHING.md)
+and [media capture instructions](https://github.com/Whwitpohe/linyra/blob/main/dev/demo/README.md).
+Issues and contributions are welcome at [Whwitpohe/linyra](https://github.com/Whwitpohe/linyra).
 
-**MIT**, based on Polylog by lntvan166. The original copyright, [LICENSE](https://github.com/Whwitpohe/polylog/blob/main/LICENSE)
+**MIT**, based on Polylog by lntvan166. The original copyright, [LICENSE](https://github.com/Whwitpohe/linyra/blob/main/LICENSE)
 and third-party notices remain included.

@@ -95,7 +95,7 @@ Inspect every selected figure at full resolution. Check that:
 
 Copy only reviewed assets to a versioned directory such as `media/v1.4.1/`. Keep raw
 frames, profiles and logs out of Git. README images must use absolute
-`https://raw.githubusercontent.com/Whwitpohe/polylog/main/media/v1.4.1/...` addresses.
+`https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.4.1/...` addresses.
 Push them before updating the Marketplace and verify the URLs return successful responses.
 The older `capture.sh` is the historical Linux/Xvfb workflow with fixed coordinates;
 it was not used to make the 1.4.1 assets.
