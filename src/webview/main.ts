@@ -62,7 +62,7 @@ const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), o
   count.textContent = localize("{0} commits hidden", stats.hidden);
 }, (next) => {
   accents = next;
-  repoPane.setAccents(next);
+  showAccents(next);
 });
 const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
@@ -182,6 +182,15 @@ window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.inner
  */
 let accents: ReadonlyMap<string, number> = new Map();
 let repoOrder: readonly string[] = [];
+/** The hues last reported to the host, so Compare and the details color repositories as shown here. */
+let reportedAccents = "";
+function showAccents(next: ReadonlyMap<string, number>): void {
+  repoPane.setAccents(next);
+  const key = JSON.stringify([...next]);
+  if (key === reportedAccents) return;
+  reportedAccents = key;
+  post({ type: "accents", accents: Object.fromEntries(next) });
+}
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
 /** Repositories with commits to pull (their rows' right-click offers Pull). */
@@ -216,7 +225,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       state.profiles = m.profiles;
       repoPane.update(m.repos, m.filter.repoIds, m.profiles);
-      repoPane.setAccents(accents);
+      showAccents(accents);
       repoPane.setFilter(m.filter);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       // Only when the host changed the switch: a late init must not undo the user's click.
@@ -429,7 +438,7 @@ function render(): void {
     const next = separateAdjacentAccents(work.rows, accents, repoOrder);
     if (next !== accents) {
       accents = next;
-      repoPane.setAccents(next);
+      showAccents(next);
     }
     workList.update(work.rows, names, accents, behind);
     empty.render(work.rows.length === 0 ? { title: localize("Nothing uncommitted"), body: localize("Nothing uncommitted in the ticked repositories.") } : null);

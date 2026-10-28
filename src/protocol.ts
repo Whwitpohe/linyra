@@ -80,6 +80,8 @@ export interface CommitRef {
 /** Webview → extension host. Every field is untrusted until validated. */
 export type WebviewMessage =
   | { type: "toolbarAction"; action: ToolbarAction }
+  /** The repository colors the Log shows, after it separated neighbors (sent when they change). */
+  | { type: "accents"; accents: Record<string, number> }
   | { type: "changesView"; message: ChangesMessage }
   | { type: "branchSidebar"; action: "state" | "load" | "refresh" | "select" | "favorite" | "stashShow"; repoId?: string; ref?: string; state?: BranchSidebarState }
   | { type: "ready" }

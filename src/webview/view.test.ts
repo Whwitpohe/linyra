@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, separateAdjacentAccents, splitPath, visibleRange, switchCount, totalsLabel, meterParts, escapeTarget,
+  relativeTime, repoButtonLabel, reselect, separateAdjacentAccents, shownAccents, splitPath, visibleRange, switchCount, totalsLabel, meterParts, escapeTarget,
 } from "./view";
 
 const NOW = 1790164800;
@@ -262,4 +262,17 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(escapeTarget("commits"), "list");
   assert.strictEqual(escapeTarget("uncommitted"), "worklist", "Escape never sends focus to a hidden list");
   console.log("ok - Escape focuses the list the Log shows");
+}
+
+{
+  const base = assignAccents(repos);
+  const [web, api, libs] = repos.map((r) => r.id);
+  const hue = (accentOf(base, web) + 1) % ACCENT_COUNT;
+  const shown = shownAccents(base, { [web]: hue, [api]: ACCENT_COUNT, [libs]: 1.5, "/ws/gone": 2 });
+  assert.strictEqual(shown.get(web), hue, "the Log's color wins");
+  assert.strictEqual(shown.get(api), accentOf(base, api), "a hue outside the palette is ignored");
+  assert.strictEqual(shown.get(libs), accentOf(base, libs), "so is a fraction");
+  assert.ok(!shown.has("/ws/gone"), "a repository no longer listed is not added");
+  assert.deepStrictEqual([...shownAccents(base, null)], [...base], "nothing reported: the baseline");
+  console.log("ok - the Log's reported colors override the baseline, within the palette and the listed repositories");
 }

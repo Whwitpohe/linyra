@@ -23,6 +23,9 @@ export interface StoreDeps {
   concurrency(): number;
 }
 
+/** Why a repository's uncommitted work is read: a save in it or VS Code's Git reporting it, every repository, or one asked for. */
+type ReadCause = "touched" | "all" | "repo";
+
 interface Entry extends RepoWork {
   /** Orders reads of one repository: a slower, older read never replaces a newer one. */
   seq: number;
@@ -72,8 +75,10 @@ export class UncommittedStore implements vscode.Disposable {
   private readonly touchedSoon = debounce(() => {
     const ids = new Set(this.touched);
     this.touched.clear();
-    void this.read(ids);
+    void this.read(ids, "touched");
   }, 400);
+  /** Each repository read and why (integration test seam: a save reads only its own repository). */
+  readonly reads: { root: string; why: ReadCause }[] = [];
   private readonly emitter = new vscode.EventEmitter<void>();
   /** The work changed (coalesced: at most once every 80 ms while repositories come in). */
   readonly onDidChange = this.emitter.event;
@@ -157,7 +162,7 @@ export class UncommittedStore implements vscode.Disposable {
       .sort((a, b) => a.rel.length - b.rel.length)[0]?.r;
   }
 
-  private async read(only?: ReadonlySet<string>): Promise<void> {
+  private async read(only?: ReadonlySet<string>, why: ReadCause = only ? "repo" : "all"): Promise<void> {
     const specs = this.scope.pathspecs;
     const spec = specs.join("\0");
     let repos = [...this.scope.repos];
@@ -173,7 +178,7 @@ export class UncommittedStore implements vscode.Disposable {
       if (key === this.done) {
         // Kept current by VS Code's Git and saves, except where it reports nothing: read those.
         const unreported = repos.filter((r) => !this.deps.reportsChanges(r.root));
-        if (unreported.length > 0) await this.read(new Set(unreported.map((r) => r.id)));
+        if (unreported.length > 0) await this.read(new Set(unreported.map((r) => r.id)), "all");
         return;
       }
       this.done = undefined;
@@ -195,6 +200,8 @@ export class UncommittedStore implements vscode.Disposable {
     }
     const reading = runPool(repos, this.deps.concurrency(), async (r, signal) => {
       const seq = ++this.seq;
+      this.reads.push({ root: r.root, why });
+      if (process.env.LINYRA_ITEST !== "1" && this.reads.length > 200) this.reads.splice(0, this.reads.length - 200);
       const work = await this.readOne(r, specs, signal);
       if (ctl.signal.aborted) return;
       const old = this.map.get(r.id);

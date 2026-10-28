@@ -247,23 +247,29 @@ describe("Linyra panel", () => {
       const edit = new vscode.WorkspaceEdit();
       edit.insert(doc.uri, new vscode.Position(0, 0), "more ");
       await vscode.workspace.applyEdit(edit);
-      // Refresh reads every repository twice (with the page, then forced once it is shown); on a
-      // slow runner the second can still be on its way. Counted from here, it looks like the save's.
+      // Every read records its cause, so a save is judged by the reads it caused, not by timing.
+      // Refresh reads every repository twice (with the page, then forced once it is shown): let
+      // the second land first, so a read of every repository after the mark can only be a bug.
       const quiet = () => waitFor("git to go quiet", async () => {
         const a = await snapshot();
         await sleep(1500);
         const b = await snapshot();
         return b.spawnLog.length === a.spawnLog.length ? b : undefined;
       });
+      const statusSince = (from: LogSnapshot, to: LogSnapshot) => to.spawnLog.slice(from.spawnLog.length).filter((x) => x.cmd === "status").map((x) => x.root);
+      const readsSince = (from: LogSnapshot, to: LogSnapshot, why: string) =>
+        to.uncommittedReads.slice(from.uncommittedReads.length).filter((x) => x.why === why).map((x) => x.root);
       let mark = await quiet();
       await doc.save();
       await until("the files after a save", (x) => work(x)?.changes.length === 3);
       // Only the saved file's repository is read again (VS Code's Git reports it too, a moment later).
       await sleep(1500);
-      const statusSince = (from: LogSnapshot, to: LogSnapshot) => to.spawnLog.slice(from.spawnLog.length).filter((x) => x.cmd === "status").map((x) => x.root);
       let now = await snapshot();
-      const read = statusSince(mark, now);
-      assert.ok(read.length > 0 && read.every((root) => root === web.root), `a save re-reads only its own repository, not all of them (read: ${read.join(", ")})`);
+      const read = readsSince(mark, now, "touched");
+      assert.ok(read.length > 0 && read.every((root) => root === web.root), `a save re-reads only its own repository (read: ${read.join(", ")})`);
+      if (now.stats.reloads === mark.stats.reloads) {
+        assert.deepStrictEqual(readsSince(mark, now, "all"), [], "a save never reads every repository");
+      }
 
       // A save that changes nothing git reports changes nothing.
       mark = now;
@@ -273,7 +279,7 @@ describe("Linyra panel", () => {
       await doc.save();
       await sleep(1500);
       now = await snapshot();
-      assert.ok(statusSince(mark, now).length > 0, "it was read again");
+      assert.ok(readsSince(mark, now, "touched").length > 0, "it was read again");
       assert.deepStrictEqual(work(now), work(mark), "the same files on both sides");
       assert.ok(now.uncommittedChanges - mark.uncommittedChanges <= 1, "at most one change: the file's edit time moved, nothing else");
 
@@ -289,7 +295,7 @@ describe("Linyra panel", () => {
       await other.save();
       await sleep(1000);
       // VS Code's Git may still report acme-web on its own; the other repositories stay unread.
-      const outsideRead = statusSince(mark, await snapshot());
+      const outsideRead = readsSince(mark, await snapshot(), "touched");
       assert.ok(outsideRead.every((root) => root === web.root), `a file outside every repository is not a working-tree change (read: ${outsideRead.join(", ")})`);
       await closeEditors();
       fs.rmSync(outside, { force: true });

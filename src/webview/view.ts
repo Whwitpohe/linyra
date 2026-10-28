@@ -89,6 +89,19 @@ export function assignAccents(repos: readonly { id: string; name: string }[]): M
   return out;
 }
 
+/**
+ * The colors the Log reported, laid over the baseline: only known repositories and real hues
+ * count, so a stale or malformed report can never color a repository out of the palette.
+ */
+export function shownAccents(base: ReadonlyMap<string, number>, reported: unknown): Map<string, number> {
+  const out = new Map(base);
+  if (!reported || typeof reported !== "object") return out;
+  for (const [id, hue] of Object.entries(reported as Record<string, unknown>)) {
+    if (out.has(id) && Number.isInteger(hue) && (hue as number) >= 0 && (hue as number) < ACCENT_COUNT) out.set(id, hue as number);
+  }
+  return out;
+}
+
 /** A repository's hue from assignAccents; 0 for one outside the list. */
 export function accentOf(accents: ReadonlyMap<string, number>, repoId: string): number {
   return accents.get(repoId) ?? 0;

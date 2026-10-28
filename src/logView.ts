@@ -31,7 +31,7 @@ import type { ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 import { SELECTION_LIMIT } from "./webview/selectionModel";
 import type { BranchController } from "./branchController";
-import { assignAccents, accentOf } from "./webview/view";
+import { assignAccents, accentOf, shownAccents } from "./webview/view";
 
 const FILTER_KEY = "linyra.filter";
 /** globalState: true when the user turned Group by Repository off. */
@@ -73,6 +73,8 @@ export interface LogSnapshot {
   uncommitted: { repoId: string; staged: string[]; changes: string[] }[];
   /** How many times the store reported a change (test seam). */
   uncommittedChanges: number;
+  /** Each uncommitted read and its cause: touched (a save, VS Code's Git), all, or repo. */
+  uncommittedReads: { root: string; why: string }[];
   /** The Log's switch. */
   logMode: "commits" | "uncommitted";
   /** The Uncommitted side's rows as "name | preview | tags" (test seam). */
@@ -295,6 +297,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "logMode":
         if (m.mode === "commits" || m.mode === "uncommitted") this.setLogMode(m.mode);
+        return;
+      case "accents":
+        this.reportedAccents = m.accents;
+        this.accentsChanged.fire();
         return;
       case "selectWork":
         if (typeof m.repoId === "string" && this.deps.uncommitted.get(m.repoId)) {
@@ -675,12 +681,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return selectRepos(this.filter, this.repos);
   }
 
+  /** The colors the Log's webview last reported (beyond eight repositories it separates neighbors). */
+  private reportedAccents: unknown;
+  private readonly accentsChanged = new vscode.EventEmitter<void>();
+  /** The Log shows other repository colors: views that color repositories redraw. */
+  readonly onDidChangeAccents = this.accentsChanged.event;
+
   /**
-   * Each repository's color, assigned over every repository as the Log's bands and Repo List
-   * dots are: a view that showed only some of them and assigned its own would recolor them.
+   * Each repository's color as the Log shows it: assigned over every repository, then as the
+   * Log separated neighbors. A view that assigned its own over only some would recolor them.
    */
   accents(): ReadonlyMap<string, number> {
-    return assignAccents(this.repos);
+    return shownAccents(assignAccents(this.repos), this.reportedAccents);
   }
 
   /** The Branch box's name ("" when empty): Compare with… starts from it. */
@@ -896,6 +908,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       spawnLog: [...this.spawnLog],
       uncommitted: this.deps.uncommitted.works().map((w) => ({ repoId: w.repoId, staged: w.staged.map((f) => f.path), changes: w.changes.map((f) => f.path) })),
       uncommittedChanges: this.deps.uncommitted.changes,
+      uncommittedReads: [...this.deps.uncommitted.reads],
       logMode: this.logMode,
       workRows: this.workRows().map((r) => [this.repos.find((x) => x.id === r.repoId)?.name ?? r.repoId, r.preview, r.tags.join(", ")].join(" | ")),
       workTotals: totals(this.deps.uncommitted.works()),
@@ -1309,6 +1322,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.reposChangedSoon.cancel();
     this.scopeChanged.dispose();
     this.refsChanged.dispose();
+    this.accentsChanged.dispose();
     for (const d of this.viewDisposables) d.dispose();
     for (const d of this.disposables) d.dispose();
   }

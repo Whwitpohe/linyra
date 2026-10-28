@@ -178,6 +178,13 @@ describe("Compare Branches", () => {
       assert.notDeepStrictEqual(["acme-api", "acme-web"].map((n) => accentOf(log, roots[n])), ["acme-api", "acme-web"].map((n) => accentOf(listed, roots[n])),
         "the fixture tells the two assignments apart");
       assert.deepStrictEqual(r.accents, ["acme-api", "acme-web"].map((n) => accentOf(log, roots[n])), "the Log's colors");
+      // Beyond eight repositories the Log separates neighbors and reports the hues it shows: Compare follows.
+      const { ACCENT_COUNT } = require("../webview/view") as typeof import("../webview/view");
+      const moved = (accentOf(log, roots["acme-web"]) + 3) % ACCENT_COUNT;
+      await send({ type: "accents", accents: { [roots["acme-web"]]: moved } });
+      await until2("Compare follows the Log's reported color", repos, (x) => x.accents[1] === moved);
+      await send({ type: "accents", accents: Object.fromEntries(log) });
+      await until2("and back", repos, (x) => x.accents[1] === accentOf(log, roots["acme-web"]));
     } finally {
       const at = vscode.workspace.workspaceFolders?.findIndex((f) => f.uri.fsPath === vscode.Uri.file(mobile).fsPath) ?? -1;
       if (at >= 0) await folders(() => vscode.workspace.updateWorkspaceFolders(at, 1));

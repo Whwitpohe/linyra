@@ -32,6 +32,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.disposables.push(
       deps.store.onDidChange(() => this.changed()),
       deps.log.onDidChangeRefs((id) => this.refsMoved(id)),
+      // Each repository keeps the color it has in the Log, also when the Log separates neighbors.
+      deps.log.onDidChangeAccents(() => this.changed()),
     );
     void this.setContext();
     // The Linyra Compare tab is hidden until Compare Branches is clicked (remembered per workspace).
