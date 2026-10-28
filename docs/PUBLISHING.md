@@ -17,7 +17,8 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | 源码 / Issues | `Whwitpohe/polylog` |
 
 Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
-Open VSX 尚未完成发布；不要仅凭 manifest 中的发布者字段声称某个注册中心已经可用。
+Open VSX 已上传 1.4.2，但当前因命名空间未验证而未激活；不要将它列为公开可安装。
+命名空间所有权申请：https://github.com/EclipseFdn/open-vsx.org/issues/14842 。
 GitHub 登录与商店发布权限分别管理。Linyra 是新的扩展 ID，旧身份的版本不会占用新 ID 的版本号。
 历史 `v1.4.0` 标签和 GitHub Release 保留原来的 Polylog 包，不替换其附件或校验值。
 
@@ -76,6 +77,33 @@ Get-FileHash .\whwitpohe.linyra-1.4.2.vsix -Algorithm SHA256
 [命名空间管理指南](https://github.com/EclipseFdn/open-vsx.org/wiki/Managing-Namespaces)。
 
 如果使用 CLI，令牌仅通过本机安全输入或 CI Secret 提供，不写进仓库、命令记录示例或聊天。
+
+### 同步 GitHub Release 到 Open VSX
+
+`.github/workflows/publish-open-vsx.yml` 在发布正式 GitHub Release 时同步已有的 VSIX，
+也可在 Actions → Publish to Open VSX → Run workflow 输入版本标签手动补发。
+流程要求对应源码的 main CI 已通过，下载 Release 中的 VSIX 和 `SHA256SUMS.txt`，
+核对 GitHub 提供的 SHA-256、校验文件以及包内 publisher/name/version，再上传同一份包。
+不重新构建，不变更版本、标签或历史 Release。重复执行会跳过已经发布的版本。
+
+自动发布使用 Open VSX Trusted Publishing（OIDC），不需要存放长期发布令牌。
+首次启用还需在命名空间审核通过、至少一个扩展版本激活后，由命名空间 owner
+在 Open VSX → Settings → Trusted Publishers 添加以下绑定：
+
+| 字段 | 值 |
+| --- | --- |
+| Namespace / Extension | `whwitpohe` / `linyra` |
+| Provider | GitHub Actions |
+| Organization or User name | `Whwitpohe` |
+| Repository name | `polylog` |
+| Workflow filename | `publish-open-vsx.yml` |
+| Environment name | 留空 |
+
+绑定完成前，工作流已准备好，但自动上传不会成功；不能据此声称自动发布已经启用。
+首次 1.4.2 通过网页上传，文件 SHA-256 为
+`4c94329977c0e79c4de09144bdf50b11cef62db948eac2ecf7c2a6d5ee250cc9`，与 GitHub Release 一致。
+这套流程将已有 Release 同步到 Open VSX；Visual Studio Marketplace 仍沿用原发布方式。
+官方说明：https://github.com/eclipse-openvsx/openvsx/wiki/Trusted-Publishing 。
 
 ## 发布后的验证
 
