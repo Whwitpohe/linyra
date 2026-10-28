@@ -1,4 +1,5 @@
 import { commitKey, type Commit } from "../types";
+import { indexParents, sameRows, type ParentIndex } from "./graphModel";
 
 export interface LinearSegment {
   id: string;
@@ -26,9 +27,8 @@ export interface FoldProjection {
  * tags, merges, forks, roots and unknown parents remain visible. Repository-qualified
  * keys prevent identical hashes in unrelated repositories from becoming one path.
  */
-export function linearSegments(commits: readonly Commit[]): LinearSegment[] {
-  const indexes = new Map(commits.map((c, i) => [commitKey(c), i]));
-  const parents = commits.map((c) => c.parents.map((sha) => indexes.get(commitKey({ repoId: c.repoId, sha }))));
+export function linearSegments(commits: readonly Commit[], index?: ParentIndex): LinearSegment[] {
+  const parents = (index && sameRows(index.rows, commits) ? index : indexParents(commits)).parents;
   const children: number[][] = commits.map(() => []);
   parents.forEach((ps, i) => { for (const parent of new Set(ps)) if (parent !== undefined) children[parent].push(i); });
   const interior = commits.map((c, i) => c.parents.length === 1 && parents[i][0] !== undefined && parents[i][0]! > i

@@ -6,7 +6,7 @@ import { clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { renderGraph, type FoldAction } from "./graph";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
-import { layoutGraph, type CommitGraph } from "./graphModel";
+import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
 import { absoluteTime, accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
@@ -50,6 +50,8 @@ export class CommitList {
   /** The repo column's width, read once per layout change rather than on every scroll paint. */
   private column: number | undefined;
   private graph: CommitGraph = { rows: [], columns: 0 };
+  /** Each row's parents as row indexes, extended page by page instead of rebuilt (fold segments and the graph share it). */
+  private parents: ParentIndex | undefined;
   private graphWidth = 32;
   private accents: ReadonlyMap<string, number> = new Map();
   private segments: LinearSegment[] = [];
@@ -118,7 +120,8 @@ export class CommitList {
     if (next.accents !== this.props.accents) this.accents = next.accents;
     let changed = next.rows !== this.props.rows || next.accents !== this.props.accents || next.historyPath !== this.props.historyPath || next.repoOrder !== this.props.repoOrder;
     if (next.rows !== this.props.rows || next.historyPath !== this.props.historyPath) {
-      this.segments = next.historyPath ? [] : linearSegments(next.rows);
+      this.parents = indexParents(next.rows, this.parents);
+      this.segments = next.historyPath ? [] : linearSegments(next.rows, this.parents);
       this.nodeSegments = segmentNodes(next.rows, this.segments);
       const available = new Set(this.segments.map((segment) => segment.id));
       for (const id of this.collapsed) if (!available.has(id)) this.collapsed.delete(id);
@@ -173,7 +176,8 @@ export class CommitList {
     const commits = this.display.rows.map((row) => row.commit);
     const accents = separateAdjacentAccents(commits, this.accents, this.props.repoOrder);
     if (accents !== this.accents) { this.accents = accents; this.onAccents(accents); }
-    this.graph = layoutGraph(commits, this.accents);
+    // Nothing folded: the shown rows are the loaded ones, whose parent index is current.
+    this.graph = layoutGraph(commits, this.accents, this.display.hiddenCount === 0 ? this.parents : undefined);
     this.edgeActions = new Map();
     for (const segment of this.segments) if (!this.collapsed.has(segment.id)) {
       const action = { id: segment.id, count: segment.hidden.length };

@@ -1,6 +1,7 @@
 import * as assert from "assert";
 import { commitKey, type Commit } from "../types";
-import { layoutGraph } from "./graphModel";
+import { linearSegments } from "./graphFoldModel";
+import { indexParents, layoutGraph } from "./graphModel";
 
 const commit = (repoId: string, sha: string, parents: string[] = []): Commit => ({ repoId, sha, parents, time: 0, author: "dana", email: "dana@example.com", subject: sha });
 const accents = new Map([["acme-api", 1], ["acme-web", 3]]);
@@ -71,4 +72,26 @@ const accents = new Map([["acme-api", 1], ["acme-web", 3]]);
   assert.ok(graph.rows.slice(1).every((r) => r.incoming));
   assert.deepStrictEqual(layoutGraph([], accents), { rows: [], columns: 0 });
   console.log("ok - octopus merges and an empty log have bounded, valid lanes");
+}
+{
+  // Two repositories interleaved, merges, a parent listed twice, and parents that arrive a page later.
+  const all = [
+    commit("acme-api", "m", ["a1", "s1"]), commit("acme-web", "w1", ["w2"]), commit("acme-api", "s1", ["a2"]),
+    commit("acme-api", "a1", ["a2", "a2"]), commit("acme-web", "w2", ["w3"]), commit("acme-api", "a2", ["a3"]),
+    commit("acme-api", "a3", ["a4"]), commit("acme-web", "w3", ["w4"]), commit("acme-api", "a4", ["a5"]), commit("acme-web", "w4"),
+  ];
+  let index = indexParents(all.slice(0, 4));
+  assert.deepStrictEqual(index.parents[3], [undefined, undefined], "a2 is not loaded yet");
+  for (const end of [6, 8, 10]) {
+    const rows = all.slice(0, end);
+    index = indexParents(rows, index);
+    const full = indexParents(rows);
+    assert.deepStrictEqual(index.parents, full.parents, `extending to ${end} rows gives the same index as building it`);
+    assert.deepStrictEqual(layoutGraph(rows, accents, index), layoutGraph(rows, accents), "and the same graph");
+    assert.deepStrictEqual(linearSegments(rows, index), linearSegments(rows), "and the same fold segments");
+  }
+  assert.deepStrictEqual(index.parents[3], [5, 5], "a page later, a1's parent is a2 (listed twice, one row)");
+  const replaced = indexParents([all[2], all[5]], index);
+  assert.deepStrictEqual(replaced.parents, [[1], [undefined]], "a new list is indexed afresh, not extended");
+  console.log("ok - the parent index extends page by page to exactly what a full build gives");
 }
