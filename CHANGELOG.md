@@ -9,6 +9,63 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+Linyra becomes a multi-repository Git client in the style of the Git tool window's Log in
+JetBrains IDEs: the merged log stays the core, and the everyday repository work is reachable
+from the row it applies to, in that row's repository.
+
+### Added
+
+- **Work across every ticked repository at once.** *Branches Across Repositories…* checks out,
+  creates or merges one branch name everywhere; *Push…* lists each repository's outgoing
+  commits and target in one dialog; *Update Project* fetches, then merges or rebases each
+  repository onto its upstream. It never autostashes: a repository with local changes in the
+  way is skipped and named.
+- **Act on a commit from its row.** Cherry-pick, revert, reset the current branch to here,
+  check out the revision, or create a branch or tag there. On the checked-out commit: Undo
+  Commit and Edit Commit Message, with a warning when the commit is already pushed.
+  Cherry-pick and revert apply to every selected commit (cherry-picks oldest first).
+- **Tags and stashes in the Repositories tree.** Each repository opens onto Local, Remote,
+  Tags and Stashes. Tags check out detached, push and delete; stashes show their changes,
+  apply, pop and drop; *Stash Changes…* is on the repository row. Tags are also in the
+  Log's branch filter.
+- **Match Case and Regular Expression in the search box.** An invalid expression is searched
+  as plain text and marked.
+- **View options in the ⋯ menu:** Highlight My Commits, Highlight Current Branch and a hash
+  column.
+- **The JetBrains shortcuts while the Log has focus:** Ctrl+T (Update Project), Ctrl+Shift+K
+  (Push…), Ctrl+Shift+` (Branches Across Repositories).
+
+### Changed
+
+- **One header row in the Log.** The Commits / Uncommitted switch, the filters and the
+  actions share one row and wrap to two only when the panel is narrow.
+- **One tree for repositories and branches.** The separate Branches list is gone; the
+  Repositories pane has Expand All / Collapse All, and its search also finds branch names.
+- **Uncommitted work has one home: the Log's Uncommitted side.** The separate Linyra side
+  bar view is removed; *Show Uncommitted Changes in the Log* opens that side.
+- **VS Code's own icons.** Every icon in the Log, the Changes view and Compare is the Codicon
+  VS Code uses for the same action, so one action has one icon.
+- **Fewer duplicate controls.** Repeated buttons are removed from the Log, the Changes view
+  and Compare; the *Save as profile* row leaves the repository list (it stays in the ⋯ and
+  right-click menus), and profiles are called 仓库组 in Chinese.
+- **Lighter repository bands,** so the color names the repository without a solid block
+  on every row.
+
+### Fixed
+
+- **Commits made in the same second keep git's order.** A commit could be listed below its
+  own parent, and a batch cherry-pick then applied the two in reverse.
+- **Compare colors each repository as the Log does.** It used to assign colors over only the
+  repositories it lists, so a repository could change color between the two.
+- **Repository colors no longer change while typing in the Repositories search box.**
+
+### Performance
+
+- **Smoother scrolling:** rows are reused, about 9 ms → 1.5 ms per frame.
+- **Faster deep paging:** each repository's batch grows as you page, so reaching 20,000 rows
+  of a 100,000-commit repository takes 14 git runs instead of 100.
+- **An offer (never automatic) to write a commit-graph** when topological order is slow.
+
 ## [1.4.4] — 2026-10-28
 
 ### Fixed
