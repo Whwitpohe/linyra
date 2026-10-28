@@ -34,6 +34,57 @@ describe("Linyra startup", () => {
     const badgeStatus = badge!.spawnLog.filter((x) => x.cmd === "status").length;
     await sleep(10000); // let repository discovery and background reads settle
     const settled = (await snapshot())!;
+    const send = (m: unknown) => vscode.commands.executeCommand("linyra._itest.send", m);
+    const byCmd = (from: LogSnapshot, to: LogSnapshot) => to.spawnLog.slice(from.spawnLog.length)
+      .reduce<Record<string, number>>((m, x) => ({ ...m, [x.cmd]: (m[x.cmd] ?? 0) + 1 }), {});
+    const pages = (s: LogSnapshot) => s.posts.page?.count ?? 0;
+    /** Until no git process starts for 1.5 s: everything a step caused, background reads included. */
+    const quiet = async () => {
+      for (let a = await snapshot(); ;) {
+        await sleep(1500);
+        const b = (await snapshot())!;
+        if (b.spawnLog.length === a!.spawnLog.length) return b;
+        a = b;
+      }
+    };
+    /** One Log reload: time to its page, then every git process it caused. */
+    const reload = async (start: () => unknown) => {
+      const before = await quiet();
+      const t = Date.now();
+      await start();
+      for (let s = await snapshot(); pages(s!) === pages(before); s = await snapshot()) await sleep(5);
+      const msPage = Date.now() - t;
+      const first = (await snapshot())!;
+      const after = await quiet();
+      return { msPage, spawns: after.spawnLog.length - before.spawnLog.length, byCmd: byCmd(before, after),
+        reloads: after.stats.reloads - before.stats.reloads, pagesPosted: pages(after) - pages(before),
+        logsBeforePage: first.spawnLog.slice(before.spawnLog.length).filter((x) => x.cmd === "log").length };
+    };
+    // Typing in the search box: each debounced change reloads. The working tree did not change.
+    const typed = [];
+    for (const text of ["change 1", "change 12", ""]) typed.push(await reload(() => send({ type: "filter", filter: { ...settled.filter, text } })));
+    const dated = await reload(() => send({ type: "filter", filter: { ...settled.filter, date: "7d" } }));
+    await reload(() => send({ type: "filter", filter: settled.filter }));
+    const refreshed = await reload(() => send({ type: "refresh" }));
+    // Paging to the end of history: the host's share (the webview's is dev/perf/webviewBench.ts).
+    await reload(() => send({ type: "filter", filter: { ...settled.filter, date: "all" } }));
+    const beforePaging = await quiet();
+    const tPaging = Date.now();
+    let pagesLoaded = 0;
+    for (let s = beforePaging; !s.done && pagesLoaded < 200; pagesLoaded++) {
+      const n = s.rows.length;
+      await send({ type: "loadMore" });
+      for (s = (await snapshot())!; s.rows.length === n && !s.done; s = (await snapshot())!) await sleep(5);
+    }
+    const paged = await snapshot();
+    const paging = { ms: Date.now() - tPaging, pages: pagesLoaded, rows: paged!.rows.length, byCmd: byCmd(beforePaging, paged!),
+      postBytes: (paged!.posts.page?.bytes ?? 0) - (beforePaging.posts.page?.bytes ?? 0) };
+    await reload(() => send({ type: "filter", filter: settled.filter }));
+    // Expand All in the Repositories tree: every repository's branches, tags and stashes.
+    const beforeTree = await quiet();
+    const tTree = Date.now();
+    await Promise.all(settled.repos.map((r) => send({ type: "branchSidebar", action: "load", repoId: r.id })));
+    const tree = { ms: Date.now() - tTree, byCmd: byCmd(beforeTree, (await snapshot())!) };
     // Show Uncommitted Changes, with 5 of the repositories dirty.
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
@@ -67,6 +118,9 @@ describe("Linyra startup", () => {
       spawns: after.spawnLog.length - before.spawnLog.length,
       reposRead: new Set(after.spawnLog.slice(before.spawnLog.length).map((x) => x.root)).size,
       postBytes: posted(after) - posted(before),
+      byCmd: byCmd(before, after),
+      uncommittedReadsByWhy: (after.uncommittedReads ?? []).slice((before.uncommittedReads ?? []).length)
+        .reduce<Record<string, number>>((m, x) => ({ ...m, [x.why]: (m[x.why] ?? 0) + 1 }), {}),
     };
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     // Stage one file from the Uncommitted view: one repository read again, nothing else.
@@ -149,6 +203,7 @@ describe("Linyra startup", () => {
       uncommitted: { msBadgeAfterFirstRows, badgeStatus, msAllPinned, msFirstPinned, dirty: dirty.length, save, stage }, msAllFiles,
       compare: { msCounts: small.ms, msLong: long.ms, spawnsByCmd: small.spawnsByCmd },
       diff: { msDiffIdle, msDiffDuringCompare, msDiffIdle2 },
+      reloads: { typed, dated, refreshed }, paging, tree,
     }));
   });
 });

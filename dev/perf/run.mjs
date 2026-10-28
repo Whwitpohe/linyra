@@ -16,6 +16,8 @@ await runTests({
   vscodeExecutablePath: await downloadAndUnzipVSCode("stable"),
   extensionDevelopmentPath: root,
   extensionTestsPath: join(root, "out/perf/index.js"),
-  launchArgs: [ws, "--disable-extensions", "--disable-workspace-trust", "--no-sandbox"],
+  // PERF_VSCODE_GIT=off also disables VS Code's built-in Git: every repository unwatched, as
+  // repositories nested deeper than its scan depth are.
+  launchArgs: [ws, "--disable-extensions", ...(process.env.PERF_VSCODE_GIT === "off" ? ["--disable-extension", "vscode.git"] : []), "--disable-workspace-trust", "--no-sandbox"],
   extensionTestsEnv: { HOME: home, USERPROFILE: home, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: join(home, ".gitconfig"), LINYRA_ITEST: "1" },
 });
