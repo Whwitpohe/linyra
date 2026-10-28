@@ -1,6 +1,9 @@
 # Linyra
 
-**在一条时间线里查看工作区内所有仓库的 Git 历史。**
+**仿 JetBrains（WebStorm）Git 日志的多仓库 Git 管理工具。**
+
+工作区内所有仓库合并为一条日志，旁边是分支面板、提交详情、变更文件和原生 Diff；
+拉取、检出、合并、变基等日常操作直接从对应的行上跨仓库完成。
 
 [English](https://github.com/Whwitpohe/linyra/blob/main/README.md) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [下载 VSIX](https://github.com/Whwitpohe/linyra/releases) · [反馈问题](https://github.com/Whwitpohe/linyra/issues)
 

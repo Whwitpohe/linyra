@@ -1,6 +1,10 @@
 # Linyra
 
-**One Git timeline for every repository in your workspace.**
+**A multi-repository Git client in the style of the JetBrains (WebStorm) Git Log.**
+
+One merged log for every repository in your workspace, with a branches panel, commit
+details, changed files and native diffs beside it — and fetch, pull, checkout, merge and
+rebase across repositories, from the row each applies to.
 
 [简体中文](https://github.com/Whwitpohe/linyra/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Download VSIX](https://github.com/Whwitpohe/linyra/releases) · [Report an issue](https://github.com/Whwitpohe/linyra/issues)
 

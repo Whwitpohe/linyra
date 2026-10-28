@@ -158,7 +158,7 @@ section { display: grid; gap: 16px; }
 <div class="wrap">
 <header>
   <h1>Linyra UI Map</h1>
-  <p class="lede">Every part of the Linyra panel, with the name we'll both use for it. Say "Repo List row" or "Log toolbar" and we mean the same thing.</p>
+  <p class="lede">Every part of the Linyra panel, with the name we'll both use for it. Say "Repo List row" or "Log header" and we mean the same thing.</p>
   <!-- Dev-only (not in the VSIX). Serve with: npm run ui-map. Keep it in step with the UI: /ui-map. -->
   <p class="how"><b>Click any box, number or name to copy the name.</b> Each red box is one named region, and its red number points to the name below. Boxes inside boxes are parts of a bigger region (the Filter bar sits inside the Log view). The Log and Compare each use one native surface; their headings are labels, not full-row collapse controls. The mocks scroll sideways on a narrow screen.</p>
 </header>
@@ -174,11 +174,11 @@ section { display: grid; gap: 16px; }
         <div class="view t">
           <i class="n tl">2</i>
           <div class="vhead">Log
-            <span class="tools t" title="Log toolbar">☰ ⇄ ▣ ☁ ⋯<i class="n tl">3</i></span>
+            <span class="tools t" title="Log header actions">◧ ☰ ⇄ ☁ ⇣ ⇡ ⋯<i class="n tl">3</i></span>
           </div>
           <div class="vbody log">
             <div class="pane t"><i class="n tl">4</i>
-              <div class="input t">Filter repositories<i class="n tl">5</i></div>
+              <div class="input t">Find repo or branch<i class="n tl">5</i></div>
               <div class="reporow t"><span class="box">✓</span><span class="dot" style="border:1px solid var(--vs-dim)"></span>All repositories<span class="cnt">4</span><i class="n tl">6</i></div>
               <div class="reporow t"><span class="box" style="border:0">≡</span>backend<span class="cnt">2</span><i class="n tl">6a</i></div>
               <div class="reporow t"><span style="opacity:.7;display:contents"><span class="box" style="border:0">+</span>Save as profile…</span><span class="cnt">1</span><i class="n tl">6b</i></div>
@@ -230,14 +230,14 @@ section { display: grid; gap: 16px; }
   <div class="gloss">
     <div class="g"><i class="num">1</i><b>Linyra panel</b><span>The "Linyra" tab in VS Code's bottom panel. Holds every Linyra view.</span></div>
     <div class="g"><i class="num">2</i><b>Log view</b><span>The merged history of every repository. Everything on its left side, down to the footer, belongs to it.</span></div>
-    <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Fixed, explicit buttons: repository grouping, Compare, Uncommitted sidebar, Fetch All, side-by-side/stacked layout, and the pull/profile menu. Clicking blank title space has no fold action.</span></div>
-    <div class="g"><i class="num">4</i><b>Repo List</b><span>The list of repositories on the Log's left. Tick to choose which repositories the Log shows. Today's name in the code is "Repositories pane".</span></div>
-    <div class="g"><i class="num">5</i><b>Repo search</b><span>"Filter repositories": narrows the Repo List by name.</span></div>
+    <div class="g"><i class="num">3</i><b>Log header</b><span>One row, as the JetBrains Log keeps it: the Commits | Uncommitted switch, the Filter bar, then the actions — show/hide changed files, repository grouping, Compare, Fetch All, Update Project… (⇣), Push… (⇡) and ⋯. It wraps onto a second row only when the Log is narrow. ⋯ holds Branches Across Repositories…, the pull/profile items, the Uncommitted side bar, the Changes layout (automatic, side by side, stacked), the view options (Highlight My Commits, Highlight Current Branch, Show Hash Column) and Collapse/Expand Linear Branches.</span></div>
+    <div class="g"><i class="num">4</i><b>Repo List</b><span>The tree of repositories on the Log's left, as the JetBrains Branches panel groups a multi-root project. Tick to choose which repositories the Log shows; ▸ opens a repository onto its Local, Remote and Tags branches. Today's name in the code is "Repositories pane".</span></div>
+    <div class="g"><i class="num">5</i><b>Repo search</b><span>"Find repo or branch": narrows the Repo List by repository name, and finds branch names too (a repository found by a branch opens on the matches).</span></div>
     <div class="g"><i class="num">6</i><b>All repositories row</b><span>Ticks or unticks every repository; shows how many are picked.</span></div>
     <div class="g"><i class="num">6a</i><b>Profile row</b><span>A saved group of repositories (linyra.profiles). Click: tick exactly them; highlighted while the ticks are that profile. ⚠ when some are not in this workspace. Right-click: Show, Update to Current Selection, Rename…, Delete. ⋯ → Switch Profile… does the same with the Repo List hidden.</span></div>
     <div class="g"><i class="num">6b</i><b>Save as profile row</b><span>"＋ Save as profile…": shown while the ticked repositories are neither All nor a profile. Click to name them. Right-click a repository for Profiles… (which profiles it is in).</span></div>
     <div class="g"><i class="num">7</i><b>Sync badge</b><span>↓ commits to pull, ↑ commits not pushed, as of the last fetch.</span></div>
-    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: checkbox, color dot (same color as its chip in the Commit list), name. Right-click for the Repo menu.</span></div>
+    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: ▸, checkbox, color dot (same color as its band in the Commit list), name. Right-click for the Repo menu. Opened: its Local, Remote and Tags groups; a branch row filters the Log to it (never checks it out), ☆ marks a favorite, right-click holds the branch actions (tags: check out detached, push, delete).</span></div>
     <div class="g"><i class="num">9</i><b>Filter bar</b><span>The boxes above the commits. Every filter runs inside git.</span></div>
     <div class="g"><i class="num">10</i><b>Search box</b><span>Ordinary text matches messages across selected repositories; full or 7+ character hashes locate commits directly. sha: accepts 4+ hexadecimal characters; other filters are temporarily ignored during lookup.</span></div>
     <div class="g"><i class="num">11</i><b>Author box</b><span>Searchable multi-select checklist, with the Me toggle and each repository's own identity.</span></div>
@@ -388,7 +388,7 @@ section { display: grid; gap: 16px; }
 </section>
 </div>
 
-<section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branch sidebar</b><span>Local/remote grouping, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
+<section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branches in the Repo List</b><span>Each repository's Local/Remote/Tags groups, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out. Branches Across Repositories… checks out, creates or merges one name in every ticked repository.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>

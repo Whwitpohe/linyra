@@ -2,14 +2,44 @@
 
 ## What This Project Does
 
-Linyra is a VS Code extension that shows **one merged, filterable git log across every
-repository in the workspace**. Click a commit to see its changed files; click a file to open
-it in the native diff editor.
+Linyra is a **multi-repository Git client for VS Code, modelled on the Log of the Git tool
+window in JetBrains IDEs (WebStorm, IntelliJ IDEA)**: one merged, filterable log across every
+repository in the workspace, a branches panel beside it, the selected commit's details and
+changed files beside that, and the everyday repository work reachable from the row it
+applies to. Click a commit to see its changed files; click a file to open it in VS Code's
+native diff editor.
 
 Every other VS Code git extension gives you a repository **picker** — one repo's history at
-a time. Merging the log is the core of the product; the panel also gives a cross-repository
-view of uncommitted work and a comparison of two branches across repositories. Anything else
-is a non-goal.
+a time. The merged log stays the core: each feature works across all ticked repositories at
+once, and every action runs in the repository of the row it was started from. A row's color
+band names its repository, as the root column does in the JetBrains Log.
+
+**In scope** — the parts of the WebStorm Log, across repositories:
+
+- **Log:** merged commits with a real graph; filters for text or hash (match case, regular
+  expression), branch or tag, author, date, path and repository; date or topological order;
+  history folding; Highlight My Commits, Highlight Current Branch, a hash column. One header
+  row holds the switch, the filters and the actions.
+- **Repo List:** one tree — each repository opens onto its Local, Remote and Tags groups, with
+  favorites; checkout, new branch, rename, delete, merge, rebase, push, pull, compare, worktree;
+  tags check out detached, push and delete.
+- **Commit rows:** cherry-pick, revert, reset current branch to here, checkout revision,
+  new branch or tag from a commit; on HEAD, Undo Commit and Edit Commit Message (subject).
+  Each runs in the commit's own repository, through VS Code's Git where its API has the
+  operation, and asks before moving a branch or HEAD (and warns when the commit is pushed).
+- **Across repositories:** Branches Across Repositories… (check out, create or merge one name
+  in every ticked repository), Push… (every repository's outgoing commits in one dialog) and
+  Update Project (Fetch All, then merge or rebase each onto its upstream — never autostash).
+- **Commit details:** full message and references, changed-files tree, native diffs,
+  Combined Changes of several commits, file history, blame.
+- **Working tree:** uncommitted work per repository; stage, unstage, discard, commit.
+- **Sync:** Fetch All, Pull, Pull All Behind, ahead/behind badges; Compare Branches.
+
+**Non-goals:** a background index or cache (constraint 1); interactive rebase, hunk staging,
+a merge or conflict editor, or anything else VS Code's own Source Control and merge editor
+already do — Linyra hands off to them; hosting integrations (pull requests, issues, CI).
+Linyra writes to a repository only when the user asks (a menu item, a button, a confirmed
+prompt such as writing a commit-graph).
 
 **Current status: Linyra, independently maintained from Polylog in the Whwitpohe fork.**
 
@@ -20,7 +50,8 @@ use Linyra identifiers; never register upstream aliases. Earlier Linyra private 
 keys are migrated inside this extension's own storage only. See `docs/PUBLISHING.md`
 for the fork publishing and migration procedure. The original v1 design is
 `docs/superpowers/specs/2026-09-23-polylog-design.md`. Read it before writing any code; this
-file records the standing rules, not the design.
+file records the standing rules, not the design. The scope above (2026-10-28) supersedes that
+spec's non-goals; its architecture and constraints still hold.
 
 ---
 
@@ -120,10 +151,12 @@ style:
 
 - **TypeScript, bundled with esbuild.** No framework in the webview.
 - **Unit tests are plain `assert` + `console.log("ok - …")`**, bundled per-file by esbuild
-  and run with node. Each new `src/*.test.ts` must be appended to the `test:unit` script in
-  `package.json` or it silently never runs.
-- **Integration tests** use `@vscode/test-electron`, live under `src/` as `*.itest.ts` so
-  typecheck and lint cover them, and isolate `$HOME`.
+  and run with node by `scripts/run-unit.mjs`, which finds every `src/**/*.test.ts` itself:
+  a new test file needs no registration.
+- **Integration tests** use `@vscode/test-electron`, live under `src/integration/` as
+  `*.itest.ts` so typecheck and lint cover them, and isolate `$HOME`. The suites share one
+  workspace: `index.ts` fixes their order, shared helpers live in `helpers.ts`, and a new
+  suite must also be added to the `build:itest` script.
 - **Pure modules carry the logic.** `mergeStream`, `filterModel` and the parsers import no
   `vscode` — that is where the tests are. Modules that touch VS Code stay thin.
 - **CI** runs lint, typecheck, compile and tests on Linux/macOS/Windows.
