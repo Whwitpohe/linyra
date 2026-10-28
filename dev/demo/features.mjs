@@ -114,7 +114,8 @@ export async function recordFeatures(r) {
   await command("linyra._itest.compareSelect",web.id);
   const compare=await webviewDriver(browser,"Repositories");
   await compare.key("#picker-search","Escape"); await compare.click("#compare-layout-horizontal");
-  await compare.click("#compare-left-expand");await compare.click("#compare-right-expand");
+  const expandSide=side=>command("linyra._itest.compareReposSend",{type:"sideExpandAll",side});
+  await expandSide("left");await expandSide("right");
   await waitFor("both comparison trees",()=>compare.evaluate("return doc.getElementById('compare-left-tree').textContent.includes('retry.ts')&&doc.getElementById('compare-right-tree').textContent.includes('PaymentStep.tsx');"));
   const delta=await compare.evaluate("return (doc.getElementById('compare-sides').clientWidth-6)/2-doc.getElementById('compare-left').getBoundingClientRect().width;");
   await resize(compare,"#compare-side-splitter",delta,0);
@@ -125,7 +126,7 @@ export async function recordFeatures(r) {
     await hold(2);await shot("feature-compare",panelRect);
     await compare.click("#mode-commits");
     await waitFor("comparison commit mode",async()=> (await command("linyra._itest.compare")).mode==="commits");
-    await compare.click("#compare-right-expand");await hold(2);
+    await expandSide("right");await hold(2);
     await compare.click("#mode-files");await hold(1.5);
     const api=(await snapshot()).repos.find(repo=>repo.name==="acme-api");
     await compare.evaluate(`[...doc.querySelectorAll('.crepo')].find(node=>node.dataset.repo===${JSON.stringify(api.id)})?.click();return true;`);
