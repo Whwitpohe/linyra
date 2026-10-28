@@ -1,5 +1,5 @@
 import { localize } from "./i18n";
-import { promises as fs, realpathSync } from "fs";
+import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { walkForRepos } from "./discoverWalk";
@@ -57,19 +57,19 @@ function sameRoot(a: string, b: string): boolean {
   return norm(a) === norm(b) || norm(real(a)) === norm(real(b));
 }
 
-/** A folder's real path (symlinks resolved), once per folder: the same answer every time it is asked. */
+/**
+ * Folders' real paths (symlinks resolved), learned once per folder off the extension host's
+ * thread: a slow or network drive must not stall every extension. real() only reads what
+ * learnReal() has resolved; a folder not learned yet compares as written.
+ */
 const realPaths = new Map<string, string>();
 function real(p: string): string {
-  let r = realPaths.get(p);
-  if (r === undefined) {
-    try {
-      r = realpathSync.native(p);
-    } catch {
-      r = p;
-    }
-    realPaths.set(p, r);
-  }
-  return r;
+  return realPaths.get(p) ?? p;
+}
+async function learnReal(paths: Iterable<string>): Promise<void> {
+  await Promise.all([...new Set(paths)].filter((p) => !realPaths.has(p)).map(async (p) => {
+    realPaths.set(p, await fs.realpath(p).catch(() => p));
+  }));
 }
 
 const headKey = (h: GitBranch | undefined) =>
@@ -236,6 +236,7 @@ export class RepoDiscovery implements vscode.Disposable {
     const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
     const walk = await walkForRepos(folders, settings.scanDepth);
     const git = this.ready ? this.ready.repositories.map((r) => r.rootUri.fsPath) : [];
+    await learnReal([...walk, ...git, ...folders]);
     return excludeRepos(labelRepos(mergeRoots(walk, git, folders)), settings.excludeRepos);
   }
 
@@ -268,7 +269,8 @@ export class RepoDiscovery implements vscode.Disposable {
       if (d) {
         watching.set(r, d);
         this.watched.add(root);
-        this.watchedChangedSoon();
+        // Announced once its real path is known, so a symlinked folder is matched from the first ask.
+        void learnReal([root]).then(() => this.watchedChangedSoon());
       }
     };
     const unwatch = (r: GitRepository) => {

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -227,4 +227,21 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.ok(!("path" in sanitizeFilter({ ...ALL, path: "../x" })), "a bad saved path is dropped");
   assert.ok(sameExceptText({ ...ALL, path: "sr" }, { ...ALL, path: "src" }), "typing a path is debounced like search");
   console.log("ok - the path filter is pushed down after --, and File History keeps its own paths");
+}
+
+// ── Match case and regular expressions, as in the JetBrains Log's search ──
+{
+  const regex = args({ ...ALL, text: "fix(api|web)", regex: true });
+  assert.ok(regex.includes("--extended-regexp") && regex.includes("--regexp-ignore-case") && !regex.includes("--fixed-strings"));
+  const exact = args({ ...ALL, text: "ACME", matchCase: true });
+  assert.ok(exact.includes("--fixed-strings") && !exact.includes("--regexp-ignore-case"), "match case drops --regexp-ignore-case");
+  const author = args({ ...ALL, text: "^feat", regex: true, author: "d.n+a (x)" });
+  assert.ok(author.includes(String.raw`--author=d\.n\+a \(x\)`), "authors stay literal in regex mode");
+  assert.strictEqual(escapeRegex(String.raw`a.b[c]^$|\ `.trim()), String.raw`a\.b\[c\]\^\$\|\\`);
+  assert.strictEqual(regexProblem("fix(api|web)"), undefined);
+  assert.ok(regexProblem("fix(api"), "an unbalanced group is refused before git sees it");
+  assert.deepStrictEqual([sanitizeFilter({ ...ALL, regex: true, matchCase: true }).regex, sanitizeFilter({ ...ALL, regex: "yes" }).regex], [true, undefined]);
+  assert.ok(!sameExceptText({ ...ALL, regex: true }, ALL), "toggling regex reloads at once, not debounced");
+  assert.ok(sameExceptText({ ...ALL, matchCase: false }, ALL), "absent and false are the same");
+  console.log("ok - match case and regex modes become git's own flags; authors stay literal");
 }

@@ -1,7 +1,7 @@
 import { MAX_BRANCHES } from "../filterModel";
 import { localize } from "../i18n";
 import type { BranchName } from "../protocol";
-import { byId, h } from "./dom";
+import { byId, chevron, h } from "./dom";
 import { PickerChips } from "./pickerChips";
 
 /** A searchable checkbox picker. Choosing a branch keeps it open for the next choice. */
@@ -51,7 +51,7 @@ export class BranchFilter {
   update(branches: readonly string[]): void {
     this.selected = [...branches];
     const text = branches.length === 0 ? localize("All branches") : branches.length === 1 ? branches[0] : localize("{0} branches", branches.length);
-    this.button.replaceChildren(h("span", { class: "branch-filter-label" }, [text]), h("span", { class: "branch-filter-arrow", "aria-hidden": "true" }, ["⌄"]));
+    this.button.replaceChildren(h("span", { class: "branch-filter-label" }, [text]), h("span", { class: "branch-filter-arrow", "aria-hidden": "true" }, [chevron()]));
     this.button.title = branches.length ? branches.join("\n") : localize("All local and remote branches");
     this.button.setAttribute("aria-label", localize("Filter branches: {0}", text));
     this.button.classList.toggle("filtered", branches.length > 0);

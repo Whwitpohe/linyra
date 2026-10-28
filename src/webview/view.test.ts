@@ -84,6 +84,28 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   console.log("ok - folding and pagination repair newly adjacent bands without recoloring already distinct ones");
 }
 {
+  const logOrder = ["acme-api", "acme-libs", "acme-web", "acme-worker"];
+  const repoOrder = ["acme-api", "acme-web", "acme-libs", "acme-worker"];
+  const preferred = new Map(logOrder.map((id, i) => [id, i % 2]));
+  const rows = logOrder.map((repoId) => ({ repoId }));
+  assert.strictEqual(separateAdjacentAccents(rows, preferred), preferred, "the log alone has no conflict");
+  const colors = separateAdjacentAccents(rows, preferred, repoOrder);
+  for (const order of [logOrder, repoOrder]) for (let i = 1; i < order.length; i++) {
+    assert.notStrictEqual(colors.get(order[i - 1]), colors.get(order[i]), "one palette separates both visible orders");
+  }
+  assert.strictEqual(separateAdjacentAccents(rows, colors, repoOrder), colors, "repeated host messages do not change the repaired palette");
+  console.log("ok - the repository list and log share distinct adjacent hues even when their orders differ");
+}
+{
+  const order = ["acme-api", "acme-docs", "acme-libs", "acme-web"];
+  const preferred = new Map(order.map((id) => [id, 3]));
+  const colors = separateAdjacentAccents([], preferred, order);
+  for (let i = 1; i < order.length; i++) assert.notStrictEqual(colors.get(order[i - 1]), colors.get(order[i]));
+  assert.ok([...preferred.values()].every((hue) => hue === 3), "the incoming palette is unchanged");
+  assert.strictEqual(separateAdjacentAccents([], colors, order), colors);
+  console.log("ok - neighboring repositories differ even when they have no matching commits");
+}
+{
   const ids = Array.from({ length: 24 }, (_, i) => `acme-service-${i}`);
   const preferred = new Map(ids.map((id, i) => [id, i % ACCENT_COUNT]));
   const order = Array.from({ length: ACCENT_COUNT }, (_, hue) => ids.filter((_, i) => i % ACCENT_COUNT === hue)).flat();

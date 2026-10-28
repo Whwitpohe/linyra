@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, branchCommands, branchGroupKey, branchKey, branchRevision, DEFAULT_BRANCH_SIDEBAR, newBranchProblem, parseBranches, sidebarState, type Branch } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchRows } from "./webview/branchPaneModel";
+import { repoTreeKey, treeRows } from "./webview/repoTreeModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -32,14 +32,15 @@ console.log("ok - branch metadata distinguishes local/remote, current, upstream 
 
 {
   const repo = { id: "acme-api", name: "acme-api", root: "/ws/acme-api" };
-  const state = { mode: "branches" as const, expanded: ["local", "remote", branchGroupKey("local", repo.id), branchGroupKey("remote", repo.id), `${branchGroupKey("remote", repo.id)}\0origin`], favorites: [branchKey(repo.id, "refs/heads/master")] };
-  const rows = branchRows([repo], new Map([[repo.id, { data }]]), state, "");
-  assert.deepStrictEqual(rows.filter((r) => r.kind === "branch").map((r) => r.branch!.name), ["develop", "master", "origin/develop"]);
-  assert.ok(rows.find((r) => r.branch?.name === "master")?.favorite);
-  assert.strictEqual(rows.find((r) => r.branch?.name === "origin/develop")?.depth, 3);
-  const filtered = branchRows([repo], new Map([[repo.id, { data }]]), DEFAULT_BRANCH_SIDEBAR, "release-1.4");
-  assert.deepStrictEqual(filtered.filter((r) => r.branch).map((r) => r.branch!.name), ["team/upstream/release-1.4"]);
-  assert.strictEqual(branchRows([repo], new Map(), state, "").filter((r) => r.kind === "message").length, 2);
+  const state = { mode: "repos" as const, expanded: [repoTreeKey(repo.id), branchGroupKey("local", repo.id), branchGroupKey("remote", repo.id), `${branchGroupKey("remote", repo.id)}\0origin`], favorites: [branchKey(repo.id, "refs/heads/master")] };
+  const branchesOf = (rows: ReturnType<typeof treeRows>) => rows.flatMap((r) => (r.kind === "branch" ? [r] : []));
+  const rows = treeRows([repo], "", [], null, new Map([[repo.id, { data }]]), state);
+  assert.deepStrictEqual(branchesOf(rows).map((r) => r.branch.name), ["develop", "master", "origin/develop"]);
+  assert.ok(branchesOf(rows).find((r) => r.branch.name === "master")?.favorite);
+  assert.strictEqual(branchesOf(rows).find((r) => r.branch.name === "origin/develop")?.depth, 3);
+  const filtered = treeRows([repo], "release-1.4", [], null, new Map([[repo.id, { data }]]), DEFAULT_BRANCH_SIDEBAR);
+  assert.deepStrictEqual(branchesOf(filtered).map((r) => r.branch.name), ["team/upstream/release-1.4"]);
+  assert.strictEqual(treeRows([repo], "", [], null, new Map(), state).filter((r) => r.kind === "message").length, 1);
   console.log("ok - branch tree preserves repository/ref identities, favorites and searchable nested remotes");
 }
 
@@ -73,4 +74,23 @@ try {
   console.log("ok - actual Git accepts checkout/create/rename/merge/rebase/delete/track/worktree argv; push targets the chosen branch");
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
+}
+
+{
+  const peeled = "b".repeat(40);
+  const tags = parseBranches([
+    line("refs/heads/main", sha, "*", "", "", "", ""),
+    line("refs/tags/v1.4.0", "c".repeat(40), " ", "", "", "", peeled),
+    line("refs/tags/main", sha, " ", "", "", "", ""),
+  ].join("\n"), []);
+  assert.deepStrictEqual(tags.branches.map((b) => [b.kind, b.name, b.sha]), [["local", "main", sha], ["tag", "v1.4.0", peeled], ["tag", "main", sha]]);
+  assert.strictEqual(branchRevision(tags.branches[1], tags), "v1.4.0");
+  assert.strictEqual(branchRevision(tags.branches[2], tags), "refs/tags/main", "a tag named like a branch is passed by its full ref");
+  assert.deepStrictEqual(branchCommands.checkoutTag(tags.branches[1]), ["checkout", "--detach", "refs/tags/v1.4.0", "--"]);
+  assert.deepStrictEqual(branchCommands.deleteTag(tags.branches[1]), ["tag", "-d", "--", "v1.4.0"]);
+  const rows = treeRows([{ id: "/w/acme-api", root: "/w/acme-api", name: "acme-api" }], "", [], null, new Map([["/w/acme-api", { data: tags }]]),
+    { ...DEFAULT_BRANCH_SIDEBAR, expanded: [repoTreeKey("/w/acme-api"), branchGroupKey("tag", "/w/acme-api")] });
+  assert.deepStrictEqual(rows.flatMap((r) => (r.kind === "branch" && r.branch.kind === "tag" ? [r.label] : [])), ["main", "v1.4.0"], "sorted by name");
+  assert.ok(branchArgs().includes("refs/tags") && branchArgs()[2].endsWith("%(*objectname)"));
+  console.log("ok - tags are listed with their commit (annotated tags peeled) under their own group");
 }

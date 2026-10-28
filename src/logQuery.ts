@@ -51,6 +51,19 @@ export interface PageResult {
 /** Fetch rounds per page; each round drains at least one repo, so this only bounds pathological input. */
 const MAX_ROUNDS = 64;
 
+/** The most records one repository's git log returns at once, whatever the depth. */
+export const MAX_BATCH = 2000;
+
+/**
+ * How many records to ask one repository for: a page at first, then as many as it has already
+ * returned (up to MAX_BATCH). Each --skip walks the whole history above it again, and without a
+ * commit-graph --topo-order walks all of it on every call; growing the batch makes reaching depth N
+ * cost O(log N + N / MAX_BATCH) spawns instead of N / pageSize. The surplus waits as pending rows.
+ */
+export function batchSize(fetched: number, pageSize: number): number {
+  return Math.max(pageSize, Math.min(fetched, MAX_BATCH));
+}
+
 /**
  * One page of the merged log: one `git log` per repository that needs more,
  * every filter pushed down as git flags, merged in memory. No index, no cache —
@@ -80,11 +93,12 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
   const resolveRef = async (repo: Repo, signal: AbortSignal): Promise<void> => {
     const p = progress.get(repo.id)!;
     if (!branches.length || p.refs !== undefined) return;
-    const available = new Set((await req.run(repo.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal)).split(/\r?\n/));
+    const available = new Set((await req.run(repo.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes", "refs/tags"], signal)).split(/\r?\n/));
     p.refs = [...new Set(branches.flatMap((branch) => {
       if (branch === "HEAD") return ["HEAD"];
-      const ref = branch.startsWith("refs/") ? branch : available.has(`refs/heads/${branch}`) ? `refs/heads/${branch}` : `refs/remotes/${branch}`;
-      return available.has(ref) ? [ref] : [];
+      // A name is a local branch first, then a remote-tracking branch, then a tag (git's own order).
+      const ref = branch.startsWith("refs/") ? branch : ["heads", "remotes", "tags"].map((kind) => `refs/${kind}/${branch}`).find((r) => available.has(r));
+      return ref && available.has(ref) ? [ref] : [];
     }))];
     if (signal.aborted) throw abortError();
   };
@@ -124,14 +138,16 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     const targets = [...progress]
       .filter(([, p]) => !p.exhausted && p.pending.length < req.pageSize)
       .map(([id]) => byId.get(id)!);
+    const wanted = targets.map((repo) => batchSize(progress.get(repo.id)!.fetched, req.pageSize));
     const settled = await runPool(
       targets,
       req.concurrency,
       async (repo, signal) => {
+        const i = targets.indexOf(repo);
         await resolveRef(repo, signal);
         const p = progress.get(repo.id)!;
         if (branches.length && !p.refs?.length) return "";
-        const o = { pageSize: req.pageSize, now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs };
+        const o = { pageSize: wanted[i], now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);
       },
       req.signal,
@@ -145,9 +161,9 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         const records = countRecords(result.value);
         p.fetched += records;
         const commits = req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id);
-        if (branches.length) for (const c of commits) c.ref = p.refs?.map((r) => r.replace(/^refs\/(heads|remotes)\//, "")).join(", ");
+        if (branches.length) for (const c of commits) c.ref = p.refs?.map((r) => r.replace(/^refs\/(heads|remotes|tags)\//, "")).join(", ");
         p.pending.push(...commits);
-        if (records < req.pageSize) p.exhausted = true;
+        if (records < wanted[i]) p.exhausted = true;
       } else {
         // Stop reading it, but keep the commits already fetched for it: they are still true.
         p.exhausted = true;

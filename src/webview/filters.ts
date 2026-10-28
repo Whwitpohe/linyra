@@ -1,5 +1,5 @@
 import { localize } from "../i18n";
-import { DEFAULT_FILTER, hashQuery, normalizePath, selectedBranches, type DatePreset, type FilterState } from "../filterModel";
+import { DEFAULT_FILTER, hashQuery, normalizePath, regexProblem, selectedBranches, type DatePreset, type FilterState } from "../filterModel";
 import type { AuthorName, BranchName } from "../protocol";
 import { byId } from "./dom";
 import { AuthorFilter } from "./authorFilter";
@@ -14,6 +14,8 @@ export class FilterBar {
   private filter: FilterState | undefined;
   private readonly search = byId<HTMLInputElement>("search");
   private readonly meButton = byId<HTMLButtonElement>("me");
+  private readonly matchCase = byId<HTMLButtonElement>("match-case");
+  private readonly useRegex = byId<HTMLButtonElement>("use-regex");
   private readonly path = byId<HTMLInputElement>("path");
   private readonly date = byId<HTMLSelectElement>("date");
   private readonly customRange = byId("custom-range");
@@ -27,6 +29,8 @@ export class FilterBar {
   constructor(private readonly onChange: (f: FilterState) => void, onRefresh: () => void, onWantSuggestions: (kind: "authors" | "branches") => void) {
     byId("filters").addEventListener("submit", (e) => e.preventDefault());
     this.search.addEventListener("input", () => this.emit({ text: this.search.value }));
+    this.matchCase.addEventListener("click", () => this.emit({ matchCase: !this.current().matchCase || undefined }));
+    this.useRegex.addEventListener("click", () => this.emit({ regex: !this.current().regex || undefined }));
     this.authorFilter = new AuthorFilter((authors, mine) => this.emit({ author: "", authors: authors.length ? authors : undefined, mine }), () => onWantSuggestions("authors"));
     this.branchFilter = new BranchFilter((branches) => this.emit({ branch: "", branches: branches.length ? branches : undefined }), () => onWantSuggestions("branches"));
     this.sortFilter = new SortFilter((sort) => this.emit({ sort }));
@@ -59,6 +63,17 @@ export class FilterBar {
   update(filter: FilterState): void {
     this.filter = filter;
     if (this.search.value !== filter.text) this.search.value = filter.text;
+    this.matchCase.setAttribute("aria-pressed", String(filter.matchCase === true));
+    this.useRegex.setAttribute("aria-pressed", String(filter.regex === true));
+    // The host searches an invalid expression as text: say so where it is typed.
+    const problem = filter.regex && filter.text.trim() ? regexProblem(filter.text.trim()) : undefined;
+    if (problem) {
+      this.search.setAttribute("aria-invalid", "true");
+      this.search.title = localize("Invalid regular expression, searched as text: {0}", problem);
+    } else {
+      this.search.removeAttribute("aria-invalid");
+      this.search.title = "";
+    }
     this.authorFilter.update(filter);
     // Keep what is being typed (it may still be invalid); follow the filter otherwise.
     if (document.activeElement !== this.path && normalizePath(this.path.value) !== filter.path) {
@@ -75,7 +90,7 @@ export class FilterBar {
     const hash = hashQuery(filter.text);
     byId("hash-search-note").hidden = !hash;
     byId("order-note").hidden = !!hash;
-    for (const id of ["author", "me", "path", "branch", "date", "from", "to", "sort"]) {
+    for (const id of ["match-case", "use-regex", "author", "me", "path", "branch", "date", "from", "to", "sort"]) {
       (byId(id) as HTMLInputElement | HTMLButtonElement | HTMLSelectElement).disabled = !!hash;
     }
     document.querySelectorAll<HTMLButtonElement>(".picker-chip-remove").forEach((button) => { button.disabled = !!hash; });

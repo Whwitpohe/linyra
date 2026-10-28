@@ -15,13 +15,12 @@ import { FilterBar } from "./filters";
 import { CommitList, type Gesture } from "./list";
 import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
-import { BranchPane } from "./branchPane";
 import { applyGesture, keepListed, SELECTION_LIMIT, type Selection } from "./selectionModel";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
+import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
 import { WorkList } from "./workList";
-import { LogToolbar } from "./toolbar";
+import { LogToolbar, type ViewOptions } from "./toolbar";
 import type { ChangesLayout } from "../toolbarModel";
 
 const vscode = acquireVsCodeApi();
@@ -55,11 +54,8 @@ const searchEl = byId<HTMLInputElement>("search");
 const moreEl = byId<HTMLButtonElement>("more");
 const countEl = byId("count");
 const branchUseEl = byId("branch-use");
-const graphCollapse = byId<HTMLButtonElement>("graph-collapse");
-const graphExpand = byId<HTMLButtonElement>("graph-expand");
 const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), openFirstFile, (stats) => {
-  graphCollapse.disabled = stats.available === stats.collapsed;
-  graphExpand.disabled = stats.collapsed === 0;
+  toolbar.setFolds({ canCollapse: stats.available !== stats.collapsed, canExpand: stats.collapsed > 0 });
   const count = byId("graph-fold-count");
   count.hidden = stats.hidden === 0;
   count.textContent = localize("{0} commits hidden", stats.hidden);
@@ -67,8 +63,6 @@ const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), o
   accents = next;
   repoPane.setAccents(next);
 });
-graphCollapse.addEventListener("click", () => list.collapseAll());
-graphExpand.addEventListener("click", () => list.expandAll());
 const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
@@ -76,8 +70,7 @@ const notices = new NoticeBar(byId("notices"), () => {
 });
 const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
-const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }), () => post({ type: "profileSave" }));
-const branchPane = new BranchPane(post);
+const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }), post);
 const appEl = byId("app");
 /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
 let mode: "commits" | "uncommitted" = "commits";
@@ -146,7 +139,17 @@ function applyChangesLayout(): void {
   toolbar.updateLayout(changesLayout);
 }
 const saveChangesLayout = () => post({ type: "layout", repoPaneWidth: paneWidth.shown, changesPaneWidth: changesWidth, changesPaneHeight: changesHeight, showChanges, changesLayout });
-const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); });
+/** View options, each repository's user.email, and the listed commits HEAD does not reach. */
+let view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false };
+let me: Readonly<Record<string, string>> = {};
+let offHead: ReadonlySet<string> = new Set();
+const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); }, (patch) => {
+  if (patch.fold) { if (patch.fold === "collapse") list.collapseAll(); else list.expandAll(); return; }
+  view = { ...view, ...patch };
+  toolbar.updateView(view);
+  post({ type: "layout", highlightMine: patch.highlightMine, highlightHead: patch.highlightHead, hashColumn: patch.hashColumn });
+  render();
+});
 changesToggle.addEventListener("click", () => { showChanges = !showChanges; applyChangesLayout(); saveChangesLayout(); });
 attachSplitter(changesSplitter, {
   get: () => changesSplitter.getBoundingClientRect().left,
@@ -169,8 +172,12 @@ const applyPaneWidth = (width: number) => showPaneWidth(paneWidth.set(width, win
 // Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
 attachSplitter(splitter, { get: () => paneWidth.shown, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth.shown }) });
 window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.innerWidth)));
-/** Shared repo hues; the commit list repairs collisions between adjacent displayed bands. */
+/**
+ * Shared repo hues honor both the commit bands and the Repo List's own order. That order is the
+ * unsearched list: typing in the Repo List's search box never recolors the Log.
+ */
 let accents: ReadonlyMap<string, number> = new Map();
+let repoOrder: readonly string[] = [];
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
 /** Repositories with commits to pull (their rows' right-click offers Pull). */
@@ -189,13 +196,14 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "toolbar": toolbar.update(m.state); return;
     case "focusChanges": byId("file-tree").focus(); return;
     case "changesView": changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })); return;
-    case "sidebarState": branchPane.applyState(m.state); return;
-    case "branchTree": branchPane.receive(m); return;
+    case "sidebarState": repoPane.applyBranchState(m.state); return;
+    case "branchTree": repoPane.receiveBranches(m); return;
     case "init": {
       const previousNames = new Map(state.repos.map((repo) => [repo.id, repo.name]));
       if (m.repos.length !== state.repos.length || m.repos.some((repo) => previousNames.get(repo.id) !== repo.name)) {
         accents = assignAccents(m.repos);
       }
+      if (m.repos.length !== repoOrder.length || m.repos.some((repo, i) => repo.id !== repoOrder[i])) repoOrder = m.repos.map((repo) => repo.id);
       state.repos = m.repos;
       // +2: the chip's own padding, so a name that fits is never cut.
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
@@ -205,7 +213,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.profiles = m.profiles;
       repoPane.update(m.repos, m.filter.repoIds, m.profiles);
       repoPane.setAccents(accents);
-      branchPane.update(m.repos, m.filter);
+      repoPane.setFilter(m.filter);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       // Only when the host changed the switch: a late init must not undo the user's click.
       if (m.logMode !== undefined && m.logMode !== mode) setMode(m.logMode);
@@ -222,8 +230,14 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       showChanges = m.layout.showChanges ?? true;
       changesLayout = m.layout.changesLayout ?? "auto";
       applyChangesLayout();
+      me = m.me ?? {};
+      view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true };
+      toolbar.updateView(view);
       break;
     }
+    case "offHead":
+      offHead = new Set(m.keys);
+      break;
     case "uncommitted":
       work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
@@ -382,7 +396,7 @@ function setFilter(f: FilterState): void {
   state.filter = f;
   filters.update(f);
   repoPane.update(state.repos, f.repoIds, state.profiles);
-  branchPane.update(state.repos, f);
+  repoPane.setFilter(f);
   post({ type: "filter", filter: f });
   render();
 }
@@ -400,7 +414,7 @@ function runEmptyAction(action: EmptyAction): void {
 }
 
 function render(): void {
-  byId("graph-controls").hidden = mode === "uncommitted";
+  toolbar.setCommitsShown(mode !== "uncommitted");
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
   const count = switchCount(work.known, work.totals.files);
   workCount.textContent = count;
@@ -408,12 +422,18 @@ function render(): void {
   tabs.uncommitted.setAttribute("aria-label", count ? localize("Uncommitted, {0} {1}", count, localize(count === "1" ? "file" : "files")) : localize("Uncommitted"));
   workTotals.textContent = mode === "uncommitted" ? totalsLabel(work.totals) : "";
   if (mode === "uncommitted") {
+    const next = separateAdjacentAccents(work.rows, accents, repoOrder);
+    if (next !== accents) {
+      accents = next;
+      repoPane.setAccents(next);
+    }
     workList.update(work.rows, names, accents, behind);
     empty.render(work.rows.length === 0 ? { title: localize("Nothing uncommitted"), body: localize("Nothing uncommitted in the ticked repositories.") } : null);
     return;
   }
   list.update({
-    rows: state.rows, repoNames: names, accents, behind,
+    rows: state.rows, repoNames: names, accents, repoOrder, behind,
+    me, highlightMine: view.highlightMine, offHead: view.highlightHead ? offHead : undefined, hashColumn: view.hashColumn,
     historyPath: state.history?.path,
     selected: state.selected, selectedKeys: new Set(state.selection.keys), now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,

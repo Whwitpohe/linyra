@@ -1,7 +1,7 @@
 import { MAX_AUTHORS, type FilterState } from "../filterModel";
 import { localize } from "../i18n";
 import type { AuthorName } from "../protocol";
-import { byId, h } from "./dom";
+import { byId, chevron, h } from "./dom";
 import { PickerChips } from "./pickerChips";
 
 /** The Author dropdown shares the branch picker's themed popup and checkbox rows. */
@@ -57,7 +57,7 @@ export class AuthorFilter {
     this.mine = filter.mine;
     const labels = [...this.selected.map((value) => this.items.find((item) => item.email.toLowerCase() === value.toLowerCase())?.name ?? value), ...(this.mine ? [localize("Me")] : [])];
     const text = labels.length === 0 ? localize("All authors") : labels.length === 1 ? labels[0] : localize("{0} authors", labels.length);
-    this.button.replaceChildren(h("span", { class: "branch-filter-label" }, [text]), h("span", { class: "branch-filter-arrow", "aria-hidden": "true" }, ["⌄"]));
+    this.button.replaceChildren(h("span", { class: "branch-filter-label" }, [text]), h("span", { class: "branch-filter-arrow", "aria-hidden": "true" }, [chevron()]));
     this.button.title = labels.length ? [...this.selected, ...(this.mine ? [localize("Me")] : [])].join("\n") : localize("All authors");
     this.button.setAttribute("aria-label", localize("Filter authors: {0}", text));
     this.button.classList.toggle("filtered", labels.length > 0);

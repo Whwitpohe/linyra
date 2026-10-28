@@ -1,5 +1,6 @@
 import { localize } from "./i18n";
 import * as vscode from "vscode";
+import { copyText } from "./clipboard";
 import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
 import { decorationFor, describeChanges, describeCombined, stat, viewDescription, type ChangesState, type CombinedOpen, type CombinedState, type NodeDesc, type Owner } from "./changesModel";
 import { commitKey, UNCOMMITTED } from "./types";
@@ -146,8 +147,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (m.type === "copy" && (m.field === "sha" || m.field === "message")) {
       const detail = commitDetails(this.state, this.combined).find((c) => c.sha === m.sha);
       if (!detail) return;
-      if (m.field === "sha") await vscode.env.clipboard.writeText(detail.sha);
-      else if (this.state?.commit.sha === detail.sha && this.state.status === "ready") await vscode.env.clipboard.writeText(this.state.message || this.state.commit.subject);
+      if (m.field === "sha") await copyText(detail.sha);
+      else if (this.state?.commit.sha === detail.sha && this.state.status === "ready") await copyText(this.state.message || this.state.commit.subject);
       else await vscode.commands.executeCommand("linyra.commitCopyMessage", { repoId: detail.repoId, sha: detail.sha });
       this.broadcast({ type: "copied" });
       return;

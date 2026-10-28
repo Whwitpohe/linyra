@@ -29,67 +29,69 @@ export function renderHtml(o: HtmlOptions): string {
 <div id="app" class="app">
   <aside id="repo-pane" class="repo-pane" aria-label="${escapeHtml(localize("Repositories"))}">
     <div class="repo-search">
-      <div class="sidebar-modes" role="tablist" aria-label="${escapeHtml(localize("Sidebar mode"))}"><button id="sidebar-repos" type="button" role="tab" aria-selected="true">${escapeHtml(localize("Repositories"))}</button><button id="sidebar-branches" type="button" role="tab" aria-selected="false" tabindex="-1">${escapeHtml(localize("Branches"))}</button><button id="branch-refresh" class="icon-button" type="button" title="${escapeHtml(localize("Refresh branches"))}" aria-label="${escapeHtml(localize("Refresh branches"))}" hidden>↻</button></div>
-      <input id="repo-filter" class="repo-filter" type="search" placeholder="${escapeHtml(localize("Filter repositories"))}" aria-label="${escapeHtml(localize("Filter repositories"))}" autocomplete="off" spellcheck="false">
+      <input id="repo-filter" class="repo-filter" type="search" placeholder="${escapeHtml(localize("Find repo or branch"))}" aria-label="${escapeHtml(localize("Search repositories or branches"))}" autocomplete="off" spellcheck="false">
+      <button id="repo-expand-all" class="icon-button" type="button" title="${escapeHtml(localize("Expand All"))}" aria-label="${escapeHtml(localize("Expand All Repositories"))}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4.5 1.5h10v10M1.5 4.5h9v10h-9ZM6 7v5M3.5 9.5h5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
+      <button id="repo-collapse-all" class="icon-button" type="button" title="${escapeHtml(localize("Collapse All"))}" aria-label="${escapeHtml(localize("Collapse All Repositories"))}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4.5 1.5h10v10M1.5 4.5h9v10h-9ZM3.5 9.5h5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg></button>
     </div>
-    <div id="repo-rows" class="repo-rows" role="listbox" aria-multiselectable="true" aria-label="${escapeHtml(localize("Repositories"))}" tabindex="0"></div>
-    <div id="branch-tree" class="branch-tree" role="tree" aria-label="${escapeHtml(localize("Branches"))}" tabindex="0" hidden></div>
+    <div id="repo-rows" class="repo-rows" role="tree" aria-multiselectable="true" aria-label="${escapeHtml(localize("Repositories and branches"))}" tabindex="0"></div>
   </aside>
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="${escapeHtml(localize("Resize the repositories pane"))}" tabindex="0"></div>
   <div class="log">
-    <div class="log-toolbar" role="toolbar" aria-label="${escapeHtml(localize("Log actions"))}"><span class="log-toolbar-label">${escapeHtml(localize("Log"))}</span><span class="log-toolbar-actions">
-      <button id="toolbar-repos" class="icon-button" type="button" aria-label="${escapeHtml(localize("Group by Repository"))}"></button>
-      <button id="toolbar-compare" class="icon-button" type="button" aria-label="${escapeHtml(localize("Compare Branches"))}"></button>
-      <button id="toolbar-uncommitted" class="icon-button" type="button" aria-label="${escapeHtml(localize("Show Uncommitted View"))}"></button>
-      <button id="toolbar-fetch" class="icon-button" type="button" aria-label="${escapeHtml(localize("Fetch All Repositories"))}"></button>
-      <span class="toolbar-divider" aria-hidden="true"></span>
-      <button id="layout-sideBySide" class="icon-button" type="button" title="${escapeHtml(localize("Side-by-side Layout"))}" aria-label="${escapeHtml(localize("Side-by-side Layout"))}" aria-pressed="false"></button>
-      <button id="layout-stacked" class="icon-button" type="button" title="${escapeHtml(localize("Stacked Layout"))}" aria-label="${escapeHtml(localize("Stacked Layout"))}" aria-pressed="false"></button>
-      <button id="toolbar-more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="${escapeHtml(localize("More Log Actions"))}" aria-label="${escapeHtml(localize("More Log Actions"))}">⋯</button>
-    </span></div>
     <div id="modebar" class="modebar" role="toolbar" aria-label="${escapeHtml(localize("Log mode"))}" hidden>
       <button id="mode-all" class="mode" type="button">${escapeHtml(localize("All commits"))}</button>
       <span id="mode-history" class="mode active" aria-current="true"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><span>${escapeHtml(localize("File history:"))}</span><span id="history-path" class="history-path"></span>
         <button id="history-close" class="icon-button mode-close" type="button" aria-label="${escapeHtml(localize("Close file history"))}" title="${escapeHtml(localize("Back to all commits"))}">×</button>
       </span>
     </div>
-    <div id="logswitch" class="logswitch">
+    <!-- One header row, as the JetBrains Log keeps it: the switch, the filters, then the actions.
+         It wraps onto more rows only when the Log is narrow. -->
+    <div id="log-header" class="log-header">
       <div class="switch" role="tablist" aria-label="${escapeHtml(localize("The Log shows"))}">
         <button id="mode-commits" class="switch-tab" role="tab" type="button" aria-selected="true" tabindex="0">${escapeHtml(localize("Commits"))}</button>
         <button id="mode-work" class="switch-tab" role="tab" type="button" aria-selected="false" tabindex="-1">${escapeHtml(localize("Uncommitted"))}<span id="work-count" class="work-count" hidden></span></button>
       </div>
       <span id="work-totals" class="work-totals"></span>
-      <span class="pane-controls">
+      <form id="filters" class="filters" role="search" aria-label="${escapeHtml(localize("Filter commits"))}">
+        <span id="search-field" class="search-field">
+          <input id="search" class="search" type="search" placeholder="${escapeHtml(localize("Search messages or hash"))}" aria-label="${escapeHtml(localize("Search commit messages or hash"))}" aria-describedby="hash-search-note" autocomplete="off" spellcheck="false">
+          <button id="match-case" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Case"))}" aria-label="${escapeHtml(localize("Match Case"))}">Aa</button>
+          <button id="use-regex" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Use Regular Expression"))}" aria-label="${escapeHtml(localize("Use Regular Expression"))}">.*</button>
+        </span>
+        <span id="author-field" class="author-field">
+          <button id="author" class="branch-filter author-filter" type="button" aria-expanded="false" aria-controls="author-picker" aria-haspopup="dialog" aria-label="${escapeHtml(localize("Filter authors"))}">${escapeHtml(localize("All authors"))}</button>
+          <button id="me" class="input-toggle" type="button" title="${escapeHtml(localize("Only my commits"))}" hidden>${escapeHtml(localize("Me"))}</button>
+        </span>
+        <input id="path" class="path-filter" type="search" placeholder="${escapeHtml(localize("Path or glob"))}" aria-label="${escapeHtml(localize("Only commits touching this path in each repository: a file, a folder or a glob like **/*.sql"))}" autocomplete="off" spellcheck="false">
+        <button id="branch" class="branch-filter" type="button" aria-expanded="false" aria-controls="branch-picker" aria-haspopup="dialog" aria-label="${escapeHtml(localize("Filter branches"))}">${escapeHtml(localize("All branches"))}</button>
+        <span id="date-field" class="select-field">
+          <select id="date" aria-label="${escapeHtml(localize("Date range"))}">
+            <option value="24h">${escapeHtml(localize("Last 24 hours"))}</option>
+            <option value="7d">${escapeHtml(localize("Last 7 days"))}</option>
+            <option value="30d">${escapeHtml(localize("Last 30 days"))}</option>
+            <option value="all">${escapeHtml(localize("All time"))}</option>
+            <option value="custom">${escapeHtml(localize("Custom range"))}</option>
+          </select>
+          <svg class="chevron" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span id="custom-range" class="custom-range" hidden>
+          <input id="from" type="date" aria-label="${escapeHtml(localize("From date"))}">
+          <span aria-hidden="true">–</span>
+          <input id="to" type="date" aria-label="${escapeHtml(localize("To date"))}">
+        </span>
+        <button id="sort" class="icon-button" type="button" aria-label="${escapeHtml(localize("Sort"))}" aria-haspopup="menu" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12m-2-2 2 2 2-2M9 3h5M9 7h4M9 11h2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+        <button id="refresh" class="icon-button" type="button" aria-label="${escapeHtml(localize("Refresh"))}" title="${escapeHtml(localize("Refresh"))}">${REFRESH_ICON}</button>
+      </form>
+      <span class="header-actions" role="toolbar" aria-label="${escapeHtml(localize("Log actions"))}">
         <button id="toggle-changes" class="icon-button" type="button" title="${escapeHtml(localize("Show or hide changed files"))}" aria-label="${escapeHtml(localize("Show or hide changed files"))}" aria-pressed="true">◧</button>
-      <span id="graph-controls" class="graph-controls" role="group" aria-label="${escapeHtml(localize("Graph folding"))}">
-        <button id="graph-collapse" class="icon-button" type="button" title="${escapeHtml(localize("Collapse Linear Branches"))}" aria-label="${escapeHtml(localize("Collapse Linear Branches"))}" disabled>⊟</button>
-        <button id="graph-expand" class="icon-button" type="button" title="${escapeHtml(localize("Expand Linear Branches"))}" aria-label="${escapeHtml(localize("Expand Linear Branches"))}" disabled>⊞</button>
-      </span>
+        <span class="toolbar-divider" aria-hidden="true"></span>
+        <button id="toolbar-repos" class="icon-button" type="button" aria-label="${escapeHtml(localize("Group by Repository"))}"></button>
+        <button id="toolbar-compare" class="icon-button" type="button" aria-label="${escapeHtml(localize("Compare Branches"))}"></button>
+        <button id="toolbar-fetch" class="icon-button" type="button" aria-label="${escapeHtml(localize("Fetch All Repositories"))}"></button>
+        <button id="toolbar-update" class="icon-button" type="button" aria-label="${escapeHtml(localize("Update Project…"))}" title="${escapeHtml(localize("Update Project…"))}"></button>
+        <button id="toolbar-push" class="icon-button" type="button" aria-label="${escapeHtml(localize("Push…"))}" title="${escapeHtml(localize("Push…"))}"></button>
+        <button id="toolbar-more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="${escapeHtml(localize("More Log Actions"))}" aria-label="${escapeHtml(localize("More Log Actions"))}">⋯</button>
       </span>
     </div>
-    <form id="filters" class="filters" role="search" aria-label="${escapeHtml(localize("Filter commits"))}">
-      <input id="search" class="search" type="search" placeholder="${escapeHtml(localize("Search messages or hash"))}" aria-label="${escapeHtml(localize("Search commit messages or hash"))}" aria-describedby="hash-search-note" autocomplete="off" spellcheck="false">
-      <span id="author-field" class="author-field">
-        <button id="author" class="branch-filter author-filter" type="button" aria-expanded="false" aria-controls="author-picker" aria-haspopup="dialog" aria-label="${escapeHtml(localize("Filter authors"))}">${escapeHtml(localize("All authors"))}</button>
-        <button id="me" class="input-toggle" type="button" title="${escapeHtml(localize("Only my commits"))}" hidden>${escapeHtml(localize("Me"))}</button>
-      </span>
-      <input id="path" class="path-filter" type="search" placeholder="${escapeHtml(localize("Path or glob"))}" aria-label="${escapeHtml(localize("Only commits touching this path in each repository: a file, a folder or a glob like **/*.sql"))}" autocomplete="off" spellcheck="false">
-      <button id="branch" class="branch-filter" type="button" aria-expanded="false" aria-controls="branch-picker" aria-haspopup="dialog" aria-label="${escapeHtml(localize("Filter branches"))}">${escapeHtml(localize("All branches"))}</button>
-      <select id="date" aria-label="${escapeHtml(localize("Date range"))}">
-        <option value="24h">${escapeHtml(localize("Last 24 hours"))}</option>
-        <option value="7d">${escapeHtml(localize("Last 7 days"))}</option>
-        <option value="30d">${escapeHtml(localize("Last 30 days"))}</option>
-        <option value="all">${escapeHtml(localize("All time"))}</option>
-        <option value="custom">${escapeHtml(localize("Custom range"))}</option>
-      </select>
-      <span id="custom-range" class="custom-range" hidden>
-        <input id="from" type="date" aria-label="${escapeHtml(localize("From date"))}">
-        <span aria-hidden="true">–</span>
-        <input id="to" type="date" aria-label="${escapeHtml(localize("To date"))}">
-      </span>
-      <button id="sort" class="icon-button" type="button" aria-label="${escapeHtml(localize("Sort"))}" aria-haspopup="menu" aria-expanded="false"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2v12m-2-2 2 2 2-2M9 3h5M9 7h4M9 11h2" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
-      <button id="refresh" class="icon-button" type="button" aria-label="${escapeHtml(localize("Refresh"))}" title="${escapeHtml(localize("Refresh"))}">${REFRESH_ICON}</button>
-    </form>
     <div id="hash-search-note" class="hash-search-note" role="status" hidden>${escapeHtml(localize("Hash lookup: searching selected repositories. Other filters are temporarily ignored."))}</div>
     <div id="notices" class="notices"></div>
     <main class="main">

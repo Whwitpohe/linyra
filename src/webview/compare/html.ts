@@ -28,7 +28,6 @@ export function renderReposHtml(o: HtmlOptions): string {
       <button id="compare-layout-stacked" class="icon-button" title="${escapeHtml(localize("Stacked Layout"))}" aria-label="${escapeHtml(localize("Stacked Layout"))}">⬒</button>
       <button id="compare-toggle-left" class="icon-button" title="${escapeHtml(localize("Show or hide left side"))}" aria-label="${escapeHtml(localize("Show or hide left side"))}" aria-pressed="true">◧</button>
       <button id="compare-toggle-right" class="icon-button" title="${escapeHtml(localize("Show or hide right side"))}" aria-label="${escapeHtml(localize("Show or hide right side"))}" aria-pressed="true">◨</button>
-      <button id="compare-close" class="icon-button" title="${escapeHtml(localize("Close Compare"))}" aria-label="${escapeHtml(localize("Close Compare"))}">×</button>
     </div>
   </div>
   <div id="compare-workspace" class="compare-workspace">
@@ -63,8 +62,6 @@ function renderSide(side: "left" | "right"): string {
   const label = localize(side === "left" ? "Left" : "Right");
   return `<section id="compare-${side}" class="compare-side" aria-label="${escapeHtml(label)}">
     <div class="compare-pane-heading"><span id="compare-${side}-description">${escapeHtml(label)}</span><span class="compare-pane-actions">
-      <button id="compare-${side}-mode" class="icon-button compare-mode" type="button" title="${escapeHtml(localize("Show Commits"))}" aria-label="${escapeHtml(localize("Show Commits"))}" data-side="${side}">◉</button>
-      <button id="compare-${side}-same" class="icon-button compare-same" type="button" title="${escapeHtml(localize("Hide Files Already on Both"))}" aria-label="${escapeHtml(localize("Hide Files Already on Both"))}" data-side="${side}">⏷</button>
       <button id="compare-${side}-tree-toggle" class="icon-button" type="button" aria-controls="compare-${side}-tree" aria-label="${escapeHtml(localize("Collapse All"))}" disabled></button>
     </span></div>
     <div id="compare-${side}-message" class="cmessage" role="status" hidden></div>

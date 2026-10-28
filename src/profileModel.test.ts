@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, showSaveRow } from "./profileModel";
+import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership } from "./profileModel";
 
 {
   assert.deepStrictEqual(readProfiles(undefined), {});
@@ -44,12 +44,7 @@ import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames
   assert.deepStrictEqual(profileFilter(backend, all), ["/ws/acme-api", "/ws/acme-libs"]);
   assert.strictEqual(profileFilter(every, all), null, "every repository is All");
   assert.deepStrictEqual(profileFilter(gone, all), [], "nothing found ticks nothing");
-  assert.strictEqual(showSaveRow(resolved, null, all), false, "All: nothing to save");
-  assert.strictEqual(showSaveRow(resolved, [], all), false, "nothing ticked");
-  assert.strictEqual(showSaveRow(resolved, ["/ws/acme-api", "/ws/acme-libs"], all), false, "already a profile");
-  assert.strictEqual(showSaveRow(resolved, ["/ws/acme-web"], all), true);
-  assert.strictEqual(showSaveRow([], ["/ws/acme-web"], all), true, "also with no profiles yet");
-  console.log("ok - resolveProfiles, activeProfiles, profileFilter, showSaveRow");
+  console.log("ok - resolveProfiles, activeProfiles, profileFilter");
 }
 {
   const p = { backend: ["acme-api"], frontend: ["acme-web", "acme-libs"] };

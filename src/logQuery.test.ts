@@ -5,7 +5,7 @@ import * as path from "path";
 import { DEFAULT_FILTER, type FilterState } from "./filterModel";
 import { gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
-import { fetchPage, type QueryState, type RunGit } from "./logQuery";
+import { batchSize, fetchPage, MAX_BATCH, type QueryState, type RunGit } from "./logQuery";
 import { compareCommits } from "./mergeStream";
 import { isAbortError } from "./pool";
 import { commitKey, type Commit, type Repo } from "./types";
@@ -115,6 +115,17 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     assert.strictEqual(all.length, 10, "no commit after the skewed one goes missing");
     assert.strictEqual(new Set(all.map(commitKey)).size, 10);
     console.log("ok - a backwards-dated commit cannot hide the rest of its repo");
+  }
+  {
+    assert.deepStrictEqual([0, 200, 400, 1500, 50_000].map((fetched) => batchSize(fetched, 200)), [200, 200, 400, 1500, MAX_BATCH]);
+    assert.strictEqual(batchSize(0, 5000), 5000, "a page larger than the cap is still one page");
+    const walk = Array.from({ length: 30 }, (_, i) => mk(WEB, 10_000 - i));
+    const calls: string[][] = [];
+    const all = (await pageAll([WEB], { [WEB.root]: walk }, 2, calls)).flat();
+    assert.deepStrictEqual(all.map(commitKey), walk.map(commitKey), "a growing batch still lists every commit once, in order");
+    assert.deepStrictEqual(calls.map((c) => Number(arg(c, "--max-count="))), [2, 2, 4, 8, 16], "each read asks for as many as were read before");
+    assert.deepStrictEqual(calls.map((c) => Number(arg(c, "--skip=") ?? 0)), [0, 2, 4, 8, 16]);
+    console.log("ok - deep paging grows each repository's batch, so --skip walks history a logarithmic number of times");
   }
   {
     const rebased = Array.from({ length: 450 }, () => mk(WEB, 5000));

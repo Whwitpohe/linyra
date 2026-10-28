@@ -59,11 +59,11 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
 {
   const repos = [{ id: "/ws/acme-web", name: "acme-web", root: "/ws/acme-web" }, { id: "/ws/acme-api", name: "acme-api", root: "/ws/acme-api" }, { id: "/ws/acme-libs", name: "acme-libs", root: "/ws/acme-libs" }];
   const backend = { name: "backend", ids: ["/ws/acme-api", "/ws/acme-libs"], missing: [] };
-  const kinds = (rows: PaneRow[]) => rows.map((r) => (r.kind === "profile" ? `profile:${r.profile.name}${r.active ? "*" : ""}` : r.kind === "save" ? `save:${r.count}` : r.kind === "repo" ? r.name : "all"));
+  const kinds = (rows: PaneRow[]) => rows.map((r) => (r.kind === "profile" ? `profile:${r.profile.name}${r.active ? "*" : ""}` : r.kind === "repo" ? r.name : "all"));
   assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], null)), ["all", "profile:backend", "acme-web", "acme-api", "acme-libs"]);
   assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], backend.ids)), ["all", "profile:backend*", "acme-web", "acme-api", "acme-libs"], "active: the ticks are the profile");
-  assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], ["/ws/acme-web"])), ["all", "profile:backend", "save:1", "acme-web", "acme-api", "acme-libs"], "a new selection can be saved");
-  assert.deepStrictEqual(kinds(paneRows(repos, "", [], ["/ws/acme-web"])), ["all", "save:1", "acme-web", "acme-api", "acme-libs"], "the way in with no profiles yet");
+  assert.deepStrictEqual(kinds(paneRows(repos, "", [backend], ["/ws/acme-web"])), ["all", "profile:backend", "acme-web", "acme-api", "acme-libs"], "no save row: saving is in the menus");
+  assert.deepStrictEqual(kinds(paneRows(repos, "", [], ["/ws/acme-web"])), ["all", "acme-web", "acme-api", "acme-libs"]);
   assert.deepStrictEqual(kinds(paneRows(repos, "api", [backend], ["/ws/acme-web"])), ["all", "acme-api"], "searching repositories hides profiles");
-  console.log("ok - paneRows: All, profiles, the save row, repositories");
+  console.log("ok - paneRows: All, profiles, repositories");
 }

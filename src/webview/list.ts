@@ -16,6 +16,8 @@ export interface ListProps {
   repoNames: ReadonlyMap<string, string>;
   /** Preferred repository hues, shared with the repository pane. */
   accents: ReadonlyMap<string, number>;
+  /** Visible repository-list order, which shares the Log's palette. */
+  repoOrder?: readonly string[];
   /** Repositories with commits to pull: their rows' menu offers Pull. */
   behind?: ReadonlySet<string>;
   /** File history: the file's current path, to flag rows where it had another name. */
@@ -26,9 +28,21 @@ export interface ListProps {
   selectedKeys: ReadonlySet<string>;
   now: number;
   skeleton: boolean;
+  /** View options: bold my commits (each repository's user.email), dim commits HEAD does not reach, a hash column. */
+  me?: Readonly<Record<string, string>>;
+  highlightMine?: boolean;
+  offHead?: ReadonlySet<string>;
+  hashColumn?: boolean;
 }
 
 const SKELETON_ROWS = 8;
+
+/** A reference badge's tag icon: parsed once, cloned per badge. */
+const REF_ICON = (() => {
+  const t = document.createElement("template");
+  t.innerHTML = '<svg viewBox="0 0 16 16"><path d="m1.5 9 7-7h5.7v5.7l-7 7Z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11.5" cy="4.7" r=".8" fill="currentColor"/></svg>';
+  return t.content.firstChild as SVGElement;
+})();
 
 /**
  * Virtualized commit grid. Only visible rows exist in the DOM. The grid is one
@@ -48,6 +62,12 @@ export class CommitList {
   private nodeSegments = new Map<number, string>();
   private edgeActions = new Map<string, FoldAction>();
   private display: FoldProjection = { rows: [], sourceToDisplay: new Map(), hiddenCount: 0 };
+  /**
+   * Rows in the DOM by display index. A scroll keeps the ones still in range and builds only
+   * the rows scrolled into view; anything else (new props, folds, a resize) rebuilds them all.
+   * `top`: built as the first visible row, which prints its repository name mid-band.
+   */
+  private readonly mounted = new Map<number, { el: HTMLElement; top: boolean }>();
   private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, selectedKeys: new Set(), now: 0, skeleton: false };
 
   constructor(
@@ -65,7 +85,7 @@ export class CommitList {
       if (this.frame) return;
       this.frame = requestAnimationFrame(() => {
         this.frame = 0;
-        this.paint();
+        this.paint(true);
       });
     }, { passive: true });
     window.addEventListener("resize", () => {
@@ -101,7 +121,7 @@ export class CommitList {
   update(next: ListProps): void {
     const moved = next.selected !== this.props.selected;
     if (next.accents !== this.props.accents) this.accents = next.accents;
-    let changed = next.rows !== this.props.rows || next.accents !== this.props.accents || next.historyPath !== this.props.historyPath;
+    let changed = next.rows !== this.props.rows || next.accents !== this.props.accents || next.historyPath !== this.props.historyPath || next.repoOrder !== this.props.repoOrder;
     if (next.rows !== this.props.rows || next.historyPath !== this.props.historyPath) {
       this.segments = next.historyPath ? [] : linearSegments(next.rows);
       this.nodeSegments = segmentNodes(next.rows, this.segments);
@@ -109,6 +129,7 @@ export class CommitList {
       for (const id of this.collapsed) if (!available.has(id)) this.collapsed.delete(id);
     }
     this.props = next;
+    this.root.classList.toggle("hash-column", next.hashColumn === true);
     // A host-driven selection (or a refresh) can reveal a previously hidden commit.
     for (const segment of this.segments) if (this.collapsed.has(segment.id) && segment.hidden.some((i) => next.selectedKeys.has(commitKey(next.rows[i])))) {
       this.collapsed.delete(segment.id); changed = true;
@@ -155,7 +176,7 @@ export class CommitList {
   private rebuild(): void {
     this.display = projectFolds(this.props.rows, this.segments, this.collapsed);
     const commits = this.display.rows.map((row) => row.commit);
-    const accents = separateAdjacentAccents(commits, this.accents);
+    const accents = separateAdjacentAccents(commits, this.accents, this.props.repoOrder);
     if (accents !== this.accents) { this.accents = accents; this.onAccents(accents); }
     this.graph = layoutGraph(commits, this.accents);
     this.edgeActions = new Map();
@@ -182,12 +203,16 @@ export class CommitList {
     return el;
   }
 
-  private paint(): void {
+  /** scrolled: only the scroll position changed since the last paint, so built rows stay. */
+  private paint(scrolled = false): void {
     const { rows, selected, skeleton } = this.props;
     const rh = this.height();
-    this.graphWidth = Math.max(28, Math.min(12 + Math.max(0, this.graph.columns - 1) * 16, this.root.clientWidth * 0.24));
-    this.root.style.setProperty("--graph-width", `${this.graphWidth}px`);
-    clear(this.body);
+    if (!scrolled || skeleton) {
+      this.graphWidth = Math.max(28, Math.min(12 + Math.max(0, this.graph.columns - 1) * 16, this.root.clientWidth * 0.24));
+      this.root.style.setProperty("--graph-width", `${this.graphWidth}px`);
+      this.mounted.clear();
+      clear(this.body);
+    }
     this.root.setAttribute("aria-busy", String(skeleton));
     if (skeleton) {
       this.body.style.height = `${SKELETON_ROWS * rh}px`;
@@ -203,11 +228,27 @@ export class CommitList {
     this.body.style.height = `${this.display.rows.length * rh}px`;
     this.root.setAttribute("aria-rowcount", String(this.display.rows.length));
     const { start, end } = visibleRange(this.root.scrollTop, this.root.clientHeight, rh, this.display.rows.length);
-    for (let i = start; i < end; i++) {
-      const row = this.display.rows[i];
-      this.body.append(this.place(row.segment ? this.renderFold(i, row.segment) : this.renderRow(rows[row.sourceIndex], row.sourceIndex, i), i));
+    const top = Math.floor(this.root.scrollTop / rh);
+    for (const [i, m] of this.mounted) {
+      if (i >= start && i < end && m.top === (i === top)) continue;
+      m.el.remove();
+      this.mounted.delete(i);
     }
-    this.fitChips();
+    // In display order, so a screen reader walks the rows as they appear.
+    const built: HTMLElement[] = [];
+    let previous: HTMLElement | undefined;
+    for (let i = start; i < end; i++) {
+      const kept = this.mounted.get(i);
+      if (kept) { previous = kept.el; continue; }
+      const row = this.display.rows[i];
+      const el = this.place(row.segment ? this.renderFold(i, row.segment) : this.renderRow(rows[row.sourceIndex], row.sourceIndex, i), i);
+      if (previous) previous.after(el); else this.body.prepend(el);
+      previous = el;
+      this.mounted.set(i, { el, top: i === top });
+      built.push(el);
+    }
+    this.fitChips(built);
+    this.fitReferences(built);
     if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
     else this.root.removeAttribute("aria-activedescendant");
   }
@@ -217,32 +258,64 @@ export class CommitList {
    * that share a prefix differ at the end, and the browser's own ellipsis would hide it.
    * The full name stays in the chip's tooltip and accessible name.
    */
-  private fitChips(): void {
-    const first = this.body.querySelector<HTMLElement>(".row:not(.skeleton)");
+  private fitChips(rows: readonly HTMLElement[]): void {
+    const first = rows[0];
     if (!first) return;
     const column = (this.column ??= parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]));
     if (!Number.isFinite(column)) {
       this.column = undefined;
       return;
     }
-    const chips = [...this.body.querySelectorAll<HTMLElement>(".row .chip")];
+    const chips = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".chip")]);
     if (chips.length === 0) return;
     // Every chip shares one font and padding: read them once, then only write.
     const { font, paddingX } = textStyle(chips[0]);
     for (const chip of chips) chip.textContent = fitName(font, chip.dataset.name ?? "", column - paddingX);
   }
 
+  /** Keep whole reference badges; summarize overflow instead of clipping the last branch. */
+  private fitReferences(rows: readonly HTMLElement[]): void {
+    const groups = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".row-refs")]).map((group) => {
+      const badges = [...group.querySelectorAll<HTMLElement>(".row-ref")];
+      const more = group.querySelector<HTMLElement>(".row-ref-more")!;
+      return { badges, more, width: group.getBoundingClientRect().width,
+        widths: badges.map((badge) => badge.getBoundingClientRect().width),
+        moreWidth: more.getBoundingClientRect().width, gap: parseFloat(getComputedStyle(group).columnGap) || 0 };
+    });
+    for (const { badges, more, width, widths, moreWidth, gap } of groups) {
+      if (widths.reduce((sum, size) => sum + size, 0) + gap * (badges.length - 1) <= width) {
+        more.hidden = true;
+        continue;
+      }
+      let shown = 0, used = 0;
+      while (shown < badges.length - 1 && used + widths[shown] + gap * shown + gap + moreWidth <= width) {
+        used += widths[shown++];
+      }
+      // If even the first name is too long, keep it with an ellipsis beside the count.
+      if (shown === 0 && width >= moreWidth + gap + 40) {
+        shown = 1;
+        badges[0].style.maxWidth = `${width - moreWidth - gap}px`;
+      }
+      for (const badge of badges.slice(shown)) badge.hidden = true;
+      more.textContent = `+${badges.length - shown}`;
+    }
+  }
+
   /** One line: repository band | commit graph | subject | author | date. */
   private renderRow(c: Commit, i: number, displayIndex: number): HTMLElement {
     const accent = accentOf(this.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
+    const references = referenceLabels(c.refs ?? []), referenceTitle = c.refs?.map((ref) => ref.name).join(", ") ?? "";
     const focus = i === this.props.selected;
+    const myEmail = this.props.highlightMine ? this.props.me?.[c.repoId] : undefined;
+    const mine = !!myEmail && myEmail.toLowerCase() === c.email.toLowerCase();
+    const offHead = this.props.offHead?.has(commitKey(c)) === true;
     const start = this.display.rows[displayIndex - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[displayIndex + 1]?.commit.repoId !== c.repoId;
     const showName = start || displayIndex === Math.floor(this.root.scrollTop / this.height());
     const segmentId = this.nodeSegments.get(i), segment = this.segments.find((s) => s.id === segmentId);
     return h("div", {
-      class: focus ? "row focus" : "row",
+      class: `row${focus ? " focus" : ""}${mine ? " mine" : ""}${offHead ? " off-head" : ""}`,
       role: "row",
       id: `row-${i}`,
       "aria-rowindex": String(displayIndex + 1),
@@ -250,7 +323,9 @@ export class CommitList {
       "data-index": String(i),
       // Right-click: the commit's and its repository's menu (package.json webview/context), not
       // Cut/Copy/Paste. File History is one file of one repository: no repo filter items there.
-      "data-vscode-context": JSON.stringify({ webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, behind: this.props.behind?.has(c.repoId) === true, preventDefaultContextMenuItems: true }),
+      // head: the checked-out commit, which alone offers Undo Commit and Edit Commit Message.
+      "data-vscode-context": JSON.stringify({ webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, behind: this.props.behind?.has(c.repoId) === true,
+        head: c.refs?.some((ref) => ref.kind === "head") === true, preventDefaultContextMenuItems: true }),
     }, [
       h("span", { class: `repo-band accent-${accent}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name },
         showName ? [h("span", { class: "chip repo-label", "data-name": name }, [name])] : []),
@@ -260,18 +335,18 @@ export class CommitList {
       h("span", { class: "commit-message", role: "gridcell" }, [
         h("span", { class: "subject", title: c.subject }, [c.subject,
           this.props.historyPath && c.file && c.file.path !== this.props.historyPath ? h("span", { class: "was-path" }, [` — ${c.file.path}`]) : null]),
-        c.refs?.length ? h("span", { class: "row-refs", title: c.refs.map((ref) => ref.name).join(", ") }, referenceLabels(c.refs).map((ref) => {
+        references.length ? h("span", { class: "row-refs", title: referenceTitle }, references.map((ref) => {
           const badge = h("span", { class: `row-ref ref-${ref.kinds.at(-1)}`, title: ref.title });
           const marks = h("span", { class: "row-ref-icons" });
           for (const kind of ref.kinds) {
-            const mark = h("span", { class: `row-ref-icon ref-${kind}`, "aria-hidden": "true" });
-            mark.innerHTML = '<svg viewBox="0 0 16 16"><path d="m1.5 9 7-7h5.7v5.7l-7 7Z" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="11.5" cy="4.7" r=".8" fill="currentColor"/></svg>';
-            marks.append(mark);
+            marks.append(h("span", { class: `row-ref-icon ref-${kind}`, "aria-hidden": "true" }, [REF_ICON.cloneNode(true)]));
           }
-          badge.append(marks, h("span", {}, [ref.label]));
+          badge.append(marks, h("span", { class: "row-ref-label" }, [ref.label]));
           return badge;
-        })) : null,
+        }).concat(h("span", { class: "row-ref-more", title: referenceTitle,
+          "aria-label": `${localize("Commit references")}: ${referenceTitle}` }, [`+${references.length}`]))) : null,
       ]),
+      this.props.hashColumn ? h("span", { class: "hash", role: "gridcell", title: c.sha }, [c.sha.slice(0, 8)]) : null,
       h("span", { class: "author", role: "gridcell" }, [c.author]),
       h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
     ]);
@@ -288,6 +363,7 @@ export class CommitList {
       renderGraph(this.graph.rows[index], c, this.graph.columns, this.graphWidth, this.height(), { folded: { id: segment.id, count: segment.hidden.length }, edges: this.edgeActions }),
       h("span", { role: "gridcell", class: "fold-summary" }, [h("button", { type: "button", class: "fold-expand", "data-fold-expand": segment.id,
         title: localize("Expand {0} hidden commits", segment.hidden.length), "aria-expanded": "false" }, [localize("{0} commits hidden · Expand", segment.hidden.length)])]),
+      this.props.hashColumn ? h("span", { role: "gridcell", class: "hash" }) : null,
       h("span", { role: "gridcell", class: "author" }), h("span", { role: "gridcell", class: "date" }),
     ]);
   }

@@ -103,14 +103,11 @@ byId("refresh").addEventListener("click", () => {
 });
 byId("mode-files").addEventListener("click", () => post({ type: "mode", mode: "files" }));
 byId("mode-commits").addEventListener("click", () => post({ type: "mode", mode: "commits" }));
-byId("compare-close").addEventListener("click", () => post({ type: "close" }));
 byId("compare-hide-same").addEventListener("click", () => post({ type: "hideSame", hide: !hideSame }));
 byId("compare-layout-horizontal").addEventListener("click", () => { layout.orientation = "sideBySide"; applyLayout(); saveLayout(); });
 byId("compare-layout-stacked").addEventListener("click", () => { layout.orientation = "stacked"; applyLayout(); saveLayout(); });
 for (const side of ["left", "right"] as const) {
   byId(`compare-toggle-${side}`).addEventListener("click", () => post({ type: "sideVisibility", side, show: side === "left" ? !showLeft : !showRight }));
-  byId(`compare-${side}-mode`).addEventListener("click", () => post({ type: "mode", mode: mode === "files" ? "commits" : "files" }));
-  byId(`compare-${side}-same`).addEventListener("click", () => post({ type: "hideSame", hide: !hideSame }));
 }
 
 list.addEventListener("click", (e) => {
@@ -220,19 +217,13 @@ function renderState(message?: string): void {
   byId("branch-right").title = `${localize("The branch it goes into")}${pair?.right ? `\n${pair.right}` : ""}`;
   byId("mode-files").setAttribute("aria-pressed", String(mode === "files"));
   byId("mode-commits").setAttribute("aria-pressed", String(mode === "commits"));
-  for (const id of ["compare-hide-same", "compare-left-same", "compare-right-same"]) {
-    const button = byId<HTMLButtonElement>(id);
-    button.disabled = mode !== "files";
-    button.title = localize(hideSame ? "Show Files Already on Both" : "Hide Files Already on Both");
-    button.setAttribute("aria-label", button.title);
-    button.setAttribute("aria-pressed", String(hideSame));
-  }
-  for (const side of ["left", "right"] as const) {
-    const button = byId<HTMLButtonElement>(`compare-${side}-mode`);
-    button.title = localize(mode === "files" ? "Show Commits" : "Show Files");
-    button.setAttribute("aria-label", button.title);
-    button.textContent = mode === "files" ? "◉" : "▤";
-  }
+  // One control per setting: Files | Commits and Hide Files Already on Both apply to both sides,
+  // so they live once in the toolbar (each side's header keeps only its own Collapse All).
+  const hideButton = byId<HTMLButtonElement>("compare-hide-same");
+  hideButton.disabled = mode !== "files";
+  hideButton.title = localize(hideSame ? "Show Files Already on Both" : "Hide Files Already on Both");
+  hideButton.setAttribute("aria-label", hideButton.title);
+  hideButton.setAttribute("aria-pressed", String(hideSame));
   const msg = byId("message");
   msg.hidden = message === undefined;
   msg.textContent = message ?? "";

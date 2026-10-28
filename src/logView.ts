@@ -9,21 +9,25 @@ import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { readReferences } from "./commitReferences";
 import { debounce } from "./debounce";
 import { toolbarCommand, type ToolbarState, type ChangesLayout } from "./toolbarModel";
-import { DEFAULT_FILTER, hashQuery, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
 import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
-import { commitWebUrl } from "./remoteUrl";
-import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
+import { authorSuggestions, branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
-import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
+import type { AheadBehind } from "./upstream";
+import { SyncController } from "./syncController";
+import { ProfileController } from "./profileController";
+import { RepoCommands } from "./repoCommands";
+import { CommitGraphHint } from "./commitGraphHint";
+import { wantsCommitGraphHint } from "./commitGraphModel";
 import type { UncommittedStore } from "./uncommittedStore";
 import { openWorkDiff, type Ask } from "./uncommittedView";
-import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
+import type { ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 import { SELECTION_LIMIT } from "./webview/selectionModel";
 import type { BranchController } from "./branchController";
@@ -34,18 +38,11 @@ const FILTER_KEY = "linyra.filter";
 export const HIDE_REPOS_KEY = "linyra.hideRepos";
 /** globalState: the Repositories pane width the user dragged to. */
 const PANE_WIDTH_KEY = "linyra.repoPaneWidth";
+/** globalState: the Log's view options. */
+const HIGHLIGHT_MINE_KEY = "linyra.highlightMine";
+const HIGHLIGHT_HEAD_KEY = "linyra.highlightHead";
+const HASH_COLUMN_KEY = "linyra.hashColumn";
 const DEFAULT_PANE_WIDTH = 190;
-/** For a git run that must finish once started (a merge rewriting the working tree). */
-const NEVER_ABORT = new AbortController().signal;
-/** Context key: Fetch All is running (the toolbar shows a spinning sync instead of the cloud). */
-const FETCHING_KEY = "linyra.fetching";
-/** Fetch All's answer; summary is the status-bar line shown when every fetch succeeded. */
-export interface FetchResult { fetched: number; failed: string[]; summary?: string }
-/** Pull All Behind's answer: the repositories pulled, and those left as they were (and why). */
-export interface PullResult { pulled: string[]; skipped: { name: string; reason: string }[] }
-/** Fetch All: network-bound, so fewer at once than the log reads; and a fetch that hangs stops. */
-const FETCH_CONCURRENCY = 8;
-const FETCH_TIMEOUT_MS = 60_000;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -122,6 +119,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private repos: Repo[] = [];
   private filter: FilterState;
   private rows: Commit[] = [];
+  /** The listed commits by commitKey: a selection looks its commit up without scanning the list. */
+  private listed = new Map<string, Commit>();
   private failures: RepoFailure[] = [];
   private done = true;
   private queryState: QueryState | null = null;
@@ -161,6 +160,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly run: RunGit;
   private referenceEpoch = 0;
   private firstLoad: Promise<void> | undefined;
+  /** Fetch, Pull and each repository's distance from its upstream. */
+  readonly upstream: SyncController;
+  /** The Repo List's named sets of repositories. */
+  readonly profiles: ProfileController;
+  /** Repository and commit right-click commands that read or filter. */
+  readonly commands: RepoCommands;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.run = (cwd, args, signal, opts) => {
@@ -172,6 +177,19 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       if (process.env.LINYRA_ITEST !== "1" && this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
       return deps.run(cwd, args, signal, opts);
     };
+    this.upstream = new SyncController({
+      viewId: LogView.id, repos: () => this.repos, ensureRepos: () => this.loadRepos(), maxConcurrency: () => this.settings().maxConcurrency,
+      run: this.run, discovery: deps.discovery, uncommitted: deps.uncommitted, reload: () => this.reload(), remotesFetched: () => this.remotesFetched(),
+      refsChanged: (id) => this.refsChanged.fire(id), toolbarChanged: () => this.toolbarChanged(), syncChanged: (byRepo) => this.postSync(byRepo),
+    });
+    this.profiles = new ProfileController({
+      repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg),
+      setRepoFilter: (ids) => this.setRepoFilter(ids), changed: () => this.postInit(), ask: deps.ask,
+    });
+    this.commands = new RepoCommands({
+      repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg), contextCommit: (arg) => this.contextCommit(arg),
+      setRepoFilter: (ids) => this.setRepoFilter(ids), untick: (id) => this.untick(id), behind: (ids) => this.upstream.behind(ids), run: this.run,
+    });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
     this.disposables.push(
@@ -230,7 +248,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.postInit(true);
         // A re-created webview lost the suggestions it had: send them again (only then).
         if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
-        if (this.sync.size > 0) this.postSync();
+        if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
         this.postUncommitted();
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
@@ -302,11 +320,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (typeof m.changesPaneHeight === "number" && Number.isFinite(m.changesPaneHeight)) await this.context.globalState.update("linyra.changesPaneHeight", Math.max(96, Math.min(1200, Math.round(m.changesPaneHeight))));
         if (typeof m.showChanges === "boolean") await this.context.globalState.update("linyra.showChanges", m.showChanges);
         if (m.changesLayout === "auto" || m.changesLayout === "sideBySide" || m.changesLayout === "stacked") await this.context.globalState.update("linyra.changesLayout", m.changesLayout);
-        if (typeof m.showChanges === "boolean") this.postInit();
+        if (typeof m.highlightMine === "boolean") await this.context.globalState.update(HIGHLIGHT_MINE_KEY, m.highlightMine);
+        if (typeof m.hashColumn === "boolean") await this.context.globalState.update(HASH_COLUMN_KEY, m.hashColumn);
+        if (typeof m.highlightHead === "boolean") {
+          await this.context.globalState.update(HIGHLIGHT_HEAD_KEY, m.highlightHead);
+          if (m.highlightHead) void this.readOffHead(); else this.post({ type: "offHead", keys: [] });
+        }
+        if (typeof m.showChanges === "boolean" || typeof m.highlightMine === "boolean" || typeof m.highlightHead === "boolean" || typeof m.hashColumn === "boolean") this.postInit();
         this.deps.changes.visibilityChanged();
         return;
       case "profileSave":
-        await this.profileSave();
+        await this.profiles.save();
         return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
@@ -328,14 +352,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       changesPaneHeight: this.context.globalState.get<number>("linyra.changesPaneHeight", 240),
       showChanges: this.context.globalState.get<boolean>("linyra.showChanges", true),
       changesLayout: this.context.globalState.get<ChangesLayout>("linyra.changesLayout", "auto"),
+      highlightMine: this.context.globalState.get<boolean>(HIGHLIGHT_MINE_KEY, false),
+      highlightHead: this.context.globalState.get<boolean>(HIGHLIGHT_HEAD_KEY, false),
+      hashColumn: this.context.globalState.get<boolean>(HASH_COLUMN_KEY, false),
     };
   }
 
   private toolbarState(): ToolbarState {
     const flags = this.deps.toolbarFlags?.();
     return { groupByRepo: this.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
-      uncommittedShown: flags?.uncommittedShown ?? false, fetching: this.fetching !== undefined,
-      anyBehind: [...this.sync.values()].some((state) => state.behind > 0) };
+      uncommittedShown: flags?.uncommittedShown ?? false, fetching: this.upstream.fetching,
+      anyBehind: this.upstream.anyBehind() };
   }
 
   toolbarChanged(): void {
@@ -357,7 +384,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.toolbarChanged();
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, profiles: this.resolvedProfiles(), ...(forceMode ? { logMode: this.logMode } : {}) });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layout(), history, profiles: this.profiles.resolved(), ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**
@@ -529,8 +556,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.backgroundFor = undefined;
     this.meFor = undefined;
     void this.deps.uncommitted.readAll(true);
-    this.fetchCtl.abort();
-    this.fetchCtl = new AbortController();
+    this.upstream.gitChanged();
     await this.reload();
     const current = this.deps.changes.current();
     if (current) await this.showDetail(current.commit.repoId, current.commit.sha);
@@ -572,7 +598,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (key === this.backgroundFor) return;
     this.backgroundFor = key;
     void this.loadMe();
-    void this.readSync();
+    void this.upstream.read();
     // Uncommitted work: once, after the first page (the switch's badge), then kept current by events.
     void this.deps.uncommitted.readAll();
     // Suggestions are read when their box is first focused (wantSuggestions), not here:
@@ -658,7 +684,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (force || changed || this.queryState === null) await this.reload();
     // Refresh also re-reads how far each repo is from its upstream (a fetch may have moved it).
     if (force) {
-      void this.readSync();
+      void this.upstream.read();
       void this.deps.uncommitted.readAll(true);
     }
   }
@@ -668,9 +694,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.refreshRepos();
   }
 
-  /** Each repository's distance from its upstream, for the Repositories pane's ↓/↑ badge. */
-  private sync = new Map<string, AheadBehind>();
-  /** Background reads (Me, ↓/↑, suggestions): stopped when Linyra is. */
+  /** Background reads (Me, suggestions): stopped when Linyra is. */
   private readonly background = new AbortController();
   /** The current webview's listeners: a re-created webview drops the old one's. */
   private viewDisposables: vscode.Disposable[] = [];
@@ -693,245 +717,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return branches.length === 1 ? branches[0] : "";
   }
 
-  /**
-   * Reads ahead/behind for these repositories (every one by default): one git rev-list each,
-   * from local refs. Posted only when a count changed.
-   */
-  private async readSync(only?: ReadonlySet<string>): Promise<void> {
-    const repos = only ? this.repos.filter((r) => only.has(r.id)) : [...this.repos];
-    const settled = await runPool(repos, this.settings().maxConcurrency, (r, signal) => this.run(r.root, aheadBehindArgs(), signal), this.background.signal);
-    const next = new Map(only ? this.sync : []);
-    settled.forEach((s, i) => {
-      const ab = s.status === "fulfilled" ? parseAheadBehind(s.value) : null;
-      if (ab && (ab.ahead > 0 || ab.behind > 0)) next.set(repos[i].id, ab);
-      else next.delete(repos[i].id);
-    });
-    for (const id of next.keys()) if (!this.repos.some((r) => r.id === id)) next.delete(id);
-    const key = (m: Map<string, AheadBehind>) => JSON.stringify([...m].sort());
-    if (key(next) === key(this.sync)) return;
-    this.sync = next;
-    this.postSync();
-    void vscode.commands.executeCommand("setContext", "linyra.anyBehind", behindRepos([...next.keys()], Object.fromEntries(next)).length > 0);
-  }
-
-  private fetching: Promise<FetchResult> | undefined;
-
-  /**
-   * Fetch All (the Log's toolbar): git fetch in every repository, a few at a time, then read how
-   * far each is from its upstream again. The only thing Linyra changes in a repository, and only
-   * when asked. Never prompts (GIT_TERMINAL_PROMPT=0); a fetch that hangs stops after a minute.
-   */
-  fetchAll(): Promise<FetchResult> {
-    if (!this.fetching) {
-      // The toolbar's cloud turns into a spinning sync until it is done.
-      void vscode.commands.executeCommand("setContext", FETCHING_KEY, true);
-      this.fetching = this.runFetchAll().finally(() => {
-        this.fetching = undefined;
-        this.toolbarChanged();
-        void vscode.commands.executeCommand("setContext", FETCHING_KEY, false);
-        this.refsChanged.fire(undefined);
-      });
-    }
-    this.toolbarChanged();
-    return this.fetching;
-  }
-
-  private async runFetchAll(): Promise<FetchResult> {
-    if (this.repos.length === 0) await this.loadRepos();
-    const repos = [...this.repos];
-    const prune = vscode.workspace.getConfiguration("git").get<boolean>("pruneOnFetch", false) === true;
-    // Network work, not disk: fewer at once than the log reads.
-    const limit = Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY);
-    const outer = this.fetchCtl.signal;
-    // A minute or so over SSH for many repositories: the Log's progress line, and a count in the status bar.
-    const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Fetching") }, () =>
-      vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "Linyra" }, (progress) => {
-        let done = 0;
-        progress.report({ message: fetchProgress(done, repos.length) });
-        return runPool(repos, limit, (r) => this.fetchOne(r, prune, outer).finally(() => progress.report({ message: fetchProgress(++done, repos.length) })), outer);
-      }));
-    if (outer.aborted) return { fetched: 0, failed: [] }; // disposed, or git changed: say nothing
-    const failed = settled.flatMap((s, i) => (s.status === "rejected" ? [{ repo: repos[i], reason: s.reason }] : []));
-    if (failed.length > 0) {
-      const why = (e: unknown) => (isAbortError(e) ? localize("no answer after {0} s", FETCH_TIMEOUT_MS / 1000) : messageOf(e));
-      const list = failed.slice(0, 3).map((f) => `${f.repo.name} (${why(f.reason)})`).join(", ");
-      const more = failed.length > 3 ? localize(" and {0} more", failed.length - 3) : "";
-      void vscode.window.showWarningMessage(localize("Linyra could not fetch {0} of {1} repositories: {2}{3}.", failed.length, repos.length, list, more));
-    }
-    // New remote branches: the Branch box's suggestions and a branch-mode page are out of date.
+  /** Fetch All brought remote branches: new Branch box suggestions, and a branch-mode page read again. */
+  private async remotesFetched(): Promise<void> {
     this.suggestionsFor.delete("branches");
     if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
     if (selectedBranches(this.filter).length) await this.reload();
-    await this.readSync();
-    const result: FetchResult = { fetched: repos.length - failed.length, failed: failed.map((f) => f.repo.name) };
-    if (failed.length === 0) {
-      // What it found, long enough to read after a long wait.
-      result.summary = fetchSummary(repos.length, behindRepos(repos.map((r) => r.id), Object.fromEntries(this.sync)).length);
-      vscode.window.setStatusBarMessage(result.summary, 8000);
-    }
-    return result;
   }
 
-  /** Aborted by dispose and by a new git binary: a fetch in flight stops, with its helpers. */
-  private fetchCtl = new AbortController();
-
-  private async fetchOne(repo: Repo, prune: boolean, outer: AbortSignal): Promise<string> {
-    const ctl = new AbortController();
-    const stop = () => ctl.abort();
-    const timer = setTimeout(stop, FETCH_TIMEOUT_MS);
-    outer.addEventListener("abort", stop, { once: true });
-    try {
-      // tree: a timeout also kills ssh and the credential helpers git started.
-      return await this.run(repo.root, fetchArgs(prune), ctl.signal, { tree: true, env: FETCH_ENV });
-    } finally {
-      clearTimeout(timer);
-      outer.removeEventListener("abort", stop);
-    }
-  }
-
-  /**
-   * Right-click a repository behind its upstream → Pull. Through VS Code's own Git when it has
-   * the repository open (its settings, prompts and conflict handling, exactly like its Pull);
-   * otherwise git pull --ff-only, which only moves the branch forward and stops if it diverged.
-   */
-  async repoPull(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (!repo || this.pulling.has(repo.id)) return;
-    this.pulling.add(repo.id);
-    try {
-      // Both would fetch into the same remote-tracking refs: let Fetch All finish first.
-      if (this.fetching) await this.fetching;
-      // VS Code's own Pull (git.pull) reports its own errors (conflicts, a dirty tree) in its words.
-      const viaVsCode = this.deps.discovery.vsCodeGitHas(repo.root);
-      await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Pulling {0}", repo.name) }, async () => {
-        if (viaVsCode) await this.deps.discovery.pullWithVsCodeGit(repo.root);
-        else await this.pullFastForward(repo);
-      });
-    } catch (e) {
-      if (!isAbortError(e) || !this.fetchCtl.signal.aborted) {
-        const why = isAbortError(e) ? localize("no answer after {0} s", FETCH_TIMEOUT_MS / 1000)
-          : /fast-forward/i.test(messageOf(e)) ? localize("it has diverged from its upstream, and Linyra only fast-forwards here. Pull it in Source Control or a terminal")
-          : messageOf(e);
-        void vscode.window.showErrorMessage(localize("Linyra could not pull {0}: {1}.", repo.name, why));
-      }
-    } finally {
-      this.pulling.delete(repo.id);
-    }
-    // The new commits, the branch's distance from its upstream, and its working tree.
-    void this.deps.uncommitted.readRepo(repo.id);
-    await this.reload();
-    await this.readSync(new Set([repo.id]));
-    this.refsChanged.fire(repo.id);
-  }
-
-  /** Repositories being pulled: a second click on one waits for nothing and does nothing. */
-  private readonly pulling = new Set<string>();
-
-  /**
-   * Pull for a repository VS Code's Git has not opened: fast-forward only (never a merge commit;
-   * it stops if the branch diverged), no prompts, no submodules, and a minute to answer.
-   */
-  private async pullFastForward(repo: Repo): Promise<void> {
-    const ctl = new AbortController();
-    const outer = this.fetchCtl.signal;
-    const stop = () => ctl.abort();
-    const timer = setTimeout(stop, FETCH_TIMEOUT_MS);
-    outer.addEventListener("abort", stop, { once: true });
-    try {
-      // English: its "fast-forward" error is recognized below whatever the system's language.
-      await this.run(repo.root, ["pull", "--ff-only", "--quiet", "--recurse-submodules=no"], ctl.signal, { tree: true, env: { ...FETCH_ENV, LC_ALL: "C" } });
-    } finally {
-      clearTimeout(timer);
-      outer.removeEventListener("abort", stop);
-    }
-  }
-
-  /**
-   * Pull All Behind (the Log's … menu): every repository with ↓ fast-forwarded to what the last
-   * fetch brought, a few at a time. A diverged one, or one whose local changes touch the incoming
-   * files, is left as it was and named.
-   */
-  async pullAllBehind(): Promise<PullResult> {
-    if (this.fetching) await this.fetching;
-    if (this.repos.length === 0) await this.loadRepos();
-    const plan = pullPlan(this.repos.map((r) => r.id), Object.fromEntries(this.sync));
-    const byId = (id: string) => this.repos.find((r) => r.id === id)!;
-    const repos = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
-    if (repos.length === 0 && plan.diverged.length === 0) {
-      void vscode.window.showInformationMessage(plan.pull.length > 0
-        ? localize("Linyra: the repositories behind their upstream are already being pulled.")
-        : localize("Linyra: no repository is behind its upstream (as of the last fetch)."));
-      return { pulled: [], skipped: [] };
-    }
-    for (const r of repos) this.pulling.add(r.id);
-    const outer = this.fetchCtl.signal;
-    let settled: PromiseSettledResult<string>[];
-    try {
-      settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: localize("Pulling") }, () =>
-        // The pool stops starting merges on an abort; a merge already running is never killed
-        // halfway through the working tree. No prompts (hooks and LFS may ask), and git's own words in English for pullReason.
-        runPool(repos, Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY), (r) => this.run(r.root, pullArgs(), NEVER_ABORT, { env: { ...FETCH_ENV, LC_ALL: "C" } }), outer));
-    } finally {
-      for (const r of repos) this.pulling.delete(r.id);
-    }
-    if (outer.aborted) return { pulled: [], skipped: [] };
-    const pulled = repos.filter((_, i) => settled[i].status === "fulfilled");
-    const skipped = [
-      ...repos.flatMap((r, i) => { const s = settled[i]; return s.status === "rejected" ? [{ name: r.name, reason: pullReason(messageOf(s.reason)) }] : []; }),
-      ...plan.diverged.map((id) => ({ name: byId(id).name, reason: localize("it has diverged from its upstream") })),
-    ];
-    if (skipped.length > 0) {
-      const list = skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join(", ");
-      const more = skipped.length > 3 ? localize(" and {0} more", skipped.length - 3) : "";
-      void vscode.window.showWarningMessage(localize("Linyra pulled {0} of {1} repositories. Left as they were: {2}{3}. Pull those in Source Control or a terminal.", pulled.length, pulled.length + skipped.length, list, more));
-    } else {
-      vscode.window.setStatusBarMessage(pullSummary(pulled.length), 8000);
-    }
-    // The new commits, each branch's distance from its upstream, and the working trees.
-    for (const r of pulled) void this.deps.uncommitted.readRepo(r.id);
-    await this.reload();
-    await this.readSync();
-    this.refsChanged.fire(undefined);
-    return { pulled: pulled.map((r) => r.name), skipped };
-  }
-
-  /** Fetch and Pull All: Fetch All, then Pull All Behind with what it brought. */
-  async fetchAndPullAll(): Promise<PullResult | undefined> {
-    // Taken before: a git.path change mid-fetch aborts this one and swaps in a fresh controller.
-    const signal = this.fetchCtl.signal;
-    await this.fetchAll();
-    // Disposed, or git changed mid-fetch: nothing more (the ↓ marks are from the old git).
-    if (signal.aborted) return undefined;
-    return this.pullAllBehind();
-  }
-
-  /** Show Only Repositories Behind: tick the repositories with commits to pull (as of the last fetch). */
-  async showBehind(): Promise<void> {
-    const ids = behindRepos(this.repos.map((r) => r.id), Object.fromEntries(this.sync));
-    if (ids.length === 0) {
-      void vscode.window.showInformationMessage(localize("Linyra: no repository is behind its upstream (as of the last fetch)."));
-      return;
-    }
-    await this.setRepoFilter(ids);
-  }
-
-  private postSync(): void {
+  private postSync(byRepo: Record<string, AheadBehind>): void {
     this.toolbarChanged();
-    this.post({ type: "sync", byRepo: Object.fromEntries(this.sync) });
-    this.syncChanged.fire();
+    this.post({ type: "sync", byRepo });
   }
-
-  private readonly syncChanged = new vscode.EventEmitter<void>();
-  /** A repository's distance from its upstream changed (the Uncommitted view offers Pull). */
-  readonly onDidChangeSync = this.syncChanged.event;
-
-  /** Repositories VS Code's Git reported a change in, whose upstream distance is read again. */
-  private readonly syncTouched = new Set<string>();
-  private readonly syncSoon = debounce(() => {
-    const ids = new Set(this.syncTouched);
-    this.syncTouched.clear();
-    void this.readSync(ids);
-  }, 400);
 
   /**
    * VS Code's Git reported a new state for a repository (a save, a stage, a fetch, a pull):
@@ -945,73 +741,30 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const repo = this.innermost(root)?.r;
     if (!repo) return;
     this.refsChanged.fire(repo.id);
-    this.syncTouched.add(repo.id);
-    this.syncSoon();
+    this.upstream.touched(repo.id);
   }
 
   /** The repository a right-click on the Log's webview (a pane row or a commit row) was on. */
-  /** The repository has commits to pull (as of the last fetch). */
-  isBehind(repoId: string): boolean {
-    return (this.sync.get(repoId)?.behind ?? 0) > 0;
-  }
-
-  private contextRepo(arg: unknown): Repo | undefined {
+  contextRepo(arg: unknown): Repo | undefined {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     return typeof id === "string" ? this.repos.find((r) => r.id === id) : undefined;
   }
 
+  /** The listed commit a right-click on a Log row was on, with its repository. */
+  listedCommit(arg: unknown): { repo: Repo; commit: Commit } | undefined {
+    const c = this.contextCommit(arg);
+    return c ? this.findCommit(c.repo.id, c.sha) : undefined;
+  }
+
   /** The commit a right-click on a Log row was on: a real commit of a listed repository. */
-  private contextCommit(arg: unknown): { repo: Repo; sha: string } | undefined {
+  contextCommit(arg: unknown): { repo: Repo; sha: string } | undefined {
     const repo = this.contextRepo(arg);
     const sha = (arg as { sha?: unknown } | undefined)?.sha;
     return repo && typeof sha === "string" && isSha(sha) && sha !== UNCOMMITTED ? { repo, sha } : undefined;
   }
 
-  /** Right-click a commit → Copy Commit ID. */
-  async commitCopySha(arg: unknown): Promise<void> {
-    const c = this.contextCommit(arg);
-    if (c) await vscode.env.clipboard.writeText(c.sha);
-  }
-
-  /** Right-click a commit → Copy Message: the whole message (the row shows only the subject). */
-  async commitCopyMessage(arg: unknown): Promise<void> {
-    const c = this.contextCommit(arg);
-    if (!c) return;
-    try {
-      const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], this.background.signal);
-      await vscode.env.clipboard.writeText(message.trim());
-    } catch (e) {
-      void vscode.window.showErrorMessage(localize("Linyra could not read the commit message: {0}", messageOf(e)));
-    }
-  }
-
-  /**
-   * Right-click a commit → Open on Remote: its page on GitHub, GitLab, Bitbucket, Azure DevOps…,
-   * from the repository's origin (or its first remote). Returns the URL opened.
-   */
-  async commitOpenOnRemote(arg: unknown): Promise<string | undefined> {
-    const c = this.contextCommit(arg);
-    if (!c) return undefined;
-    const signal = new AbortController().signal;
-    const urlOf = (name: string) => this.run(c.repo.root, ["remote", "get-url", "--", name], signal).then((s) => s.trim(), () => "");
-    let remote = await urlOf("origin");
-    if (!remote) {
-      // No origin: the first remote git lists (alphabetical).
-      const names = await this.run(c.repo.root, ["remote"], signal).then((s) => s.split("\n").map((x) => x.trim()).filter(Boolean), () => []);
-      if (names[0]) remote = await urlOf(names[0]);
-    }
-    const url = remote ? commitWebUrl(remote, c.sha) : null;
-    if (!url) {
-      void vscode.window.showInformationMessage(localize("Linyra: {0} has no remote with a web page for this commit.", c.repo.name));
-      return undefined;
-    }
-    // The integration suite checks the URL without launching a browser.
-    if (process.env.LINYRA_ITEST !== "1") await vscode.env.openExternal(vscode.Uri.parse(url, true));
-    return url;
-  }
-
   /** Sets the repo filter from the host (a right-click): the webview gets it with init. */
-  private async setRepoFilter(repoIds: string[] | null): Promise<void> {
+  async setRepoFilter(repoIds: string[] | null): Promise<void> {
     const key = (ids: string[] | null) => (ids === null ? null : ids.join("\0"));
     if (key(repoIds) === key(this.filter.repoIds)) return;
     // A filter the user cannot see is a trap: picking repositories shows the pane.
@@ -1038,28 +791,23 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.reload();
   }
 
+  /** Several repositories changed at once (an action across repositories): one reload for all of them. */
+  async reposChanged(repoIds: readonly string[]): Promise<void> {
+    this.suggestionsFor.delete("branches");
+    if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
+    for (const id of repoIds) void this.deps.uncommitted.readRepo(id);
+    await this.reload();
+    await this.upstream.read(new Set(repoIds));
+    this.refsChanged.fire(undefined);
+  }
+
   async branchChanged(repoId: string): Promise<void> {
     this.suggestionsFor.delete("branches");
     if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
     await this.reload();
     await this.deps.uncommitted.readRepo(repoId);
-    await this.readSync(new Set([repoId]));
+    await this.upstream.read(new Set([repoId]));
     this.refsChanged.fire(repoId);
-  }
-
-  /** linyra.profiles as written (lenient: malformed entries are skipped). */
-  private rawProfiles(): Profiles {
-    return readProfiles(vscode.workspace.getConfiguration("linyra").get("profiles"));
-  }
-
-  /** How each repository is named in linyra.profiles. */
-  private profileKeys(): { id: string; key: string }[] {
-    const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => ({ name: f.name, path: f.uri.fsPath }));
-    return this.repos.map((r) => ({ id: r.id, key: repoKey(r.root, folders, process.platform === "win32") }));
-  }
-
-  resolvedProfiles(): ResolvedProfile[] {
-    return resolveProfiles(this.rawProfiles(), this.profileKeys());
   }
 
   /** linyra.profiles changed (by Linyra or by hand): redraw the Repo List. */
@@ -1067,210 +815,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.postInit();
   }
 
-  /** The profile a right-click was on. */
-  private contextProfile(arg: unknown): ResolvedProfile | undefined {
-    const name = (arg as { profile?: unknown } | undefined)?.profile;
-    return typeof name === "string" ? this.resolvedProfiles().find((p) => p.name === name) : undefined;
-  }
-
-  /** Right-click a profile → Show This Profile (the same as clicking it). */
-  async profileShow(arg: unknown): Promise<void> {
-    const p = this.contextProfile(arg);
-    if (p) await this.setRepoFilter(profileFilter(p, this.repos.map((r) => r.id)));
-  }
-
-  /** ⋯ → Switch Profile…: All repositories, then each profile; works with the Repo List hidden. */
-  async profileSwitch(): Promise<void> {
-    const all = this.repos.map((r) => r.id);
-    const resolved = this.resolvedProfiles();
-    const active = activeProfiles(resolved, this.filter.repoIds, all);
-    const nameOf = new Map(this.repos.map((r) => [r.id, r.name]));
-    const items: vscode.QuickPickItem[] = [
-      { label: localize("All repositories"), description: localize("{0} repositories", all.length), detail: this.filter.repoIds === null ? localize("Current") : undefined },
-      ...resolved.map((p) => ({ label: p.name, description: p.ids.map((id) => nameOf.get(id)).join(", ") || localize("no repository found"), detail: active.includes(p.name) ? localize("Current") : undefined })),
-    ];
-    const i = await this.deps.ask.pick(items, resolved.length > 0 ? localize("Switch profile") : localize("No profiles yet: tick some repositories, then Save Selection as Profile…"));
-    if (i === undefined) return;
-    await this.setRepoFilter(i === 0 ? null : profileFilter(resolved[i - 1], all));
-  }
-
-  /** The workspace's own linyra.profiles (the listed ones also merge in the User settings' ones). */
-  private ownProfiles(): Profiles {
-    return readProfiles(vscode.workspace.getConfiguration("linyra").inspect("profiles")?.workspaceValue);
-  }
-
-  /**
-   * An edit of the listed profiles, written to the workspace: its own profiles plus the ones this
-   * edit changed, never a User-level profile it did not touch (the workspace file may be shared).
-   * Nothing changed: nothing written (no settings.json created for a no-op).
-   */
-  private async writeChanges(before: Profiles, after: Profiles): Promise<void> {
-    const own = this.ownProfiles();
-    const out: Profiles = {};
-    for (const [name, keys] of Object.entries(after)) {
-      if (name in own || JSON.stringify(keys) !== JSON.stringify(before[name])) out[name] = keys;
-    }
-    if (JSON.stringify(out) !== JSON.stringify(own)) await this.writeProfiles(out);
-  }
-
-  /** A profile from the User settings cannot be renamed or deleted from a workspace: say where it is. */
-  private userLevel(name: string): boolean {
-    if (name in this.ownProfiles()) return false;
-    void vscode.window.showInformationMessage(localize("Linyra: \"{0}\" is in your User settings; change it there.", name));
-    return true;
-  }
-
-  /** Writes linyra.profiles to the workspace settings; false (with an error shown) if it could not. */
-  private async writeProfiles(next: Profiles): Promise<boolean> {
-    if (!vscode.workspace.workspaceFolders?.length) {
-      void vscode.window.showErrorMessage(localize("Linyra: profiles are saved in the workspace settings; open a folder first."));
-      return false;
-    }
-    try {
-      await vscode.workspace.getConfiguration("linyra").update("profiles", next, vscode.ConfigurationTarget.Workspace);
-    } catch (e) {
-      void vscode.window.showErrorMessage(localize("Linyra could not save the profile: {0}", messageOf(e)));
-      return false;
-    }
-    this.postInit();
-    return true;
-  }
-
-  /** The ticked repositories as profile entries. */
-  private tickedKeys(): string[] {
-    const keyOf = new Map(this.profileKeys().map((k) => [k.id, k.key]));
-    return (this.filter.repoIds ?? this.repos.map((r) => r.id)).flatMap((id) => keyOf.get(id) ?? []);
-  }
-
-  /** ＋ Save as profile…, the Repo List's right-click, ⋯: the ticked repositories under a name. */
-  async profileSave(): Promise<void> {
-    const keys = this.tickedKeys();
-    if (keys.length === 0) return;
-    const current = this.rawProfiles();
-    const n = keys.length === 1 ? localize("1 repository") : localize("{0} repositories", keys.length);
-    const name = await this.deps.ask.input(localize("Name for a profile of {0}", n), "backend", {
-      validate: (v) => {
-        if (!v.trim()) return undefined;
-        const taken = Object.keys(current).find((k) => k.toLowerCase() === v.trim().toLowerCase());
-        return taken === undefined ? undefined : { message: localize("\"{0}\" exists: Enter replaces it with these {1}.", taken, n), severity: vscode.InputBoxValidationSeverity.Warning };
-      },
-    });
-    if (!name?.trim()) return;
-    // Replacing keeps the existing spelling of the name.
-    const taken = Object.keys(current).find((k) => k.toLowerCase() === name.trim().toLowerCase());
-    await this.writeChanges(current, saveProfile(current, taken ?? name, keys));
-  }
-
-  /** Right-click a profile → Update to Current Selection. */
-  async profileUpdate(arg: unknown): Promise<void> {
-    const p = this.contextProfile(arg);
-    const keys = this.tickedKeys();
-    if (!p || keys.length === 0) return;
-    const current = this.rawProfiles();
-    await this.writeChanges(current, saveProfile(current, p.name, keys));
-  }
-
-  /** Right-click a profile → Rename…: refuses a name that is taken (in any case). */
-  async profileRename(arg: unknown): Promise<void> {
-    const p = this.contextProfile(arg);
-    if (!p || this.userLevel(p.name)) return;
-    const current = this.rawProfiles();
-    const name = await this.deps.ask.input(localize("New name for profile \"{0}\"", p.name), p.name, { value: p.name, validate: (v) => nameProblem(current, v, p.name) });
-    if (name === undefined || nameProblem(current, name, p.name) !== undefined || name.trim() === p.name) return;
-    await this.writeChanges(current, renameProfile(current, p.name, name));
-  }
-
-  /** Right-click a profile → Delete: asks; the repositories stay as they are. */
-  async profileDelete(arg: unknown): Promise<void> {
-    const p = this.contextProfile(arg);
-    if (!p || this.userLevel(p.name)) return;
-    if (!(await this.deps.ask.warning(localize("Delete profile \"{0}\"?", p.name), localize("Its repositories stay as they are; only the name goes."), localize("Delete")))) return;
-    const current = this.rawProfiles();
-    await this.writeChanges(current, deleteProfile(current, p.name));
-  }
-
-  /** Right-click a repository → Profiles…: tick the profiles it belongs to, or start a new one with it. */
-  async repoProfiles(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (!repo) return;
-    const key = this.profileKeys().find((k) => k.id === repo.id)?.key;
-    if (!key) return;
-    const current = this.rawProfiles();
-    const names = profileNames(current);
-    const items: vscode.QuickPickItem[] = [
-      ...names.map((n) => ({ label: n, description: current[n].length === 1 ? localize("1 repository") : localize("{0} repositories", current[n].length), picked: current[n].includes(key) })),
-      { label: localize("New profile with {0}…", repo.name), picked: false },
-    ];
-    const chosen = await this.deps.ask.pickMany(items, localize("Profiles with {0}", repo.name));
-    if (chosen === undefined) return;
-    let next = setMembership(current, key, chosen.filter((i) => i < names.length).map((i) => names[i]));
-    if (chosen.includes(names.length)) {
-      const name = await this.deps.ask.input(localize("Name for a new profile with {0}", repo.name), "backend", { validate: (v) => (v.trim() ? nameProblem(next, v) : undefined) });
-      if (name !== undefined && nameProblem(next, name) === undefined) next = saveProfile(next, name, [key]);
-    }
-    await this.writeChanges(current, next);
-  }
-
-  /** Right-click → Show Only: this repository's commits alone. */
-  async repoShowOnly(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (repo) await this.setRepoFilter([repo.id]);
-  }
-
-  /** Right-click → Hide from the Log: untick this repository (the others stay as they are). */
-  async repoHide(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (!repo) return;
-    const shown = this.filter.repoIds ?? this.repos.map((r) => r.id);
-    await this.setRepoFilter(shown.filter((id) => id !== repo.id));
-  }
-
-  /** Right-click → Show All Repositories. */
-  async repoShowAll(): Promise<void> {
-    if (this.filter.repoIds !== null) await this.setRepoFilter(null);
-  }
-
-  async repoCopyPath(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (repo) await vscode.env.clipboard.writeText(repo.root);
-  }
-
-  async repoOpenFolder(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (repo) await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(repo.root), { forceNewWindow: true });
-  }
-
-  /**
-   * Right-click → Exclude from Linyra: adds the repository's exact path to linyra.excludeRepos
-   * (so a repo elsewhere with the same name stays), with an Undo. It goes where the setting
-   * already applies from: settings arrays do not merge across scopes, so writing to another
-   * would drop the user's own entries. With none yet, the user settings: an absolute path
-   * belongs to this machine, not in a workspace file that may sit inside a repository.
-   */
-  async repoExclude(arg: unknown): Promise<void> {
-    const repo = this.contextRepo(arg);
-    if (!repo) return;
-    const inspected = vscode.workspace.getConfiguration("linyra").inspect<string[]>("excludeRepos");
-    const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-    const previous = target === vscode.ConfigurationTarget.Workspace ? inspected?.workspaceValue : inspected?.globalValue;
-    const pattern = repo.root.replace(/\\/g, "/");
-    const next = addExclusion(previous, pattern);
-    if (!next) return;
-    // The repo leaves the filter too, or a filter of only it would match nothing.
+  /** An excluded repository leaves the ticked set too, or a filter of only it would match nothing. */
+  untick(repoId: string): void {
     const ids = this.filter.repoIds;
-    if (ids?.includes(repo.id)) {
-      const rest = ids.filter((id) => id !== repo.id);
-      this.filter = { ...this.filter, repoIds: rest.length > 0 ? rest : null };
-      this.persistFilter();
-    }
-    // The configuration listener lists the repositories again (reposSettingChanged).
-    await vscode.workspace.getConfiguration("linyra").update("excludeRepos", next, target);
-    void vscode.window.showInformationMessage(localize("Linyra: {0} is excluded (linyra.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
-      if (pick !== localize("Undo")) return;
-      const now = vscode.workspace.getConfiguration("linyra").inspect<string[]>("excludeRepos");
-      const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
-      await vscode.workspace.getConfiguration("linyra").update("excludeRepos", undoExclusion(current, pattern, previous), target);
-    });
+    if (!ids?.includes(repoId)) return;
+    const rest = ids.filter((id) => id !== repoId);
+    this.filter = { ...this.filter, repoIds: rest.length > 0 ? rest : null };
+    this.persistFilter();
   }
 
   /** The ticked repositories and the Path box, as the uncommitted store reads them. */
@@ -1310,12 +861,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       });
       if (ctl.signal.aborted) return;
       this.rows = page.rows;
+      this.listed = new Map(page.rows.map((c) => [commitKey(c), c]));
       this.failures = page.failures;
       this.done = page.done;
       this.queryState = page.state;
       this.branchUse = page.branchUse;
       if (!this.stats.firstRowsAt && page.rows.length > 0) this.stats.firstRowsAt = Date.now();
       this.stats.fetchMs = Date.now() - t;
+      this.hintCommitGraph(this.stats.fetchMs);
       this.startBackgroundReads();
       this.clearTreeIfGone();
       this.refreshCurrentReferences();
@@ -1331,6 +884,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const ctl = this.query; // a filter change aborts this too
     const prev = this.queryState;
     const s = this.settings();
+    const t = Date.now();
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
@@ -1339,10 +893,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       // A reload (from the host) started meanwhile: its first page owns the list, not this one.
       if (ctl.signal.aborted || this.queryState !== prev) return;
       this.rows = this.rows.concat(page.rows);
+      for (const c of page.rows) this.listed.set(commitKey(c), c);
       this.failures = this.failures.concat(page.failures);
       this.done = page.done;
       this.queryState = page.state;
       this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
+      this.hintCommitGraph(Date.now() - t);
+      void this.readOffHead();
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not load more commits: {0}", messageOf(e)));
     } finally {
@@ -1352,7 +909,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   snapshot(): LogSnapshot {
     return {
-      repos: this.repos, profiles: this.resolvedProfiles(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
+      repos: this.repos, profiles: this.profiles.resolved(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {
@@ -1368,8 +925,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       workRows: this.workRows().map((r) => [this.repos.find((x) => x.id === r.repoId)?.name ?? r.repoId, r.preview, r.tags.join(", ")].join(" | ")),
       workTotals: totals(this.deps.uncommitted.works()),
       workKnown: this.deps.uncommitted.known,
-      sync: Object.fromEntries(this.sync),
-      fetching: this.fetching !== undefined, toolbar: this.toolbarState(),
+      sync: Object.fromEntries(this.upstream.byRepo()),
+      fetching: this.upstream.fetching, toolbar: this.toolbarState(),
       reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
     };
@@ -1378,7 +935,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private findCommit(repoId: string, sha: string): { commit: Commit; repo: Repo } | undefined {
     if (!isSha(sha)) return undefined;
     const repo = this.repos.find((r) => r.id === repoId);
-    const commit = this.rows.find((c) => c.repoId === repoId && c.sha === sha);
+    const commit = this.listed.get(commitKey({ repoId, sha }));
     return repo && commit ? { commit, repo } : undefined;
   }
 
@@ -1411,8 +968,39 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
+  /**
+   * Highlight Current Branch: which listed commits each repository's HEAD does not reach. One
+   * rev-list per repository, bounded by its oldest listed commit (a day of slack for skewed
+   * clocks), and only while the option is on. The answer is a decoration, never a filter.
+   */
+  private async readOffHead(): Promise<void> {
+    if (!this.context.globalState.get<boolean>(HIGHLIGHT_HEAD_KEY, false)) return;
+    const epoch = ++this.offHeadEpoch;
+    const oldest = new Map<string, number>();
+    for (const c of this.rows) oldest.set(c.repoId, Math.min(oldest.get(c.repoId) ?? Infinity, c.time));
+    const repos = this.repos.filter((r) => oldest.has(r.id));
+    const settled = await runPool(repos, this.settings().maxConcurrency,
+      (r, signal) => this.run(r.root, ["rev-list", `--since=${gitDate(oldest.get(r.id)! - 86_400)}`, "HEAD", "--"], signal), this.background.signal);
+    if (epoch !== this.offHeadEpoch) return; // a newer page or ref change asked again
+    const onHead = new Map(repos.map((r, i) => {
+      const s = settled[i];
+      return [r.id, s.status === "fulfilled" ? new Set(s.value.split(/\r?\n/).filter(Boolean)) : undefined] as const;
+    }));
+    // A repository whose HEAD could not be read (unborn, failed) dims nothing.
+    const keys = this.rows.filter((c) => { const set = onHead.get(c.repoId); return set !== undefined && !set.has(c.sha); }).map(commitKey);
+    this.post({ type: "offHead", keys });
+  }
+  private offHeadEpoch = 0;
+  /** Topological order was slow in a repository without a commit-graph: offer to write one. */
+  private readonly graphHint = new CommitGraphHint((cwd, args, signal, opts) => this.run(cwd, args, signal, opts));
+  private hintCommitGraph(pageMs: number): void {
+    if (process.env.LINYRA_ITEST === "1" || !wantsCommitGraphHint(this.filter.sort, pageMs)) return;
+    void this.graphHint.check(selectRepos(this.filter, this.repos));
+  }
+
   /** A selection, refresh or ref update reads this commit's refs without re-reading its files. */
   private refreshCurrentReferences(repoId?: string): void {
+    void this.readOffHead(); // a branch moved or was checked out
     const state = this.commitTree();
     if (!state || state.status !== "ready" || state.commit.sha === UNCOMMITTED || (repoId && state.commit.repoId !== repoId)) return;
     void this.updateCommitReferences(state.repoRoot, state.commit.repoId, state.commit.sha, this.detail.signal);
@@ -1433,7 +1021,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private clearTreeIfGone(): void {
     if (this.combinedSel) {
       // Combined Changes: keep the selected commits still listed.
-      const kept = this.combinedSel.filter((f) => this.rows.some((c) => commitKey(c) === commitKey(f.commit)));
+      const kept = this.combinedSel.filter((f) => this.listed.has(commitKey(f.commit)));
       if (kept.length === this.combinedSel.length) return;
       const focus = kept.find((f) => commitKey(f.commit) === this.combinedFocus) ?? kept[0];
       if (kept.length >= 2) void this.showCombined(kept, focus.commit);
@@ -1448,7 +1036,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const current = this.commitTree();
     if (!current) return;
     const key = commitKey(current.commit);
-    if (this.rows.some((c) => commitKey(c) === key)) return;
+    if (this.listed.has(key)) return;
     this.detail.abort();
     this.openWhenLoaded = null;
     this.setCommitTree(null);
@@ -1729,13 +1317,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.background.abort();
     this.query.abort();
     this.detail.abort();
-    this.fetchCtl.abort();
-    this.syncSoon.cancel();
+    this.upstream.dispose();
+    this.commands.dispose();
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();
     this.scopeChanged.dispose();
     this.refsChanged.dispose();
-    this.syncChanged.dispose();
     for (const d of this.viewDisposables) d.dispose();
     for (const d of this.disposables) d.dispose();
   }

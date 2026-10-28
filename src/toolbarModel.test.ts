@@ -11,6 +11,5 @@ for (const command of ["linyra.showRepos", "linyra.hideRepos", "linyra.compareSh
 }
 assert.strictEqual(toolbarCommand("pullAllBehind", shown), undefined, "pull cannot race an active fetch");
 assert.strictEqual(toolbarCommand("showBehind", hidden), undefined);
-assert.strictEqual(toolbarCommand("openChangesEditor", hidden), "linyra.openChangesEditor");
 for (const action of [null, {}, "constructor", "__proto__", "vscode.openFolder", "delete"]) assert.strictEqual(toolbarCommand(action, hidden), undefined, "only named toolbar actions can execute commands");
 console.log("ok - all 13 old Log toolbar commands remain reachable with state guards and no arbitrary command execution");

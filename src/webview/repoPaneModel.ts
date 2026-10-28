@@ -2,7 +2,7 @@
 // (null = every repo); git does the filtering. Narrowing the pane's own list by
 // name is UI, not commit filtering.
 
-import { activeProfiles, showSaveRow, type ResolvedProfile } from "../profileModel";
+import { activeProfiles, type ResolvedProfile } from "../profileModel";
 import type { Repo } from "../types";
 
 export const DEFAULT_REPO_PANE_WIDTH = 190;
@@ -114,12 +114,12 @@ export class PaneWidth {
 export type PaneRow =
   | { kind: "all" }
   | { kind: "profile"; profile: ResolvedProfile; active: boolean }
-  | { kind: "save"; count: number }
   | { kind: "repo"; id: string; name: string };
 
 /**
- * The Repo List's rows: All, the profiles and the ＋ Save as profile… row (not while searching
- * repositories by name: the search is for repositories), then the repositories.
+ * The Repo List's rows: All, the profiles (not while searching repositories by name: the search
+ * is for repositories), then the repositories. Saving the ticks as a profile is in the ⋯ menu and
+ * the list's right-click, not a row: a row that came and went with every tick was noise.
  */
 export function paneRows(repos: readonly Repo[], query: string, profiles: readonly ResolvedProfile[], repoIds: readonly string[] | null): PaneRow[] {
   const repoRows: PaneRow[] = visibleRepos(repos, query).map((r) => ({ kind: "repo", id: r.id, name: r.name }));
@@ -127,6 +127,5 @@ export function paneRows(repos: readonly Repo[], query: string, profiles: readon
   const allIds = repos.map((r) => r.id);
   const active = activeProfiles(profiles, repoIds, allIds);
   const rows: PaneRow[] = [{ kind: "all" }, ...profiles.map((profile): PaneRow => ({ kind: "profile", profile, active: active.includes(profile.name) }))];
-  if (showSaveRow(profiles, repoIds, allIds)) rows.push({ kind: "save", count: repoIds!.length });
   return [...rows, ...repoRows];
 }

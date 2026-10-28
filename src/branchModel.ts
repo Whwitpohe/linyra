@@ -3,7 +3,7 @@ import { isValidRef } from "./filterModel";
 export interface Branch {
   ref: string;
   name: string;
-  kind: "local" | "remote";
+  kind: "local" | "remote" | "tag";
   sha: string;
   current: boolean;
   upstream?: string;
@@ -27,19 +27,22 @@ export interface BranchSidebarState {
 
 export const DEFAULT_BRANCH_SIDEBAR: BranchSidebarState = { mode: "repos", expanded: ["local", "remote"], favorites: [] };
 export const branchKey = (repoId: string, ref: string) => `${repoId}\0${ref}`;
-export const branchGroupKey = (kind: "local" | "remote", repoId: string) => `${kind}\0${repoId}`;
-/** Remote refs remain unambiguous even when a local branch uses the same name. */
-export const branchRevision = (branch: Branch, data: Branches): string => branch.kind === "remote" && data.branches.some((b) => b.kind === "local" && b.name === branch.name) ? branch.ref : branch.name;
-export const branchArgs = (): string[] => ["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(symref)", "refs/heads", "refs/remotes"];
+export const branchGroupKey = (kind: "local" | "remote" | "tag", repoId: string) => `${kind}\0${repoId}`;
+/** Remote refs and tags stay unambiguous even when a local branch uses the same name. */
+export const branchRevision = (branch: Branch, data: Branches): string =>
+  branch.kind !== "local" && data.branches.some((b) => b.kind === "local" && b.name === branch.name) ? branch.ref : branch.name;
+/** The last field is an annotated tag's commit (empty for anything else). */
+export const branchArgs = (): string[] => ["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(symref)%00%(*objectname)", "refs/heads", "refs/remotes", "refs/tags"];
 
 export function parseBranches(output: string, remotes: string[]): Branches {
   const branches: Branch[] = [];
   const remoteNames = [...remotes].sort((a, b) => b.length - a.length);
   for (const line of output.split("\n")) {
-    const [ref, sha, head, upstream, track = "", symbolic] = line.replace(/\r$/, "").split("\0");
-    const match = /^refs\/(heads|remotes)\/(.+)$/.exec(ref);
+    const [ref, object, head, upstream, track = "", symbolic, peeled] = line.replace(/\r$/, "").split("\0");
+    const match = /^refs\/(heads|remotes|tags)\/(.+)$/.exec(ref);
     if (!match || symbolic || !isValidRef(match[2])) continue;
-    const kind = match[1] === "heads" ? "local" : "remote";
+    const kind = match[1] === "heads" ? "local" : match[1] === "tags" ? "tag" : "remote";
+    const sha = peeled || object;
     const name = match[2];
     const remote = kind === "remote" ? remoteNames.find((r) => name.startsWith(`${r}/`)) : undefined;
     branches.push({ ref, sha, name, kind, current: head === "*", upstream: upstream || undefined,
@@ -70,5 +73,7 @@ export const branchCommands = {
   delete: (b: Branch) => ["branch", "-d", "--", b.name],
   merge: (b: Branch) => ["merge", "--no-edit", "--", b.ref],
   rebase: (b: Branch) => ["rebase", "--no-autostash", "--", b.ref],
+  checkoutTag: (b: Branch) => ["checkout", "--detach", b.ref, "--"],
+  deleteTag: (b: Branch) => ["tag", "-d", "--", b.name],
   worktree: (b: Branch, name: string, destination: string) => ["worktree", "add", "-b", name, "--", destination, b.ref],
 };

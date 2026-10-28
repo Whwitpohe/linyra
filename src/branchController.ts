@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { copyText } from "./clipboard";
 import { Limiter } from "./allFiles";
 import { branchArgs, branchCommands, branchKey, branchRevision, DEFAULT_BRANCH_SIDEBAR, newBranchProblem, parseBranches, sidebarState, type Branch, type Branches, type BranchSidebarState } from "./branchModel";
 import { errorLine } from "./git";
@@ -130,7 +131,7 @@ export class BranchController implements vscode.Disposable {
       };
       switch (action) {
         case "view": await this.deps.view(repo.id, branchRevision(b, data)); return;
-        case "copy": await vscode.env.clipboard.writeText(b.name); return;
+        case "copy": await copyText(b.name); return;
         case "favorite": {
           const key = branchKey(repo.id, b.ref), favorites = new Set(this.state.favorites);
           if (favorites.has(key)) favorites.delete(key); else favorites.add(key);
@@ -140,6 +141,13 @@ export class BranchController implements vscode.Disposable {
         case "worktreeDiff": await this.diffWorkingTree(repo, b); return;
         case "checkout": {
           if (b.current) return;
+          if (b.kind === "tag") {
+            // A tag is not a branch: its commit is checked out with HEAD detached, as the JetBrains Log does.
+            if (!(await this.deps.ask.warning(localize("Check out tag {0} in {1}?", b.name, repo.name),
+              localize("HEAD is detached there: new commits belong to no branch until you create one."), localize("Check Out")))) return;
+            if (native?.checkout) await native.checkout(b.sha); else await run(branchCommands.checkoutTag(b));
+            break;
+          }
           let local = b.name;
           if (b.kind === "remote") {
             local = (await this.deps.ask.input(localize("Local branch to track {0}", b.name), localize("Branch name"), { value: b.remoteBranch ?? b.name,
@@ -178,6 +186,11 @@ export class BranchController implements vscode.Disposable {
         }
         case "delete": {
           if (b.current) throw new Error(localize("The current branch cannot be deleted."));
+          if (b.kind === "tag") {
+            if (!(await this.deps.ask.warning(localize("Delete tag {0} in {1}?", b.name, repo.name), localize("Only the local tag is deleted; a pushed copy stays on its remote."), localize("Delete")))) return;
+            await run(branchCommands.deleteTag(b));
+            break;
+          }
           if (!(await this.deps.ask.warning(localize("Delete branch {0} in {1}?", b.name, repo.name),
             localize(b.kind === "remote" ? "This deletes the branch on the remote server." : "Only a merged local branch can be deleted here."), localize("Delete")))) return;
           if (b.kind === "remote") {
@@ -195,6 +208,12 @@ export class BranchController implements vscode.Disposable {
           break;
         }
         case "push": {
+          if (b.kind === "tag") {
+            const index = await this.deps.ask.pick(data.remotes.map((label) => ({ label })), localize("Remote to push tag {0} to", b.name));
+            if (index === undefined || index < 0 || !data.remotes[index]) return;
+            await run(["push", "--", data.remotes[index], `${b.ref}:${b.ref}`]);
+            break;
+          }
           if (b.kind !== "local") return;
           const upstreamRemote = data.remotes.find((r) => b.upstream?.startsWith(`${r}/`));
           const index = upstreamRemote ? data.remotes.indexOf(upstreamRemote) : await this.deps.ask.pick(data.remotes.map((label) => ({ label })), localize("Remote to push to"));

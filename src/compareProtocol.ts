@@ -67,7 +67,6 @@ export type ReposWebview =
   | { type: "sideExpandAll"; side: "left" | "right" }
   | { type: "sideVisibility"; side: "left" | "right"; show: boolean }
   | { type: "hideSame"; hide: boolean }
-  | { type: "close" }
   | { type: "layout"; layout: CompareLayout }
   | { type: "ready" }
   | { type: "pick"; pair: Pair }

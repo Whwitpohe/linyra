@@ -4,6 +4,7 @@ import * as vscode from "vscode";
 import { COMMIT_PAGE, pairDuplicates, pushRecent, repoCounts, summaryLabel, tabTitle, validPair, type Pair } from "./compareModel";
 import type { CRepoRow, CompareLayout, ReposHost, ReposWebview } from "./compareProtocol";
 import { FAVORITES, MODE, modeOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, type CompareMode, type Deps, type CompareSide } from "./compareView";
+import { outputLog } from "./outputLog";
 import { isAbortError } from "./pool";
 import { renderReposHtml } from "./webview/compare/html";
 import { accentOf, assignAccents } from "./webview/view";
@@ -289,7 +290,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     return listed.map(({ repo, result }): CRepoRow => ({
       repoId: repo.id, name: repo.name, accent: accentOf(accents, repo.id), status: result.kind === "differs" ? "differs" : result.kind === "nobase" ? "nobase" : "error",
       left: result.kind === "differs" ? result.left : 0, right: result.kind === "differs" ? result.right : 0, same: result.kind === "differs" ? result.sameLeft : 0,
-      reason: result.kind === "error" ? result.reason : undefined, behind: this.deps.log.isBehind(repo.id),
+      reason: result.kind === "error" ? result.reason : undefined, behind: this.deps.log.upstream.isBehind(repo.id),
     }));
   }
 
@@ -349,7 +350,6 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         case "hideSame":
           if (typeof m.hide === "boolean") await vscode.commands.executeCommand(m.hide ? "linyra.compareHideSame" : "linyra.compareShowSame");
           return;
-        case "close": return this.close();
         case "layout": {
           const layout = m.layout;
           if (!layout || (layout.orientation !== "auto" && layout.orientation !== "sideBySide" && layout.orientation !== "stacked")) return;
@@ -419,7 +419,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         }
       }
     } catch (e) {
-      if (!isAbortError(e)) console.error(localize("Linyra: Compare"), e);
+      if (!isAbortError(e)) outputLog().error(localize("Linyra: Compare"), e instanceof Error ? e : String(e));
     }
   }
 

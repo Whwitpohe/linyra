@@ -62,11 +62,6 @@ export function activeProfiles(resolved: readonly ResolvedProfile[], repoIds: re
   return resolved.filter((p) => p.ids.length > 0 && p.ids.length === shown.size && p.ids.every((id) => shown.has(id))).map((p) => p.name);
 }
 
-/** The ＋ Save as profile… row: some repositories ticked, and they are neither All nor a profile. */
-export function showSaveRow(resolved: readonly ResolvedProfile[], repoIds: readonly string[] | null, allIds: readonly string[]): boolean {
-  return repoIds !== null && repoIds.length > 0 && activeProfiles(resolved, repoIds, allIds).length === 0;
-}
-
 /** The repo filter a profile sets: its repositories in Repo List order, or null when that is all of them. */
 export function profileFilter(p: ResolvedProfile, allIds: readonly string[]): string[] | null {
   const ids = allIds.filter((id) => p.ids.includes(id));

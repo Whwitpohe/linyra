@@ -25,6 +25,10 @@ export interface FilterState {
   branches?: string[];
   /** Date order by default; topology groups incoming histories below their merges. */
   sort?: "date" | "topo";
+  /** The message search (and author patterns) match case exactly; absent = ignore case. */
+  matchCase?: boolean;
+  /** The message search is an extended regular expression; absent = literal text. */
+  regex?: boolean;
   /** null = every repository; [] = none. */
   repoIds: string[] | null;
   date: DatePreset;
@@ -115,11 +119,17 @@ function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonl
   if (f.sort === "topo") args.push("--topo-order");
   const text = f.text.trim();
   const authors = authorPatterns(f, o.me);
-  // All patterns literal and case-insensitive; git ANDs --author with --grep, and ORs
-  // several --author flags.
-  if (text || authors.length > 0) args.push("--regexp-ignore-case", "--fixed-strings");
+  // Literal and case-insensitive unless asked otherwise; git ANDs --author with --grep, ORs
+  // several --author flags, and applies these matching flags to both. Authors stay literal:
+  // in regex mode they are escaped.
+  // An invalid expression (the webview marks it) is searched as text rather than failing every repository.
+  const regex = f.regex === true && !!text && regexProblem(text) === undefined;
+  if (text || authors.length > 0) {
+    if (!f.matchCase) args.push("--regexp-ignore-case");
+    args.push(regex ? "--extended-regexp" : "--fixed-strings");
+  }
   if (text) args.push(`--grep=${text}`);
-  for (const a of authors) args.push(`--author=${a}`);
+  for (const a of authors) args.push(`--author=${regex ? escapeRegex(a) : a}`);
   const since = sinceOf(f, o.now);
   if (since !== undefined) args.push(`--since=${gitDate(since)}`);
   const until = untilOf(f);
@@ -131,6 +141,24 @@ function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonl
   args.push(...revisionArgs(o.refs ?? (o.ref ? [o.ref] : selectedBranches(f))));
   args.push("--", ...paths);
   return args;
+}
+
+/** A literal string as a POSIX extended regular expression. */
+export function escapeRegex(text: string): string {
+  return text.replace(/[.[\]()*+?{}|^$\\]/g, "\\$&");
+}
+
+/**
+ * Why a message search cannot be sent to git in regex mode; undefined when it can. JavaScript's
+ * parser stands in for git's POSIX one: it accepts every ERE that matters here.
+ */
+export function regexProblem(text: string): string | undefined {
+  try {
+    new RegExp(text);
+    return undefined;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
 }
 
 export function logArgs(f: FilterState, o: ArgOptions): string[] {
@@ -255,6 +283,8 @@ export function sanitizeFilter(raw: unknown): FilterState {
     if (branches.length) f.branches = branches;
   }
   if (r.sort === "topo") f.sort = "topo";
+  if (r.matchCase === true) f.matchCase = true;
+  if (r.regex === true) f.regex = true;
   if (date === "custom") {
     if (typeof r.from === "string" && DAY.test(r.from)) f.from = r.from;
     if (typeof r.to === "string" && DAY.test(r.to)) f.to = r.to;
@@ -267,5 +297,5 @@ export function sameExceptText(a: FilterState, b: FilterState): boolean {
   const ids = (x: FilterState) => (x.repoIds === null ? null : x.repoIds.join("\0"));
   const authors = (x: FilterState) => (x.authors ?? []).join("\0");
   const branches = (f: FilterState) => selectedBranches(f).sort().join("\0");
-  return a.mine === b.mine && authors(a) === authors(b) && branches(a) === branches(b) && a.sort === b.sort && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
+  return a.mine === b.mine && !a.matchCase === !b.matchCase && !a.regex === !b.regex && authors(a) === authors(b) && branches(a) === branches(b) && a.sort === b.sort && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
 }

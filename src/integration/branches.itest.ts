@@ -65,7 +65,7 @@ describe("Branch sidebar", () => {
     assert.strictEqual(git(["branch", "--show-current"]), "main");
     await act("favorite", "ui-feature"); assert.ok((await sidebar()).state.favorites.includes(branchKey(repoId, "refs/heads/ui-feature")));
     await act("favorite", "ui-feature"); assert.ok(!(await sidebar()).state.favorites.includes(branchKey(repoId, "refs/heads/ui-feature")));
-    await act("copy", "ui-feature"); assert.strictEqual(await vscode.env.clipboard.readText(), "ui-feature");
+    await act("copy", "ui-feature"); assert.strictEqual(await vscode.commands.executeCommand<string>("linyra._itest.clipboard"), "ui-feature");
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "state", state: { mode: "branches", expanded: ["local"], favorites: [] } });
     assert.strictEqual((await sidebar()).state.mode, "branches");
   });

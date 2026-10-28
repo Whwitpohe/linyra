@@ -14,6 +14,10 @@ export interface Layout {
   changesPaneHeight?: number;
   showChanges?: boolean;
   changesLayout?: ChangesLayout;
+  /** View options (the Log's ⋯ menu), as in the JetBrains Log: bold my commits, dim commits not on HEAD, a hash column. */
+  highlightMine?: boolean;
+  highlightHead?: boolean;
+  hashColumn?: boolean;
 }
 
 /** Someone who committed recently, across the workspace (Author box suggestions). */
@@ -53,8 +57,10 @@ export type HostMessage =
   | { type: "changesView"; message: ChangesPage | { type: "copied" } }
   | { type: "sidebarState"; state: BranchSidebarState }
   | { type: "branchTree"; repoId: string; data?: Branches; loading?: boolean; error?: string }
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; /** Each repository's user.email (Highlight My Commits). */ me?: Record<string, string>; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
   | { type: "loading" }
+  /** Highlight Current Branch: the listed commits (commitKey) not reachable from their repository's HEAD. */
+  | { type: "offHead"; keys: string[] }
   /** The uncommitted work behind the Log's switch. `known`: every repository was read (the badge shows a number). */
   | { type: "uncommitted"; known: boolean; totals: { files: number; repos: number; added: number; deleted: number }; rows: WorkRow[] }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
@@ -84,7 +90,7 @@ export type WebviewMessage =
   /** Combined Changes: two or more commits selected (Ctrl/⌘ or Shift). */
   | { type: "selectMany"; items: CommitRef[]; focus: CommitRef }
   | { type: "openFirst"; repoId: string; sha: string }
-  | { type: "layout"; repoPaneWidth: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout }
+  | { type: "layout"; repoPaneWidth?: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout; highlightMine?: boolean; highlightHead?: boolean; hashColumn?: boolean }
   | { type: "exitHistory" }
   /** The Log's switch: Commits or Uncommitted. */
   | { type: "logMode"; mode: "commits" | "uncommitted" }

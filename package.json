@@ -38,7 +38,12 @@
     "git history",
     "file history",
     "multi repository",
-    "search commits"
+    "search commits",
+    "git client",
+    "git graph",
+    "branches",
+    "webstorm",
+    "jetbrains"
   ],
   "activationEvents": [
     "onCommand:linyra.fileHistory",
@@ -238,6 +243,21 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "linyra.updateProject",
+        "title": "%command.linyra.updateProject.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.pushAll",
+        "title": "%command.linyra.pushAll.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.branchesAcross",
+        "title": "%command.linyra.branchesAcross.title%",
+        "category": "Linyra"
+      },
+      {
         "command": "linyra.fetching",
         "title": "%command.linyra.fetching.title%",
         "category": "Linyra",
@@ -377,6 +397,46 @@
       {
         "command": "linyra.compareWith",
         "title": "%command.linyra.compareWith.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitCherryPick",
+        "title": "%command.linyra.commitCherryPick.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitRevert",
+        "title": "%command.linyra.commitRevert.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitReset",
+        "title": "%command.linyra.commitReset.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitCheckout",
+        "title": "%command.linyra.commitCheckout.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitNewBranch",
+        "title": "%command.linyra.commitNewBranch.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitNewTag",
+        "title": "%command.linyra.commitNewTag.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitUndo",
+        "title": "%command.linyra.commitUndo.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitReword",
+        "title": "%command.linyra.commitReword.title%",
         "category": "Linyra"
       },
       {
@@ -878,6 +938,38 @@
           "when": "false"
         },
         {
+          "command": "linyra.commitCherryPick",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitRevert",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitReset",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitCheckout",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitNewBranch",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitNewTag",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitUndo",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitReword",
+          "when": "false"
+        },
+        {
           "command": "linyra.compareSwap",
           "when": "false"
         },
@@ -1076,21 +1168,6 @@
       ],
       "view/title": [
         {
-          "command": "linyra.showBehind",
-          "when": "view == linyra.log && linyra.anyBehind",
-          "group": "1_filter@1"
-        },
-        {
-          "command": "linyra.fetchAndPullAll",
-          "when": "view == linyra.log && !linyra.fetching",
-          "group": "0_sync@1"
-        },
-        {
-          "command": "linyra.pullAllBehind",
-          "when": "view == linyra.log && linyra.anyBehind && !linyra.fetching",
-          "group": "0_sync@2"
-        },
-        {
           "command": "linyra.refreshUncommitted",
           "when": "view == linyra.uncommitted",
           "group": "navigation@1"
@@ -1149,16 +1226,6 @@
           "command": "linyra.uncommittedClose",
           "when": "view == linyra.uncommitted",
           "group": "navigation@9"
-        },
-        {
-          "command": "linyra.profileSwitch",
-          "when": "view == linyra.log",
-          "group": "2_profile@1"
-        },
-        {
-          "command": "linyra.profileSave",
-          "when": "view == linyra.log",
-          "group": "2_profile@2"
         }
       ],
       "explorer/context": [
@@ -1214,6 +1281,46 @@
           "command": "linyra.compareWith",
           "when": "webviewId == 'linyra.log' && webviewSection == 'commit'",
           "group": "0_commit@4"
+        },
+        {
+          "command": "linyra.commitCherryPick",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "1_change@1"
+        },
+        {
+          "command": "linyra.commitRevert",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "1_change@2"
+        },
+        {
+          "command": "linyra.commitReset",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "1_change@3"
+        },
+        {
+          "command": "linyra.commitCheckout",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "2_refs@1"
+        },
+        {
+          "command": "linyra.commitNewBranch",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "2_refs@2"
+        },
+        {
+          "command": "linyra.commitNewTag",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "2_refs@3"
+        },
+        {
+          "command": "linyra.commitReword",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'commit' && head",
+          "group": "3_head@1"
+        },
+        {
+          "command": "linyra.commitUndo",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'commit' && head",
+          "group": "3_head@2"
         },
         {
           "command": "linyra.repoPull",
@@ -1462,7 +1569,7 @@
         },
         {
           "command": "linyra.branch.fetch",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'branch'",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchTag",
           "group": "2_sync@1"
         },
         {
@@ -1472,7 +1579,7 @@
         },
         {
           "command": "linyra.branch.push",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchLocal",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && (branchLocal || branchTag)",
           "group": "2_sync@3"
         },
         {
@@ -1617,7 +1724,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
-    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/gitBinary.test.ts --bundle --platform=node --format=cjs --outfile=out/gitBinary.test.cjs && node out/gitBinary.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/webview/suggestModel.test.ts --bundle --platform=node --format=cjs --outfile=out/suggestModel.test.cjs && node out/suggestModel.test.cjs && esbuild src/workingTree.test.ts --bundle --platform=node --format=cjs --outfile=out/workingTree.test.cjs && node out/workingTree.test.cjs && esbuild src/upstream.test.ts --bundle --platform=node --format=cjs --outfile=out/upstream.test.cjs && node out/upstream.test.cjs && esbuild src/remoteUrl.test.ts --bundle --platform=node --format=cjs --outfile=out/remoteUrl.test.cjs && node out/remoteUrl.test.cjs && esbuild src/uncommittedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/uncommittedModel.test.cjs && node out/uncommittedModel.test.cjs && esbuild src/allFiles.test.ts --bundle --platform=node --format=cjs --outfile=out/allFiles.test.cjs && node out/allFiles.test.cjs && esbuild src/compareModel.test.ts --bundle --platform=node --format=cjs --outfile=out/compareModel.test.cjs && node out/compareModel.test.cjs && esbuild src/blameModel.test.ts --bundle --platform=node --format=cjs --outfile=out/blameModel.test.cjs && node out/blameModel.test.cjs && esbuild src/profileModel.test.ts --bundle --platform=node --format=cjs --outfile=out/profileModel.test.cjs && node out/profileModel.test.cjs && esbuild src/lineMerge.test.ts --bundle --platform=node --format=cjs --outfile=out/lineMerge.test.cjs && node out/lineMerge.test.cjs && esbuild src/webview/selectionModel.test.ts --bundle --platform=node --format=cjs --outfile=out/selectionModel.test.cjs && node out/selectionModel.test.cjs && esbuild src/combinedModel.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedModel.test.cjs && node out/combinedModel.test.cjs && esbuild src/combinedRead.test.ts --bundle --platform=node --format=cjs --outfile=out/combinedRead.test.cjs && node out/combinedRead.test.cjs && esbuild src/i18n.test.ts --bundle --platform=node --format=cjs --outfile=out/i18n.test.cjs && node out/i18n.test.cjs && esbuild src/changesPresentation.test.ts --bundle --platform=node --format=cjs --outfile=out/changesPresentation.test.cjs && node out/changesPresentation.test.cjs && esbuild src/commitReferences.test.ts --bundle --platform=node --format=cjs --outfile=out/commitReferences.test.cjs && node out/commitReferences.test.cjs && esbuild src/webview/graphModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphModel.test.cjs && node out/graphModel.test.cjs && esbuild src/branchModel.test.ts --bundle --platform=node --format=cjs --outfile=out/branchModel.test.cjs && node out/branchModel.test.cjs && esbuild src/webview/graphFoldModel.test.ts --bundle --platform=node --format=cjs --outfile=out/graphFoldModel.test.cjs && node out/graphFoldModel.test.cjs && esbuild src/hashSearch.test.ts --bundle --platform=node --format=cjs --outfile=out/hashSearch.test.cjs && node out/hashSearch.test.cjs && esbuild src/webview/changes/fileFilterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/fileFilterModel.test.cjs && node out/fileFilterModel.test.cjs && esbuild src/topoOrder.test.ts --bundle --platform=node --format=cjs --outfile=out/topoOrder.test.cjs && node out/topoOrder.test.cjs && esbuild src/toolbarModel.test.ts --bundle --platform=node --format=cjs --outfile=out/toolbarModel.test.cjs && node out/toolbarModel.test.cjs && esbuild src/webview/compare/html.test.ts --bundle --platform=node --format=cjs --outfile=out/compareHtml.test.cjs && node out/compareHtml.test.cjs && esbuild src/stateMigration.test.ts --bundle --platform=node --format=cjs --outfile=out/stateMigration.test.cjs && node out/stateMigration.test.cjs && esbuild src/identity.test.ts --bundle --platform=node --format=cjs --outfile=out/identity.test.cjs && node out/identity.test.cjs",
+    "test:unit": "node scripts/run-unit.mjs",
     "test": "npm run test:unit",
     "package": "vsce package --no-dependencies",
     "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",
@@ -1626,7 +1733,7 @@
     "ui-map": "node dev/ui-map/serve.mjs",
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
-    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/branches.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
+    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
     "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
     "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022",

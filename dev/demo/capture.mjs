@@ -185,12 +185,12 @@ try {
     await logView.click("#branch-picker .branch-picker-all");
     await logView.key("#branch-search","Escape");
     await waitFor("all branches restored",async()=>{const s=await snapshot();return (s.filter.branches?.length??0)===0&&s.done;});
-    await logView.click("#sidebar-branches");await sleep(500);
+    // The Repositories tree: a branch name finds every repository that has it, opened on the matches.
     for(let i=0;i<6;i++) await logView.key("#splitter","ArrowRight");
     await logView.fill("#repo-filter","saved");
-    await waitFor("branch sidebar",()=>logView.evaluate("const names=[...doc.querySelectorAll('#branch-tree .branch-name')].map(n=>n.textContent);return names.filter(n=>n.includes('saved-cards')).length>=6&&!names.includes('Reading branches…');"));
+    await waitFor("branch sidebar",()=>logView.evaluate("const names=[...doc.querySelectorAll('#repo-rows .branch-name')].map(n=>n.textContent);return names.filter(n=>n.includes('saved-cards')).length>=6&&!doc.querySelector('#repo-rows .branch-message');"));
     await shot("screenshot-branch-sidebar",panelRect);
-    await logView.fill("#repo-filter",""); await logView.click("#sidebar-repos");
+    await logView.fill("#repo-filter","");
     for(let i=0;i<6;i++) await logView.key("#splitter","ArrowLeft");
 
     await call("history",{file:join(web.root,"src/checkout/PaymentStep.tsx")});

@@ -94,19 +94,21 @@ export function accentOf(accents: ReadonlyMap<string, number>, repoId: string): 
   return accents.get(repoId) ?? 0;
 }
 
-/** Keep each repo's hue unless adjacent displayed bands collide, including after folding. */
-export function separateAdjacentAccents(rows: readonly { repoId: string }[], preferred: ReadonlyMap<string, number>): ReadonlyMap<string, number> {
+/** Share one palette across adjacent Log bands and the visible repository list. */
+export function separateAdjacentAccents(rows: readonly { repoId: string }[], preferred: ReadonlyMap<string, number>, repoOrder: readonly string[] = []): ReadonlyMap<string, number> {
   const neighbors = new Map<string, Set<string>>();
   const edges: [string, string][] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const a = rows[i - 1].repoId, b = rows[i].repoId;
-    if (a === b) continue;
-    if (!neighbors.has(a)) neighbors.set(a, new Set());
-    if (!neighbors.has(b)) neighbors.set(b, new Set());
-    if (neighbors.get(a)!.has(b)) continue;
-    neighbors.get(a)!.add(b);
-    neighbors.get(b)!.add(a);
-    edges.push([a, b]);
+  for (const order of [rows.map((row) => row.repoId), repoOrder]) {
+    for (let i = 1; i < order.length; i++) {
+      const a = order[i - 1], b = order[i];
+      if (a === b) continue;
+      if (!neighbors.has(a)) neighbors.set(a, new Set());
+      if (!neighbors.has(b)) neighbors.set(b, new Set());
+      if (neighbors.get(a)!.has(b)) continue;
+      neighbors.get(a)!.add(b);
+      neighbors.get(b)!.add(a);
+      edges.push([a, b]);
+    }
   }
   const conflicts = (colors: ReadonlyMap<string, number>) => edges.filter(([a, b]) => accentOf(colors, a) === accentOf(colors, b)).length;
   if (conflicts(preferred) === 0) return preferred;

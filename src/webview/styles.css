@@ -48,19 +48,33 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .workspace.stacked { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) 5px var(--changes-size, 240px); }
 .workspace.no-changes { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .changes-splitter-vertical { cursor: row-resize; border-left: 0; border-top: 1px solid var(--vscode-panel-border); }
-.pane-controls { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
-.log-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 1px 8px; min-height: 27px; flex: 0 0 auto; flex-wrap: wrap; border-bottom: 1px solid var(--vscode-panel-border); cursor: default; }
-.log-toolbar-label { font-size: 11px; color: var(--vscode-descriptionForeground); user-select: none; }
-.log-toolbar-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; max-width: 100%; flex-wrap: wrap; }
-.log-toolbar .icon-button[aria-pressed="true"] { background: var(--vscode-inputOption-activeBackground); color: var(--vscode-inputOption-activeForeground); outline: 1px solid var(--vscode-inputOption-activeBorder); outline-offset: -1px; }
+/* The Log's one header row: Commits | Uncommitted, the filters, then the actions. It wraps only
+   when the Log is too narrow for one line, so a short bottom panel keeps its rows for commits. */
+.log-header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px var(--pad-x); flex: 0 0 auto; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); cursor: default; }
+/* Narrower than one line holds: the switch and the actions share the first row, the filters take
+   the whole second. Wide enough: one row, filters between them. */
+.log { container-type: inline-size; }
+.log-header > .switch { order: 1; }
+.log-header > .work-totals { order: 2; }
+.header-actions { order: 3; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px; margin-left: auto; max-width: 100%; }
+.log-header > .filters { order: 4; flex: 1 1 100%; min-width: 0; padding: 0; border-bottom: 0; }
+@container (min-width: 1080px) {
+  .log-header > .filters { order: 2; flex: 1 1 0; }
+  .log-header > .work-totals { order: 3; }
+  .header-actions { order: 4; margin-left: 0; }
+}
+.header-actions .icon-button[aria-pressed="true"] { background: var(--vscode-inputOption-activeBackground); color: var(--vscode-inputOption-activeForeground); outline: 1px solid var(--vscode-inputOption-activeBorder); outline-offset: -1px; }
 .toolbar-divider { align-self: stretch; width: 1px; margin: 4px; background: var(--vscode-panel-border); }
-.toolbar-menu { position: fixed; z-index: 120; min-width: 210px; max-width: calc(100vw - 12px); padding: 5px; border: 1px solid var(--vscode-widget-border, var(--vscode-input-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); color: var(--vscode-menu-foreground, var(--vscode-foreground)); box-shadow: 0 4px 12px var(--vscode-widget-shadow); }
+.toolbar-menu { position: fixed; z-index: 120; min-width: 210px; max-width: calc(100vw - 12px); max-height: calc(100vh - 8px); overflow-y: auto; padding: 5px; border: 1px solid var(--vscode-widget-border, var(--vscode-input-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); color: var(--vscode-menu-foreground, var(--vscode-foreground)); box-shadow: 0 4px 12px var(--vscode-widget-shadow); }
 .toolbar-menu button { display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: 3px; background: transparent; color: inherit; font: inherit; text-align: left; }
 .toolbar-menu button:hover, .toolbar-menu button:focus-visible { background: var(--vscode-list-hoverBackground); }
 .toolbar-menu button:disabled { color: var(--vscode-disabledForeground); cursor: default; }
-.log-toolbar .fetching svg { animation: toolbar-spin 1s linear infinite; }
+.toolbar-menu button::before { content: ""; display: inline-block; width: 1.3em; }
+.toolbar-menu button:is([role="menuitemcheckbox"], [role="menuitemradio"])[aria-checked="true"]::before { content: "\2713"; }
+.toolbar-menu-separator { height: 1px; margin: 4px 2px; background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border)); }
+.header-actions .fetching svg { animation: toolbar-spin 1s linear infinite; }
 @keyframes toolbar-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .log-toolbar .fetching svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .header-actions .fetching svg { animation: none; } }
 
 /* ── Mode bar (file history) ─────────────────────────────────────────── */
 .modebar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
@@ -76,18 +90,15 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 /* ── Repositories pane ──────────────────────────────────────────────────── */
 .repo-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
 /* Same height and bottom line as the Log's filter bar, so the two panes' rows line up. */
-.repo-search { padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
-.repo-filter { width: 100%; }
-.sidebar-modes { display: flex; align-items: center; gap: 3px; margin-bottom: 6px; }
-.sidebar-modes > [role="tab"] { flex: 1; min-width: 0; padding: 2px 4px; border: 1px solid transparent; background: transparent; color: var(--vscode-descriptionForeground); }
-.sidebar-modes > [aria-selected="true"] { background: var(--vscode-inputOption-activeBackground); border-color: var(--vscode-inputOption-activeBorder); color: var(--vscode-inputOption-activeForeground); }
-.branch-tree { overflow: auto; min-height: 0; padding: 2px 0 6px; }
-.branch-row { display: flex; align-items: center; gap: 5px; height: 25px; min-width: 0; padding-right: 6px; cursor: default; }
-.branch-row:hover { background: var(--vscode-list-hoverBackground); }
-.branch-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
-.branch-tree:focus .branch-row.active { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
+.repo-search { display: flex; align-items: center; gap: 2px; padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.repo-filter { flex: 1 1 auto; min-width: 0; width: auto; }
+/* The tree's rows below a repository: groups, remotes and branches. */
+.tree-twisty { width: 10px; flex: 0 0 10px; margin-right: -3px; color: var(--vscode-descriptionForeground); font-size: 10px; }
+.repo-row.tree-group .repo-name { color: var(--vscode-descriptionForeground); }
+.repo-row.branch-row { gap: 5px; cursor: default; }
+.repo-row.branch-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
+.branch-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .branch-name { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.branch-twisty { width: 10px; flex: 0 0 10px; color: var(--vscode-descriptionForeground); }
 .branch-mark { flex: 0 0 13px; color: var(--vscode-textLink-foreground); }
 .branch-mark.current { color: var(--vscode-charts-green); }
 .branch-message { color: var(--vscode-descriptionForeground); font-size: 0.92em; }
@@ -114,9 +125,6 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 /* A profile not in use is not "unticked": its name keeps the normal color. */
 .repo-row.profile-row .repo-name { color: var(--vscode-foreground); }
 .profile-missing { color: var(--vscode-editorWarning-foreground); }
-.save-row { color: var(--vscode-descriptionForeground); }
-.save-row:hover { color: var(--vscode-foreground); }
-.save-icon { width: 10px; text-align: center; flex: none; }
 .repo-divider { border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); margin: 4px 10px; }
 body.vscode-high-contrast .profile-row.current { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 .repo-name { overflow: hidden; text-overflow: ellipsis; }
@@ -150,10 +158,14 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
 /* Starting widths sum to about 750px, so the bar stays on one line in a typical panel; each
    box grows from there. */
-.search { flex: 1 1 140px; min-width: 110px; }
+/* The message search gets the most room: it is the filter typed into most. */
+.search-field { position: relative; display: inline-flex; align-items: center; flex: 2 1 180px; min-width: 130px; height: 26px; }
+.search-field .search { flex: 1; min-width: 0; padding-right: 56px; }
+.search-field #match-case { right: 30px; }
+.search[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
 /* Author dropdown with a separate Me shortcut at its right edge. */
 .author-field {
-  position: relative; display: inline-flex; align-items: center; flex: 1 1 170px; min-width: 120px;
+  position: relative; display: inline-flex; align-items: center; flex: 1 1 130px; min-width: 96px;
   height: 26px;
 }
 .author-field .author-filter { flex: 1; min-width: 0; }
@@ -183,9 +195,16 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
 }
-.branch-filter { flex: 1 1 125px; min-width: 90px; height: 26px; display: flex; align-items: center; gap: 8px; padding: 2px 6px; border-radius: 2px; border: 1px solid var(--vscode-input-border, var(--vscode-input-background)); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; text-align: left; }
+.branch-filter { flex: 1 1 110px; min-width: 80px; height: 26px; display: flex; align-items: center; gap: 8px; padding: 2px 6px; border-radius: 2px; border: 1px solid var(--vscode-input-border, var(--vscode-input-background)); background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; text-align: left; }
 .branch-filter-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.branch-filter-arrow { color: var(--vscode-descriptionForeground); }
+/* One dropdown arrow for every picker and select: the same glyph, size and color, centered. */
+.branch-filter-arrow { display: inline-flex; flex: 0 0 auto; margin-right: -3px; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
+.chevron { display: block; flex: none; }
+.select-field { position: relative; display: inline-flex; align-items: center; flex: 0 0 auto; }
+.select-field select { appearance: none; -webkit-appearance: none; padding-right: 24px; cursor: pointer; }
+.select-field .chevron { position: absolute; right: 4px; pointer-events: none; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
+.select-field select:disabled + .chevron { color: var(--vscode-disabledForeground); }
+.select-field select:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .branch-filter.filtered { border-color: var(--vscode-inputOption-activeBorder, var(--vscode-focusBorder)); }
 .branch-picker { position: fixed; z-index: 100; display: flex; flex-direction: column; padding: 5px 0; border: 1px solid var(--vscode-widget-border, var(--vscode-input-border)); background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); box-shadow: 0 4px 12px var(--vscode-widget-shadow); border-radius: 3px; }
 .branch-picker-search { padding: 3px 8px 7px; flex: 0 0 auto; }
@@ -208,7 +227,7 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .sort-choice:hover, .sort-choice:focus { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: none; }
 .sort-check { width: 12px; visibility: hidden; }
 .sort-choice[aria-checked="true"] .sort-check { visibility: visible; }
-.path-filter { flex: 1 1 130px; min-width: 100px; }
+.path-filter { flex: 1 1 110px; min-width: 80px; }
 /* File History already filters to one file. */
 .app.history .path-filter { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
@@ -273,10 +292,12 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .subject, .author, .date, .chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-message { display: flex; align-items: center; min-width: 0; gap: 8px; }
 .commit-message .subject { flex: 1 1 auto; min-width: 0; }
-.row-refs { flex: 0 1 auto; max-width: 55%; display: inline-flex; gap: 8px; overflow: hidden; white-space: nowrap; font-size: 11px; }
-.row-ref { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.row-refs { flex: 0 1 auto; min-width: 0; max-width: 55%; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; font-size: 11px; }
+.row-ref { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; min-width: 0; max-width: 100%; }
+.row-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row-ref-more { flex: 0 0 auto; color: var(--vscode-descriptionForeground); }
 .row-ref-icon, .row-ref-icon svg { display: inline-block; width: 13px; height: 13px; }
-.row-ref-icons { display: inline-flex; padding-right: 2px; }
+.row-ref-icons { display: inline-flex; flex: 0 0 auto; padding-right: 2px; }
 .row-ref-icons .row-ref-icon + .row-ref-icon { margin-left: -6px; }
 .row-ref-icon.ref-local { color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
 .row-ref-icon.ref-head, .row-ref-icon.ref-tag { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
@@ -285,6 +306,12 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .row-ref.ref-head, .row-ref.ref-tag { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
 .row-ref.ref-remote { color: var(--vscode-descriptionForeground); }
 .author, .date { color: var(--vscode-descriptionForeground); }
+/* View options: a hash column, bold for my commits, the theme's disabled color for commits off HEAD. */
+.list.hash-column .row { grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) 8.5ch minmax(48px, 10ch) 8ch; }
+.hash { font-family: var(--vscode-editor-font-family); font-size: 0.92em; color: var(--vscode-descriptionForeground); overflow: hidden; white-space: nowrap; }
+.row.mine .subject, .row.mine .author { font-weight: 600; }
+.row.off-head :is(.subject, .author, .date, .hash) { color: var(--vscode-disabledForeground); }
+.list:focus .row.focus[aria-selected="true"].off-head :is(.subject, .author, .date, .hash) { color: inherit; }
 .list:focus .row.focus[aria-selected="true"] :is(.author, .date) { color: inherit; }
 .date { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -317,8 +344,6 @@ body.vscode-light .repo-band { background: color-mix(in srgb, var(--accent) 30%,
 .graph-point { cursor: pointer; }
 .graph-hit { fill: transparent; pointer-events: all; }
 .graph-point:hover .graph-node { stroke: var(--vscode-foreground); stroke-width: 2; }
-.graph-controls { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; }
-.graph-controls button { font-size: 18px; }
 .graph-fold-edge { cursor: pointer; }
 .graph-edge-hit { fill: none; stroke: transparent; stroke-width: 10; pointer-events: stroke; }
 .graph-fold-edge:hover .graph-edge { stroke: var(--vscode-foreground); stroke-width: 2; }
@@ -357,21 +382,25 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
 @media (max-width: 720px) {
-  .row { grid-template-columns: minmax(64px, min(var(--repo-col, 14ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) 8ch; column-gap: 6px; }
+  /* The repository column narrows to its color strip, as the JetBrains Log's root column does:
+     the name stays in the band's tooltip and accessible name. */
+  .row, .list.hash-column .row { grid-template-columns: 6px var(--graph-width, 32px) minmax(0, 1fr) 8ch; column-gap: 6px; }
+  .row .repo-band .repo-label { display: none; }
   .row .author { display: none; }
+  .row .hash { display: none; }
 }
 
 /* The Log's Commits | Uncommitted switch (VS Code's segmented look, theme colors only). */
-.logswitch { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 6px var(--pad-x) 0; min-width: 0; }
 .switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 6px; background: var(--vscode-input-background); }
 .switch-tab { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer; }
 .switch-tab:hover { color: var(--vscode-foreground); }
 .switch-tab[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-contrastActiveBorder, transparent); }
 .switch-tab:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 .work-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 11px; line-height: 16px; text-align: center; }
-.work-totals { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.work-totals:empty { display: none; }
+.work-totals { color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The Uncommitted side: uncommitted work has no message, author, branch or date to filter on. */
-.app.work :is(#search, .author-field, .picker-field, #branch, #sort, #date, #custom-range, .hash-search-note) { display: none; }
+.app.work :is(#search-field, .author-field, .picker-field, #branch, #sort, #date-field, #custom-range, .hash-search-note) { display: none; }
 .app.work :is(#more, .footer .note, #count) { display: none; }
 .app.work #list { display: none; }
 .worklist { overflow-y: auto; height: 100%; outline: none; }
