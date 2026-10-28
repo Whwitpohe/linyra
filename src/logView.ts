@@ -660,13 +660,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // No page yet and none on its way: read one. A reload in flight (queryState is null until its
     // page lands) already reads these repositories: restarting it would only throw its work away.
     // Refresh reads everything again, one kind after another in the order it is seen (starting git
-    // processes is what they would compete for): what the Log shows first, then the uncommitted
-    // work (first instead, on the Uncommitted side), then how far each is from its upstream.
-    const workFirst = force && this.logMode === "uncommitted";
-    if (workFirst) await this.deps.uncommitted.readAll(true);
+    // processes is what they would compete for): the commit rows first, then the uncommitted work
+    // (last, so on the Uncommitted side its files are what the Changes view settles on), then how
+    // far each is from its upstream.
     if (force || changed || (this.queryState === null && !this.reloading)) await this.reload();
     if (force) {
-      if (!workFirst) await this.deps.uncommitted.readAll(true);
+      await this.deps.uncommitted.readAll(true);
       await this.upstream.read();
     }
   }
