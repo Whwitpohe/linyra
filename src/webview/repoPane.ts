@@ -91,6 +91,13 @@ export class RepoPane {
   }
   private idsKey: string | null | undefined;
 
+  /** Share any adjacency repairs made by the displayed commit list. */
+  setAccents(accents: ReadonlyMap<string, number>): void {
+    if (this.accents === accents) return;
+    this.accents = accents;
+    this.render();
+  }
+
   /** toggle: tick/untick (checkbox, Space, Ctrl/Cmd-click); otherwise show only this repo. */
   private activate(i: number, toggle: boolean): void {
     const row = this.rows[i];

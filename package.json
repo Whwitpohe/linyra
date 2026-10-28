@@ -2,7 +2,7 @@
   "name": "linyra",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "publisher": "whwitpohe",
   "icon": "media/icon.png",
   "galleryBanner": {

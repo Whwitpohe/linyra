@@ -28,6 +28,7 @@ export function mockRepos(scenario: string): Repo[] {
   const LONG = ["acme-web", "acme-mobile-shipper-ops", "acme-mobile-shipper-app", "acme-payments-gateway-worker", "acme-api"];
   const names = scenario === "many"
     ? [...BASE, ...Array.from({ length: 65 }, (_, i) => `acme-svc-${String(i + 1).padStart(2, "0")}`)]
+    : scenario === "adjacent" ? ["acme-api", "acme-assets", "acme-docs", "acme-infra", "acme-libs", "acme-mobile", "acme-web", "acme-worker"]
     : scenario === "longnames" ? LONG : BASE;
   return names.map((name) => ({ id: `/work/${name}`, root: `/work/${name}`, name }));
 }
@@ -44,6 +45,14 @@ function sha(n: number): string {
 
 export function mockCommits(repos: Repo[], scenario: string): Commit[] {
   if (scenario === "empty") return [];
+  if (scenario === "adjacent") {
+    // The baseline palette repeats for api/web and libs/worker. Keep those bands
+    // adjacent, with enough commits to exercise folded as well as expanded rows.
+    return [0, 6, 4, 7, 1, 2, 3, 5, 0, 6].flatMap((repo, group) => Array.from({ length: 4 }, (_, i): Commit => ({
+      repoId: repos[repo].id, sha: sha(group * 10 + i), parents: i < 3 ? [sha(group * 10 + i + 1)] : [],
+      time: NOW - (group * 4 + i) * 120, author: "dana", email: "dana@example.com", subject: SUBJECTS[group % SUBJECTS.length],
+    })));
+  }
   if (scenario === "topology") {
     const rows: [number, number, number, string, number[]][] = [
       [0, 100, 0, "Merge release-1.4 into main", [101, 102]],

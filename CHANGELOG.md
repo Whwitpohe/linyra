@@ -9,6 +9,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.4.3] — 2026-10-28
+
+### Fixed
+
+- **Adjacent repository bands are easier to distinguish.** The Log repairs avoidable
+  color collisions between neighboring repositories when the six theme hues are reused.
+  It checks the displayed order after filtering, paging and graph folding, keeps one hue
+  per repository across the Log and its repository pane, and preserves existing assignments
+  when they already distinguish neighboring bands. Repeated host initialization retains
+  the repaired palette while the repository set stays the same.
+
 ## [1.4.2] — 2026-10-28
 
 ### Changed

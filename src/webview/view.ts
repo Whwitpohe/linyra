@@ -60,8 +60,8 @@ function hashName(name: string): number {
 }
 
 /**
- * Each repository's hue (maintainer decision, spec §18). It never depends on the filter,
- * so ticking repositories never recolors the others. Each repo starts from a hue derived
+ * Each repository's baseline hue (maintainer decision, spec §18), independent of the filter.
+ * The displayed list separately repairs adjacent-band collisions. Each repo starts from a hue derived
  * from its name; when that hue is taken, it moves on to the next one that is least used,
  * in name order. Up to six repositories therefore get six different hues, discovery order
  * does not matter, and past six hues are shared evenly. Adding a repository can move repos
@@ -92,6 +92,62 @@ export function assignAccents(repos: readonly { id: string; name: string }[]): M
 /** A repository's hue from assignAccents; 0 for one outside the list. */
 export function accentOf(accents: ReadonlyMap<string, number>, repoId: string): number {
   return accents.get(repoId) ?? 0;
+}
+
+/** Keep each repo's hue unless adjacent displayed bands collide, including after folding. */
+export function separateAdjacentAccents(rows: readonly { repoId: string }[], preferred: ReadonlyMap<string, number>): ReadonlyMap<string, number> {
+  const neighbors = new Map<string, Set<string>>();
+  const edges: [string, string][] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1].repoId, b = rows[i].repoId;
+    if (a === b) continue;
+    if (!neighbors.has(a)) neighbors.set(a, new Set());
+    if (!neighbors.has(b)) neighbors.set(b, new Set());
+    if (neighbors.get(a)!.has(b)) continue;
+    neighbors.get(a)!.add(b);
+    neighbors.get(b)!.add(a);
+    edges.push([a, b]);
+  }
+  const conflicts = (colors: ReadonlyMap<string, number>) => edges.filter(([a, b]) => accentOf(colors, a) === accentOf(colors, b)).length;
+  if (conflicts(preferred) === 0) return preferred;
+  const repaired = new Map(preferred);
+  for (const [a, b] of edges) {
+    if (accentOf(repaired, a) !== accentOf(repaired, b)) continue;
+    // Prefer changing the following band. Avoid every neighbor, so repairs never undo one another.
+    for (const id of [b, a]) {
+      const used = new Set([...neighbors.get(id)!].map((other) => accentOf(repaired, other)));
+      const start = accentOf(repaired, id);
+      const hue = Array.from({ length: ACCENT_COUNT }, (_, k) => (start + k) % ACCENT_COUNT).find((color) => !used.has(color));
+      if (hue === undefined) continue;
+      repaired.set(id, hue);
+      break;
+    }
+  }
+  if (conflicts(repaired) === 0) return repaired;
+  // A crowded neighborhood may need several repos to move together. Color the most
+  // constrained one first, preferring its existing hue whenever it remains available.
+  const colored = new Map(preferred);
+  const pending = new Set(neighbors.keys()), placed = new Set<string>();
+  while (pending.size) {
+    let next = "", saturation = -1, degree = -1;
+    for (const id of pending) {
+      const adjacent = neighbors.get(id)!;
+      const used = new Set([...adjacent].filter((other) => placed.has(other)).map((other) => accentOf(colored, other)));
+      if (used.size > saturation || (used.size === saturation && adjacent.size > degree)) {
+        next = id; saturation = used.size; degree = adjacent.size;
+      }
+    }
+    const counts = new Array<number>(ACCENT_COUNT).fill(0);
+    for (const other of neighbors.get(next)!) if (placed.has(other)) counts[accentOf(colored, other)]++;
+    const start = accentOf(repaired, next), least = Math.min(...counts);
+    for (let k = 0; k < ACCENT_COUNT; k++) {
+      const hue = (start + k) % ACCENT_COUNT;
+      if (counts[hue] === least) { colored.set(next, hue); break; }
+    }
+    pending.delete(next); placed.add(next);
+  }
+  // More than six mutually adjacent repos cannot all differ with six theme hues.
+  return conflicts(colored) < conflicts(repaired) ? colored : repaired;
 }
 
 /** The Log's repo column, in characters: fits the longest repo name, within 10–28. */

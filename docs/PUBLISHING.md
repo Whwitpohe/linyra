@@ -13,18 +13,18 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | Publisher / Open VSX namespace | `whwitpohe` |
 | package name | `linyra` |
 | 完整扩展 ID | `whwitpohe.linyra` |
-| 当前包版本 | `1.4.2` |
+| 当前包版本 | `1.4.3` |
 | 源码 / Issues | `Whwitpohe/polylog` |
 
 Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
-Open VSX 已上传 1.4.2，但当前因命名空间未验证而未激活；不要将它列为公开可安装。
+Open VSX 当前因命名空间未验证而未激活；不要将它列为公开可安装。
 命名空间所有权申请：https://github.com/EclipseFdn/open-vsx.org/issues/14842 。
 GitHub 登录与商店发布权限分别管理。Linyra 是新的扩展 ID，旧身份的版本不会占用新 ID 的版本号。
 历史 `v1.4.0` 标签和 GitHub Release 保留原来的 Polylog 包，不替换其附件或校验值。
 
 ## 切换安装
 
-1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.4.2.vsix`。
+1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.4.3.vsix`。
 2. 禁用或卸载旧的 `lntvan166.polylog-git`，只保留一个版本启用，然后重新加载窗口。
 3. 设置使用 `linyra.*`，不读取、注册或迁移旧 `polylog.*` 配置，也不改写现有配置文件。
    命令快捷键继续有效；筛选、布局等扩展私有状态按新 ID 单独保存，首次切换时可能需要重新调整。
@@ -44,8 +44,8 @@ npm run check:theme
 npm run check:design
 npm run check:denylist
 npm run test:integration
-npm run package -- --out whwitpohe.linyra-1.4.2.vsix
-Get-FileHash .\whwitpohe.linyra-1.4.2.vsix -Algorithm SHA256
+npm run package -- --out whwitpohe.linyra-1.4.3.vsix
+Get-FileHash .\whwitpohe.linyra-1.4.3.vsix -Algorithm SHA256
 ```
 
 还需验证最低支持版 VS Code 1.85.0，检查解压后的包内容与隐私扫描；本地词表通过忽略文件提供，CI 通过 Secret 提供。

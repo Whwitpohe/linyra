@@ -248,8 +248,11 @@ high-contrast themes. Color is spent where it carries meaning — on a small, us
 **Amended 2026-09-23 (maintainer decision):** every repository now gets a chip, as in the
 JetBrains VCS Log. There are six hues: five `--vscode-charts-*` colors plus
 `--vscode-terminal-ansiCyan`, because VS Code aliases `charts.orange` to a translucent
-minimap color that is unset in high contrast. Since 2026-09-24 (panel spec §18) the hue
-comes from the repo's name and never changes with the filter. The chip is a 16% tint (24%
+minimap color that is unset in high contrast. Since 2026-09-24 (panel spec §18) the baseline hue
+comes from the repo's name. Amended 2026-10-28: the Log repairs collisions between adjacent
+repository bands, including after filtering, paging or folding; each repository keeps one
+hue across the displayed log and its repository pane, and existing hues are preferred.
+The chip is a 16% tint (24%
 in light themes) behind text in `--vscode-foreground`, so contrast never depends on the
 hue, and in
 high-contrast themes it is an outline instead of a tint. The repo name is always printed, so

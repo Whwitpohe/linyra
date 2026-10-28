@@ -6,7 +6,7 @@ import { fitName, textStyle } from "./measure";
 import { renderGraph, type FoldAction } from "./graph";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { layoutGraph, type CommitGraph } from "./graphModel";
-import { absoluteTime, accentOf, moveSelection, relativeTime, visibleRange } from "./view";
+import { absoluteTime, accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
 export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
@@ -14,7 +14,7 @@ export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind:
 export interface ListProps {
   rows: readonly Commit[];
   repoNames: ReadonlyMap<string, string>;
-  /** Each repository's hue (view.ts assignAccents), fixed for the repo list. */
+  /** Preferred repository hues, shared with the repository pane. */
   accents: ReadonlyMap<string, number>;
   /** Repositories with commits to pull: their rows' menu offers Pull. */
   behind?: ReadonlySet<string>;
@@ -42,6 +42,7 @@ export class CommitList {
   private column: number | undefined;
   private graph: CommitGraph = { rows: [], columns: 0 };
   private graphWidth = 32;
+  private accents: ReadonlyMap<string, number> = new Map();
   private segments: LinearSegment[] = [];
   private readonly collapsed = new Set<string>();
   private nodeSegments = new Map<number, string>();
@@ -55,6 +56,7 @@ export class CommitList {
     private readonly onSelect: (index: number, how: Gesture) => void,
     private readonly onOpen: () => void,
     private readonly onFoldStats: (stats: { available: number; collapsed: number; hidden: number }) => void = () => undefined,
+    private readonly onAccents: (accents: ReadonlyMap<string, number>) => void = () => undefined,
   ) {
     // Ctrl/⌘ and Shift select several commits (Combined Changes).
     root.setAttribute("aria-multiselectable", "true");
@@ -98,6 +100,7 @@ export class CommitList {
 
   update(next: ListProps): void {
     const moved = next.selected !== this.props.selected;
+    if (next.accents !== this.props.accents) this.accents = next.accents;
     let changed = next.rows !== this.props.rows || next.accents !== this.props.accents || next.historyPath !== this.props.historyPath;
     if (next.rows !== this.props.rows || next.historyPath !== this.props.historyPath) {
       this.segments = next.historyPath ? [] : linearSegments(next.rows);
@@ -151,7 +154,10 @@ export class CommitList {
 
   private rebuild(): void {
     this.display = projectFolds(this.props.rows, this.segments, this.collapsed);
-    this.graph = layoutGraph(this.display.rows.map((row) => row.commit), this.props.accents);
+    const commits = this.display.rows.map((row) => row.commit);
+    const accents = separateAdjacentAccents(commits, this.accents);
+    if (accents !== this.accents) { this.accents = accents; this.onAccents(accents); }
+    this.graph = layoutGraph(commits, this.accents);
     this.edgeActions = new Map();
     for (const segment of this.segments) if (!this.collapsed.has(segment.id)) {
       const action = { id: segment.id, count: segment.hidden.length };
@@ -228,7 +234,7 @@ export class CommitList {
 
   /** One line: repository band | commit graph | subject | author | date. */
   private renderRow(c: Commit, i: number, displayIndex: number): HTMLElement {
-    const accent = accentOf(this.props.accents, c.repoId);
+    const accent = accentOf(this.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
     const focus = i === this.props.selected;
     const start = this.display.rows[displayIndex - 1]?.commit.repoId !== c.repoId;
@@ -277,7 +283,7 @@ export class CommitList {
     const end = this.display.rows[index + 1]?.commit.repoId !== c.repoId;
     return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 1), "aria-selected": "false",
       "data-vscode-context": JSON.stringify({ webviewSection: "graphFold", preventDefaultContextMenuItems: true }) }, [
-      h("span", { class: `repo-band accent-${accentOf(this.props.accents, c.repoId)}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", "aria-label": name, title: name },
+      h("span", { class: `repo-band accent-${accentOf(this.accents, c.repoId)}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", "aria-label": name, title: name },
         start ? [h("span", { class: "chip repo-label", "data-name": name }, [name])] : []),
       renderGraph(this.graph.rows[index], c, this.graph.columns, this.graphWidth, this.height(), { folded: { id: segment.id, count: segment.hidden.length }, edges: this.edgeActions }),
       h("span", { role: "gridcell", class: "fold-summary" }, [h("button", { type: "button", class: "fold-expand", "data-fold-expand": segment.id,

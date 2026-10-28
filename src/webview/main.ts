@@ -63,6 +63,9 @@ const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), o
   const count = byId("graph-fold-count");
   count.hidden = stats.hidden === 0;
   count.textContent = localize("{0} commits hidden", stats.hidden);
+}, (next) => {
+  accents = next;
+  repoPane.setAccents(next);
 });
 graphCollapse.addEventListener("click", () => list.collapseAll());
 graphExpand.addEventListener("click", () => list.expandAll());
@@ -166,7 +169,7 @@ const applyPaneWidth = (width: number) => showPaneWidth(paneWidth.set(width, win
 // Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
 attachSplitter(splitter, { get: () => paneWidth.shown, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth.shown }) });
 window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.innerWidth)));
-/** Each repository's hue, fixed for the repo list: filtering never recolors (spec §18). */
+/** Shared repo hues; the commit list repairs collisions between adjacent displayed bands. */
 let accents: ReadonlyMap<string, number> = new Map();
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
@@ -188,9 +191,12 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "changesView": changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })); return;
     case "sidebarState": branchPane.applyState(m.state); return;
     case "branchTree": branchPane.receive(m); return;
-    case "init":
+    case "init": {
+      const previousNames = new Map(state.repos.map((repo) => [repo.id, repo.name]));
+      if (m.repos.length !== state.repos.length || m.repos.some((repo) => previousNames.get(repo.id) !== repo.name)) {
+        accents = assignAccents(m.repos);
+      }
       state.repos = m.repos;
-      accents = assignAccents(m.repos);
       // +2: the chip's own padding, so a name that fits is never cut.
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
@@ -198,6 +204,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       state.profiles = m.profiles;
       repoPane.update(m.repos, m.filter.repoIds, m.profiles);
+      repoPane.setAccents(accents);
       branchPane.update(m.repos, m.filter);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       // Only when the host changed the switch: a late init must not undo the user's click.
@@ -216,6 +223,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       changesLayout = m.layout.changesLayout ?? "auto";
       applyChangesLayout();
       break;
+    }
     case "uncommitted":
       work = { known: m.known, totals: m.totals, rows: m.rows };
       break;

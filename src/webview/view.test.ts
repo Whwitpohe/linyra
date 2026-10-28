@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange, switchCount, totalsLabel, meterParts, escapeTarget,
+  relativeTime, repoButtonLabel, reselect, separateAdjacentAccents, splitPath, visibleRange, switchCount, totalsLabel, meterParts, escapeTarget,
 } from "./view";
 
 const NOW = 1790164800;
@@ -57,6 +57,50 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.ok(Math.max(...counts.values()) - Math.min(...counts.values()) <= 1, "past six, hues are shared evenly");
   assert.strictEqual(accentOf(a, "/ws/unknown"), 0, "a repository outside the list still renders");
   console.log("ok - each repo keeps one hue: from its name, distinct up to six, the same under any filter");
+}
+{
+  const preferred = new Map([["acme-api", 4], ["acme-libs", 4], ["acme-web", 2]]);
+  const rows = ["acme-api", "acme-api", "acme-libs", "acme-web", "acme-api", "acme-libs"].map((repoId) => ({ repoId }));
+  const colors = separateAdjacentAccents(rows, preferred);
+  assert.notStrictEqual(colors.get("acme-api"), colors.get("acme-libs"), "different neighboring repositories must be distinguishable");
+  assert.strictEqual(colors.get("acme-api"), preferred.get("acme-api"), "prefer preserving the preceding repository's hue");
+  assert.strictEqual(colors.get("acme-web"), preferred.get("acme-web"), "unaffected repository hues stay unchanged");
+  assert.strictEqual(preferred.get("acme-libs"), 4, "the baseline palette is not mutated");
+  assert.strictEqual(separateAdjacentAccents(rows, colors), colors, "refreshing the same log keeps the palette and its identity");
+  assert.strictEqual(separateAdjacentAccents(rows.filter((row) => row.repoId !== "acme-web"), colors), colors, "removing a repository does not undo existing repairs");
+  assert.strictEqual(separateAdjacentAccents([], colors), colors);
+  console.log("ok - adjacent repository bands differ while repeated repos and unaffected hues stay consistent");
+}
+{
+  const preferred = new Map([["acme-api", 0], ["acme-libs", 1], ["acme-web", 0]]);
+  const rows = ["acme-api", "acme-libs", "acme-web"].map((repoId) => ({ repoId }));
+  assert.strictEqual(separateAdjacentAccents(rows, preferred), preferred, "nonadjacent repos may reuse a theme hue");
+  const folded = separateAdjacentAccents([rows[0], rows[2]], preferred);
+  assert.notStrictEqual(folded.get("acme-api"), folded.get("acme-web"), "folding can expose a new adjacent collision");
+  const appended = separateAdjacentAccents([...rows, rows[0]], preferred);
+  assert.notStrictEqual(appended.get("acme-api"), appended.get("acme-web"), "a newly appended page is checked too");
+  console.log("ok - folding and pagination repair newly adjacent bands without recoloring already distinct ones");
+}
+{
+  const ids = Array.from({ length: 24 }, (_, i) => `acme-service-${i}`);
+  const preferred = new Map(ids.map((id, i) => [id, i % ACCENT_COUNT]));
+  const order = Array.from({ length: ACCENT_COUNT }, (_, hue) => ids.filter((_, i) => i % ACCENT_COUNT === hue)).flat();
+  const rows = [...order, ...order].map((repoId) => ({ repoId }));
+  const colors = separateAdjacentAccents(rows, preferred);
+  for (let i = 1; i < rows.length; i++) assert.notStrictEqual(colors.get(rows[i - 1].repoId), colors.get(rows[i].repoId));
+  assert.ok([...colors.values()].every((hue) => hue >= 0 && hue < ACCENT_COUNT));
+  console.log("ok - more repositories than theme hues still get distinct adjacent bands");
+}
+{
+  const left = Array.from({ length: ACCENT_COUNT }, (_, i) => `acme-api-${i}`);
+  const right = Array.from({ length: ACCENT_COUNT }, (_, i) => `acme-web-${i}`);
+  const preferred = new Map([...left, ...right].map((id, i) => [id, i % ACCENT_COUNT]));
+  const rows = left.flatMap((a) => right.flatMap((b) => [a, b, a])).map((repoId) => ({ repoId }));
+  const colors = separateAdjacentAccents(rows, preferred);
+  for (let i = 1; i < rows.length; i++) if (rows[i - 1].repoId !== rows[i].repoId) {
+    assert.notStrictEqual(colors.get(rows[i - 1].repoId), colors.get(rows[i].repoId));
+  }
+  console.log("ok - crowded neighborhoods can move several hues together instead of leaving avoidable collisions");
 }
 {
   assert.strictEqual(repoButtonLabel(null, repos), "All repositories");
