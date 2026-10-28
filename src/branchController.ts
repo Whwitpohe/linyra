@@ -44,6 +44,8 @@ export class BranchController implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: Deps) {
     this.state = sidebarState(context.workspaceState.get(STATE, DEFAULT_BRANCH_SIDEBAR));
+    // A few repositories at a time: Refresh reloads every expanded repository's branches beside the
+    // Log's own reads, and starting git processes, not running them, is what they would compete for.
     this.limiter = new Limiter(Math.max(1, Math.min(4, deps.concurrency())));
   }
 
@@ -78,10 +80,17 @@ export class BranchController implements vscode.Disposable {
     if (inFlight) return inFlight;
     this.deps.post({ type: "branchTree", repoId, loading: true });
     const read = this.limiter.run(repoId, async () => {
-      const output = await this.deps.run(repo.root, branchArgs(), this.ctl.signal);
-      const remotes = (await this.deps.run(repo.root, ["remote"], this.ctl.signal)).split(/\r?\n/).filter(Boolean);
-      const data = parseBranches(output, remotes);
-      data.stashes = parseStashes(await this.deps.run(repo.root, stashListArgs(), this.ctl.signal).catch(() => ""));
+      // A git process costs more than its work: one listing (refs/stash says whether there are
+      // stashes), remote names from VS Code's Git when it watches the repository, and the stash
+      // list only where there is one.
+      const known = this.deps.discovery.remotes(repo.root);
+      const [output, remoteList] = await Promise.all([
+        this.deps.run(repo.root, [...branchArgs(), "refs/stash"], this.ctl.signal),
+        known ? Promise.resolve(known.join("\n")) : this.deps.run(repo.root, ["remote"], this.ctl.signal),
+      ]);
+      const data = parseBranches(output, remoteList.split(/\r?\n/).filter(Boolean));
+      const hasStash = output.split("\n").some((line) => line.startsWith("refs/stash\0"));
+      data.stashes = hasStash ? parseStashes(await this.deps.run(repo.root, stashListArgs(), this.ctl.signal).catch(() => "")) : [];
       if (this.ctl.signal.aborted) return;
       this.shown.set(repoId, data);
       this.deps.post({ type: "branchTree", repoId, data });
