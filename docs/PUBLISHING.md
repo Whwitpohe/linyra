@@ -8,12 +8,12 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | 项目 | 值 |
 | --- | --- |
 | 产品名 | Linyra |
-| 英文展示名 | Linyra — Multi-Repo Git History |
-| 中文展示名 | Linyra — 多仓库 Git 历史 |
+| 英文展示名 | Linyra — Multi-Repo Git Log |
+| 中文展示名 | Linyra — 多仓库 Git 日志 |
 | Publisher / Open VSX namespace | `whwitpohe` |
 | package name | `linyra` |
 | 完整扩展 ID | `whwitpohe.linyra` |
-| 当前包版本 | `1.4.4` |
+| 当前包版本 | `1.5.0` |
 | 源码 / Issues | `Whwitpohe/linyra` |
 
 Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
@@ -24,7 +24,7 @@ GitHub 登录与商店发布权限分别管理。Linyra 是新的扩展 ID，旧
 
 ## 切换安装
 
-1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.4.4.vsix`。
+1. 从 Marketplace 安装 `whwitpohe.linyra`，或安装新包 `whwitpohe.linyra-1.5.0.vsix`。
 2. 重新加载窗口。命令、视图、上下文和 URI 均使用 Linyra 标识，可与 `lntvan166.polylog-git` 共存。
 3. 设置使用 `linyra.*`，不读取、注册或迁移旧 `polylog.*` 配置，也不改写现有配置文件。
    自定义快捷键改用 `linyra.*` 命令；不再注册 `polylog.*` 命令别名。
@@ -45,8 +45,8 @@ npm run check:theme
 npm run check:design
 npm run check:denylist
 npm run test:integration
-npm run package -- --out whwitpohe.linyra-1.4.4.vsix
-Get-FileHash .\whwitpohe.linyra-1.4.4.vsix -Algorithm SHA256
+npm run package -- --out whwitpohe.linyra-1.5.0.vsix
+Get-FileHash .\whwitpohe.linyra-1.5.0.vsix -Algorithm SHA256
 ```
 
 还需验证最低支持版 VS Code 1.85.0，检查解压后的包内容与隐私扫描；本地词表通过忽略文件提供，CI 通过 Secret 提供。
@@ -67,7 +67,26 @@ Get-FileHash .\whwitpohe.linyra-1.4.4.vsix -Algorithm SHA256
 
 在 [Publisher 管理后台](https://marketplace.visualstudio.com/manage) 使用自己的 Microsoft 账号创建或管理 `whwitpohe` 发布者。
 首次发布可以选择 New extension → Visual Studio Code，手动上传上面生成的 VSIX。
-后续自动发布采用自己的授权，遵循 [VS Code 官方发布指南](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)。
+
+### 网页上传新版本（1.4.x 与 1.5.0 的实际方式）
+
+不需要令牌，只需要一个已登录维护者 Microsoft 账号的浏览器：
+
+1. 打开 https://marketplace.visualstudio.com/manage/publishers/whwitpohe 。
+2. Linyra 一行 → **More Actions…** → **Update**。
+3. 选择经过验证的 `whwitpohe.linyra-X.Y.Z.vsix`，确认对话框显示该文件名，点 **Upload**。
+4. 该行显示 `旧版本 Verifying X.Y.Z`，Microsoft 扫描约 5 分钟；`npx vsce show whwitpohe.linyra` 显示新版本即已上线。
+
+同一版本号不能重复上传；扫描被拒只能发新的补丁版本。
+CLI 方式（`vsce publish`）需要 Azure DevOps 的 Marketplace 令牌；本机存的令牌已过期（`vsce verify-pat` 报 TF400813），
+网页上传不受影响。令牌只由维护者本人生成和输入，不写进仓库、聊天或脚本。
+
+### GitHub Release
+
+每个版本都在 GitHub 创建 Release：标题 `Linyra X.Y.Z`，正文为 `— 日期` 加 CHANGELOG 对应段落，
+附件为同一份 VSIX 与 `SHA256SUMS.txt`（`<sha256>  <文件名>`），设为 latest。
+发布后核对 GitHub 给出的附件 SHA-256 与本地包一致。Release 发布会触发下面的 Open VSX 同步。
+完整操作步骤（Claude 发版时照做）见 `.claude/skills/release/SKILL.md`。
 不要使用原作者的发布者身份、账户或令牌。
 
 ## Open VSX
