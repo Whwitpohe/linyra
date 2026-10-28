@@ -68,7 +68,24 @@ Get-FileHash .\whwitpohe.linyra-1.5.0.vsix -Algorithm SHA256
 在 [Publisher 管理后台](https://marketplace.visualstudio.com/manage) 使用自己的 Microsoft 账号创建或管理 `whwitpohe` 发布者。
 首次发布可以选择 New extension → Visual Studio Code，手动上传上面生成的 VSIX。
 
-### 网页上传新版本（1.4.x 与 1.5.0 的实际方式）
+### 发布 GitHub Release 即自动发布（Trusted Publishing）
+
+`.github/workflows/publish-marketplace.yml` 在正式 GitHub Release 发布时运行，也可在
+Actions → Publish to the VS Code Marketplace → Run workflow 输入版本标签手动补发。
+它核对 Release、对应源码的 main CI、附件 SHA-256 与 `SHA256SUMS.txt`、包内 publisher/name/version，
+再用 `vsce publish --oidc --skip-duplicate` 上传同一份包。不存放任何令牌：
+Marketplace 发布者后台 → Trusted Publishing 中的策略 `linyra-github-releases` 信任以下来源：
+
+| 字段 | 值 |
+| --- | --- |
+| Provider | GitHub Actions |
+| Repository owner / Repository | `Whwitpohe` / `linyra` |
+| Workflow | `publish-marketplace.yml` |
+| Environment | 留空 |
+
+改名工作流文件或仓库后要同步修改策略。已发布的版本会认证后跳过，重复运行无害。
+
+### 网页上传（自动发布失败时的备用方式，1.4.x 与 1.5.0 用过）
 
 不需要令牌，只需要一个已登录维护者 Microsoft 账号的浏览器：
 
@@ -85,7 +102,7 @@ CLI 方式（`vsce publish`）需要 Azure DevOps 的 Marketplace 令牌；本�
 
 每个版本都在 GitHub 创建 Release：标题 `Linyra X.Y.Z`，正文为 `— 日期` 加 CHANGELOG 对应段落，
 附件为同一份 VSIX 与 `SHA256SUMS.txt`（`<sha256>  <文件名>`），设为 latest。
-发布后核对 GitHub 给出的附件 SHA-256 与本地包一致。Release 发布会触发下面的 Open VSX 同步。
+发布后核对 GitHub 给出的附件 SHA-256 与本地包一致。Release 发布会触发上面的 Marketplace 发布和下面的 Open VSX 同步。
 完整操作步骤（Claude 发版时照做）见 `.claude/skills/release/SKILL.md`。
 不要使用原作者的发布者身份、账户或令牌。
 
@@ -124,7 +141,7 @@ CLI 方式（`vsce publish`）需要 Azure DevOps 的 Marketplace 令牌；本�
 绑定完成前不能据此声称自动发布已经启用。
 首次 1.4.2 通过网页上传，文件 SHA-256 为
 `4c94329977c0e79c4de09144bdf50b11cef62db948eac2ecf7c2a6d5ee250cc9`，与 GitHub Release 一致。
-这套流程将已有 Release 同步到 Open VSX；Visual Studio Marketplace 仍沿用原发布方式。
+这套流程将已有 Release 同步到 Open VSX；Marketplace 由 publish-marketplace.yml 以同样方式发布。
 官方说明：https://github.com/eclipse-openvsx/openvsx/wiki/Trusted-Publishing 。
 
 ## 发布后的验证

@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut and publish a Linyra release to the VS Code Marketplace and Open VSX. Use when the maintainer asks to "make a release", "publish", "ship", "cut a version", "release vX.Y.Z", or "push a new version to the marketplace". Handles the semver bump, CHANGELOG, the full test and check suite, bundle, commit, tag, push, uploading one .vsix to the Marketplace from the signed-in publisher page (no token), the GitHub Release that feeds Open VSX, pausing for confirmation before the irreversible publish. Only when the maintainer asks: CLAUDE.md constraint 5 forbids releasing on your own.
+description: Cut and publish a Linyra release to the VS Code Marketplace and Open VSX. Use when the maintainer asks to "make a release", "publish", "ship", "cut a version", "release vX.Y.Z", or "push a new version to the marketplace". Handles the semver bump, CHANGELOG, the full test and check suite, bundle, commit, tag, push, and one GitHub Release whose workflows publish the same .vsix to the Marketplace and Open VSX with trusted publishing (no token; the signed-in publisher page is the fallback), pausing for confirmation before the irreversible publish. Only when the maintainer asks: CLAUDE.md constraint 5 forbids releasing on your own.
 ---
 
 # Release Linyra
@@ -12,10 +12,16 @@ A release means:
 1. Bump the version and record it in the CHANGELOG.
 2. Verify that everything builds and every check passes.
 3. Commit, tag and push to GitHub.
-4. Publish **one** `.vsix`, built once, everywhere:
-   - the **VS Code Marketplace**: upload it on the publisher's management page in the browser that is already signed in (step 9). No token: this is how 1.4.x and 1.5.0 were published;
-   - a **GitHub Release** with the VSIX and `SHA256SUMS.txt` (step 10), as every release since 1.4.2 has;
-   - **[Open VSX](https://open-vsx.org)** (the registry of Cursor, VSCodium and Windsurf): the GitHub Release triggers `.github/workflows/publish-open-vsx.yml`, which publishes the same VSIX with Trusted Publishing (OIDC, no token) once the namespace is verified (step 11).
+4. Publish **one** `.vsix`, built once, everywhere, by publishing a **GitHub Release** with the
+   VSIX and `SHA256SUMS.txt` (step 10). The Release starts two workflows, neither with a token:
+   - `.github/workflows/publish-marketplace.yml` publishes it to the **VS Code Marketplace**
+     with Marketplace Trusted Publishing (GitHub OIDC; the publisher's policy
+     `linyra-github-releases` trusts this repository and this workflow file) — step 11;
+   - `.github/workflows/publish-open-vsx.yml` publishes it to **[Open VSX](https://open-vsx.org)**
+     (the registry of Cursor, VSCodium and Windsurf) once the namespace is verified — step 12.
+
+   If the Marketplace workflow fails, upload the same VSIX on the publisher page in the
+   signed-in browser instead (step 11's fallback; that is how 1.4.x and 1.5.0 went out).
 
 **CLAUDE.md constraint 5:** never bump, tag or publish unless the maintainer explicitly asks for a release. This skill is that explicit path, not a licence to release after landing a change.
 
@@ -115,13 +121,13 @@ Confirm that `out/extension.js`, `out/webview.js`, `out/webview.css`, `out/compa
 
 ### 5. Publishing access, before committing
 
-- **Marketplace:** open https://marketplace.visualstudio.com/manage/publishers/whwitpohe in the
-  browser. It redirects through a sign-in check (`_MsalSignedInFps`) and lands on *Manage
-  Publishers & Extensions* with the Linyra row and its current version. If it asks to sign
-  in instead, stop: signing in is the maintainer's.
+- **Marketplace:** the Trusted Publishing policy `linyra-github-releases` should read *Active* on
+  https://marketplace.visualstudio.com/manage/publishers/whwitpohe/trustedpublishing (the page
+  redirects through a sign-in check, `_MsalSignedInFps`, first). The same signed-in page is the
+  fallback upload. If it asks to sign in instead, stop: signing in is the maintainer's.
 - **GitHub:** https://github.com/Whwitpohe/linyra/releases/new opens the new-release form when
   the browser is signed in.
-- **Open VSX:** check whether the namespace is verified (until it is, step 11 only waits):
+- **Open VSX:** check whether the namespace is verified (until it is, step 12 only waits):
 
 ```bash
 curl -s https://open-vsx.org/api/whwitpohe | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log('verified:',JSON.parse(d).verified))"
@@ -179,7 +185,7 @@ for u in $(grep -o 'raw.githubusercontent.com/Whwitpohe/linyra/main/media/[^)" ]
 done   # expect 200 on every line
 ```
 
-### 9. Package once, upload it to the Marketplace
+### 9. Package once
 
 ```bash
 npx vsce package --out whwitpohe.linyra-X.Y.Z.vsix     # runs vscode:prepublish; *.vsix is gitignored
@@ -191,29 +197,9 @@ sha256sum whwitpohe.linyra-X.Y.Z.vsix | sed 's/ \*/  /' > SHA256SUMS.txt   # "<s
   source, development dependencies, screenshots and source maps must not ship.
 - Keep `SHA256SUMS.txt` outside the repository (the scratchpad), or delete it after step 10.
 
-Upload on the publisher page, in the signed-in browser:
-
-1. Open https://marketplace.visualstudio.com/manage/publishers/whwitpohe. Screenshots of this
-   page may time out; work from `read_page` / `find`.
-2. On the Linyra row: **More Actions…** → **Update**.
-3. Attach `whwitpohe.linyra-X.Y.Z.vsix` to the dialog's file input with the browser's file
-   upload (never click the file input: that opens a native picker). Check the dialog shows the
-   file name.
-4. Click **Upload**. The row then reads `<old> Verifying X.Y.Z`: Microsoft scans the package.
-5. Poll until the Marketplace serves it (it took about 5 minutes for 1.5.0):
-
-```bash
-for i in $(seq 1 40); do
-  v=$(npx vsce show whwitpohe.linyra 2>/dev/null | grep -E "^\s+Version:" | awk '{print $2}')
-  echo "t+$((i*30))s marketplace=$v"; [ "$v" = "X.Y.Z" ] && echo LIVE && break; sleep 30
-done
-```
-
-A version number can never be uploaded twice; a rejected scan means a new patch version.
-
 ### 10. GitHub Release
 
-Every release since 1.4.2 has one, and Open VSX is fed from it. In the signed-in browser:
+Every release since 1.4.2 has one, and both stores are fed from it. In the signed-in browser:
 
 1. Open https://github.com/Whwitpohe/linyra/releases/new?tag=vX.Y.Z (the tag is preselected).
 2. Title `Linyra X.Y.Z`; description `— YYYY-MM-DD`, a blank line, then the CHANGELOG section
@@ -228,7 +214,42 @@ curl -s https://api.github.com/repos/Whwitpohe/linyra/releases/tags/vX.Y.Z \
   | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const r=JSON.parse(d);console.log(r.name,'draft:',r.draft);for(const a of r.assets)console.log(a.name,a.digest)})"
 ```
 
-### 11. Open VSX
+### 11. Marketplace
+
+Publishing the Release starts **Publish to the VS Code Marketplace**. It checks the release and
+the release commit's green `main` CI, verifies the VSIX against GitHub's digest and
+`SHA256SUMS.txt`, then runs `vsce publish --oidc --skip-duplicate` on that file. Watch it, then
+poll the Marketplace (its scan took about 5 minutes for 1.5.0):
+
+```bash
+curl -s "https://api.github.com/repos/Whwitpohe/linyra/actions/workflows/publish-marketplace.yml/runs?per_page=1" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const r=JSON.parse(d).workflow_runs[0];console.log(r.id,r.status,r.conclusion)})"
+for i in $(seq 1 40); do
+  v=$(npx vsce show whwitpohe.linyra 2>/dev/null | grep -E "^\s+Version:" | awk '{print $2}')
+  echo "t+$((i*30))s marketplace=$v"; [ "$v" = "X.Y.Z" ] && echo LIVE && break; sleep 30
+done
+```
+
+- The policy lives on https://marketplace.visualstudio.com/manage/publishers/whwitpohe/trustedpublishing.
+  Renaming the workflow file or the repository breaks it: update the policy too.
+- A run for a version already on the Marketplace authenticates, then skips: re-running it, or
+  Actions → *Publish to the VS Code Marketplace* → *Run workflow* with a tag, is safe.
+- If the release commit's own `main` CI failed (a network error), re-run its failed jobs, then
+  run this workflow by hand with the tag.
+
+**Fallback, only if that workflow failed:** upload on the publisher page, in the signed-in browser:
+
+1. Open https://marketplace.visualstudio.com/manage/publishers/whwitpohe. Screenshots of this
+   page may time out; work from `read_page` / `find`.
+2. On the Linyra row: **More Actions…** → **Update**.
+3. Attach `whwitpohe.linyra-X.Y.Z.vsix` to the dialog's file input with the browser's file
+   upload (never click the file input: that opens a native picker). Check the dialog shows the
+   file name.
+4. Click **Upload**. The row then reads `<old> Verifying X.Y.Z`: Microsoft scans the package.
+5. Poll until the Marketplace serves it, as above.
+
+A version number can never be uploaded twice; a rejected scan means a new patch version.
+
+### 12. Open VSX
 
 Publishing the Release starts **Publish to Open VSX**. It uploads only when the `whwitpohe`
 namespace is verified **and** the release commit has a green `main` CI run; otherwise its
@@ -252,7 +273,7 @@ curl -s https://api.github.com/repos/Whwitpohe/linyra/actions/runs/<run id>/jobs
 - Link the listings:
   - https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra
   - https://github.com/Whwitpohe/linyra/releases/tag/vX.Y.Z
-  - https://open-vsx.org/extension/whwitpohe/linyra (only once step 11 really uploaded)
+  - https://open-vsx.org/extension/whwitpohe/linyra (only once step 12 really uploaded)
 - Keep the tested `.vsix` and its checksum available for the maintainer; both are
   ignored build artifacts and must not be committed. Install it locally if asked:
   `code --install-extension whwitpohe.linyra-X.Y.Z.vsix --force`.
