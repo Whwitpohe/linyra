@@ -51,7 +51,7 @@ describe("Linyra startup", () => {
     const reload = async (start: () => unknown) => {
       const before = await quiet();
       const t = Date.now();
-      await start();
+      void Promise.resolve(start()); // the page is what is timed, not the handler (Refresh goes on reading after it)
       for (let s = await snapshot(); pages(s!) === pages(before); s = await snapshot()) await sleep(5);
       const msPage = Date.now() - t;
       const first = (await snapshot())!;
@@ -85,6 +85,13 @@ describe("Linyra startup", () => {
     const tTree = Date.now();
     await Promise.all(settled.repos.map((r) => send({ type: "branchSidebar", action: "load", repoId: r.id })));
     const tree = { ms: Date.now() - tTree, byCmd: byCmd(beforeTree, (await snapshot())!) };
+    // Bringing the Log back on screen (it reads what VS Code's Git does not watch, at most every 5 s).
+    await quiet();
+    await sleep(5000);
+    await vscode.commands.executeCommand("workbench.action.closePanel");
+    const beforeShow = await quiet();
+    await vscode.commands.executeCommand("linyra.open");
+    const showLog = { byCmd: byCmd(beforeShow, await quiet()) };
     // Show Uncommitted Changes, with 5 of the repositories dirty.
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
@@ -104,8 +111,7 @@ describe("Linyra startup", () => {
     }
     const msAllPinned = Date.now() - t1;
     // One editor save in one dirty repository, with the rows shown: what does it cost?
-    await sleep(2000);
-    const before = (await snapshot())!;
+    const before = await quiet(); // the Refresh's background reads have ended
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(dirty[0].root, "UNCOMMITTED.md")));
     const edit = new vscode.WorkspaceEdit();
     edit.insert(doc.uri, new vscode.Position(0, 0), "more\n");
@@ -160,7 +166,7 @@ describe("Linyra startup", () => {
       cp.execFileSync("git", ["update-ref", "refs/heads/perf-root", first], { cwd: root });
     }
     const compareRead = async (left: string) => {
-      const before = (await snapshot())!.spawnLog.length;
+      const before = (await quiet()).spawnLog.length;
       const t = Date.now();
       await vscode.commands.executeCommand("linyra._itest.comparePick", { left, right: "perf-right" });
       const ms = Date.now() - t;
@@ -171,7 +177,8 @@ describe("Linyra startup", () => {
     const long = await compareRead("perf-root");
     await vscode.commands.executeCommand("linyra._itest.comparePick", null);
     // A diff: time until both sides are read and the diff tab is active. Idle, then while Compare reads.
-    const diffTime = async () => {
+    const diffTime = async (settle = true) => {
+      if (settle) await quiet();
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       const c = settled.rows.find((r) => r.parents.length === 1)!;
       const root = settled.repos.find((r) => r.id === c.repoId)!.root;
@@ -192,7 +199,7 @@ describe("Linyra startup", () => {
     const msDiffIdle = await diffTime();
     void vscode.commands.executeCommand("linyra._itest.comparePick", { left: "perf-root", right: "perf-right" });
     await sleep(20);
-    const msDiffDuringCompare = await diffTime();
+    const msDiffDuringCompare = await diffTime(false);
     await vscode.commands.executeCommand("linyra._itest.comparePick", null);
     const msDiffIdle2 = await diffTime();
     for (const root of roots) for (const b of ["perf-left", "perf-right", "perf-root"]) cp.spawnSync("git", ["update-ref", "-d", `refs/heads/${b}`], { cwd: root });
@@ -203,7 +210,7 @@ describe("Linyra startup", () => {
       uncommitted: { msBadgeAfterFirstRows, badgeStatus, msAllPinned, msFirstPinned, dirty: dirty.length, save, stage }, msAllFiles,
       compare: { msCounts: small.ms, msLong: long.ms, spawnsByCmd: small.spawnsByCmd },
       diff: { msDiffIdle, msDiffDuringCompare, msDiffIdle2 },
-      reloads: { typed, dated, refreshed }, paging, tree,
+      reloads: { typed, dated, refreshed }, paging, tree, showLog,
     }));
   });
 });
