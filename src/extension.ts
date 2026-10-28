@@ -235,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ]),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath, true)),
     // Back from another program (a terminal, a Git client): what VS Code's Git does not watch may have changed.
-    vscode.window.onDidChangeWindowState((state) => { if (state.focused) void uncommitted.readUnreported(); }),
+    vscode.window.onDidChangeWindowState((state) => { if (state.focused) log.windowFocused(); }),
     uncommitted,
     // Uncommitted work has one home: the Log's Uncommitted side (this command opens it).
     vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),

@@ -225,7 +225,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     });
     for (const d of this.viewDisposables) d.dispose();
     this.viewDisposables = [
-      view.onDidChangeVisibility(() => this.deps.changes.visibilityChanged()),
+      view.onDidChangeVisibility(() => {
+        this.deps.changes.visibilityChanged();
+        // What no event keeps current is read again when it is looked at.
+        if (view.visible) void this.deps.uncommitted.readUnreported();
+      }),
       view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
       view.onDidDispose(() => {
         if (this.webviewView === view) this.webviewView = undefined;
@@ -280,9 +284,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       }
       case "refresh":
-        void this.branchSidebar?.refresh();
         this.reloadSoon.cancel();
         await this.refreshRepos(true);
+        // The expanded repositories' branches last: they are below the fold of attention.
+        void this.branchSidebar?.refresh();
         return;
       case "loadMore":
         await this.loadMore();
@@ -654,11 +659,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.postInit();
     // No page yet and none on its way: read one. A reload in flight (queryState is null until its
     // page lands) already reads these repositories: restarting it would only throw its work away.
+    // Refresh reads everything again, one kind after another in the order it is seen (starting git
+    // processes is what they would compete for): what the Log shows first, then the uncommitted
+    // work (first instead, on the Uncommitted side), then how far each is from its upstream.
+    const workFirst = force && this.logMode === "uncommitted";
+    if (workFirst) await this.deps.uncommitted.readAll(true);
     if (force || changed || (this.queryState === null && !this.reloading)) await this.reload();
-    // Refresh also re-reads how far each repo is from its upstream (a fetch may have moved it).
     if (force) {
-      void this.upstream.read();
-      void this.deps.uncommitted.readAll(true);
+      if (!workFirst) await this.deps.uncommitted.readAll(true);
+      await this.upstream.read();
     }
   }
 
@@ -678,6 +687,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly refsChanged = new vscode.EventEmitter<string | undefined>();
   /** Branches moved: in one repository (its id), or in every one (undefined, after Fetch All). */
   readonly onDidChangeRefs = this.refsChanged.event;
+
+  /**
+   * The window regained focus: git may have run in another program, in repositories VS Code's
+   * Git does not watch. Read those again, but only while the Log is on screen to show them.
+   */
+  windowFocused(): void {
+    if (this.webviewView?.visible) void this.deps.uncommitted.readUnreported();
+  }
 
   /** The repositories ticked in the Repo List, in its order. */
   tickedRepos(): Repo[] {
