@@ -1,0 +1,113 @@
+name: Publish to the VS Code Marketplace
+
+# Publishes the VSIX attached to a GitHub Release with Marketplace Trusted Publishing (GitHub
+# OIDC): no token is stored anywhere. The publisher's Trusted Publishing policy names this
+# repository and this workflow file; see docs/PUBLISHING.md.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing stable release tag to publish (for example v1.5.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marketplace-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Whwitpohe/linyra'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check release and successful source CI
+        id: release
+        uses: actions/github-script@v9
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error('Choose a stable vX.Y.Z release tag.');
+            const repo = context.repo;
+            const { data: release } = await github.rest.repos.getReleaseByTag({ ...repo, tag });
+            if (release.draft || release.prerelease) throw new Error('Only published stable releases are published.');
+            const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: tag });
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              ...repo, workflow_id: 'ci.yml', head_sha: commit.sha, branch: 'main', event: 'push', per_page: 100,
+            });
+            const run = runs.workflow_runs.find((item) => item.head_sha === commit.sha);
+            if (!run || run.status !== 'completed' || run.conclusion !== 'success') {
+              throw new Error('The release source must have a successful main CI run before publishing.');
+            }
+            const version = tag.slice(1);
+            const filename = `whwitpohe.linyra-${version}.vsix`;
+            const asset = release.assets.find((item) => item.name === filename && item.state === 'uploaded');
+            if (!asset || !/^sha256:[a-f0-9]{64}$/i.test(asset.digest ?? '')) {
+              throw new Error('The release must contain the VSIX with its GitHub SHA-256 digest.');
+            }
+            if (!release.assets.some((item) => item.name === 'SHA256SUMS.txt' && item.state === 'uploaded')) {
+              throw new Error('The release must contain SHA256SUMS.txt.');
+            }
+            core.setOutput('tag', tag);
+            core.setOutput('version', version);
+            core.setOutput('filename', filename);
+            core.setOutput('digest', asset.digest.toLowerCase());
+            core.info(`Publishing ${filename} from release ${tag}; source CI: ${run.html_url}`);
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Download the existing release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          VSIX_NAME: ${{ steps.release.outputs.filename }}
+        run: |
+          gh release download "$RELEASE_TAG" --repo "$GH_REPO" \
+            --pattern "$VSIX_NAME" --pattern SHA256SUMS.txt --dir "$RUNNER_TEMP/marketplace"
+
+      - name: Verify package identity and both SHA-256 values
+        env:
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          VSIX_NAME: ${{ steps.release.outputs.filename }}
+          ASSET_DIGEST: ${{ steps.release.outputs.digest }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const dir = join(process.env.RUNNER_TEMP, 'marketplace');
+          const file = join(dir, process.env.VSIX_NAME);
+          const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
+          assert.equal(`sha256:${hash}`, process.env.ASSET_DIGEST, 'The package differs from the GitHub release asset.');
+          const sums = readFileSync(join(dir, 'SHA256SUMS.txt'), 'utf8').trim().split(/\r?\n/)
+            .map((line) => /^([a-f0-9]{64})\s+\*?(.+)$/i.exec(line.trim()))
+            .filter((match) => match?.[2] === process.env.VSIX_NAME);
+          assert.equal(sums.length, 1, 'Expected one checksum for this VSIX.');
+          assert.equal(hash, sums[0][1].toLowerCase(), 'SHA256SUMS.txt does not match the VSIX.');
+          const manifest = JSON.parse(execFileSync('unzip', ['-p', file, 'extension/package.json'], { encoding: 'utf8' }));
+          assert.equal(manifest.publisher, 'whwitpohe');
+          assert.equal(manifest.name, 'linyra');
+          assert.equal(manifest.version, process.env.RELEASE_VERSION);
+          console.log(`Verified whwitpohe.linyra ${manifest.version}: ${hash}`);
+          NODE
+
+      # A version already on the Marketplace (uploaded by hand, or a re-run) is skipped, not an error.
+      - name: Publish the same VSIX with trusted publishing
+        env:
+          VSIX_NAME: ${{ steps.release.outputs.filename }}
+        run: npx --yes @vscode/vsce@4.0.0 publish --packagePath "$RUNNER_TEMP/marketplace/$VSIX_NAME" --oidc --skip-duplicate
