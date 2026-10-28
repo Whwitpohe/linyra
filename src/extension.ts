@@ -49,8 +49,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     run: (cwd, args, signal, opts): Promise<string> => log.countedRun(cwd, args, signal, opts),
     reportsChanges: (root) => discovery.reportsChanges(root),
     cleanHead: (root) => discovery.cleanHead(root),
-    awaitingReport: (root) => discovery.awaitingReport(root),
-    firstReport: (root, ms) => discovery.firstReport(root, ms),
     canStage: (root) => discovery.vsCodeGitHas(root),
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
   });

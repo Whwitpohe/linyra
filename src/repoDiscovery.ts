@@ -142,28 +142,6 @@ export class RepoDiscovery implements vscode.Disposable {
     return lists.every((list) => list !== undefined && list.length === 0) ? state.HEAD.commit : undefined;
   }
 
-  /** VS Code's Git watches the repository but has not finished its first status of it yet. */
-  awaitingReport(root: string): boolean {
-    const state = this.reportsChanges(root) ? this.vsCodeGitRepo(root)?.state : undefined;
-    return state?.onDidChange !== undefined && state.HEAD === undefined;
-  }
-
-  /**
-   * Resolves once VS Code's Git has reported the repository (its first status), or after `ms`.
-   * Right after startup it is still reading every repository: its answer spares a git process.
-   */
-  firstReport(root: string, ms: number): Promise<void> {
-    const state = this.reportsChanges(root) ? this.vsCodeGitRepo(root)?.state : undefined;
-    if (!state?.onDidChange || state.HEAD) return Promise.resolve();
-    const onDidChange = state.onDidChange;
-    return new Promise((resolve) => {
-      let sub: vscode.Disposable | undefined;
-      const finish = () => { clearTimeout(timer); sub?.dispose(); resolve(); };
-      const timer = setTimeout(finish, ms);
-      sub = onDidChange(() => { if (state.HEAD) finish(); });
-    });
-  }
-
   /** The remote names VS Code's Git has for a repository it watches (undefined: ask git). */
   remotes(root: string): string[] | undefined {
     if (!this.reportsChanges(root)) return;

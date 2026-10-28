@@ -20,8 +20,6 @@ const FETCHING_KEY = "linyra.fetching";
 /** Fetch All: network-bound, so fewer at once than the log reads; and a fetch that hangs stops. */
 const FETCH_CONCURRENCY = 8;
 const FETCH_TIMEOUT_MS = 60_000;
-/** How long the first ahead/behind read waits for VS Code's Git to count a repository before asking git. */
-const FIRST_REPORT_MS = 3000;
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -122,8 +120,6 @@ export class SyncController implements vscode.Disposable {
   async read(only?: ReadonlySet<string>, known = false): Promise<void> {
     const all = this.host.repos();
     const repos = only ? all.filter((r) => only.has(r.id)) : [...all];
-    // Right after startup VS Code's Git may not have counted a repository yet: wait (briefly) for it.
-    if (known) await Promise.all(repos.map((r) => this.host.discovery.firstReport(r.root, FIRST_REPORT_MS)));
     const settled = await runPool(repos, this.host.maxConcurrency(), async (r, signal) => {
       const counted = known ? this.host.discovery.aheadBehind(r.root) : undefined;
       if (counted) return counted.upstream ? `${counted.ahead}	${counted.behind}` : "";

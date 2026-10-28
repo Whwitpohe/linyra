@@ -23,10 +23,6 @@ export interface StoreDeps {
    * Trusted only where its view is current: see `read`.
    */
   cleanHead?(root: string): string | undefined;
-  /** VS Code's Git watches it but has not reported it yet (right after startup). */
-  awaitingReport?(root: string): boolean;
-  /** Resolves when VS Code's Git has reported it, or after `ms`. */
-  firstReport?(root: string, ms: number): Promise<void>;
   /** VS Code's Git has the repository open: Stage, Discard and Commit work there. */
   canStage(root: string): boolean;
   concurrency(): number;
@@ -42,8 +38,6 @@ interface Entry extends RepoWork {
 
 /** Changed files whose modification time decides "edited N ago". */
 const EDITED_SAMPLE = 50;
-/** How long a read waits for VS Code's Git's first report of a repository before asking git itself. */
-const FIRST_REPORT_MS = 3000;
 /** Unreported repositories are read again on focus at most this often (alt-tabbing is bursty). */
 const UNREPORTED_INTERVAL_MS = 5000;
 
@@ -263,15 +257,7 @@ export class UncommittedStore implements vscode.Disposable {
       // Show each repository as soon as it is read, rather than after the slowest one.
       if (!sameWork(old, work)) this.changedSoon();
     };
-    // Right after startup VS Code's Git is still reading the repositories it watches: wait (briefly)
-    // for its answer instead of running the same git status beside it. The others are read at once.
-    const waiting = repos.filter((r) => trusted(r) && (this.deps.awaitingReport?.(r.root) ?? false));
-    const now = repos.filter((r) => !waiting.includes(r));
-    const reading = Promise.all([
-      runPool(now, this.deps.concurrency(), readInto, ctl.signal),
-      Promise.all(waiting.map((r) => this.deps.firstReport!(r.root, FIRST_REPORT_MS)))
-        .then(() => runPool(waiting, this.deps.concurrency(), readInto, ctl.signal)),
-    ]).then(([a, b]) => [...a, ...b]);
+    const reading = runPool(repos, this.deps.concurrency(), readInto, ctl.signal);
     if (only) {
       await reading;
       return;
