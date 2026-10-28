@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-10-28
+
 Linyra becomes a multi-repository Git client in the style of the Git tool window's Log in
 JetBrains IDEs: the merged log stays the core, and the everyday repository work is reachable
 from the row it applies to, in that row's repository.
