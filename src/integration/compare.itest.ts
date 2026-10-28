@@ -198,7 +198,9 @@ describe("Compare Branches", () => {
   it("the Linyra Compare tab: Repositories with counts; selecting one fills both sides", async () => {
     await viewPick({ left: "release-1.4", right: "prod" });
     await vscode.commands.executeCommand("linyra.compareBranches");
-    const r = await until2("listed", repos, (x) => x.open && x.roots.length === 2 && x.selected !== undefined);
+    // Rows come from the store as repositories answer; the selection follows a moment later (the
+    // store's change event is throttled), so wait for it to settle on the first listed one.
+    const r = await until2("the first listed repository selected", repos, (x) => x.open && x.roots.length === 2 && x.selected === roots["acme-api"]);
     assert.strictEqual(r.description, "release-1.4 ↔ prod");
     assert.deepStrictEqual(r.roots, ["acme-api", "acme-web"], "names only: commit counts mislead when changes travel by cherry-pick (they are in the tooltip)");
     assert.strictEqual(r.selected, roots["acme-api"], "the first listed repository is selected");
