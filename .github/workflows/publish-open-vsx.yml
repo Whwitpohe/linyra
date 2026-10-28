@@ -18,8 +18,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  readiness:
     if: github.repository == 'Whwitpohe/polylog'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      ready: ${{ steps.registry.outputs.ready }}
+    steps:
+      - name: Check namespace verification and active extension
+        id: registry
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.setOutput('ready', 'false');
+            const namespaceResponse = await fetch('https://open-vsx.org/api/whwitpohe', { signal: AbortSignal.timeout(30000) });
+            if (!namespaceResponse.ok) throw new Error(`Cannot check Open VSX namespace: HTTP ${namespaceResponse.status}`);
+            const namespace = await namespaceResponse.json();
+            if (namespace.verified !== true) {
+              core.info('Waiting for Open VSX namespace ownership verification; no upload was attempted.');
+              await core.summary.addHeading('Open VSX publication is waiting')
+                .addRaw('The whwitpohe namespace is not verified. No package was uploaded.\n\n')
+                .addLink('Namespace ownership request #14842', 'https://github.com/EclipseFdn/open-vsx.org/issues/14842').write();
+              return;
+            }
+            const extensionResponse = await fetch('https://open-vsx.org/api/whwitpohe/linyra/latest', { signal: AbortSignal.timeout(30000) });
+            if (extensionResponse.status === 404) {
+              core.info('Waiting for the first active extension version; trusted publishing cannot be used yet.');
+              await core.summary.addHeading('Open VSX publication is waiting')
+                .addRaw('Trusted publishing needs an active version of whwitpohe.linyra. No package was uploaded.').write();
+              return;
+            }
+            if (!extensionResponse.ok) throw new Error(`Cannot check the active extension: HTTP ${extensionResponse.status}`);
+            core.setOutput('ready', 'true');
+
+  publish:
+    needs: readiness
+    if: needs.readiness.outputs.ready == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

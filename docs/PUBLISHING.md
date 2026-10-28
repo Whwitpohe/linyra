@@ -99,7 +99,9 @@ Get-FileHash .\whwitpohe.linyra-1.4.3.vsix -Algorithm SHA256
 | Workflow filename | `publish-open-vsx.yml` |
 | Environment name | 留空 |
 
-绑定完成前，工作流已准备好，但自动上传不会成功；不能据此声称自动发布已经启用。
+命名空间未验证或尚无激活版本时，工作流在摘要中说明等待原因并跳过上传，不把它报告为发布成功。
+服务不可访问和已开始上传后的错误仍使流程失败。命名空间审核通过、扩展激活后，仍需完成上述绑定；
+绑定完成前不能据此声称自动发布已经启用。
 首次 1.4.2 通过网页上传，文件 SHA-256 为
 `4c94329977c0e79c4de09144bdf50b11cef62db948eac2ecf7c2a6d5ee250cc9`，与 GitHub Release 一致。
 这套流程将已有 Release 同步到 Open VSX；Visual Studio Marketplace 仍沿用原发布方式。
