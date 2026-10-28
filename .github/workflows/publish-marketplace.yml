@@ -107,7 +107,9 @@ jobs:
           NODE
 
       # A version already on the Marketplace (uploaded by hand, or a re-run) is skipped, not an error.
+      # vsce 4.0.0's OIDC exchange omits the api-version the Marketplace requires (400 Bad Request);
+      # 4.0.1-6 sends it. Move to the first stable 4.0.1+ once it is out.
       - name: Publish the same VSIX with trusted publishing
         env:
           VSIX_NAME: ${{ steps.release.outputs.filename }}
-        run: npx --yes @vscode/vsce@4.0.0 publish --packagePath "$RUNNER_TEMP/marketplace/$VSIX_NAME" --oidc --skip-duplicate
+        run: npx --yes @vscode/vsce@4.0.1-6 publish --packagePath "$RUNNER_TEMP/marketplace/$VSIX_NAME" --oidc --skip-duplicate
