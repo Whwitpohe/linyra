@@ -15,9 +15,9 @@ describe("Commit actions", () => {
   const answer = (value: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", value);
   const act = (command: string, sha: string) => vscode.commands.executeCommand(`linyra.${command}`, { webviewSection: "commit", repoId, sha, preventDefaultContextMenuItems: true });
   /** A commit on top of `parent` with one file, made without touching the working tree or HEAD. */
-  const child = (parent: string, file: string, content: string, message: string) => {
+  const child = (parent: string, file: string, content: string, message: string, date?: string) => {
     const index = path.join(root, ".git", "linyra-itest.index");
-    const env = { GIT_INDEX_FILE: index };
+    const env = { GIT_INDEX_FILE: index, ...(date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {}) };
     git(["read-tree", parent], env);
     const blob = git(["hash-object", "-w", "--stdin"], env, content);
     git(["update-index", "--add", "--cacheinfo", `100644,${blob},${file}`], env);
@@ -149,8 +149,10 @@ describe("Commit actions", () => {
   });
 
   it("cherry-picks every selected commit, oldest first, when the right-click is inside the selection", async () => {
-    const first = child(start, "one.txt", "1\n", "feat: batch one");
-    const second = child(first, "two.txt", "2\n", "feat: batch two");
+    // The same second for both, as a fast machine makes them: the Log must still list the child first.
+    const now = `${Math.floor(Date.now() / 1000)} +0000`;
+    const first = child(start, "one.txt", "1\n", "feat: batch one", now);
+    const second = child(first, "two.txt", "2\n", "feat: batch two", now);
     git(["update-ref", "refs/heads/ci-side", second]);
     await send({ type: "refresh" });
     await listed(second);

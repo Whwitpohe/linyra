@@ -17,14 +17,20 @@ const prog = (pending: Commit[], exhausted: boolean): RepoProgress => ({ fetched
   console.log("ok - merges repos newest first; exhausted repos hold nothing back");
 }
 
-// ── Equal timestamps: stable tie-break on SHA ───────────────────────────────
+// ── Equal timestamps: by repository, and in git's order within one ─────────
 {
-  const a = { ...mk("web", 7), sha: "f".repeat(40) };
-  const b = { ...mk("api", 7), sha: "0".repeat(40) };
+  const a = { ...mk("web", 7), sha: "0".repeat(40) };
+  const b = { ...mk("api", 7), sha: "f".repeat(40) };
   const rows = takeReady(new Map([["web", prog([a], true)], ["api", prog([b], true)]]));
   assert.deepStrictEqual(rows.map((c) => c.sha), [b.sha, a.sha]);
   assert.ok(compareCommits(b, a) < 0);
-  console.log("ok - equal timestamps are ordered by SHA");
+  // A child and its parent made in the same second: git lists the child first; the SHAs must not swap them.
+  const child = { ...mk("web", 9), sha: "f".repeat(40) };
+  const parent = { ...mk("web", 9), sha: "0".repeat(40) };
+  const older = mk("web", 3);
+  const same = takeReady(new Map([["web", prog([child, parent, older], true)], ["api", prog([mk("api", 9)], true)]]));
+  assert.deepStrictEqual(same.filter((c) => c.repoId === "web").map((c) => c.sha), [child.sha, parent.sha, older.sha]);
+  console.log("ok - equal timestamps: ordered by repository, and in git's order within one");
 }
 
 // ── Empty input ─────────────────────────────────────────────────────────────

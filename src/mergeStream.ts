@@ -12,9 +12,12 @@ export interface RepoProgress {
   refs?: string[];
 }
 
+/**
+ * Newest first; equal times by repository. Within one repository a tie is left to git's order
+ * (sorts are stable): a child and its parent made in the same second would otherwise swap.
+ */
 export function compareCommits(a: Commit, b: Commit): number {
   if (a.time !== b.time) return b.time - a.time;
-  if (a.sha !== b.sha) return a.sha < b.sha ? -1 : 1;
   return a.repoId < b.repoId ? -1 : a.repoId > b.repoId ? 1 : 0;
 }
 
