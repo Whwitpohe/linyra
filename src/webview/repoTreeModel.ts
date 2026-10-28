@@ -1,5 +1,6 @@
 import { branchGroupKey, branchKey, type Branch, type Branches, type BranchSidebarState } from "../branchModel";
 import type { ResolvedProfile } from "../profileModel";
+import { stashLabel, type Stash } from "../stashModel";
 import type { Repo } from "../types";
 import { fuzzyMatch, paneRows, type PaneRow } from "./repoPaneModel";
 
@@ -10,9 +11,10 @@ import { fuzzyMatch, paneRows, type PaneRow } from "./repoPaneModel";
  */
 export type TreeRow =
   | (PaneRow & { key: string; depth: 0; expanded?: boolean })
-  | { kind: "group"; key: string; depth: 1; repo: Repo; group: "local" | "remote" | "tag"; label: string; expanded: boolean }
+  | { kind: "group"; key: string; depth: 1; repo: Repo; group: "local" | "remote" | "tag" | "stash"; label: string; expanded: boolean }
   | { kind: "remote"; key: string; depth: 2; repo: Repo; label: string; expanded: boolean }
   | { kind: "branch"; key: string; depth: 2 | 3; repo: Repo; branch: Branch; label: string; favorite: boolean; parent: string }
+  | { kind: "stash"; key: string; depth: 2; repo: Repo; stash: Stash; label: string; parent: string }
   | { kind: "message"; key: string; depth: 1 | 2; repo: Repo; label: string };
 
 /** One repository's branch listing as the pane holds it. */
@@ -56,7 +58,8 @@ export function treeRows(repos: readonly Repo[], query: string, profiles: readon
     // Searching by a branch name lists only the matches; a repository found by its own name lists everything.
     const all = item.data.branches.filter((b) => !q || byName.has(repo.id) || hit(b))
       .sort((a, b) => Number(b.current) - Number(a.current) || Number(favorites.has(branchKey(repo.id, b.ref))) - Number(favorites.has(branchKey(repo.id, a.ref))) || a.name.localeCompare(b.name));
-    if (!all.length) {
+    const stashes = (item.data.stashes ?? []).filter((s) => !q || byName.has(repo.id) || stashLabel(s).toLowerCase().includes(q));
+    if (!all.length && !stashes.length) {
       rows.push({ kind: "message", key: `${key}\0empty`, depth: 1, repo, label: "No branches" });
       continue;
     }
@@ -79,6 +82,13 @@ export function treeRows(repos: readonly Repo[], query: string, profiles: readon
         rows.push({ kind: "remote", key: remoteKey, depth: 2, repo, label: remote, expanded: remoteOpen });
         if (remoteOpen) for (const b of branches.filter((x) => (x.remote ?? x.name.split("/")[0]) === remote)) rows.push(branchRow(b, 3, remoteKey));
       }
+    }
+    // Stashes, as the JetBrains Git window lists them: newest first, only when there are any.
+    if (stashes.length) {
+      const stashKey = branchGroupKey("stash", repo.id);
+      const stashOpen = !!q || open.has(stashKey);
+      rows.push({ kind: "group", key: stashKey, depth: 1, repo, group: "stash", label: "Stashes", expanded: stashOpen });
+      if (stashOpen) for (const s of stashes) rows.push({ kind: "stash", key: `${stashKey}\0${s.ref}`, depth: 2, repo, stash: s, label: stashLabel(s), parent: stashKey });
     }
   }
   return rows;

@@ -10,7 +10,7 @@ import { fuzzyMatch, isChecked, pickOnly, toggleRepo } from "./repoPaneModel";
 import { collapseAll, expandAll, parentIndex, treeRows, wantedBranchData, type BranchTreeData, type TreeRow } from "./repoTreeModel";
 import { profileFilter, type ResolvedProfile } from "../profileModel";
 import { syncLabel, type AheadBehind } from "../upstream";
-import { accentOf, assignAccents } from "./view";
+import { absoluteTime, accentOf, assignAccents } from "./view";
 
 /**
  * The Repositories pane: one tree, as the JetBrains Branches panel groups a multi-root project.
@@ -158,6 +158,10 @@ export class RepoPane {
       this.post({ type: "branchSidebar", action: "select", repoId: row.repo.id, ref: row.branch.ref });
       return;
     }
+    if (row.kind === "stash") {
+      this.post({ type: "branchSidebar", action: "stashShow", repoId: row.repo.id, ref: row.stash.ref });
+      return;
+    }
     if (row.kind === "group" || row.kind === "remote") { this.toggle(row); return; }
     if (row.kind === "message") return;
     const allIds = this.repos.map((r) => r.id);
@@ -280,6 +284,13 @@ export class RepoPane {
       if (row.kind === "group" || row.kind === "remote") {
         this.list.append(indent(h("div", { ...base(" tree-group"), "aria-expanded": String(row.expanded), "aria-selected": "false" },
           [this.twisty(row.expanded), h("span", { class: "repo-name" }, [row.kind === "group" ? localize(row.label) : row.label])])));
+        return;
+      }
+      if (row.kind === "stash") {
+        const s = row.stash;
+        this.list.append(indent(h("div", { ...base(" branch-row stash-row"), "aria-selected": "false", title: `${s.subject}\n${s.ref} · ${absoluteTime(s.time)}`,
+          "data-vscode-context": JSON.stringify({ webviewSection: "stash", repoId: row.repo.id, ref: s.ref, preventDefaultContextMenuItems: true }),
+        }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("archive")]), h("span", { class: "branch-name" }, [row.label])])));
         return;
       }
       if (row.kind === "message") {

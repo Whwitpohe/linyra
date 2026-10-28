@@ -68,13 +68,6 @@
           "title": "%container.linyra-compare.title%",
           "icon": "media/compare.svg"
         }
-      ],
-      "activitybar": [
-        {
-          "id": "linyra-side",
-          "title": "Linyra",
-          "icon": "media/linyra.svg"
-        }
       ]
     },
     "views": {
@@ -94,15 +87,6 @@
           "icon": "$(repo)",
           "when": "linyra.compareShown",
           "type": "webview"
-        }
-      ],
-      "linyra-side": [
-        {
-          "id": "linyra.uncommitted",
-          "name": "%view.linyra.uncommitted.name%",
-          "initialSize": 450,
-          "icon": "$(diff-modified)",
-          "when": "linyra.uncommittedShown"
         }
       ]
     },
@@ -311,20 +295,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "linyra.uncommittedCollapseAll",
-        "title": "%command.linyra.uncommittedCollapseAll.title%",
-        "category": "Linyra",
-        "icon": "$(collapse-all)",
-        "enablement": "linyra.uncommittedHasFolders"
-      },
-      {
-        "command": "linyra.uncommittedExpandAll",
-        "title": "%command.linyra.uncommittedExpandAll.title%",
-        "category": "Linyra",
-        "icon": "$(expand-all)",
-        "enablement": "linyra.uncommittedHasFolders"
-      },
-      {
         "command": "linyra.stage",
         "title": "%command.linyra.stage.title%",
         "category": "Linyra",
@@ -498,24 +468,6 @@
         "icon": "$(close)"
       },
       {
-        "command": "linyra.uncommittedClose",
-        "title": "%command.linyra.uncommittedClose.title%",
-        "category": "Linyra",
-        "icon": "$(close)"
-      },
-      {
-        "command": "linyra.uncommittedShow",
-        "title": "%command.linyra.uncommittedShow.title%",
-        "category": "Linyra",
-        "icon": "$(diff-modified)"
-      },
-      {
-        "command": "linyra.uncommittedHide",
-        "title": "%command.linyra.uncommittedHide.title%",
-        "category": "Linyra",
-        "icon": "$(diff-modified)"
-      },
-      {
         "command": "linyra.compareShow",
         "title": "%command.linyra.compareShow.title%",
         "category": "Linyra",
@@ -618,6 +570,31 @@
         "category": "Linyra"
       },
       {
+        "command": "linyra.stash.show",
+        "title": "%command.linyra.stash.show.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.stash.apply",
+        "title": "%command.linyra.stash.apply.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.stash.pop",
+        "title": "%command.linyra.stash.pop.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.stash.drop",
+        "title": "%command.linyra.stash.drop.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.stash.create",
+        "title": "%command.linyra.stash.create.title%",
+        "category": "Linyra"
+      },
+      {
         "command": "linyra.openChangesEditor",
         "title": "%command.linyra.openChangesEditor.title%",
         "category": "Linyra",
@@ -662,86 +639,6 @@
           "group": "1_modification@5"
         },
         {
-          "command": "linyra.commitRepo",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable/",
-          "group": "inline@1"
-        },
-        {
-          "command": "linyra.discard",
-          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
-          "group": "inline@1"
-        },
-        {
-          "command": "linyra.stage",
-          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
-          "group": "inline@2"
-        },
-        {
-          "command": "linyra.unstage",
-          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
-          "group": "inline@2"
-        },
-        {
-          "command": "linyra.commitRepo",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable/",
-          "group": "1_modification@1"
-        },
-        {
-          "command": "linyra.stage",
-          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.changes(\\.untracked|\\.deleted)?$/",
-          "group": "1_modification@2"
-        },
-        {
-          "command": "linyra.unstage",
-          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.staged(\\.deleted)?$/",
-          "group": "1_modification@2"
-        },
-        {
-          "command": "linyra.discard",
-          "when": "view == linyra.uncommitted && viewItem =~ /^(group|folder|file)\\.(staged|changes)(\\.untracked|\\.deleted)?$/",
-          "group": "1_modification@3"
-        },
-        {
-          "command": "linyra.discardAll",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable/",
-          "group": "1_modification@2"
-        },
-        {
-          "command": "linyra.repoPull",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./ && viewItem =~ /\\.behind$/",
-          "group": "0_sync@1"
-        },
-        {
-          "command": "linyra.repoShowOnly",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
-          "group": "5_filter@1"
-        },
-        {
-          "command": "linyra.repoHide",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
-          "group": "5_filter@2"
-        },
-        {
-          "command": "linyra.repoOpenFolder",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
-          "group": "6_open@1"
-        },
-        {
-          "command": "linyra.repoCopyPath",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
-          "group": "7_copy@1"
-        },
-        {
-          "command": "linyra.openWorkingFile",
-          "when": "view == linyra.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
-          "group": "2_open@1"
-        },
-        {
-          "command": "linyra.fileHistory",
-          "when": "view == linyra.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.deleted)?(\\.readonly)?$/",
-          "group": "3_history@1"
-        },
-        {
           "command": "linyra.compareOpenSinceSplit",
           "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compareFile/",
           "group": "1_open@1"
@@ -772,36 +669,6 @@
           "group": "2_history@1"
         },
         {
-          "command": "linyra.copyFilePath",
-          "when": "(view == linyra.changes && viewItem =~ /^(file|folder)/) || (view == linyra.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File/)",
-          "group": "8_copy@1"
-        },
-        {
-          "command": "linyra.copyRelativePath",
-          "when": "(view == linyra.changes && viewItem =~ /^(file|folder)/) || (view == linyra.uncommitted && viewItem =~ /^(file|folder)\\./) || ((view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File/)",
-          "group": "8_copy@2"
-        },
-        {
-          "command": "linyra.stageAll",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasChanges/",
-          "group": "1_modification@3"
-        },
-        {
-          "command": "linyra.unstageAll",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\.stageable.*\\.hasStaged/",
-          "group": "1_modification@4"
-        },
-        {
-          "command": "linyra.repoShowAll",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./ && linyra.repoFiltered",
-          "group": "5_filter@3"
-        },
-        {
-          "command": "linyra.repoExclude",
-          "when": "view == linyra.uncommitted && viewItem =~ /^repo\\./",
-          "group": "8_exclude@1"
-        },
-        {
           "command": "linyra.stageAll",
           "when": "view == linyra.changes && viewItem =~ /^uncommitted\\.discardable.*\\.changed/",
           "group": "1_modification@3"
@@ -825,11 +692,6 @@
           "command": "linyra.discard",
           "when": "view == linyra.changes && viewItem =~ /^folder\\.discardable/",
           "group": "3_modification@3"
-        },
-        {
-          "command": "linyra.openWorkingFile",
-          "when": "view == linyra.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.untracked)?(\\.readonly)?$/",
-          "group": "inline@0"
         }
       ],
       "commandPalette": [
@@ -994,24 +856,12 @@
           "when": "false"
         },
         {
-          "command": "linyra.uncommittedShow",
-          "when": "false"
-        },
-        {
-          "command": "linyra.uncommittedHide",
-          "when": "false"
-        },
-        {
           "command": "linyra.compareShow",
           "when": "false"
         },
         {
           "command": "linyra.compareHide",
           "when": "false"
-        },
-        {
-          "command": "linyra.uncommittedClose",
-          "when": "linyra.uncommittedShown"
         },
         {
           "command": "linyra.compareOpenSinceSplit",
@@ -1032,10 +882,6 @@
         {
           "command": "linyra.compareClose",
           "when": "linyra.compareShown"
-        },
-        {
-          "command": "linyra.refreshUncommitted",
-          "when": "linyra.uncommittedShown"
         },
         {
           "command": "linyra.showRepos",
@@ -1164,24 +1010,29 @@
         {
           "command": "linyra.branch.delete",
           "when": "false"
+        },
+        {
+          "command": "linyra.stash.show",
+          "when": "false"
+        },
+        {
+          "command": "linyra.stash.apply",
+          "when": "false"
+        },
+        {
+          "command": "linyra.stash.pop",
+          "when": "false"
+        },
+        {
+          "command": "linyra.stash.drop",
+          "when": "false"
+        },
+        {
+          "command": "linyra.stash.create",
+          "when": "false"
         }
       ],
       "view/title": [
-        {
-          "command": "linyra.refreshUncommitted",
-          "when": "view == linyra.uncommitted",
-          "group": "navigation@1"
-        },
-        {
-          "command": "linyra.uncommittedCollapseAll",
-          "when": "view == linyra.uncommitted && linyra.uncommittedCanCollapse",
-          "group": "navigation@2"
-        },
-        {
-          "command": "linyra.uncommittedExpandAll",
-          "when": "view == linyra.uncommitted && !linyra.uncommittedCanCollapse",
-          "group": "navigation@2"
-        },
         {
           "command": "linyra.clearSelection",
           "when": "view == linyra.changes && linyra.combined",
@@ -1220,11 +1071,6 @@
         {
           "command": "linyra.compareClose",
           "when": "view == linyra.compare",
-          "group": "navigation@9"
-        },
-        {
-          "command": "linyra.uncommittedClose",
-          "when": "view == linyra.uncommitted",
           "group": "navigation@9"
         }
       ],
@@ -1661,6 +1507,31 @@
           "command": "linyra.compareOpenSinceSplit",
           "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile/",
           "group": "1_open@2"
+        },
+        {
+          "command": "linyra.stash.show",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'stash'",
+          "group": "0_stash@1"
+        },
+        {
+          "command": "linyra.stash.apply",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'stash'",
+          "group": "1_stash@1"
+        },
+        {
+          "command": "linyra.stash.pop",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'stash'",
+          "group": "1_stash@2"
+        },
+        {
+          "command": "linyra.stash.drop",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'stash'",
+          "group": "2_danger@1"
+        },
+        {
+          "command": "linyra.stash.create",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|uncommitted)$/",
+          "group": "1_stash@1"
         }
       ]
     },
@@ -1714,7 +1585,27 @@
           "markdownDescription": "%setting.linyra.blame.markdownDescription%"
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "linyra.updateProject",
+        "key": "ctrl+t",
+        "mac": "cmd+t",
+        "when": "focusedView == linyra.log"
+      },
+      {
+        "command": "linyra.pushAll",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "focusedView == linyra.log"
+      },
+      {
+        "command": "linyra.branchesAcross",
+        "key": "ctrl+shift+`",
+        "mac": "cmd+shift+`",
+        "when": "focusedView == linyra.log"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run check:denylist && npm run bundle",
@@ -1733,6 +1624,7 @@
     "ui-map": "node dev/ui-map/serve.mjs",
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
+    "test:ui": "playwright test -c dev/harness/playwright.config.mjs",
     "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
     "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
@@ -1740,6 +1632,7 @@
     "bundle:changes": "esbuild src/webview/changes/main.ts --bundle --outfile=out/changes.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.19.43",
     "@types/vscode": "~1.85.0",

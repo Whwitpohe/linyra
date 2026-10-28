@@ -31,6 +31,8 @@ describe("Commit actions", () => {
   before(async () => {
     await vscode.commands.executeCommand("linyra.open");
     await until("the Log webview", (s) => s.readyCount >= 1 && s.repos.length === 3);
+    // An earlier suite may have left the Log on its Uncommitted side (Show Uncommitted Changes).
+    await send({ type: "logMode", mode: "commits" });
     await send({ type: "filter", filter: ALL });
     const repo = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
     root = repo.root; repoId = repo.id; start = head();
@@ -40,6 +42,7 @@ describe("Commit actions", () => {
     if (!root) return;
     await answer(undefined);
     try { git(["cherry-pick", "--abort"]); } catch { /* none in progress */ }
+    try { git(["stash", "clear"]); } catch { /* no stashes */ }
     git(["checkout", "-f", "main", "--"]);
     git(["reset", "--hard", start]);
     for (const ref of ["refs/heads/ci-side", "refs/heads/ci-branch", "refs/tags/ci-tag"]) {
@@ -143,6 +146,51 @@ describe("Commit actions", () => {
     assert.strictEqual(head(), start);
     assert.strictEqual(git(["diff", "--cached", "--name-only"]), "undo.txt", "the undone change is staged");
     git(["reset", "-q", "--hard", start]);
+  });
+
+  it("cherry-picks every selected commit, oldest first, when the right-click is inside the selection", async () => {
+    const first = child(start, "one.txt", "1\n", "feat: batch one");
+    const second = child(first, "two.txt", "2\n", "feat: batch two");
+    git(["update-ref", "refs/heads/ci-side", second]);
+    await send({ type: "refresh" });
+    await listed(second);
+    await send({ type: "selectMany", items: [{ repoId, sha: second }, { repoId, sha: first }], focus: { repoId, sha: second } });
+    await until("both selected", (s) => s.changes.presentation?.details.length === 2);
+    const before = head();
+    await act("commitCherryPick", second);
+    assert.deepStrictEqual(git(["log", "--format=%s", `${before}..HEAD`]).split("\n"), ["feat: batch two", "feat: batch one"], "applied oldest first");
+    assert.ok(fs.existsSync(path.join(root, "one.txt")) && fs.existsSync(path.join(root, "two.txt")));
+    git(["reset", "-q", "--hard", before]);
+    await vscode.commands.executeCommand("linyra.clearSelection");
+  });
+
+  it("stashes changes, lists the stash in the tree's data, applies, pops and drops it", async () => {
+    const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
+    fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");
+    await answer("Stash including untracked files"); await answer("ci stash");
+    await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
+    assert.ok(!fs.existsSync(path.join(root, "stash-me.txt")), "the work tree is clean");
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
+    assert.deepStrictEqual((await stashes()).map((s) => s.ref), ["stash@{0}"]);
+    assert.match((await stashes())[0].subject, /ci stash/);
+    await vscode.commands.executeCommand("linyra.stash.apply", { repoId, ref: "stash@{0}" });
+    assert.ok(fs.existsSync(path.join(root, "stash-me.txt")), "apply brings the work back");
+    assert.strictEqual((await stashes()).length, 1, "and keeps the stash");
+    fs.rmSync(path.join(root, "stash-me.txt"));
+    await vscode.commands.executeCommand("linyra.stash.pop", { repoId, ref: "stash@{0}" });
+    assert.ok(fs.existsSync(path.join(root, "stash-me.txt")));
+    assert.strictEqual((await stashes()).length, 0, "pop removes it");
+    await answer("Stash tracked changes"); await answer("ci again");
+    fs.rmSync(path.join(root, "stash-me.txt"));
+    fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// changed\n");
+    await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
+    assert.strictEqual((await stashes()).length, 1);
+    await answer("No");
+    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
+    assert.strictEqual((await stashes()).length, 1, "declined: kept");
+    await answer("Drop");
+    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
+    assert.strictEqual((await stashes()).length, 0);
   });
 
   it("offers Undo and Edit Message on the checked-out commit only", () => {

@@ -16,6 +16,11 @@ PRODUCT.md.bak
 
 # Dev-only browser harness build output (the harness SOURCE is committed)
 dev/harness/dist/
+# Playwright UI test output (npm run test:ui)
+dev/harness/test-results/
+dev/harness/playwright-report/
+test-results/
+playwright-report/
 
 # Denylist entries (employer, internal repo/service/branch/ticket/module names).
 # Never committed; CI reads the same list from the LINYRA_DENYLIST secret.

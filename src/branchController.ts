@@ -11,10 +11,12 @@ import type { HostMessage, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, SCHEME } from "./revisionUri";
 import type { Repo } from "./types";
-import type { Ask } from "./uncommittedView";
+import type { Ask } from "./uncommittedActions";
+import { isStashRef, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
 
 const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
+export type StashAction = "show" | "apply" | "pop" | "drop";
 export type BranchAction = "view" | "copy" | "favorite" | "compare" | "worktreeDiff" | "checkout" | "create" | "rename" | "delete" | "fetch" | "pull" | "push" | "merge" | "rebase" | "worktree" | "pullMerge" | "pullRebase";
 type SidebarPost = Extract<HostMessage, { type: "sidebarState" | "branchTree" }>;
 interface Deps {
@@ -65,6 +67,7 @@ export class BranchController implements vscode.Disposable {
     if (m.action === "refresh") { await this.refresh(m.repoId); return; }
     if (typeof m.repoId !== "string") return;
     if (m.action === "load") { await this.load(m.repoId); return; }
+    if (m.action === "stashShow") { await this.stash("show", m); return; }
     if (m.action === "select" || m.action === "favorite") await this.action(m.action === "select" ? "view" : "favorite", m);
   }
 
@@ -78,6 +81,7 @@ export class BranchController implements vscode.Disposable {
       const output = await this.deps.run(repo.root, branchArgs(), this.ctl.signal);
       const remotes = (await this.deps.run(repo.root, ["remote"], this.ctl.signal)).split(/\r?\n/).filter(Boolean);
       const data = parseBranches(output, remotes);
+      data.stashes = parseStashes(await this.deps.run(repo.root, stashListArgs(), this.ctl.signal).catch(() => ""));
       if (this.ctl.signal.aborted) return;
       this.shown.set(repoId, data);
       this.deps.post({ type: "branchTree", repoId, data });
@@ -259,6 +263,68 @@ export class BranchController implements vscode.Disposable {
         finally { this.busy.delete(repo.id); }
       }
     }
+  }
+
+  /**
+   * A stash row: Show its changes, Apply or Pop it (keeping its staged state), or Drop it (asks).
+   * The stash is found again by its ref in a fresh listing, so a list that moved meanwhile is not
+   * acted on blind.
+   */
+  async stash(action: StashAction, arg: unknown): Promise<void> {
+    const a = arg as { repoId?: unknown; ref?: unknown } | undefined;
+    const repo = this.deps.repos().find((r) => r.id === a?.repoId);
+    if (!repo || !isStashRef(a?.ref)) return;
+    if (action !== "show" && this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
+    const data = await this.load(repo.id);
+    const s = data?.stashes?.find((x) => x.ref === a.ref);
+    if (!s) return;
+    if (action === "show") { await this.showStash(repo, s); return; }
+    this.busy.add(repo.id);
+    try {
+      if (action === "drop" && !(await this.deps.ask.warning(localize("Drop stash {0} in {1}?", s.ref, repo.name), s.subject, localize("Drop")))) return;
+      await this.deps.run(repo.root, stashCommands[action](s.ref), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const reason = stashStopped(message);
+      void vscode.window.showErrorMessage(localize("Stash action failed in {0}: {1}", repo.name, reason ? localize(reason) : message));
+    } finally {
+      try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
+      finally { this.busy.delete(repo.id); }
+    }
+  }
+
+  /** Stash Changes… on a repository: its uncommitted work under a message, untracked files if asked. */
+  async stashCreate(arg: unknown): Promise<void> {
+    const id = (arg as { repoId?: unknown } | undefined)?.repoId;
+    const repo = this.deps.repos().find((r) => r.id === id);
+    if (!repo || this.busy.has(repo.id)) return;
+    const choice = await this.deps.ask.pick([{ label: localize("Stash tracked changes") }, { label: localize("Stash including untracked files") }], localize("Stash changes in {0}", repo.name));
+    if (choice === undefined) return;
+    const message = await this.deps.ask.input(localize("Message for the stash in {0}", repo.name), localize("Stash message"), { value: "WIP" });
+    if (message === undefined || !message.trim()) return;
+    this.busy.add(repo.id);
+    try {
+      await this.deps.run(repo.root, stashCommands.push(message, choice === 1), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+    } catch (e) {
+      void vscode.window.showErrorMessage(localize("Stash action failed in {0}: {1}", repo.name, e instanceof Error ? e.message : String(e)));
+    } finally {
+      try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
+      finally { this.busy.delete(repo.id); }
+    }
+  }
+
+  /** Show Stash Changes…: pick one of its files, opened as a diff of the stash's base against it. */
+  private async showStash(repo: Repo, s: Stash): Promise<void> {
+    const files = parseShow(await this.deps.run(repo.root, stashCommands.files(s.sha), this.ctl.signal)).files;
+    if (files.length === 0) { void vscode.window.showInformationMessage(localize("Stash {0} has no changes to show.", s.ref)); return; }
+    const index = await this.deps.ask.pick(files.map((file) => ({ label: file.path, description: file.status })), localize("File to compare in {0}", s.ref));
+    if (index === undefined) return;
+    const file = files[index];
+    const base = (await this.deps.run(repo.root, ["rev-parse", "--verify", `${s.sha}^1`], this.ctl.signal)).trim();
+    const uri = (ref: string | null, at: string) => vscode.Uri.from({ scheme: SCHEME, ...encodeRevision({ root: repo.root, ref, path: at }) });
+    const before = uri(file.status === "A" ? null : base, file.oldPath ?? file.path);
+    const after = uri(file.status === "D" ? null : s.sha, file.path);
+    await vscode.commands.executeCommand("vscode.diff", before, after, localize("{0} ({1}) — {2}", path.posix.basename(file.path), s.ref, repo.name), { preview: true });
   }
 
   private async diffWorkingTree(repo: Repo, branch: Branch): Promise<void> {

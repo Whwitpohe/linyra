@@ -4,7 +4,7 @@ import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
 import type { RepoDiscovery } from "./repoDiscovery";
 import type { Commit, Repo } from "./types";
-import type { Ask } from "./uncommittedView";
+import type { Ask } from "./uncommittedActions";
 
 /** A write must finish once started: a cherry-pick killed halfway leaves the working tree mid-change. */
 const WRITE_SIGNAL = new AbortController().signal;
@@ -18,6 +18,8 @@ const short = (sha: string) => sha.slice(0, 7);
 export interface CommitActionHost {
   /** The listed commit a right-click was on, and its repository. */
   commit(arg: unknown): { repo: Repo; commit: Commit } | undefined;
+  /** The commits selected together in the Log (Ctrl/Shift-click), in Log order: newest first. */
+  selection?(): { repo: Repo; commit: Commit }[];
   run: RunGit;
   discovery: RepoDiscovery;
   ask: Ask;
@@ -41,6 +43,11 @@ export class CommitActions {
     const found = this.host.commit(arg);
     if (!found) return;
     const { repo, commit } = found;
+    // Right-click inside a selection of several: cherry-pick or revert all of them, as the JetBrains Log does.
+    if (action === "cherryPick" || action === "revert") {
+      const many = this.host.selection?.() ?? [];
+      if (many.length > 1 && many.some((x) => x.repo.id === repo.id && x.commit.sha === commit.sha)) return this.runMany(action, many);
+    }
     if (this.busy.has(repo.id)) {
       void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name));
       return;
@@ -68,6 +75,43 @@ export class CommitActions {
         this.busy.delete(repo.id);
       }
     }
+  }
+
+  /**
+   * Several commits, repository by repository: cherry-picks oldest first (each lands on the one
+   * before it), reverts newest first. A repository stops at its first conflict; the others go on.
+   */
+  private async runMany(action: "cherryPick" | "revert", selected: readonly { repo: Repo; commit: Commit }[]): Promise<void> {
+    const byRepo = new Map<string, { repo: Repo; commits: Commit[] }>();
+    for (const { repo, commit } of selected) (byRepo.get(repo.id) ?? byRepo.set(repo.id, { repo, commits: [] }).get(repo.id)!).commits.push(commit);
+    const done: string[] = [], stopped: string[] = [];
+    for (const { repo, commits } of byRepo.values()) {
+      if (this.busy.has(repo.id)) { stopped.push(`${repo.name} (${localize("busy")})`); continue; }
+      this.busy.add(repo.id);
+      const ordered = action === "cherryPick" ? [...commits].reverse() : commits;
+      let applied = 0;
+      try {
+        for (const c of ordered) {
+          await this.host.run(repo.root, action === "cherryPick" ? commitCommands.cherryPick(c.sha, c.parents.length > 1) : commitCommands.revert(c.sha, c.parents.length > 1), WRITE_SIGNAL, { env: WRITE_ENV });
+          applied++;
+        }
+        done.push(`${repo.name} (${applied})`);
+      } catch (e) {
+        const reason = stoppedReason(action, messageOf(e));
+        if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
+        stopped.push(`${repo.name} (${localize("{0} of {1} done", applied, ordered.length)}: ${reason ? localize(reason) : messageOf(e)})`);
+      } finally {
+        try {
+          await this.host.discovery.branchRepository(repo.root)?.status?.();
+          await this.host.changed(repo.id);
+        } finally {
+          this.busy.delete(repo.id);
+        }
+      }
+    }
+    const what = localize(action === "cherryPick" ? "Cherry-picked {0} commits" : "Reverted {0} commits", selected.length);
+    if (stopped.length) void vscode.window.showWarningMessage(`${what}: ${[...done, ...stopped].join(", ")}`);
+    else vscode.window.setStatusBarMessage(`${what}: ${done.join(", ")}`, 8000);
   }
 
   /** The status-bar line for what was done, or undefined when the user cancelled. */

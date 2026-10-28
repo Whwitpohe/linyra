@@ -357,19 +357,6 @@ describe("Linyra panel", () => {
       let items = await seen("acme-web's uncommitted files", (i) => i.includes("acme-web | 3 files [repo.stageable]") && i.includes("  Staged | 1") && i.includes("  Changes | 2"));
       assert.ok(items.includes("    notes.md | new"), "untracked files say new");
 
-      const treeState = () => vscode.commands.executeCommand<{ collapsed: string[]; canCollapse: boolean; title: string }>("linyra._itest.uncommitted");
-      await vscode.commands.executeCommand("linyra.uncommittedCollapseAll");
-      await waitFor("the single tree action can expand the collapsed view", async () => {
-        const value = await treeState(); return !value.canCollapse && value.collapsed.length > 0 ? true : undefined;
-      });
-      await vscode.commands.executeCommand("linyra.refreshUncommitted");
-      assert.strictEqual((await treeState()).canCollapse, false, "a data refresh preserves the collapsed tree");
-      await vscode.commands.executeCommand("linyra.uncommittedExpandAll");
-      await waitFor("all uncommitted groups expanded again", async () => {
-        const value = await treeState(); return value.canCollapse && value.collapsed.length === 0 ? true : undefined;
-      });
-      assert.ok((await treeState()).title, "the native view has a runtime-localized title");
-
       await vscode.commands.executeCommand("linyra.stage", { repoId: web.id, group: "changes", path: "client.ts" });
       assert.deepStrictEqual(staged(), ["client.ts", "extra.ts"], "git add, as git itself sees it");
       await seen("client.ts staged", (i) => i.includes("  Staged | 2") && i.includes("  Changes | 1"));
@@ -872,8 +859,6 @@ describe("Linyra panel", () => {
       assert.match(err, /acme hook says no/);
       assert.ok(!err.endsWith(".."), `one period (${err})`);
       assert.strictEqual((await snapshot()).stats.reloads, reloads, "a failed commit does not reload the Log");
-      const pal = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus.commandPalette as { command: string; when: string }[];
-      assert.strictEqual(pal.find((m) => m.command === "linyra.uncommittedClose")?.when, "linyra.uncommittedShown", "Close only while shown");
     } finally {
       await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       fs.rmSync(hook, { force: true });
@@ -957,10 +942,10 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       s = await until("only commits", (x) => x.rows.length === 6);
       assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED));
-      // The Repo menu on the Uncommitted view's repository rows.
-      const menus = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
+      // The Repo menu on the Log's Uncommitted rows.
+      const menus = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.menus["webview/context"] as { command: string; when: string }[];
       for (const c of ["linyra.repoShowOnly", "linyra.repoOpenFolder", "linyra.repoCopyPath", "linyra.repoPull"]) {
-        assert.ok(menus.some((m) => m.command === c && m.when.includes("view == linyra.uncommitted") && m.when.includes("repo")), `${c} on a repository row of the Uncommitted view`);
+        assert.ok(menus.some((m) => m.command === c && m.when.includes("webviewId == 'linyra.log'") && m.when.includes("uncommitted")), `${c} on an Uncommitted row of the Log`);
       }
     } finally {
       cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });

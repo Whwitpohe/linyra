@@ -8,6 +8,8 @@ describe("Compare Branches", () => {
   before(async () => {
     await vscode.commands.executeCommand("linyra.open");
     await until("the Log webview", (s) => s.readyCount >= 1 && s.repos.length === 3);
+    // An earlier suite may have left the Log on its Uncommitted side (Show Uncommitted Changes).
+    await send({ type: "logMode", mode: "commits" });
     await send({ type: "filter", filter: ALL });
   });
 
@@ -167,13 +169,11 @@ describe("Compare Branches", () => {
     const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
     assert.deepStrictEqual(pkg.viewsContainers, {
       panel: [{ id: "linyra", title: "Linyra", icon: "media/linyra.svg" }, { id: "linyra-compare", title: "Linyra Compare", icon: "media/compare.svg" }],
-      activitybar: [{ id: "linyra-side", title: "Linyra", icon: "media/linyra.svg" }],
-    });
+    }, "no side bar: uncommitted work lives in the Log");
     assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
       linyra: [["linyra.log", "$(history)"]],
       "linyra-compare": [["linyra.compare", "$(repo)"]],
-      "linyra-side": [["linyra.uncommitted", "$(diff-modified)"]],
-    }, "one native surface per panel prevents accidental header collapsing; Uncommitted keeps its sidebar");
+    }, "one native surface per panel prevents accidental header collapsing");
     assert.strictEqual(views["linyra-compare"][0].type, "webview", "the unified comparison retains repositories and both sides");
     const menus = pkg.menus["webview/context"] as { command: string; when: string }[];
     for (const c of ["linyra.repoPull", "linyra.repoShowOnly", "linyra.repoHide", "linyra.repoOpenFolder", "linyra.repoCopyPath"]) {
@@ -430,36 +430,26 @@ describe("Compare Branches", () => {
     await until2("shown again", repos, (x) => x.open && x.roots.length === 2);
   });
 
-  it("the Linyra side bar is hidden until the Log's Uncommitted button, and × hides it again", async () => {
+  it("uncommitted work has one home: Show Uncommitted Changes opens the Log's Uncommitted side", async () => {
     const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
-    assert.strictEqual((pkg.views["linyra-side"] as { when?: string }[])[0].when, "linyra.uncommittedShown");
-    // The remembered side bar and Compare tab need their context keys after a reload, before any Linyra view opens.
+    assert.ok(!("linyra-side" in pkg.views) && !pkg.viewsContainers.activitybar, "no second Uncommitted view in a side bar");
+    // The remembered Compare tab needs its context key after a reload, before any Linyra view opens.
     assert.ok((vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.activationEvents as string[]).includes("onStartupFinished"));
-    const titles = pkg.menus["view/title"] as { command: string; when: string; group: string }[];
-    assert.ok(titles.some((m) => m.command === "linyra.uncommittedClose" && m.when.includes("view == linyra.uncommitted")));
-    const shown = () => vscode.commands.executeCommand<boolean>("linyra._itest.uncommittedShown");
-    await vscode.commands.executeCommand("linyra.uncommittedClose");
-    assert.strictEqual(await shown(), false);
     await vscode.commands.executeCommand("linyra.focusUncommitted");
-    assert.strictEqual(await shown(), true);
-    await waitFor("the view on screen", async () => ((await vscode.commands.executeCommand<{ visible: boolean }>("linyra._itest.uncommitted")).visible ? true : undefined));
+    await waitFor("the Log on its Uncommitted side", async () => ((await vscode.commands.executeCommand<{ logMode: string }>("linyra._itest.snapshot")).logMode === "uncommitted" ? true : undefined));
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "logMode", mode: "commits" });
+    await waitFor("back on Commits", async () => ((await vscode.commands.executeCommand<{ logMode: string }>("linyra._itest.snapshot")).logMode === "commits" ? true : undefined));
   });
 
-  it("the Log toolbar's two toggles: click to show, click again to hide; the icon says which", async () => {
+  it("the Log toolbar's Compare toggle: click to show, click again to hide; the icon says which", async () => {
     const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
     const icon = (cmd: string) => (pkg.commands as { command: string; icon?: string }[]).find((c) => c.command === cmd)?.icon;
     const { renderHtml } = require("../webview/html") as typeof import("../webview/html");
     const shell = renderHtml({ cspSource: "", nonce: "test", scriptUri: "", styleUri: "" });
     assert.strictEqual((shell.match(/id="toolbar-compare"/g) ?? []).length, 1);
-    // The Uncommitted side bar's toggle lives in the ⋯ menu: the header's Uncommitted tab is the Log's own entry.
+    // The header's Uncommitted tab is the one entry for uncommitted work.
     assert.ok(!shell.includes('id="toolbar-uncommitted"') && !shell.includes('id="layout-sideBySide"'), "no second entry for the same thing");
-    assert.deepStrictEqual([icon("linyra.uncommittedShow"), icon("linyra.uncommittedHide")], ["$(diff-modified)", "$(diff-modified)"]);
     assert.deepStrictEqual([icon("linyra.compareShow"), icon("linyra.compareHide")], ["$(git-compare)", "$(git-compare)"]);
-    const shown = () => vscode.commands.executeCommand<boolean>("linyra._itest.uncommittedShown");
-    await vscode.commands.executeCommand("linyra.uncommittedShow");
-    assert.strictEqual(await shown(), true);
-    await vscode.commands.executeCommand("linyra.uncommittedHide");
-    assert.strictEqual(await shown(), false);
     await vscode.commands.executeCommand("linyra.compareShow");
     await until2("compare shown", repos, (x) => x.open);
     await vscode.commands.executeCommand("linyra.compareHide");

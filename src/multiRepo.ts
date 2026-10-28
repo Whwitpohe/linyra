@@ -6,7 +6,7 @@ import type { RunGit } from "./logQuery";
 import { checkoutStep, multiCommands, parseOutgoing, pushPlan, sharedBranches, updateReason, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
 import type { Repo } from "./types";
-import type { Ask } from "./uncommittedView";
+import type { Ask } from "./uncommittedActions";
 import { aheadBehindArgs, FETCH_ENV, parseAheadBehind } from "./upstream";
 
 /** A write must finish once started: a merge killed halfway leaves the working tree mid-change. */

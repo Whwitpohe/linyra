@@ -78,6 +78,9 @@ jobs:
       - run: npm run check:theme
       - run: npm run harness:build
       - run: npm run check:design
+      # The webview's layout contract in a real browser: header rows, pane overflow, menus, themes.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
 
   package:
     needs: [denylist, test, design]

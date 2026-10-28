@@ -81,7 +81,7 @@ export interface CommitRef {
 export type WebviewMessage =
   | { type: "toolbarAction"; action: ToolbarAction }
   | { type: "changesView"; message: ChangesMessage }
-  | { type: "branchSidebar"; action: "state" | "load" | "refresh" | "select" | "favorite"; repoId?: string; ref?: string; state?: BranchSidebarState }
+  | { type: "branchSidebar"; action: "state" | "load" | "refresh" | "select" | "favorite" | "stashShow"; repoId?: string; ref?: string; state?: BranchSidebarState }
   | { type: "ready" }
   | { type: "filter"; filter: FilterState }
   | { type: "loadMore" }

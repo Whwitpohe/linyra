@@ -7,6 +7,8 @@ describe("Combined Changes", () => {
   before(async () => {
     await vscode.commands.executeCommand("linyra.open");
     await until("the Log webview", (s) => s.readyCount >= 1 && s.repos.length === 3);
+    // An earlier suite may have left the Log on its Uncommitted side (Show Uncommitted Changes).
+    await send({ type: "logMode", mode: "commits" });
     await send({ type: "filter", filter: ALL });
   });
 

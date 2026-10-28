@@ -16,17 +16,17 @@ import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMes
 import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
-import { authorSuggestions, branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import type { AheadBehind } from "./upstream";
 import { SyncController } from "./syncController";
 import { ProfileController } from "./profileController";
 import { RepoCommands } from "./repoCommands";
+import { Suggestions } from "./suggestions";
 import { CommitGraphHint } from "./commitGraphHint";
 import { wantsCommitGraphHint } from "./commitGraphModel";
 import type { UncommittedStore } from "./uncommittedStore";
-import { openWorkDiff, type Ask } from "./uncommittedView";
+import { openWorkDiff, type Ask } from "./uncommittedActions";
 import type { ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 import { SELECTION_LIMIT } from "./webview/selectionModel";
@@ -54,7 +54,7 @@ export interface LogDeps {
   uncommitted: UncommittedStore;
   /** VS Code's prompts (shared with the Uncommitted view; the integration suite answers them). */
   ask: Ask;
-  toolbarFlags?: () => Pick<ToolbarState, "compareShown" | "uncommittedShown">;
+  toolbarFlags?: () => Pick<ToolbarState, "compareShown">;
 }
 
 export interface LogSnapshot {
@@ -139,10 +139,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private historyStep = 0;
   /** What File History set aside (range, search, author); closing it gives them back. */
   private beforeHistory: Pick<FilterState, "date" | "from" | "to" | "text" | "author" | "mine" | "authors"> | null = null;
-  /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
-  private branches: BranchName[] = [];
-  /** Recent authors across the workspace, for the Author box's suggestions. Read in the background. */
-  private authors: AuthorName[] = [];
+  /** The Author and Branch boxes' suggestions (read when a box is first focused). */
+  private readonly suggestions: Suggestions = new Suggestions({
+    repos: () => this.repos, maxConcurrency: () => this.settings().maxConcurrency, run: (cwd, args, signal, opts) => this.run(cwd, args, signal, opts),
+    post: (m) => this.post(m), signal: () => this.background.signal,
+  });
   private branchUse: BranchUse | undefined;
   /** The repo set the background reads last ran for. */
   private backgroundFor: string | undefined;
@@ -243,11 +244,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         // replay. (Also sent when a hidden webview is re-created.)
         if (this.firstLoad) await this.firstLoad;
         else await this.loadRepos();
-        // A new webview starts on Commits: the host follows it rather than disagree.
-        this.setLogMode("commits");
+        // A new webview starts on Commits (the host follows it rather than disagree), unless it
+        // was opened to show uncommitted work.
+        this.setLogMode(this.openUncommitted ? "uncommitted" : "commits");
+        this.openUncommitted = false;
         this.postInit(true);
         // A re-created webview lost the suggestions it had: send them again (only then).
-        if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
+        this.suggestions.replay();
         if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
         this.postUncommitted();
         if (this.queryState === null) await this.reload();
@@ -303,7 +306,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         await this.setHistory(null);
         return;
       case "wantSuggestions":
-        if (m.kind === "authors" || m.kind === "branches") await this.loadSuggestions(m.kind);
+        if (m.kind === "authors" || m.kind === "branches") await this.suggestions.load(m.kind);
         return;
       case "toolbarAction": {
         const command = toolbarCommand(m.action, this.toolbarState());
@@ -361,7 +364,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private toolbarState(): ToolbarState {
     const flags = this.deps.toolbarFlags?.();
     return { groupByRepo: this.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
-      uncommittedShown: flags?.uncommittedShown ?? false, fetching: this.upstream.fetching,
+      fetching: this.upstream.fetching,
       anyBehind: this.upstream.anyBehind() };
   }
 
@@ -601,47 +604,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     void this.upstream.read();
     // Uncommitted work: once, after the first page (the switch's badge), then kept current by events.
     void this.deps.uncommitted.readAll();
-    // Suggestions are read when their box is first focused (wantSuggestions), not here:
-    // at startup they would cost 2 git processes per repository for boxes rarely opened.
-    this.suggestionsFor.clear();
-    // A box focused before the repositories were known asked for nothing useful: ask again.
-    for (const kind of this.suggestionsWanted) void this.loadSuggestions(kind);
-  }
-
-  /** Kinds of suggestion a box has asked for this session. */
-  private readonly suggestionsWanted = new Set<"authors" | "branches">();
-
-  /** The repo set each kind of suggestion was last read for. */
-  private readonly suggestionsFor = new Map<"authors" | "branches", string>();
-
-  private async loadSuggestions(kind: "authors" | "branches"): Promise<void> {
-    this.suggestionsWanted.add(kind);
-    if (this.repos.length === 0) return; // nothing to read yet; asked again once repos arrive
-    const key = this.repos.map((r) => r.id).join("\0");
-    if (this.suggestionsFor.get(kind) === key) return;
-    this.suggestionsFor.set(kind, key);
-    await (kind === "authors" ? this.loadAuthors() : this.loadBranches());
-  }
-
-  /** People who committed recently, for the Author box's suggestions: 300 commits per repo. */
-  private async loadAuthors(): Promise<void> {
-    const repos = [...this.repos];
-    const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.run(r.root, ["log", "--no-merges", "--max-count=300", "--format=%aN%x1f%aE"], signal), this.background.signal);
-    this.authors = authorSuggestions(settled.map((s) => (s.status === "fulfilled" ? s.value : "")));
-    this.post({ type: "suggestions", authors: this.authors });
-  }
-
-  /** Branch names across repositories (local and remote-tracking), most shared first. */
-  private async loadBranches(): Promise<void> {
-    const repos = [...this.repos];
-    const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), this.background.signal);
-    const lists = settled.map((s) => s.status === "fulfilled"
-      ? s.value.split("\n").map((l) => l.trim().replace(/^refs\/(heads|remotes)\//, "")).filter(Boolean)
-      : []);
-    this.branches = branchSuggestions(lists);
-    this.post({ type: "suggestions", branches: this.branches });
+    // Suggestions are read when their box is first focused (wantSuggestions), not here.
+    this.suggestions.reposChanged();
   }
 
   /** The repo set meByRepo was read for (reset when git itself changes). */
@@ -719,8 +683,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Fetch All brought remote branches: new Branch box suggestions, and a branch-mode page read again. */
   private async remotesFetched(): Promise<void> {
-    this.suggestionsFor.delete("branches");
-    if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
+    this.suggestions.branchesChanged();
     if (selectedBranches(this.filter).length) await this.reload();
   }
 
@@ -748,6 +711,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   contextRepo(arg: unknown): Repo | undefined {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     return typeof id === "string" ? this.repos.find((r) => r.id === id) : undefined;
+  }
+
+  /** The commits selected together (Combined Changes), in Log order: newest first. */
+  selectedCommits(): { repo: Repo; commit: Commit }[] {
+    const index = new Map(this.rows.map((c, i) => [commitKey(c), i]));
+    return [...(this.combinedSel ?? [])].sort((a, b) => (index.get(commitKey(a.commit)) ?? 0) - (index.get(commitKey(b.commit)) ?? 0));
   }
 
   /** The listed commit a right-click on a Log row was on, with its repository. */
@@ -793,8 +762,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Several repositories changed at once (an action across repositories): one reload for all of them. */
   async reposChanged(repoIds: readonly string[]): Promise<void> {
-    this.suggestionsFor.delete("branches");
-    if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
+    this.suggestions.branchesChanged();
     for (const id of repoIds) void this.deps.uncommitted.readRepo(id);
     await this.reload();
     await this.upstream.read(new Set(repoIds));
@@ -802,8 +770,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   async branchChanged(repoId: string): Promise<void> {
-    this.suggestionsFor.delete("branches");
-    if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
+    this.suggestions.branchesChanged();
     await this.reload();
     await this.deps.uncommitted.readRepo(repoId);
     await this.upstream.read(new Set([repoId]));
@@ -910,7 +877,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, profiles: this.profiles.resolved(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.suggestions.branches, authors: this.suggestions.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,
@@ -1230,6 +1197,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private workRepo: string | undefined;
   /** What the Changes view showed before the switch went to Uncommitted (it comes back). */
   private commitsTree: ReturnType<ChangesTree["current"]> = null;
+
+  /** Show Uncommitted: the Log, on its Uncommitted side (a webview still loading starts there). */
+  async showUncommitted(): Promise<void> {
+    this.openUncommitted = !this.webviewView;
+    await vscode.commands.executeCommand(`${LogView.id}.focus`);
+    if (this.webviewView) {
+      this.setLogMode("uncommitted");
+      this.postInit(true);
+    }
+  }
+  private openUncommitted = false;
 
   private setLogMode(mode: "commits" | "uncommitted"): void {
     if (mode === this.logMode) return;

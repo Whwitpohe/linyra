@@ -1,4 +1,5 @@
 import { isValidRef } from "./filterModel";
+import type { Stash } from "./stashModel";
 
 export interface Branch {
   ref: string;
@@ -17,6 +18,8 @@ export interface Branches {
   branches: Branch[];
   remotes: string[];
   current?: string;
+  /** The repository's stashes, newest first (read with its branches). */
+  stashes?: Stash[];
 }
 
 export interface BranchSidebarState {
@@ -27,7 +30,7 @@ export interface BranchSidebarState {
 
 export const DEFAULT_BRANCH_SIDEBAR: BranchSidebarState = { mode: "repos", expanded: ["local", "remote"], favorites: [] };
 export const branchKey = (repoId: string, ref: string) => `${repoId}\0${ref}`;
-export const branchGroupKey = (kind: "local" | "remote" | "tag", repoId: string) => `${kind}\0${repoId}`;
+export const branchGroupKey = (kind: "local" | "remote" | "tag" | "stash", repoId: string) => `${kind}\0${repoId}`;
 /** Remote refs and tags stay unambiguous even when a local branch uses the same name. */
 export const branchRevision = (branch: Branch, data: Branches): string =>
   branch.kind !== "local" && data.branches.some((b) => b.kind === "local" && b.name === branch.name) ? branch.ref : branch.name;

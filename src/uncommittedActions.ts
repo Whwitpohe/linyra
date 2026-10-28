@@ -1,21 +1,18 @@
 import { localize } from "./i18n";
 import * as path from "path";
 import * as vscode from "vscode";
-import { decorationFor } from "./changesModel";
 import { errorLine } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
 import { commitCount, commitStep, describeUncommitted, diffFor, discardPlan, discardPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
-import { ACCENT_COLORS } from "./webview/view";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
 interface Target { repoId: string; group?: Group; path?: string }
 /** What an action takes in one repository: its files, those of them from the Staged group, and whether it is one file. */
 interface Pick { work: RepoWork; files: FileChange[]; staged: FileChange[]; one: boolean }
 
-const TREE_SCHEME = "linyra-tree";
 /** vscode.git's errors say "Failed to execute git"; git's own words are in their stderr. */
 function gitMessage(e: unknown): string {
   const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
@@ -91,178 +88,45 @@ export class Ask {
 
 }
 
-export interface UncommittedViewDeps {
+export interface UncommittedActionsDeps {
   store: UncommittedStore;
   discovery: RepoDiscovery;
-  /** Each repository's accent in the Log (the same color as its chip). */
-  accents(): ReadonlyMap<string, number>;
   /** A commit landed: the Log reads its first page again. */
   committed(): void;
-  /** The repository has commits to pull (its row offers Pull). */
-  behind(repoId: string): boolean;
   /** VS Code's prompts, shared with the Log (one queue for the integration suite). */
   ask: Ask;
 }
 
-/** The native Uncommitted view: a thin adapter from uncommittedModel's descriptors to TreeItems. */
-export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.FileDecorationProvider, vscode.Disposable {
-  private readonly emitter = new vscode.EventEmitter<UNode | undefined>();
-  readonly onDidChangeTreeData = this.emitter.event;
-  private readonly decorationsChanged = new vscode.EventEmitter<vscode.Uri[]>();
-  readonly onDidChangeFileDecorations = this.decorationsChanged.event;
-  private decorations = new Map<string, vscode.FileDecoration>();
-  private decorated: vscode.Uri[] = [];
-  private readonly view: vscode.TreeView<UNode>;
-  private roots: UNode[] = [];
-  private parents = new Map<UNode, UNode>();
-  private message: string | undefined;
-  private readonly disposables: vscode.Disposable[] = [];
+/**
+ * Stage, Unstage, Discard and Commit for the Log's Uncommitted side and the Changes view. The
+ * Log is the one place uncommitted work is shown: this has no view of its own.
+ */
+export class UncommittedActions {
   readonly ask: Ask;
   /** The last error shown (integration test seam). */
   private lastError: string | undefined;
-  private description = "";
-  private readonly collapsed = new Set<string>();
-  private branchIds = new Set<string>();
-  private collapseNewNodes = false;
-  private canCollapse = false;
 
   private showError(text: string): void {
     this.lastError = text;
     void vscode.window.showErrorMessage(text);
   }
 
-  /** Re-draw (vscode.git opened or closed a repository, ↓/↑ moved). */
-  refresh(): void {
-    this.render();
-  }
-
-  constructor(private readonly deps: UncommittedViewDeps) {
+  constructor(private readonly deps: UncommittedActionsDeps) {
     this.ask = deps.ask;
-    this.view = vscode.window.createTreeView("linyra.uncommitted", { treeDataProvider: this, showCollapseAll: false, canSelectMany: true });
-    this.view.title = localize("Uncommitted");
-    this.disposables.push(this.view, deps.store.onDidChange(() => this.render()), this.view.onDidChangeVisibility(() => { if (this.view.visible) this.render(); }),
-      this.view.onDidCollapseElement(({ element }) => { this.collapsed.add(element.id); this.updateTreeActions(); }),
-      this.view.onDidExpandElement(({ element }) => { this.collapsed.delete(element.id); this.updateTreeActions(); }));
-    this.render();
   }
 
-  private render(): void {
-    const d = describeUncommitted(this.deps.store.works());
-    this.roots = d.roots;
-    this.message = d.message;
-    this.view.message = d.message;
-    this.description = viewLabel(totals(this.deps.store.works()));
-    this.view.description = this.description;
-    this.parents = new Map();
-    const previousBranches = this.branchIds;
-    this.branchIds = new Set();
-    const before = this.decorated;
-    this.decorated = [];
-    this.decorations = new Map();
-    const walk = (nodes: UNode[], parent?: UNode): void => nodes.forEach((n) => {
-      if (parent) this.parents.set(n, parent);
-      if (n.kind !== "file") {
-        this.branchIds.add(n.id);
-        if (this.collapseNewNodes && !previousBranches.has(n.id)) this.collapsed.add(n.id);
-      }
-      if (n.kind === "file" && n.file) {
-        const dec = decorationFor(n.file.untracked ? "A" : n.file.status);
-        if (dec) {
-          const uri = this.uriFor(n);
-          this.decorations.set(uri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
-          this.decorated.push(uri);
-        }
-      }
-      walk(n.children, n);
-    });
-    walk(this.roots);
-    for (const id of this.collapsed) if (!this.branchIds.has(id)) this.collapsed.delete(id);
-    this.updateTreeActions();
-    this.emitter.fire(undefined);
-    const changed = [...before, ...this.decorated];
-    if (changed.length > 0) this.decorationsChanged.fire(changed);
-  }
-
-  private updateTreeActions(): void {
-    this.canCollapse = this.roots.some((node) => node.kind !== "file" && !this.collapsed.has(node.id));
-    void vscode.commands.executeCommand("setContext", "linyra.uncommittedCanCollapse", this.canCollapse);
-    void vscode.commands.executeCommand("setContext", "linyra.uncommittedHasFolders", this.branchIds.size > 0);
-  }
-
-  async setExpanded(expanded: boolean): Promise<void> {
-    this.collapseNewNodes = !expanded;
-    this.collapsed.clear();
-    if (!expanded) for (const id of this.branchIds) this.collapsed.add(id);
-    this.updateTreeActions();
-    this.emitter.fire(undefined);
-    if (!expanded) {
-      await vscode.commands.executeCommand("workbench.actions.treeView.linyra.uncommitted.collapseAll");
-      return;
-    }
-    const roots = this.roots;
-    const expand = async (nodes: UNode[]): Promise<void> => {
-      for (const node of nodes) {
-        if (roots !== this.roots) return;
-        if (node.kind === "file") continue;
-        await this.view.reveal(node, { expand: true, select: false, focus: false });
-        await expand(node.children);
-      }
-    };
-    await expand(roots);
-    if (roots === this.roots && roots[0]) await this.view.reveal(roots[0], { select: false, focus: false });
-  }
-
-  /** "label | description", indented, repo rows with their contextValue (integration test seam). */
-  snapshot(): { message: string | undefined; description: string; items: string[]; lastError: string | undefined; visible: boolean; title: string; collapsed: string[]; canCollapse: boolean } {
+  /**
+   * The uncommitted work as uncommittedModel describes it: "label | description", indented, repo
+   * rows with their contextValue (integration test seam).
+   */
+  snapshot(): { message: string | undefined; description: string; items: string[]; lastError: string | undefined } {
+    const works = this.deps.store.works();
+    const d = describeUncommitted(works);
     const walk = (nodes: UNode[], depth: number): string[] => nodes.flatMap((n) => [
       `${"  ".repeat(depth)}${n.label} | ${n.description}${n.kind === "repo" ? ` [${n.contextValue}]` : ""}`,
       ...walk(n.children, depth + 1),
     ]);
-    return { message: this.message, description: this.description, items: walk(this.roots, 0), lastError: this.lastError, visible: this.view.visible,
-      title: this.view.title ?? "", collapsed: [...this.collapsed], canCollapse: this.canCollapse };
-  }
-
-  private uriFor(n: UNode): vscode.Uri {
-    return vscode.Uri.from({ scheme: TREE_SCHEME, path: `/${n.path}`, query: `uncommitted:${n.group}:${n.repoId}` });
-  }
-
-  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-    return uri.scheme === TREE_SCHEME ? this.decorations.get(uri.toString()) : undefined;
-  }
-
-  getParent(n: UNode): UNode | undefined {
-    return this.parents.get(n);
-  }
-
-  getChildren(n?: UNode): UNode[] {
-    return n ? n.children : this.roots;
-  }
-
-  getTreeItem(n: UNode): vscode.TreeItem {
-    const item = new vscode.TreeItem(n.label, n.kind === "file" ? vscode.TreeItemCollapsibleState.None
-      : this.collapsed.has(n.id) ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded);
-    item.id = n.id;
-    item.description = n.description;
-    item.tooltip = n.tooltip;
-    // A repository row: Stage All (".hasChanges"), Unstage All (".hasStaged"), and Pull when behind (".behind", last).
-    if (n.kind === "repo") {
-      const w = this.deps.store.get(n.repoId);
-      item.contextValue = `${n.contextValue}${w?.staged.length ? ".hasStaged" : ""}${w?.changes.length ? ".hasChanges" : ""}${this.deps.behind(n.repoId) ? ".behind" : ""}`;
-    } else {
-      item.contextValue = n.contextValue;
-    }
-    if (n.kind === "repo") {
-      const accent = this.deps.accents().get(n.repoId) ?? 0;
-      item.iconPath = new vscode.ThemeIcon("repo", new vscode.ThemeColor(ACCENT_COLORS[accent % ACCENT_COLORS.length]));
-    } else if (n.kind === "folder") {
-      item.resourceUri = this.uriFor(n);
-      item.iconPath = vscode.ThemeIcon.Folder;
-    } else if (n.kind === "file") {
-      item.resourceUri = this.uriFor(n);
-      item.iconPath = vscode.ThemeIcon.File;
-      item.command = { command: "linyra.openUncommittedDiff", title: localize("Open Diff"), arguments: [{ repoId: n.repoId, group: n.group, path: n.path }] };
-    }
-    return item;
+    return { message: d.message, description: viewLabel(totals(works)), items: walk(d.roots, 0), lastError: this.lastError };
   }
 
   /** The files a target means: one file, or every file of a group (or of the whole repository). */
@@ -389,11 +253,6 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     await openWorkDiff(work, group, file, preserveFocus);
   }
 
-  dispose(): void {
-    for (const d of this.disposables) d.dispose();
-    this.emitter.dispose();
-    this.decorationsChanged.dispose();
-  }
 }
 
 const revisionUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRevision(r) });
@@ -409,7 +268,7 @@ function side(work: RepoWork, file: FileChange, s: DiffSide, before: boolean): v
   return revisionUri({ root: work.root, ref: s === "head" ? work.head : null, path: at });
 }
 
-/** Opens one uncommitted file's diff (the Uncommitted view, and the Log's Uncommitted side). */
+/** Opens one uncommitted file's diff (the Log's Uncommitted side and the Changes view). */
 export async function openWorkDiff(work: RepoWork, group: Group, file: FileChange, preserveFocus = false): Promise<void> {
   const alsoStaged = group === "changes" && work.staged.some((f) => f.path === file.path);
   const d = diffFor(group, file, alsoStaged);

@@ -32,7 +32,7 @@ const repos = mockRepos(scenario);
 const all = mockCommits(repos, scenario);
 let filter: FilterState = DEFAULT_FILTER;
 let layout: Layout = { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off", ...JSON.parse(sessionStorage.getItem("linyra-layout") ?? "{}") };
-const toolbarState: ToolbarState = { groupByRepo: layout.groupByRepo, compareShown: false, uncommittedShown: false, fetching: false, anyBehind: true };
+const toolbarState: ToolbarState = { groupByRepo: layout.groupByRepo, compareShown: false, fetching: false, anyBehind: true };
 let history: { repoName: string; path: string } | null = params.get("history") ? { repoName: "acme-web", path: params.get("history")! } : null;
 let matched: Commit[] = [];
 let offset = 0;
@@ -117,7 +117,6 @@ function handle(m: WebviewMessage): void {
     case "toolbarAction": {
       if (m.action === "toggleRepos") { layout.groupByRepo = !layout.groupByRepo; toolbarState.groupByRepo = layout.groupByRepo; }
       if (m.action === "toggleCompare") toolbarState.compareShown = !toolbarState.compareShown;
-      if (m.action === "toggleUncommitted") toolbarState.uncommittedShown = !toolbarState.uncommittedShown;
       if (m.action === "fetchAll") { toolbarState.fetching = true; setTimeout(() => { toolbarState.fetching = false; send({ type: "toolbar", state: toolbarState }, 0); }, 600); }
       send({ type: "toolbar", state: toolbarState }, 0);
       send({ type: "init", repos, filter, hasMe: true, layout, history, logMode, profiles: [] }, 0);

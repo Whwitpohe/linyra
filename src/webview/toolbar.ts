@@ -17,7 +17,7 @@ const icons = {
 export interface ViewOptions { highlightMine: boolean; highlightHead: boolean; hashColumn: boolean }
 
 export class LogToolbar {
-  private state: ToolbarState = { groupByRepo: true, compareShown: false, uncommittedShown: false, fetching: false, anyBehind: false };
+  private state: ToolbarState = { groupByRepo: true, compareShown: false, fetching: false, anyBehind: false };
   private layout: ChangesLayout = "auto";
   private view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false };
   private folds = { canCollapse: false, canExpand: false };
@@ -101,7 +101,6 @@ export class LogToolbar {
       ["showBehind", localize("Show Only Repositories Behind"), !s.anyBehind],
       ["profileSwitch", localize("Switch Profile…"), false],
       ["profileSave", localize("Save Current Repositories as Profile…"), false],
-      ["toggleUncommitted", localize(s.uncommittedShown ? "Hide Uncommitted View" : "Show Uncommitted View"), false],
     ];
     this.menu.replaceChildren(...items.map(([action, label, disabled]) => {
       const item = h("button", { type: "button", role: "menuitem", disabled }, [label]);

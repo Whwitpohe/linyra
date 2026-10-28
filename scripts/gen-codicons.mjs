@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const NAMES = [
-  "arrow-swap", "case-sensitive", "check", "chevron-down", "chevron-right", "clear-all", "close", "cloud-download",
+  "archive", "arrow-swap", "case-sensitive", "check", "chevron-down", "chevron-right", "clear-all", "close", "cloud-download",
   "collapse-all", "copy", "expand-all", "file", "files", "filter", "filter-filled", "folder", "git-branch", "git-commit",
   "git-compare", "history", "layout-sidebar-left", "layout-sidebar-right", "layout-panel", "ellipsis", "refresh", "regex",
   "repo-pull", "repo-push", "sort-precedence", "split-horizontal", "split-vertical", "star-empty", "star-full", "sync", "tag",

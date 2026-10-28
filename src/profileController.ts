@@ -2,7 +2,7 @@ import { localize } from "./i18n";
 import * as vscode from "vscode";
 import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
 import type { Repo } from "./types";
-import type { Ask } from "./uncommittedView";
+import type { Ask } from "./uncommittedActions";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
