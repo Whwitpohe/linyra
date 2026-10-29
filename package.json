@@ -2726,7 +2726,7 @@
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
     "test:ui": "playwright test -c dev/harness/playwright.config.mjs",
-    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts src/integration/commitPanel.itest.ts src/integration/marks.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
+    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts src/integration/commitPanel.itest.ts src/integration/marks.itest.ts src/integration/aiSettings.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
     "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
     "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022",
