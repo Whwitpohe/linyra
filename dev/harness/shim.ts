@@ -12,6 +12,7 @@ import { mockCommits, mockRepos, mockTopoWalk, NOW } from "./mock";
 import { mockWork } from "./mock/worktree";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
 import { answerAvatars } from "./mock/avatars";
+import { answerStats } from "./mock/changes";
 import { hoverReply, mockRefs } from "./mock/hover";
 import { historyRows, historyWork } from "./mock/history";
 import { handleSearch, searchPredicate } from "./mock/search";
@@ -166,6 +167,7 @@ function handle(m: WebviewMessage): void {
     case "accents": accents = m.accents; postChanges(); return;
     case "openSettings": console.info("[harness] openSettings"); return;
     case "visibleAuthors": answerAvatars(m, send); return;
+    case "wantStats": answerStats(m, send); return;
   }
 }
 

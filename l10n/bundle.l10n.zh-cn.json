@@ -994,5 +994,11 @@
   "Uncommitted changes, on the Uncommitted side": "未提交的更改，显示在“未提交”一侧",
   "{0} repository": "{0} 个仓库",
   "change: reads the changes of every commit in the range. Over all time this can take a while: a shorter date range is faster.": "change: 会读取范围内每个提交的改动。范围是全部时间时可能要等一会儿：缩短日期范围会更快。",
-  "No commit matches “{0}” in {1}{2}.": "{1}{2}中，没有提交匹配“{0}”。"
+  "No commit matches “{0}” in {1}{2}.": "{1}{2}中，没有提交匹配“{0}”。",
+  "{0} files changed, {1} lines added, {2} lines deleted": "{0} 个文件已更改，新增 {1} 行，删除 {2} 行",
+  "No Changes Column": "不显示更改列",
+  "Changes as Numbers": "更改：数字",
+  "Changes as Squares": "更改：方格",
+  "Changes as a Bar": "更改：条形",
+  "Changes as a Bipolar Bar": "更改：双向条"
 }

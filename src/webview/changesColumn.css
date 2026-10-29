@@ -1,0 +1,35 @@
+/*
+ * The Log's Changes column (changesColumn.ts). Added and deleted take Source Control's colors;
+ * the track is the text color at 18%; a deleted run carries a notch in the row's background, so
+ * it reads apart from added without the colors. Theme variables only.
+ */
+.list {
+  --changes-added: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green));
+  --changes-deleted: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red));
+  --changes-track: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+  --changes-axis: color-mix(in srgb, var(--vscode-foreground) 55%, transparent);
+  --changes-notch: var(--vscode-panel-background, var(--vscode-editor-background));
+}
+/* The column sits between the author and the date (as GitLens orders them); --changes-col is the stage's width (list.ts). */
+.list.with-changes .row { grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) minmax(48px, 10ch) var(--changes-col, 52px) 8ch; }
+.list.with-changes.hash-column .row { grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) 8.5ch minmax(48px, 10ch) var(--changes-col, 52px) 8ch; }
+@container (max-width: 720px) {
+  .list.with-changes .row, .list.with-changes.hash-column .row { grid-template-columns: 3px var(--graph-width, 32px) minmax(0, 1fr) var(--changes-col, 18px) 7ch; }
+}
+.changes-cell { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
+.changes-files { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.changes-files-icon { width: 12px; height: 12px; }
+.changes-total { flex: none; }
+.changes-numbers { display: inline-flex; gap: 4px; min-width: 0; overflow: hidden; }
+/* Deletions give way first when the column is short. */
+.changes-numbers .count-deleted { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.changes-draw { display: inline-block; flex: none; height: 6px; border-radius: 1px; }
+.changes-draw.changes-squares { height: 8px; }
+.changes-ring { width: 16px; height: 16px; flex: none; fill: none; stroke-width: 2.5; }
+.changes-ring-track { stroke: var(--changes-track); }
+.changes-ring-added { stroke: var(--changes-added); }
+.changes-ring-deleted { stroke: var(--changes-deleted); stroke-dasharray: 3 1; }
+/* On the focused selection the numbers follow the row's text, as its other cells do. */
+.list:focus .row.focus[aria-selected="true"] .changes-cell { color: inherit; }
+.list:focus .row.focus[aria-selected="true"] { --changes-notch: var(--vscode-list-activeSelectionBackground); }
+body.vscode-high-contrast .changes-draw { outline: 1px solid var(--vscode-contrastBorder); outline-offset: 1px; }

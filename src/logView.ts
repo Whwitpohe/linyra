@@ -18,6 +18,8 @@ import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 import { readAvatarSettings, readSettings } from "./settings";
 import { Avatars, visibleAuthors } from "./avatars";
+import { isChangesMode } from "./changeStats";
+import { ChangeStatsReader } from "./changeStatsReader";
 import { parseRemoteConfig } from "./avatarModel";
 import { outputLog } from "./outputLog";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
@@ -49,6 +51,7 @@ const PANE_WIDTH_KEY = "linyra.repoPaneWidth";
 const HIGHLIGHT_MINE_KEY = "linyra.highlightMine";
 const HIGHLIGHT_HEAD_KEY = "linyra.highlightHead";
 const HASH_COLUMN_KEY = "linyra.hashColumn";
+const CHANGES_COLUMN_KEY = "linyra.changesColumn";
 const DEFAULT_PANE_WIDTH = 190;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -170,6 +173,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     remotes: (repoId, signal) => this.remoteUrls(repoId, signal),
     post: (byEmail, reset) => this.post({ type: "avatars", byEmail, ...(reset ? { reset } : {}) }),
     log: (message) => outputLog().info(message),
+  });
+  /** The Changes column's stats for the rows on screen: one git process per repository, each commit read once a session. */
+  private readonly changeStats = new ChangeStatsReader({
+    run: (cwd, args, signal, opts) => this.run(cwd, args, signal, opts),
+    rootOf: (repoId) => this.repos.find((r) => r.id === repoId)?.root,
+    maxConcurrency: () => this.settings().maxConcurrency,
+    post: (byKey) => this.post({ type: "stats", byKey }),
   });
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
@@ -380,11 +390,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (m.changesLayout === "auto" || m.changesLayout === "sideBySide" || m.changesLayout === "stacked") await this.context.globalState.update("linyra.changesLayout", m.changesLayout);
         if (typeof m.highlightMine === "boolean") await this.context.globalState.update(HIGHLIGHT_MINE_KEY, m.highlightMine);
         if (typeof m.hashColumn === "boolean") await this.context.globalState.update(HASH_COLUMN_KEY, m.hashColumn);
+        if (isChangesMode(m.changesColumn)) await this.context.globalState.update(CHANGES_COLUMN_KEY, m.changesColumn);
         if (typeof m.highlightHead === "boolean") {
           await this.context.globalState.update(HIGHLIGHT_HEAD_KEY, m.highlightHead);
           if (m.highlightHead) void this.readOffHead(); else this.post({ type: "offHead", keys: [] });
         }
-        if (typeof m.showChanges === "boolean" || typeof m.highlightMine === "boolean" || typeof m.highlightHead === "boolean" || typeof m.hashColumn === "boolean") this.postInit();
+        if (typeof m.showChanges === "boolean" || typeof m.highlightMine === "boolean" || typeof m.highlightHead === "boolean" || typeof m.hashColumn === "boolean" || isChangesMode(m.changesColumn)) this.postInit();
         this.deps.changes.visibilityChanged();
         return;
       case "profileSave":
@@ -392,6 +403,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "visibleAuthors":
         this.avatars.want(visibleAuthors(m.authors, (id) => this.repos.some((r) => r.id === id)));
+        return;
+      case "wantStats":
+        void this.changeStats.want(Array.isArray(m.commits) ? m.commits : []);
         return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
@@ -479,6 +493,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       highlightMine: this.context.globalState.get<boolean>(HIGHLIGHT_MINE_KEY, false),
       highlightHead: this.context.globalState.get<boolean>(HIGHLIGHT_HEAD_KEY, false),
       hashColumn: this.context.globalState.get<boolean>(HASH_COLUMN_KEY, false),
+      changesColumn: ((v) => (isChangesMode(v) ? v : "bar"))(this.context.globalState.get<unknown>(CHANGES_COLUMN_KEY)),
     };
   }
 
@@ -1609,6 +1624,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   dispose(): void {
     this.avatars.dispose();
+    this.changeStats.dispose();
     this.background.abort();
     this.query.abort();
     this.detail.abort();

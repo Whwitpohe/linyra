@@ -4,13 +4,16 @@ import { isMine, whenLabel } from "../hoverModel";
 import { clear, h } from "./dom";
 import type { HoverRow } from "./hoverCard";
 import { commitPills, rowRefs, type Upstream } from "./refPills";
-import { fitName, textStyle } from "./measure";
+import { chWidth, fitName, textStyle } from "./measure";
 import { graphWidthFor, hoverRail, railAt, renderGraph, type FoldAction, type RailAction } from "./graph";
 import { historyChangeCell, historySubjectNotes } from "./history";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
-import { accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
+import { accentOf, moveSelection, relativeTime, repoColumnChars, separateAdjacentAccents, visibleRange } from "./view";
 import { avatarKey } from "./ui/authorDisc";
+import type { ChangesMode } from "../changeStats";
+import type { ChangesStage } from "./changeViz";
+import { changesCell, columnWidth, stageFor, statsFor, statsKeyOf } from "./changesColumn";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
 export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
@@ -39,6 +42,8 @@ export interface ListProps {
   hashColumn?: boolean;
   /** Each repository's distance from its upstream: the checked-out branch's pill shows it. */
   upstream?: Upstream;
+  /** The Changes column's drawing (the ⋯ menu); none: no column. Not in File History, which has its own. */
+  changes?: Exclude<ChangesMode, "off">;
 }
 
 const SKELETON_ROWS = 8;
@@ -52,8 +57,14 @@ const SKELETON_ROWS = 8;
 export class CommitList {
   private rowHeight = 0;
   private frame = 0;
-  /** The repo column's width and its names' font, read once per layout change rather than on every scroll paint. */
-  private column: { width: number; font: string; paddingX: number } | undefined;
+  /** The repo names' font, insets and ch width, read once per layout change rather than on every paint. */
+  private column: { font: string; paddingX: number; rowPaddingX: number; ch: number } | undefined;
+  /** The list's width at the last full paint (read before it builds rows, so no early layout). */
+  private listWidth = 0;
+  /** How much the Changes column draws at this width (changesColumn.ts). */
+  private changesStage: ChangesStage = "mini";
+  private chars = 0;
+  private charsOf: ReadonlyMap<string, string> | undefined;
   /**
    * The references cell's room and gap, and each pill's width by its look and text, read once per
    * layout change: every row draws the same few pills (develop | origin, a tag), and reading one
@@ -186,8 +197,7 @@ export class CommitList {
     // between. Rebuilding every visible row for each such message made scrolling stutter.
     const drawn = changed || next.repoNames !== prev.repoNames || next.behind !== prev.behind || next.me !== prev.me || next.highlightMine !== prev.highlightMine
       || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton
-      || next.upstream !== prev.upstream;
-    if (drawn) this.column = undefined; // the repo column may have changed with the repo list
+      || next.upstream !== prev.upstream || next.changes !== prev.changes;
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
     if (drawn) this.paint();
     else if (moved || next.selectedKeys !== prev.selectedKeys) { this.paintSelection(); this.paint(true); }
@@ -291,7 +301,14 @@ export class CommitList {
     if (!scrolled || skeleton) {
       // The graph's width (and the hash column, File History) set the references cell's room.
       this.refRoom = undefined;
-      this.graphWidth = graphWidthFor(this.graph.columns, this.root.clientWidth * 0.24);
+      this.listWidth = this.root.clientWidth;
+      this.graphWidth = graphWidthFor(this.graph.columns, this.listWidth * 0.24);
+      const changes = this.changesShown();
+      this.root.classList.toggle("with-changes", changes);
+      if (changes) {
+        this.changesStage = stageFor(this.listWidth);
+        this.root.style.setProperty("--changes-col", `${columnWidth(this.props.changes!, this.changesStage)}px`);
+      }
       this.root.style.setProperty("--graph-width", `${this.graphWidth}px`);
       this.mounted.clear();
       clear(this.body);
@@ -346,16 +363,26 @@ export class CommitList {
     if (!first) return;
     const labels = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".repo-label")]);
     if (labels.length === 0) return;
-    // Every name shares one font and inset: read them (and the column) once per layout, then only
-    // write. A read here forces the new rows' style mid-frame; a scroll must not pay for it.
+    // Every name shares one font and inset: read them once per layout change (a resize, a theme),
+    // then only write. The column's width is worked out, not read: reading the grid's tracks
+    // laid out every row just built, and the names written after it laid them out again.
     if (!this.column) {
-      const width = parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]);
-      if (!Number.isFinite(width)) return;
-      const label = textStyle(labels[0]), band = textStyle(labels[0].parentElement!);
-      this.column = { width, font: label.font, paddingX: label.paddingX + band.paddingX };
+      const label = textStyle(labels[0]), band = textStyle(labels[0].parentElement!), row = textStyle(first);
+      this.column = { font: label.font, paddingX: label.paddingX + band.paddingX, rowPaddingX: row.paddingX, ch: chWidth(label.font) };
     }
-    const { width, font, paddingX } = this.column;
+    const { font, paddingX, rowPaddingX, ch } = this.column;
+    // styles.css: minmax(72px, min(var(--repo-col), 25%)), --repo-col being the longest name + 2ch (main.ts).
+    const width = Math.max(72, Math.min((this.repoChars() + 2) * ch, 0.25 * (this.listWidth - rowPaddingX)));
     for (const label of labels) label.textContent = fitName(font, label.dataset.name ?? "", width - paddingX);
+  }
+
+  /** The longest repository name in characters (as main.ts sizes --repo-col), per repository list. */
+  private repoChars(): number {
+    if (this.charsOf !== this.props.repoNames) {
+      this.charsOf = this.props.repoNames;
+      this.chars = repoColumnChars([...this.props.repoNames.values()]);
+    }
+    return this.chars;
   }
 
   /** A resize, a divider drag or new props: what was measured may no longer hold. */
@@ -449,8 +476,23 @@ export class CommitList {
       this.props.historyPath ? historyChangeCell(c.file) : null,
       this.props.hashColumn ? h("span", { class: "hash", role: "gridcell" }, [c.sha.slice(0, 8)]) : null,
       h("span", { class: "author", role: "gridcell" }, [c.author]),
+      this.changesShown() ? changesCell(statsFor(c.repoId, c.sha), this.props.changes!, this.changesStage) : null,
       h("span", { class: "date", role: "gridcell", "aria-label": whenLabel(this.props.now, c.time, ago) }, [ago]),
     ]);
+  }
+
+  private changesShown(): boolean {
+    return this.props.changes !== undefined && !this.props.historyPath;
+  }
+
+  /** Stats arrived for these commits (repoId\0sha): their rows on screen get their Changes cell, nothing else is rebuilt. */
+  statsArrived(keys: ReadonlySet<string>): void {
+    if (!this.changesShown()) return;
+    for (const [i, { el }] of this.mounted) {
+      const c = this.display.rows[i];
+      if (!c || c.segment || !keys.has(statsKeyOf(c.commit.repoId, c.commit.sha))) continue;
+      el.querySelector(".changes-cell")?.replaceWith(changesCell(statsFor(c.commit.repoId, c.commit.sha), this.props.changes!, this.changesStage));
+    }
   }
 
   /** The commit at a row's data-index (the hover card asks on every pointer move). */
@@ -478,7 +520,9 @@ export class CommitList {
       h("span", { role: "gridcell", class: "fold-summary" }, [h("button", { type: "button", class: "fold-expand", "data-fold-expand": segment.id,
         title: localize("Expand {0} hidden commits", segment.hidden.length), "aria-expanded": "false" }, [localize("{0} commits hidden · Expand", segment.hidden.length)])]),
       this.props.hashColumn ? h("span", { role: "gridcell", class: "hash" }) : null,
-      h("span", { role: "gridcell", class: "author" }), h("span", { role: "gridcell", class: "date" }),
+      h("span", { role: "gridcell", class: "author" }),
+      this.changesShown() ? h("span", { role: "gridcell", class: "changes-cell" }) : null,
+      h("span", { role: "gridcell", class: "date" }),
     ]);
   }
 
