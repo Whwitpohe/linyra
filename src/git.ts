@@ -4,8 +4,11 @@ import { promises as fs } from "fs";
 import { abortError } from "./pool";
 
 export class GitError extends Error {
-  /** stdout: what git printed before failing (merge-tree lists conflicts and exits 1). */
-  constructor(message: string, readonly exitCode: number | null, readonly stdout = "") {
+  /**
+   * stdout: what git printed before failing (merge-tree lists conflicts and exits 1). stderr: all
+   * of it (the message is its main line), so a refused push's "[rejected] … (fetch first)" is there.
+   */
+  constructor(message: string, readonly exitCode: number | null, readonly stdout = "", readonly stderr = "") {
     super(message);
     this.name = "GitError";
   }
@@ -96,7 +99,10 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       if (signal?.aborted) return reject(abortError());
       opts.onStderr?.(Buffer.concat(err).toString("utf8"));
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
-      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || localize("git exited with code {0}", String(code)), code, Buffer.concat(out).toString("utf8")));
+      else {
+        const stderr = Buffer.concat(err).toString("utf8");
+        reject(new GitError(errorLine(stderr) || localize("git exited with code {0}", String(code)), code, Buffer.concat(out).toString("utf8"), stderr));
+      }
     });
   });
 }

@@ -100,7 +100,7 @@ describe("Branch sidebar", () => {
     await act("checkout", "branch-test/release-1.4", "remotes");
     assert.strictEqual(read().current, "main");
     assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.branchError"),
-      "Could not check out branch-test/release-1.4 in acme-api: release-1.4 already exists here and tracks no remote branch: to check out branch-test/release-1.4 under another name, use New Branch from Here….");
+      "Could not check out branch-test/release-1.4 in acme-api: release-1.4 already exists here and tracks no remote branch: New Branch from Here… on branch-test/release-1.4 checks it out under another name.");
     git(["branch", "-D", "release-1.4"]);
     await act("checkout", "branch-test/release-1.4", "remotes");
     assert.strictEqual(await vscode.commands.executeCommand<number>("linyra._itest.asked"), asked, "no question");
@@ -196,7 +196,7 @@ describe("Branch sidebar", () => {
     git(["update-ref", "refs/heads/ui-unmerged", child(beforeHead, "unmerged.txt", "keep\n", "feat: unmerged")]);
     // Not merged: git refuses; asked again, with how many commits are on nothing else.
     await answer("Delete"); await answer("Cancel"); await act("delete", "ui-unmerged"); assert.ok(read().branches.some((b) => b.name === "ui-unmerged"));
-    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "ui-unmerged is not merged in acme-api.");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "ui-unmerged is not merged into main in acme-api.");
     await answer("Delete"); await answer("Delete Anyway (1 commit not merged anywhere)"); await act("delete", "ui-unmerged");
     assert.ok(!read().branches.some((b) => b.name === "ui-unmerged"), "Delete Anyway: git branch -D");
     const before = git(["show-ref"]);

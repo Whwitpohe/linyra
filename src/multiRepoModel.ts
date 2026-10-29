@@ -2,6 +2,7 @@ import type { Branches } from "./branchModel";
 import { isValidRef } from "./filterModel";
 import { localize } from "./i18n";
 import { failureReason } from "./actionErrors";
+import { errorLine } from "./git";
 import { pullReason } from "./upstream";
 
 /**
@@ -219,7 +220,8 @@ export function updateReason(message: string): string {
   if (/no upstream|no tracking information/i.test(message)) return "no upstream branch";
   if (/not possible to fast-forward|diverging branches/i.test(message)) return "it has diverged from its upstream: merge or rebase it";
   const pull = pullReason(message);
-  return pull === message.trim() ? failureReason(message) ?? pull : pull;
+  // Nothing recognized: git's main line, not the whole of its stderr.
+  return pull === message.trim() ? failureReason(message) ?? (errorLine(message) || pull) : pull;
 }
 
 /** git stopped half-way (a merge or rebase on conflicts): the repository is mid-operation, not as it was. */

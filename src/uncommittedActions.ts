@@ -316,7 +316,10 @@ export class UncommittedActions {
       const paths = new Set(files.map((f) => f.path));
       return files.length === 0 ? [] : [{ work: r.work, files, staged: r.staged.filter((f) => added.has(f.path)), one: paths.size === 1 }];
     });
-    if (picks.length === 0) return;
+    if (picks.length === 0) {
+      vscode.window.setStatusBarMessage(localize("No new files here: Delete… removes only new files (Discard Changes takes back the others)."), 5000);
+      return;
+    }
     const paths = (r: Pick) => [...new Set(r.files.map((f) => f.path))];
     const p = picks.length === 1
       ? deletePrompt(picks[0].work.name, paths(picks[0]), picks[0].one)

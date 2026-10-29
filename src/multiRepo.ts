@@ -20,8 +20,6 @@ const PUSH_TIMEOUT_MS = 60_000;
 /** Several repositories at once, but few: these write, and pushes are network-bound. */
 const WRITE_CONCURRENCY = 4;
 
-
-
 export interface MultiRepoHost {
   /** The Log view: progress shows on its title. */
   viewId: string;
@@ -175,7 +173,7 @@ export class MultiRepo {
       const item = (r: (typeof rows)[number]): vscode.QuickPickItem => ({
         label: r.repo.name, picked: !r.plan.lease,
         description: `${r.plan.branch} → ${r.plan.remote}/${r.plan.destination}${r.plan.setUpstream ? ` (${localize("new")})` : ""} · ${localize(r.commits.length === 1 ? "1 commit" : "{0} commits", r.commits.length)}`
-          + (r.plan.lease ? ` · ${localize("{0} on the remote you do not have", r.plan.behind ?? 0)}` : ""),
+          + (r.plan.lease ? ` · ${localize((r.plan.behind ?? 0) === 1 ? "1 commit on the remote you do not have" : "{0} commits on the remote you do not have", r.plan.behind ?? 0)}` : ""),
         detail: r.plan.lease ? localize("Tick to force push: the remote loses those commits (you are asked first). To keep them, run Update Project instead.")
           : r.commits.slice(0, 3).map((c) => `${c.sha} ${c.subject}`).join("  ·  ") + (r.commits.length > 3 ? "  …" : ""),
       });
@@ -245,7 +243,7 @@ export class MultiRepo {
       ffOnly: { label: localize("Fast-forward only"), description: localize("only branches with no local commits; diverged ones are left as they are") },
     };
     const pin = { iconPath: new vscode.ThemeIcon("pin"), tooltip: localize("Always use this method (don't ask again)") };
-    const answer = await this.host.ask.pickWithButton(order.map((m) => describe[m]), localize("Update {0} repositories: how? (📌 = don't ask again)", this.host.repos().length), pin);
+    const answer = await this.host.ask.pickWithButton(order.map((m) => describe[m]), localize("Update {0} repositories: how? (the pin beside a method: don't ask again)", this.host.repos().length), pin);
     if (!answer) return undefined;
     const method = order[answer.index];
     await this.host.state.update(LAST_METHOD, method);
@@ -274,14 +272,17 @@ export class MultiRepo {
    * (annotated when given a message), then, if asked, pushed to each one's remote. A repository
    * that already has the tag keeps its own and is named.
    */
-  tags(preset?: { name: string; message?: string; push: boolean; only?: ReadonlySet<string> }): Promise<MultiResult | undefined> {
+  async tags(preset?: { name: string; message?: string; push: boolean; only?: ReadonlySet<string> }): Promise<MultiResult | undefined> {
+    // Something across repositories is running: said at once, rather than after the form.
+    if (!preset && this.running) return this.exclusive(async () => undefined);
+    // The form stays open as long as the user likes: no lock while it does (Update Project, Push… go on).
+    const answer = preset ?? await this.tagForm(await this.read());
+    if (!answer || !isValidRef(answer.name)) return undefined;
+    if (!preset) await this.host.state.update(PUSH_TAGS, answer.push);
     return this.exclusive(async () => {
-      const read = await this.read(preset?.only);
-      const answer = preset ?? await this.tagForm(read);
-      if (!answer || !isValidRef(answer.name)) return undefined;
       const { name, message = "", push } = answer;
-      if (!preset) await this.host.state.update(PUSH_TAGS, push);
-      const all = read.filter((x) => !answer.only || answer.only.has(x.repo.id));
+      // Read again: the tags as they are now, not as they were when the form opened.
+      const all = await this.read(answer.only);
       const taken = all.filter((x) => x.data?.branches.some((b) => b.kind === "tag" && b.name === name));
       const act = all.filter((x) => x.data && !taken.includes(x));
       if (!act.length) return this.report(localize("Tag {0}", name), "tag", { done: [], unchanged: [], stopped: [], skipped: taken.map((x) => ({ name: x.repo.name, reason: localize("the tag already exists") })) });
@@ -368,7 +369,7 @@ export class MultiRepo {
    * Compare's Merge ◀ into ▶…: each plan's merge, with the same progress, refresh and report as
    * Branches Across Repositories; `skipped` joins the report. `quiet`: no report (the caller makes one).
    */
-  mergeEach(title: string, plans: readonly { repo: Repo; merge: () => Promise<unknown> }[], skipped: readonly { name: string; reason: string }[], opts: { quiet?: boolean } = {}): Promise<MultiResult | undefined> {
+  mergeEach(title: string, plans: readonly { repo: Repo; merge: () => Promise<unknown> }[], skipped: readonly { name: string; reason: string; failed?: boolean }[], opts: { quiet?: boolean } = {}): Promise<MultiResult | undefined> {
     return this.exclusive(async () => {
       const result = await this.each(title, plans.map((p) => p.repo), (repo) => plans.find((p) => p.repo.id === repo.id)!.merge());
       result.skipped.push(...skipped);

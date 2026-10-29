@@ -58,6 +58,8 @@ export function openForm(extensionUri: vscode.Uri, spec: FormSpec, check?: (valu
         const values = checkValues(current, m.values);
         if (!values) { void panel.webview.postMessage({ type: "problems", problems: formProblems(current, (m.values ?? {}) as FormValues) }); return; }
         const problems = check ? await check(values) : {};
+        // Asked again meanwhile: this tab belongs to the newer form now.
+        if (settled) return;
         if (Object.keys(problems).length > 0) { void panel.webview.postMessage({ type: "problems", problems }); return; }
         settle(values);
         panel.dispose();

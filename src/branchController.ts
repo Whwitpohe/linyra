@@ -208,7 +208,7 @@ export class BranchController implements vscode.Disposable {
             local = b.remoteBranch ?? b.name;
             const existing = data.branches.find((x) => x.kind === "local" && x.name === local);
             if (existing) {
-              if (existing.upstream !== b.name) throw new Error(localize("{0} already exists here and tracks {1}: to check out {2} under another name, use New Branch from Here….", local, existing.upstream || localize("no remote branch"), b.name));
+              if (existing.upstream !== b.name) throw new Error(localize("{0} already exists here and tracks {1}: New Branch from Here… on {2} checks it out under another name", local, existing.upstream || localize("no remote branch"), b.name));
               if (!(await guard(local, () => (native?.checkout ? native.checkout(local) : run(branchCommands.checkout(existing)))))) return;
             } else {
               if (newBranchProblem(local, data.branches)) throw new Error(localize("Enter a valid branch name."));
@@ -246,13 +246,13 @@ export class BranchController implements vscode.Disposable {
             done = branchDone("delete", { name: b.name, repo: repo.name });
             break;
           }
-          const p = deletePrompt({ name: b.name, kind: b.kind, upstream: b.upstream, remote: b.remote }, repo.name);
+          const p = deletePrompt({ name: b.name, kind: b.kind, upstream: b.upstream, remote: b.remote, remoteBranch: b.remoteBranch }, repo.name);
           if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return;
           if (b.kind === "remote") {
             if (!b.remote || !b.remoteBranch) return;
             if (native?.push) await native.push(b.remote, `:refs/heads/${b.remoteBranch}`);
             else await run(["push", "--delete", "--", b.remote, b.remoteBranch]);
-          } else if (!(await this.deleteLocal(repo, b, run))) return;
+          } else if (!(await this.deleteLocal(repo, b, b.upstream || current, run))) return;
           done = branchDone("delete", { name: b.name, repo: repo.name });
           break;
         }
@@ -354,7 +354,7 @@ export class BranchController implements vscode.Disposable {
    * merge): asked once more, with how many of its commits are on nothing else, then `git branch -D`.
    * false: declined.
    */
-  private async deleteLocal(repo: Repo, b: Branch, run: (args: string[]) => Promise<string>): Promise<boolean> {
+  private async deleteLocal(repo: Repo, b: Branch, into: string, run: (args: string[]) => Promise<string>): Promise<boolean> {
     const native = this.deps.discovery.branchRepository(repo.root);
     try {
       if (native?.deleteBranch) await native.deleteBranch(b.name, false); else await run(branchCommands.delete(b));
@@ -363,7 +363,7 @@ export class BranchController implements vscode.Disposable {
       if (!/not fully merged/i.test(gitText(e)) && (e as { gitErrorCode?: unknown }).gitErrorCode !== "BranchNotFullyMerged") throw e;
     }
     const unmerged = Number((await run(unmergedArgs(b.name)).catch(() => "")).trim()) || 0;
-    const p = deleteAnywayPrompt(b.name, repo.name, unmerged);
+    const p = deleteAnywayPrompt(b.name, into, repo.name, unmerged);
     if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return false;
     if (native?.deleteBranch) await native.deleteBranch(b.name, true); else await run(branchCommands.forceDelete(b));
     return true;

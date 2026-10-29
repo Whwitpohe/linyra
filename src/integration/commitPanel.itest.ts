@@ -62,7 +62,7 @@ describe("Commit side bar", () => {
     // Discard Changes, Remove from VCS and Delete… are never one another: own names, own icons, own rows.
     const commands = pkg.commands as { command: string; title: string; icon?: string }[];
     const look = (id: string) => { const c = commands.find((x) => x.command === `linyra.commitPanel.${id}`)!; return [c.title, c.icon]; };
-    assert.deepStrictEqual(["rollback", "removeFromVcs", "delete"].map(look), [["Discard Changes…", "$(discard)"], ["Remove from VCS", "$(remove)"], ["Delete…", "$(trash)"]]);
+    assert.deepStrictEqual(["rollback", "removeFromVcs", "delete"].map(look), [["Discard Changes", "$(discard)"], ["Remove from VCS", "$(remove)"], ["Delete…", "$(trash)"]]);
     const offers = (command: string, group: string, contextValue: string) => menus.some((m) => {
       if (m.command !== command || !m.when.includes("view == linyra.commit") || !(m as { group?: string }).group?.startsWith(group)) return false;
       const re = /viewItem =~ \/(.+)\/$/.exec(m.when)?.[1], is = /viewItem == (\S+)$/.exec(m.when)?.[1];

@@ -744,9 +744,9 @@ describe("Linyra panel", () => {
         "This can't be undone. Staged changes are discarded too. The added file leaves version control and stays on disk as a new file. The 2 new files stay: Delete… removes them.");
       await waitFor("only the new files left", () => (git("status", "--porcelain").split("\n").sort().join(",") === "?? CHANGELOG.md,?? added.ts,?? loose.md" ? true : undefined));
       assert.ok(fs.existsSync(at("added.ts")) && fs.existsSync(at("loose.md")) && fs.existsSync(at("CHANGELOG.md")), "no file deleted");
-      // Delete… on the repository: its new files, after its own prompt.
+      // Delete New Files… on the repository row: its new files, after their own prompt.
       await vscode.commands.executeCommand("linyra._itest.answer", "Delete");
-      await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id });
+      await vscode.commands.executeCommand("linyra.deleteNewAll", { webviewSection: "uncommitted", repoId: web.id });
       await waitFor("acme-web clean", () => (git("status", "--porcelain") === "" ? true : undefined));
       await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
       assert.strictEqual((await view()).lastError, errorBefore, "no error from Discard");

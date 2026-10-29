@@ -80,9 +80,8 @@ export class PatchActions {
     const found = new Map(await Promise.all(repos.map(async (r) => [r.id, (await Promise.all(expected.map((f) => exists(r.root, f)))).reduce<number>((n, x) => n + x, 0)] as const)));
     const fit = patchFit(repos, expected.length, found);
     if (fit.sure) return fit.sure;
-    const several = fit.offer.length < repos.length;
     const i = await this.host.ask.pick(fit.offer.map((r) => ({ label: r.name, description: expected.length > 0 ? localize("{0} of the {1} files it changes", found.get(r.id) ?? 0, expected.length) : r.root })),
-      several ? localize("Several repositories have the files this patch changes: which one?") : expected.length > 0 ? localize("No ticked repository has every file this patch changes: which one?") : localize("Repository to apply the patch to"));
+      fit.fits > 1 ? localize("Several repositories have the files this patch changes: which one?") : expected.length > 0 ? localize("No ticked repository has every file this patch changes: which one?") : localize("Repository to apply the patch to"));
     return i === undefined ? undefined : fit.offer[i];
   }
 

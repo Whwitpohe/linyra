@@ -137,7 +137,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const selection = new CompareSelection();
   const mergeDocs = new MergePreviewDocs();
   const compareDeps = { context, store: compare, log, selection, mergeDocs, ask,
-    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[], opts?: { quiet?: boolean }) => multiRepo.mergeEach(title, plans, skipped, opts),
+    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string; failed?: boolean }[], opts?: { quiet?: boolean }) => multiRepo.mergeEach(title, plans, skipped, opts),
     mergeRef: (repo: Repo, ref: string) => multiRepo.mergeRef(repo, ref) };
   const compareRepos = new CompareRepos(compareDeps);
   // The hover card's Compare: the HEAD row's branch against its merge target, in Compare Branches.
@@ -354,6 +354,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Commit… on the Uncommitted side or in the Changes view: the Commit side bar, that repository's files checked.
     vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => commitPanel.openFor(((changesTarget(arg) ?? arg) as { repoId?: unknown } | undefined)?.repoId ?? repoOf(arg))),
     vscode.commands.registerCommand("linyra.deleteNew", (arg?: unknown, many?: unknown[]) => uncommittedActions.deleteNew(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
+    // Delete New Files…: a folder's, or a whole repository's (the Uncommitted side's row, the Changes view's root).
+    vscode.commands.registerCommand("linyra.deleteNewAll", (arg?: unknown) => uncommittedActions.deleteNew(changesTarget(arg) ?? { repoId: repoOf(arg) })),
     vscode.commands.registerCommand("linyra.openUncommittedDiff", (arg?: unknown) => uncommittedActions.openDiff(arg)),
     vscode.commands.registerCommand("linyra.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).

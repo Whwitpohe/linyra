@@ -47,7 +47,10 @@ export interface FormSpec {
 export type FormValue = string | boolean | string[];
 export type FormValues = Record<string, FormValue>;
 
-export type FormHost = { type: "spec"; spec: FormSpec } | { type: "problems"; problems: Record<string, string> } | { type: "busy"; busy: boolean };
+export type FormHost = { type: "spec"; spec: FormSpec } | { type: "problems"; problems: Record<string, string> };
+
+/** The longest text a field takes (a pasted changelog as a tag's message fits). */
+const MAX_TEXT = 10_000;
 export type FormWebview = { type: "ready" } | { type: "submit"; values: FormValues } | { type: "cancel" };
 
 /** The values the fields start with: text as given, checkboxes as given, a list's ticked items. */
@@ -65,6 +68,7 @@ export function initialValues(spec: FormSpec): FormValues {
 export function fieldProblem(f: FormField, value: FormValue | undefined): string | undefined {
   if (f.kind === "text") {
     const v = typeof value === "string" ? value.trim() : "";
+    if (typeof value === "string" && value.length > MAX_TEXT) return localize("At most {0} characters.", MAX_TEXT.toLocaleString("en-US"));
     if (f.rule === "ref" && v === "") return localize("Enter a name.");
     if ((f.rule === "ref" || f.rule === "optionalRef") && v !== "" && !isValidRef(v)) return localize("Not a valid name: no spaces, and none of ~ ^ : ? * [ \\.");
     if (v !== "" && f.taken?.includes(v)) return f.takenMessage ?? localize("That name is already taken.");
@@ -99,7 +103,7 @@ export function checkValues(spec: FormSpec, raw: unknown): FormValues | undefine
   for (const f of spec.fields) {
     const v = r[f.id];
     if (f.kind === "text") {
-      if (typeof v !== "string" || v.length > 10_000) return undefined;
+      if (typeof v !== "string" || v.length > MAX_TEXT) return undefined;
       values[f.id] = f.multiline ? v.replace(/\s+$/, "") : v.trim();
     } else if (f.kind === "check") {
       if (typeof v !== "boolean") return undefined;

@@ -6,6 +6,7 @@ import * as path from "path";
 import { parseShow, showArgs } from "./commitDetail";
 import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
+import { whyOf } from "./actionErrors";
 import { errorLine, GitError, GitRunner, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
@@ -267,6 +268,28 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     const r = await Promise.race([run, new Promise((ok) => setTimeout(() => ok("pending"), 3000))]);
     assert.strictEqual(r, "aborted", "an abort after git exited still settles the run, as aborted");
     console.log("ok - an aborted git run always settles, however late the abort");
+  }
+  {
+    // A refused push keeps all of git's stderr: "[rejected] … (fetch first)" is not its main line,
+    // and it is what says what to do next.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-rejected-"));
+    const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID }, stdio: "pipe" }).toString();
+    const web = path.join(home, "acme-web"), remote = path.join(home, "acme-web.git"), other = path.join(home, "other");
+    makeRepo(web, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "1\n" } }], home);
+    git(home, ["init", "-q", "--bare", "-b", "main", remote]);
+    git(web, ["push", "-q", remote, "main"]);
+    git(home, ["clone", "-q", remote, other]);
+    commitAt(other, home, { time: 2000, author: "rin", message: "feat: theirs", files: { "b.txt": "2\n" } });
+    git(other, ["push", "-q", "origin", "main"]);
+    commitAt(web, home, { time: 3000, author: "dana", message: "feat: mine", files: { "c.txt": "3\n" } });
+    const e = await runGit(web, ["push", remote, "main"], undefined, { env: { ...gitEnv(home), LC_ALL: "C" } }).then(() => undefined, (x: unknown) => x);
+    assert.ok(e instanceof GitError);
+    assert.match(e.stderr, /\[rejected\][\s\S]*fetch first/, "the whole stderr");
+    assert.strictEqual(e.message, errorLine(e.stderr), "the message is its main line, as before");
+    assert.match(whyOf(e), /run Update Project, then push again/);
+    fs.rmSync(home, { recursive: true, force: true });
+    console.log("ok - a refused push keeps git's whole stderr, so its reason says what to do");
   }
 })().catch((e) => {
   console.error(e);

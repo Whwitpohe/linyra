@@ -135,7 +135,8 @@ form.addEventListener("submit", (event) => {
 });
 cancel.addEventListener("click", () => post({ type: "cancel" }));
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !busy) post({ type: "cancel" });
+  // Escape while an input method is composing closes its candidates, not the form.
+  if (event.key === "Escape" && !busy && !event.isComposing) post({ type: "cancel" });
   // Ctrl/Cmd+Enter submits from a multi-line field too.
   if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) form.requestSubmit();
 });
@@ -143,7 +144,6 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("message", (event: MessageEvent<FormHost>) => {
   const m = event.data;
   if (m?.type === "spec") render(m.spec);
-  else if (m?.type === "busy") setBusy(m.busy);
   else if (m?.type === "problems" && spec) {
     setBusy(false);
     for (const [id, text] of Object.entries(m.problems)) {

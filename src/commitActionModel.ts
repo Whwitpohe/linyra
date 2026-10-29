@@ -77,8 +77,8 @@ export function stoppedReason(action: CommitAction, stderr: string): string | un
 }
 
 /** What a reset moves: commits on HEAD and not on the target (they leave), and on the target only (they arrive). */
-export function resetDistanceArgs(sha: string, pushedOnly: boolean): string[] {
-  return ["rev-list", "--left-right", "--count", `HEAD...${check(sha)}`, ...(pushedOnly ? ["--not", "--remotes"] : []), "--"];
+export function resetDistanceArgs(sha: string, notOn?: string): string[] {
+  return ["rev-list", "--left-right", "--count", `HEAD...${check(sha)}`, ...(notOn === undefined ? [] : notOn === "" ? ["--not", "--remotes"] : ["--not", `refs/remotes/${checkName(notOn)}`]), "--"];
 }
 
 /**

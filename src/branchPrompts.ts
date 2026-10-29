@@ -12,7 +12,7 @@ const commits = (n: number) => localize(n === 1 ? "{0} commit" : "{0} commits", 
 export function deletePrompt(b: { name: string; kind: "local" | "remote"; upstream?: string; remote?: string; remoteBranch?: string }, repo: string): { message: string; detail: string; button: string } {
   if (b.kind === "remote") {
     return {
-      message: localize("Delete {0} on the remote {1}?", b.name, b.remote ?? ""),
+      message: localize("Delete {0} on the remote {1}?", b.remoteBranch ?? b.name, b.remote ?? ""),
       detail: localize("The branch is deleted on the server, for everyone who uses it. Local branches stay."),
       button: localize("Delete"),
     };
@@ -32,9 +32,9 @@ export function unmergedArgs(name: string): string[] {
 }
 
 /** git refused to delete an unmerged branch (the normal case after a squash merge): asked again, with what is lost. */
-export function deleteAnywayPrompt(name: string, repo: string, unmerged: number): { message: string; detail: string; button: string } {
+export function deleteAnywayPrompt(name: string, into: string, repo: string, unmerged: number): { message: string; detail: string; button: string } {
   return {
-    message: localize("{0} is not merged in {1}.", name, repo),
+    message: localize("{0} is not merged into {1} in {2}.", name, into, repo),
     detail: unmerged > 0
       ? localize(unmerged === 1 ? "{0} on it is on no other branch, remote branch or tag. After a squash merge that is expected: its changes are already in. git keeps it for a while (git reflog), then removes it." : "{0} on it are on no other branch, remote branch or tag. After a squash merge that is expected: their changes are already in. git keeps them for a while (git reflog), then removes them.", commits(unmerged))
       : localize("Every commit on it is also on another branch, remote branch or tag: nothing is lost."),

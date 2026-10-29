@@ -13,12 +13,13 @@ import { gitEnv, makeRepo } from "./fixtures";
   assert.deepStrictEqual(deletePrompt({ name: "feature/x", kind: "local", upstream: "origin/feature/x" }, "acme-web"),
     { message: "Delete branch feature/x in acme-web?", detail: "The local branch is deleted. Its remote branch origin/feature/x stays.", button: "Delete" });
   assert.match(deletePrompt({ name: "feature/x", kind: "local" }, "acme-web").detail, /stay on the other branches and tags/);
-  assert.strictEqual(deletePrompt({ name: "origin/feature/x", kind: "remote", remote: "origin" }, "acme-web").message, "Delete origin/feature/x on the remote origin?");
-  // Not merged (after a squash merge): how many commits are on nothing else, on the button.
-  const anyway = deleteAnywayPrompt("feature/x", "acme-web", 4);
+  assert.strictEqual(deletePrompt({ name: "origin/feature/x", kind: "remote", remote: "origin", remoteBranch: "feature/x" }, "acme-web").message, "Delete feature/x on the remote origin?");
+  // Not merged (after a squash merge): into what, and how many commits are on nothing else, on the button.
+  const anyway = deleteAnywayPrompt("feature/x", "main", "acme-web", 4);
+  assert.strictEqual(anyway.message, "feature/x is not merged into main in acme-web.");
   assert.strictEqual(anyway.button, "Delete Anyway (4 commits not merged anywhere)");
   assert.match(anyway.detail, /4 commits on it are on no other branch[\s\S]*squash merge/);
-  assert.strictEqual(deleteAnywayPrompt("feature/x", "acme-web", 0).button, "Delete Anyway");
+  assert.strictEqual(deleteAnywayPrompt("feature/x", "main", "acme-web", 0).button, "Delete Anyway");
   assert.deepStrictEqual(unmergedArgs("feature/x"), ["rev-list", "--count", "refs/heads/feature/x", "--not", "--exclude=feature/x", "--branches", "--remotes", "--tags", "--"]);
   console.log("ok - Delete Branch says what goes and what stays; an unmerged branch says how much is on nothing else");
 }
@@ -56,7 +57,9 @@ import { gitEnv, makeRepo } from "./fixtures";
 
 {
   const sha = "a".repeat(40);
-  assert.deepStrictEqual(resetDistanceArgs(sha, true), ["rev-list", "--left-right", "--count", `HEAD...${sha}`, "--not", "--remotes", "--"]);
+  assert.deepStrictEqual(resetDistanceArgs(sha, "origin/main"), ["rev-list", "--left-right", "--count", `HEAD...${sha}`, "--not", "refs/remotes/origin/main", "--"], "pushed: on the upstream");
+  assert.deepStrictEqual(resetDistanceArgs(sha, ""), ["rev-list", "--left-right", "--count", `HEAD...${sha}`, "--not", "--remotes", "--"], "no upstream: on any remote");
+  assert.deepStrictEqual(resetDistanceArgs(sha), ["rev-list", "--left-right", "--count", `HEAD...${sha}`, "--"]);
   const hard = resetPrompt({ branch: "main", target: "1a2b3c4", repo: "acme-web", mode: "hard", leaving: 4, pushed: 2, upstream: "origin/main", arriving: 0 });
   assert.strictEqual(hard.message, "Reset main to 1a2b3c4 in acme-web?");
   assert.match(hard.detail, /^4 commits leave main \(2 already pushed to origin\/main\)\.\nUncommitted changes are deleted\. This cannot be undone\.\n/);

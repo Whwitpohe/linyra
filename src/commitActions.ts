@@ -149,11 +149,14 @@ export class CommitActions {
         const i = await this.host.ask.pick(modes, localize("Reset {0} to {1}", branch, short(commit.sha)));
         if (i === undefined) return undefined;
         const { mode } = modes[i];
-        // What leaves the branch (and how much of it is pushed), what arrives: two counts, read together.
-        const [all, local] = await Promise.all([false, true].map((pushedOnly) => this.host.run(repo.root, resetDistanceArgs(commit.sha, pushedOnly), WRITE_SIGNAL).catch(() => "")));
+        // What leaves the branch (and how much of it is on its upstream), what arrives: two counts, read
+        // together. The upstream from VS Code's Git where it watches the repository, else one rev-parse.
+        const known = this.host.discovery.headUpstream(repo.root);
+        const upstream = known !== undefined ? known ?? undefined
+          : (await this.host.run(repo.root, ["rev-parse", "--abbrev-ref", "@{upstream}"], WRITE_SIGNAL).catch(() => "")).trim() || undefined;
+        const [all, local] = await Promise.all([undefined, upstream ?? ""].map((notOn) => this.host.run(repo.root, resetDistanceArgs(commit.sha, notOn), WRITE_SIGNAL).catch(() => "")));
         const [leaving = 0, arriving = 0] = all.trim().split(/\s+/).map(Number);
         const pushed = Math.max(0, leaving - (Number(local.trim().split(/\s+/)[0]) || 0));
-        const upstream = pushed > 0 ? (await this.host.run(repo.root, ["rev-parse", "--abbrev-ref", "@{upstream}"], WRITE_SIGNAL).catch(() => "")).trim() || undefined : undefined;
         const p = resetPrompt({ branch, target: short(commit.sha), repo: repo.name, mode, leaving, pushed, upstream, arriving });
         if (!(await this.host.ask.warning(p.message, p.detail, p.button))) return undefined;
         await git(commitCommands.reset(commit.sha, mode));

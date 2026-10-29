@@ -51,9 +51,9 @@ export function patchSources(text: string): string[] {
  * the ones that have them all, else every one, most found first. `sure`: exactly one fits, so
  * nothing needs asking.
  */
-export function patchFit<T extends { id: string }>(repos: readonly T[], expected: number, found: ReadonlyMap<string, number>): { sure: T | undefined; offer: T[] } {
+export function patchFit<T extends { id: string }>(repos: readonly T[], expected: number, found: ReadonlyMap<string, number>): { sure: T | undefined; offer: T[]; fits: number } {
   const all = expected > 0 ? repos.filter((r) => found.get(r.id) === expected) : [];
-  if (all.length === 1) return { sure: all[0], offer: all };
+  if (all.length === 1) return { sure: all[0], offer: all, fits: 1 };
   const pool = all.length > 1 ? all : [...repos];
-  return { sure: undefined, offer: pool.sort((a, b) => (found.get(b.id) ?? 0) - (found.get(a.id) ?? 0)) };
+  return { sure: undefined, offer: pool.sort((a, b) => (found.get(b.id) ?? 0) - (found.get(a.id) ?? 0)), fits: all.length };
 }

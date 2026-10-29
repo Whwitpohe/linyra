@@ -413,7 +413,9 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     const under = (s?.files ?? []).filter((f) => folder === "" || f.path.startsWith(`${folder}/`));
     const staged = under.some((f) => s?.stagedPaths?.includes(f.path));
     const changed = under.some((f) => !f.staged);
-    return `${staged ? ".staged" : ""}${changed ? ".changed" : ""}`;
+    // .new: a new file under it, so Delete New Files… is offered (Discard Changes never deletes one).
+    const fresh = under.some((f) => f.untracked);
+    return `${staged ? ".staged" : ""}${changed ? ".changed" : ""}${fresh ? ".new" : ""}`;
   }
 
   getTreeItem(node: NodeDesc): vscode.TreeItem {

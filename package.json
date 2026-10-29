@@ -421,6 +421,12 @@
         "icon": "$(discard)"
       },
       {
+        "command": "linyra.deleteNewAll",
+        "title": "%command.linyra.deleteNewAll.title%",
+        "category": "Linyra",
+        "icon": "$(trash)"
+      },
+      {
         "command": "linyra.commitRepo",
         "title": "%command.linyra.commitRepo.title%",
         "category": "Linyra",
@@ -979,6 +985,11 @@
           "group": "1_modification@5"
         },
         {
+          "command": "linyra.deleteNewAll",
+          "when": "view == linyra.changes && viewItem =~ /^(uncommitted|folder)\\.discardable.*\\.new$/",
+          "group": "3_modification@6"
+        },
+        {
           "command": "linyra.compareOpenSinceSplit",
           "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compareFile/",
           "group": "1_open@1"
@@ -1256,6 +1267,10 @@
         },
         {
           "command": "linyra.discardAll",
+          "when": "false"
+        },
+        {
+          "command": "linyra.deleteNewAll",
           "when": "false"
         },
         {
@@ -1916,6 +1931,11 @@
           "group": "0_modification@4"
         },
         {
+          "command": "linyra.deleteNewAll",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && canStage",
+          "group": "0_modification@5"
+        },
+        {
           "command": "linyra.repoShowOnly",
           "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "1_filter@1"
@@ -2039,6 +2059,11 @@
           "command": "linyra.deleteNew",
           "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file\\.discardable\\.new/",
           "group": "3_modification@4"
+        },
+        {
+          "command": "linyra.deleteNewAll",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(uncommitted|folder)\\.discardable.*\\.new$/",
+          "group": "3_modification@6"
         },
         {
           "command": "linyra.stage",
