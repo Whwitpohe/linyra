@@ -340,11 +340,15 @@ body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, tran
 /* The repository column: one continuous 3px strip in the repository's color for each run of its
    commits, the name beside it in the row's own text color (color is a marker; the name is always
    printed). Where the repository changes, each strip stops 3px short. No tint and no frame, in
-   high contrast too: a strip reads there as it is. */
-.repo-band { position: relative; align-self: stretch; display: flex; align-items: flex-start; min-width: 0; overflow: hidden; padding-left: 10px; }
-.repo-band::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--accent); }
-.repo-band.band-start::before { top: 3px; border-top-left-radius: 1.5px; border-top-right-radius: 1.5px; }
-.repo-band.band-end::before { bottom: 3px; border-bottom-left-radius: 1.5px; border-bottom-right-radius: 1.5px; }
+   high contrast too: a strip reads there as it is. The strip is the band's background, not a
+   pseudo-element: no extra box on every row while scrolling. */
+.repo-band {
+  align-self: stretch; display: flex; align-items: flex-start; min-width: 0; overflow: hidden; padding-left: 10px;
+  background: linear-gradient(var(--accent), var(--accent)) 0 0 / 3px 100% no-repeat;
+}
+.repo-band.band-start { background-position: 0 3px; background-size: 3px calc(100% - 3px); }
+.repo-band.band-end { background-size: 3px calc(100% - 3px); }
+.repo-band.band-start.band-end { background-size: 3px calc(100% - 6px); }
 .repo-band .repo-label { min-width: 0; overflow: hidden; white-space: nowrap; line-height: var(--row-height); }
 .commit-graph { display: block; overflow: hidden; align-self: stretch; }
 .graph-edge { fill: none; stroke: var(--accent); stroke-width: 1.4; }

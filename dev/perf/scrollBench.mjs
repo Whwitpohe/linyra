@@ -1,11 +1,12 @@
 // Measures scrolling the Log in the browser harness: frame times, and the main thread's script,
 // style and layout time per frame (Chrome's own counters), on a merged history of 68 repositories.
 // Dev-only. Run `node dev/harness/build.mjs` first, then:
-//   node dev/perf/scrollBench.mjs [--rows 2000] [--cpu 4] [--step 120] [--frames 240] [--runs 3] [--profile] [--dist <dir>] [--chatter <ms>] [--keys]
+//   node dev/perf/scrollBench.mjs [--rows 2000] [--cpu 4] [--step 120] [--frames 240] [--runs 3] [--profile] [--dist <dir>] [--chatter <ms>] [--keys] [--state many]
 // --cpu slows the CPU like a busy VS Code window; --profile prints the functions that took the time;
 // --dist measures another build of the harness (an older commit's, to compare); --chatter sends the
 // Log an "uncommitted" message every <ms> while it scrolls, as VS Code's Git reporting changes does;
-// --keys holds ↓ instead of scrolling (one selection move per frame).
+// --keys holds ↓ instead of scrolling (one selection move per frame); --state picks the harness scenario
+// ("long": three repositories with deep history, whose graph draws author discs rather than dots).
 import { chromium } from "@playwright/test";
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
@@ -17,6 +18,7 @@ const arg = (name, fallback) => {
   return i < 0 ? fallback : Number(process.argv[i + 1]);
 };
 const ROWS = arg("rows", 2000), CPU = arg("cpu", 4), STEP = arg("step", 120), FRAMES = arg("frames", 240), RUNS = arg("runs", 3);
+const stateFlag = process.argv.indexOf("--state"), STATE = stateFlag >= 0 ? process.argv[stateFlag + 1] : "many";
 const PROFILE = process.argv.includes("--profile"), KEYS = process.argv.includes("--keys"), CHATTER = arg("chatter", 0);
 const distFlag = process.argv.indexOf("--dist");
 const dist = distFlag >= 0 ? path.resolve(process.argv[distFlag + 1]) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "harness", "dist");
@@ -35,7 +37,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const cdp = await page.context().newCDPSession(page);
 await cdp.send("Performance.enable");
-await page.goto(`http://localhost:${port}/index.html?theme=dark&state=many&date=all`);
+await page.goto(`http://localhost:${port}/index.html?theme=dark&state=${STATE}&date=all`);
 await page.locator("#rows .row").first().waitFor();
 // Page in until the list holds ROWS commits (the harness serves 200 per page).
 for (;;) {

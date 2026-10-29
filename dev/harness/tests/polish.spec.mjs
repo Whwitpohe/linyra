@@ -30,20 +30,22 @@ test("a run of one repository shares one 3px strip; the name is the row's text, 
   await expect(bands.nth(0)).not.toHaveClass(/band-end/);
   await expect(bands.nth(1)).not.toHaveClass(/band-start|band-end/);
   await expect(bands.nth(2)).toHaveClass(/band-end/);
-  const look = await bands.nth(0).evaluate((band) => {
-    const strip = getComputedStyle(band, "::before"), label = band.querySelector(".repo-label");
-    return { background: getComputedStyle(band).backgroundColor, width: strip.width, top: strip.top, stripColor: strip.backgroundColor,
-      accent: getComputedStyle(band).getPropertyValue("--accent").trim(), label: getComputedStyle(label).color, labelBackground: getComputedStyle(label).backgroundColor,
-      row: getComputedStyle(band.closest(".row")).color };
+  // The strip is the band's background: 3px wide, starting 3px down where the run starts.
+  const strip = (i) => bands.nth(i).evaluate((band) => {
+    const s = getComputedStyle(band), label = band.querySelector(".repo-label");
+    return { tint: s.backgroundColor, image: s.backgroundImage, size: s.backgroundSize, position: s.backgroundPosition,
+      label: label ? getComputedStyle(label).color : null, labelBackground: label ? getComputedStyle(label).backgroundColor : null, row: getComputedStyle(band.closest(".row")).color };
   });
-  expect(look.background).toBe("rgba(0, 0, 0, 0)");
-  expect(look.width).toBe("3px");
-  expect(look.top).toBe("3px");
-  expect(look.stripColor).not.toBe("rgba(0, 0, 0, 0)");
-  expect(look.labelBackground).toBe("rgba(0, 0, 0, 0)");
-  expect(look.label).toBe(look.row);
+  const first = await strip(0);
+  expect(first.tint).toBe("rgba(0, 0, 0, 0)");
+  expect(first.image).toMatch(/^linear-gradient\(rgb/);
+  expect(first.size).toBe("3px calc(100% - 3px)");
+  expect(first.position).toBe("0px 3px");
+  expect(first.labelBackground).toBe("rgba(0, 0, 0, 0)");
+  expect(first.label).toBe(first.row);
   // The middle of the run reaches the row's edges: the strip is continuous.
-  expect(await bands.nth(1).evaluate((band) => [getComputedStyle(band, "::before").top, getComputedStyle(band, "::before").bottom])).toEqual(["0px", "0px"]);
+  expect(await strip(1)).toMatchObject({ size: "3px 100%", position: "0px 0px" });
+  expect(await strip(2)).toMatchObject({ size: "3px calc(100% - 3px)", position: "0px 0px" });
 });
 
 test("high contrast: neither the strip nor the name is framed", async ({ page }) => {
