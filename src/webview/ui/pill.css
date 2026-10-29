@@ -1,0 +1,29 @@
+/*
+ * Branch pills. Each part takes VS Code's own graph colors (Source Control Graph: the branch, its
+ * remote, its base), so a theme that styles that graph styles these; older VS Code falls back to
+ * the terminal colors the Log used before. Text stays the theme foreground: contrast never
+ * depends on the hue. High contrast: outlines, no tint.
+ */
+.pill {
+  --pill-local: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)));
+  --pill-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-terminal-ansiMagenta, var(--vscode-descriptionForeground)));
+  --pill-base: var(--vscode-scmGraph-historyItemBaseRefColor, var(--vscode-terminal-ansiBlue, var(--vscode-descriptionForeground)));
+  --pill-tag: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow));
+  display: inline-flex; align-items: stretch; flex: 0 1 auto; min-width: 0; max-width: 100%; height: 18px;
+  border-radius: 9px; overflow: hidden; font-size: 11px; line-height: 18px; white-space: nowrap; vertical-align: middle;
+}
+.pill-part { --part: var(--pill-local); display: inline-flex; align-items: center; gap: 3px; min-width: 0; padding: 0 7px 0 6px; color: var(--vscode-foreground); background: color-mix(in srgb, var(--part) 20%, transparent); }
+.pill-part + .pill-part { border-left: 1px solid color-mix(in srgb, var(--part) 45%, transparent); }
+.pill-part.pill-remote { --part: var(--pill-remote); }
+.pill-part.pill-base { --part: var(--pill-base); }
+.pill-part.pill-tag { --part: var(--pill-tag); }
+.pill-part.pill-detached { --part: var(--vscode-descriptionForeground); }
+.pill-icon { width: 12px; height: 12px; flex: none; color: var(--part); }
+.pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pill-status { flex: none; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.pill-current .pill-part.pill-local { background: color-mix(in srgb, var(--part) 34%, transparent); font-weight: 600; }
+body.vscode-light .pill-part { background: color-mix(in srgb, var(--part) 16%, transparent); }
+body.vscode-light .pill-current .pill-part.pill-local { background: color-mix(in srgb, var(--part) 28%, transparent); }
+body.vscode-high-contrast .pill { outline: 1px solid var(--vscode-contrastBorder); outline-offset: -1px; }
+body.vscode-high-contrast .pill-part { background: transparent; }
+[aria-selected="true"] .pill-status { color: inherit; }

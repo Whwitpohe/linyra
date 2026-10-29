@@ -1,0 +1,10 @@
+/* Files by kind (+3 ✎2 −1) and lines (+12 −3), in Source Control's colors. Theme variables only. */
+.counts, .line-counts { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 0.92em; }
+.count { display: inline-flex; align-items: center; gap: 1px; font-weight: 600; }
+.count-icon { width: 12px; height: 12px; }
+.count-added { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+.count-modified { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
+.count-deleted { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
+.count-renamed { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
+/* On a selected row the counts keep the row's text color, as the row's other text does. */
+[aria-selected="true"] :is(.counts, .line-counts) .count, [aria-selected="true"] .line-counts > span { color: inherit; }

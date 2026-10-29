@@ -50,7 +50,7 @@ const contexts = await Promise.all([
 
 if (process.argv.includes("--serve")) {
   await Promise.all(contexts.map((c) => c.watch()));
-  const { port } = await contexts[0].serve({ servedir: dist, port: 5178 });
+  const { port } = await contexts[0].serve({ servedir: dist, port: Number(process.env.HARNESS_PORT) || 5178 });
   console.log(`harness:  http://localhost:${port}/?theme=dark&state=default`);
   console.log(`gallery:  http://localhost:${port}/gallery.html?state=default`);
   console.log(`repos:    http://localhost:${port}/repos.html?theme=dark`);

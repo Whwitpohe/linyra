@@ -1,0 +1,18 @@
+/* The author disc: ring = the repository's color (--accent from accents.css), letter = the theme's text color. */
+.author-disc-ring { fill: color-mix(in srgb, var(--accent) 26%, var(--vscode-panel-background, var(--vscode-editor-background))); stroke: var(--accent); stroke-width: 1.5; }
+.author-disc.mine .author-disc-ring { stroke-width: 2.5; fill: color-mix(in srgb, var(--accent) 45%, var(--vscode-panel-background, var(--vscode-editor-background))); }
+.author-disc-initial { fill: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: 9px; font-weight: 600; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.author-disc.mine .author-disc-initial { font-weight: 700; }
+.author-disc-image { clip-path: circle(50%); pointer-events: none; }
+body.vscode-high-contrast .author-disc-ring { fill: var(--vscode-editor-background); }
+
+.author-disc-html {
+  --disc-size: 32px;
+  display: inline-flex; align-items: center; justify-content: center; flex: none; width: var(--disc-size); height: var(--disc-size);
+  border-radius: 50%; overflow: hidden; box-sizing: border-box; border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 26%, var(--vscode-editorHoverWidget-background, var(--vscode-editor-background)));
+  color: var(--vscode-foreground); font-size: calc(var(--disc-size) * 0.42); font-weight: 600; line-height: 1;
+}
+.author-disc-html.mine { border-width: 2.5px; }
+.author-disc-html .author-disc-image { width: 100%; height: 100%; object-fit: cover; clip-path: none; }
+body.vscode-high-contrast .author-disc-html { background: transparent; }

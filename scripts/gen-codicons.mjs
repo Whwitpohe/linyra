@@ -10,7 +10,9 @@ const NAMES = [
   "archive", "arrow-swap", "case-sensitive", "check", "chevron-down", "chevron-right", "chevron-up", "clear-all", "close", "cloud-download", "dash", "diff", "diff-multiple", "discard",
   "collapse-all", "copy", "expand-all", "file", "files", "filter", "filter-filled", "folder", "git-branch", "git-commit",
   "git-compare", "git-merge", "history", "layout-sidebar-left", "layout-sidebar-right", "ellipsis", "pass", "person", "refresh", "regex",
-  "repo", "repo-pull", "repo-push", "sort-precedence", "split-horizontal", "split-vertical", "star-empty", "star-full", "sync", "tag", "warning",
+  "repo", "arrow-down", "arrow-right", "arrow-up", "calendar", "check-all", "cloud", "cloud-upload", "comment-discussion",
+  "diff-added", "diff-modified", "diff-removed", "diff-renamed", "edit", "key", "lightbulb", "loading", "search", "settings-gear", "sparkle", "target", "wand",
+  "whole-word", "repo-pull", "repo-push", "sort-precedence", "split-horizontal", "split-vertical", "star-empty", "star-full", "sync", "tag", "warning",
 ];
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

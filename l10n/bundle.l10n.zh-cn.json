@@ -703,5 +703,10 @@
   "checked out in another worktree": "在另一个工作树里检出",
   "moved since the comparison": "比较之后有变化",
   "Ctrl/Shift-click selects several": "按住 Ctrl/Shift 点击可以选多个",
-  "Checking whether a merge would conflict…": "正在检查合并是否会冲突…"
+  "Checking whether a merge would conflict…": "正在检查合并是否会冲突…",
+  "{0} modified": "{0} 个修改",
+  "{0} deleted": "{0} 个删除",
+  "{0} renamed": "{0} 个重命名",
+  "{0} lines added, {1} deleted": "新增 {0} 行，删除 {1} 行",
+  "unpublished": "未发布"
 }
