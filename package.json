@@ -733,6 +733,70 @@
         "title": "%command.linyra.openChangesEditor.title%",
         "category": "Linyra",
         "icon": "$(open-preview)"
+      },
+      {
+        "command": "linyra.ai.translateSearch",
+        "title": "%command.linyra.ai.translateSearch.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.explainCommit",
+        "title": "%command.linyra.ai.explainCommit.title%",
+        "category": "Linyra",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "linyra.ai.explainWip",
+        "title": "%command.linyra.ai.explainWip.title%",
+        "category": "Linyra",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "linyra.ai.explainUnpushed",
+        "title": "%command.linyra.ai.explainUnpushed.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.explainBranch",
+        "title": "%command.linyra.ai.explainBranch.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.generateCommitMessage",
+        "title": "%command.linyra.ai.generateCommitMessage.title%",
+        "category": "Linyra",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "linyra.ai.releaseNotes",
+        "title": "%command.linyra.ai.releaseNotes.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.compareReleaseNotes",
+        "title": "%command.linyra.ai.compareReleaseNotes.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.review",
+        "title": "%command.linyra.ai.review.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.resolveConflicts",
+        "title": "%command.linyra.ai.resolveConflicts.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.explainConflicts",
+        "title": "%command.linyra.ai.explainConflicts.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.ask",
+        "title": "%command.linyra.ai.ask.title%",
+        "category": "Linyra",
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {
@@ -921,6 +985,26 @@
           "command": "linyra.copyRelativePath",
           "when": "view == linyra.commit && viewItem =~ /^commit(File|Folder)/",
           "group": "7_copy@2"
+        },
+        {
+          "command": "linyra.ai.explainWip",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.resolveConflicts",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "5_ai@3"
+        },
+        {
+          "command": "linyra.ai.explainCommit",
+          "when": "view == linyra.changes && viewItem == commit",
+          "group": "5_ai@1"
         }
       ],
       "commandPalette": [
@@ -1339,6 +1423,14 @@
         {
           "command": "linyra.compareAllConflicts",
           "when": "false"
+        },
+        {
+          "command": "linyra.ai.translateSearch",
+          "when": "false"
+        },
+        {
+          "command": "linyra.ai.explainBranch",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -1416,6 +1508,31 @@
           "command": "linyra.compareClose",
           "when": "view == linyra.compare",
           "group": "navigation@9"
+        },
+        {
+          "command": "linyra.ai.explainWip",
+          "when": "view == linyra.commit",
+          "group": "3_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "view == linyra.commit",
+          "group": "3_ai@2"
+        },
+        {
+          "command": "linyra.ai.resolveConflicts",
+          "when": "view == linyra.commit",
+          "group": "3_ai@3"
+        },
+        {
+          "command": "linyra.ai.compareReleaseNotes",
+          "when": "view == linyra.compare",
+          "group": "1_ai@1"
+        },
+        {
+          "command": "linyra.ai.explainConflicts",
+          "when": "view == linyra.compare",
+          "group": "1_ai@2"
         }
       ],
       "explorer/context": [
@@ -1941,6 +2058,91 @@
           "command": "linyra.branch.copy",
           "when": "webviewId == 'linyra.log' && webviewSection == 'refPill'",
           "group": "5_tools@2"
+        },
+        {
+          "command": "linyra.ai.explainCommit",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.releaseNotes",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'commit'",
+          "group": "5_ai@3"
+        },
+        {
+          "command": "linyra.ai.explainCommit",
+          "when": "webviewId =~ /^linyra.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "webviewId =~ /^linyra.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.explainWip",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted'",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted'",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.explainUnpushed",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo'",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.explainUnpushed",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && current",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.explainBranch",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill'",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.explainBranch",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.explainUnpushed",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchCurrent",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.review",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchTag",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.compareReleaseNotes",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
+          "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.ai.explainConflicts",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
+          "group": "5_ai@2"
+        },
+        {
+          "command": "linyra.ai.explainConflicts",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile.*.conflict$/",
+          "group": "0_open@4"
         }
       ]
     },
@@ -2025,6 +2227,12 @@
           "default": "",
           "scope": "application",
           "markdownDescription": "%setting.linyra.avatarUrlTemplate.markdownDescription%"
+        },
+        "linyra.ai.commitMessageInstructions": {
+          "type": "string",
+          "default": "",
+          "editPresentation": "multilineText",
+          "description": "%setting.linyra.ai.commitMessageInstructions.description%"
         }
       }
     },

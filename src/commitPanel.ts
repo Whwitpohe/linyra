@@ -47,6 +47,10 @@ export interface CommitPanelDeps {
   /** Commit and Push…: Push… for the repositories just committed in. */
   push(repoIds: ReadonlySet<string>): Promise<unknown>;
   ask: Ask;
+  /** AI can write the message: the ✨ button shows. */
+  aiAvailable?(): boolean;
+  /** ✨: the AI's message for these commits, streamed through `progress`; undefined when AI is not set up (or the user backed out). */
+  generateMessage?(plan: readonly CommitPlan[], draft: string, progress: (text: string) => void, signal: AbortSignal): Promise<string | undefined>;
 }
 
 /**
@@ -84,6 +88,10 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   private picking = false;
   /** The last error shown (integration test seam). */
   private lastError: string | undefined;
+  /** ✨ writing a message: ✨ again, or Esc, stops it. */
+  private generating: AbortController | undefined;
+  /** Waiting for the message box's page to load (the command opened it). */
+  private readyWaiters: (() => void)[] = [];
 
   constructor(private readonly deps: CommitPanelDeps) {
     const g = deps.context.workspaceState.get<Partial<CommitGrouping>>(GROUPING_KEY);
@@ -163,7 +171,7 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   }
 
   private postState(): void {
-    this.post({ type: "state", checkedLabel: checkedLabel(this.checked), checkedFiles: this.checked.files, busy: this.busy });
+    this.post({ type: "state", checkedLabel: checkedLabel(this.checked), checkedFiles: this.checked.files, busy: this.busy, ai: this.deps.aiAvailable?.() === true });
   }
 
   private post(m: CommitHostMessage): void {
@@ -224,6 +232,7 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     if (!m || typeof m !== "object") return; // webview input is untrusted
     switch (m.type) {
       case "ready": {
+        for (const done of this.readyWaiters.splice(0)) done();
         const draft = this.deps.context.workspaceState.get<{ text?: unknown; amend?: unknown }>(DRAFT_KEY);
         this.post({ type: "draft", text: typeof draft?.text === "string" ? draft.text : "", amend: draft?.amend === true, signOff: this.signOff, author: this.author ?? "" });
         this.postState();
@@ -242,6 +251,39 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
         this.signOff = m.signOff === true;
         await this.commit(String(m.message ?? ""), m.amend === true, m.push === true);
         return;
+      case "generate": await this.generate(String(m.text ?? "")); return;
+      case "generateStop": this.generating?.abort(); return;
+    }
+  }
+
+  /**
+   * ✨ (or Generate Commit Message with AI): a message for the checked files of every repository,
+   * streamed into the box, which keeps what it held for Undo. Nothing is committed.
+   */
+  async generate(draft?: string): Promise<void> {
+    const write = this.deps.generateMessage;
+    if (!write || this.generating) return;
+    const plan = commitPlan(this.deps.store.works(), this.choices);
+    if (plan.length === 0) {
+      this.post({ type: "generated", text: "", done: true, error: localize("Check the files to commit first.") });
+      return;
+    }
+    const ctl = (this.generating = new AbortController());
+    try {
+      // From the command with the side bar closed: open the message box first, or nothing would show the message.
+      if (!this.message) {
+        const ready = new Promise<void>((resolve) => { this.readyWaiters.push(resolve); setTimeout(resolve, 5000); });
+        await vscode.commands.executeCommand(`${CommitPanel.messageId}.focus`);
+        await ready;
+      }
+      this.post({ type: "generating" });
+      const hint = draft ?? String(this.deps.context.workspaceState.get<{ text?: unknown }>(DRAFT_KEY)?.text ?? "");
+      const text = await write(plan, hint, (partial) => { if (!ctl.signal.aborted) this.post({ type: "generated", text: partial, done: false }); }, ctl.signal);
+      this.post({ type: "generated", text: ctl.signal.aborted ? "" : text ?? "", done: true });
+    } catch (e) {
+      this.post({ type: "generated", text: "", done: true, ...(ctl.signal.aborted ? {} : { error: e instanceof Error ? e.message : String(e) }) });
+    } finally {
+      this.generating = undefined;
     }
   }
 

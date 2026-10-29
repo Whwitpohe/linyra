@@ -30,6 +30,8 @@ interface Deps {
   compare(repoId: string, branch: string, current: string): Promise<void>;
   changed(repoId: string): Promise<void>;
   concurrency(): number;
+  /** Stash Changes…'s message box when AI can write it (a ✨ button); else VS Code's plain input box. */
+  stashInput?(repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string): Promise<string | undefined>;
 }
 
 /** Branch metadata is read on expansion; writes happen only through explicit commands. */
@@ -303,14 +305,19 @@ export class BranchController implements vscode.Disposable {
     }
   }
 
-  /** Stash Changes… on a repository: its uncommitted work under a message, untracked files if asked. */
-  async stashCreate(arg: unknown): Promise<void> {
+  /**
+   * Stash Changes… on a repository: its uncommitted work under a message, untracked files if asked.
+   * `preset`: both already chosen and confirmed (Ask AI), so nothing is asked.
+   */
+  async stashCreate(arg: unknown, preset?: { message: string; untracked: boolean }): Promise<void> {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     const repo = this.deps.repos().find((r) => r.id === id);
     if (!repo || this.busy.has(repo.id)) return;
-    const choice = await this.deps.ask.pick([{ label: localize("Stash tracked changes") }, { label: localize("Stash including untracked files") }], localize("Stash changes in {0}", repo.name));
+    const choice = preset ? (preset.untracked ? 1 : 0) : await this.deps.ask.pick([{ label: localize("Stash tracked changes") }, { label: localize("Stash including untracked files") }], localize("Stash changes in {0}", repo.name));
     if (choice === undefined) return;
-    const message = await this.deps.ask.input(localize("Message for the stash in {0}", repo.name), localize("Stash message"), { value: "WIP" });
+    const message = preset?.message ?? await (this.deps.stashInput
+      ? this.deps.stashInput(repo, choice === 1, localize("Message for the stash in {0}", repo.name), localize("Stash message"), "WIP")
+      : this.deps.ask.input(localize("Message for the stash in {0}", repo.name), localize("Stash message"), { value: "WIP" }));
     if (message === undefined || !message.trim()) return;
     this.busy.add(repo.id);
     try {

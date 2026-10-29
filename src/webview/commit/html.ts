@@ -28,6 +28,7 @@ export function renderCommitBody(): string {
     <span id="commit-amend" class="check-option" role="checkbox" aria-checked="false" tabindex="0" title="${escapeHtml(localize("Amend the last commit (git commit --amend)"))}"><span class="check" aria-hidden="true"></span><span class="check-label">${escapeHtml(localize("Amend"))}</span></span>
     <span id="commit-signoff" class="check-option" role="checkbox" aria-checked="false" tabindex="0" title="${escapeHtml(localize("Add a Signed-off-by line (git commit --signoff)"))}"><span class="check" aria-hidden="true"></span><span class="check-label">${escapeHtml(localize("Sign-off"))}</span></span>
     <span class="commit-tools">
+      <button id="commit-generate" class="icon-button" type="button" title="${escapeHtml(localize("Generate Commit Message with AI"))}" aria-label="${escapeHtml(localize("Generate Commit Message with AI"))}" hidden>${codicon("sparkle")}</button>
       <button id="commit-author" class="icon-button" type="button" title="${escapeHtml(localize("Author…"))}" aria-label="${escapeHtml(localize("Author…"))}">${codicon("person")}</button>
       <button id="commit-history" class="icon-button" type="button" title="${escapeHtml(localize("Commit Message History"))} (Ctrl+M)" aria-label="${escapeHtml(localize("Commit Message History"))}">${codicon("history")}</button>
     </span>
@@ -38,6 +39,7 @@ export function renderCommitBody(): string {
   </div>
   <textarea id="commit-message" class="commit-message" placeholder="${escapeHtml(localize("Commit Message"))}" aria-label="${escapeHtml(localize("Commit Message"))}" aria-describedby="commit-validation" spellcheck="true"></textarea>
   <div id="commit-validation" class="validation" role="alert" hidden></div>
+  <div id="commit-ai-status" class="commit-ai-status" aria-live="polite" hidden><span id="commit-ai-text" class="commit-ai-text"></span><button id="commit-ai-undo" class="link-button" type="button" hidden>${escapeHtml(localize("Undo"))}</button></div>
   <div class="commit-buttons">
     <button id="commit-button" class="button primary" type="button" title="${escapeHtml(localize("Commit"))} (Ctrl+Enter)">${escapeHtml(localize("Commit"))}</button>
     <button id="commit-push-button" class="button secondary" type="button" title="${escapeHtml(localize("Commit and Push…"))} (Ctrl+Alt+K)">${escapeHtml(localize("Commit and Push…"))}</button>

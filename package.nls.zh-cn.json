@@ -136,5 +136,18 @@
   "setting.linyra.avatars.remote": "只向仓库自己的远程主机请求（GitLab、GitHub）。",
   "setting.linyra.avatars.remoteGravatar": "先向远程主机请求，它们没有的作者再向 Gravatar 请求。",
   "setting.linyra.avatarHosts.markdownDescription": "自建远程服务器的类型，用于作者头像：`{ \"git.acme.test\": \"gitlab\" }`。github.com、gitlab.com 以及名为 `gitlab.*` 或 `github.*` 的主机无需设置即可识别。其他服务器不会被请求。",
-  "setting.linyra.avatarUrlTemplate.markdownDescription": "自己的头像服务，在远程主机之后请求：`https://avatars.acme.test/{md5}?s={size}`。占位符：`{md5}` 和 `{sha256}`（去掉首尾空格并转为小写后的邮箱的哈希）、`{email}`、`{size}`。模板必须包含作者信息。留空表示不使用。只能在用户设置中设置。"
+  "setting.linyra.avatarUrlTemplate.markdownDescription": "自己的头像服务，在远程主机之后请求：`https://avatars.acme.test/{md5}?s={size}`。占位符：`{md5}` 和 `{sha256}`（去掉首尾空格并转为小写后的邮箱的哈希）、`{email}`、`{size}`。模板必须包含作者信息。留空表示不使用。只能在用户设置中设置。",
+  "command.linyra.ai.translateSearch.title": "用 AI 把问题转成搜索",
+  "command.linyra.ai.explainCommit.title": "用 AI 解释",
+  "command.linyra.ai.explainWip.title": "用 AI 解释未提交的更改",
+  "command.linyra.ai.explainUnpushed.title": "用 AI 解释未推送的提交",
+  "command.linyra.ai.explainBranch.title": "用 AI 解释与当前分支的差别",
+  "command.linyra.ai.generateCommitMessage.title": "用 AI 生成提交说明",
+  "command.linyra.ai.releaseNotes.title": "用 AI 写发布说明",
+  "command.linyra.ai.compareReleaseNotes.title": "用 AI 根据比较写发布说明",
+  "command.linyra.ai.review.title": "用 AI 审查",
+  "command.linyra.ai.resolveConflicts.title": "用 AI 解决冲突…",
+  "command.linyra.ai.explainConflicts.title": "用 AI 解释冲突",
+  "command.linyra.ai.ask.title": "问 AI…",
+  "setting.linyra.ai.commitMessageInstructions.description": "AI 生成提交说明（用 AI 生成提交说明）时遵循的自定义要求，例如语言、工单前缀或 Conventional Commits。它们优先于 Linyra 的默认要求。"
 }

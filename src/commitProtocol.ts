@@ -7,6 +7,8 @@ export interface CommitState {
   checkedFiles: number;
   /** A commit is running: the buttons wait for it. */
   busy: boolean;
+  /** AI can write the message: the ✨ button shows. */
+  ai?: boolean;
 }
 
 export type CommitHostMessage =
@@ -20,7 +22,15 @@ export type CommitHostMessage =
   /** Amend ticked with an empty box: the last commit's message, to edit. */
   | { type: "amendMessage"; text: string }
   /** Every repository committed: the box empties. */
-  | { type: "committed" };
+  | { type: "committed" }
+  /**
+   * ✨: the AI message so far (done: false, streamed into the box), then once more done. The
+   * final text goes in as one undoable edit; no text when done means the box goes back as it was
+   * (stopped, or `error`).
+   */
+  | { type: "generated"; text: string; done: boolean; error?: string }
+  /** ✨ started (from the button, or the command): the box keeps what it had, for Undo. */
+  | { type: "generating" };
 
 export type CommitWebviewMessage =
   | { type: "ready" }
@@ -30,4 +40,8 @@ export type CommitWebviewMessage =
   | { type: "history" }
   /** The Author… button, or its × (clear: back to the repository's own git user). */
   | { type: "author"; clear?: boolean }
-  | { type: "commit"; message: string; amend: boolean; push: boolean; signOff: boolean };
+  | { type: "commit"; message: string; amend: boolean; push: boolean; signOff: boolean }
+  /** ✨ pressed: a message for the checked files; `text`, the box's text, is the user's hint. */
+  | { type: "generate"; text: string }
+  /** ✨ pressed again (or Esc) while it writes. */
+  | { type: "generateStop" };

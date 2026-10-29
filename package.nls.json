@@ -136,5 +136,18 @@
   "setting.linyra.avatars.remote": "Ask only the repository's own remote hosts (GitLab, GitHub).",
   "setting.linyra.avatars.remoteGravatar": "Ask the remote hosts, then Gravatar for the authors they have no picture of.",
   "setting.linyra.avatarHosts.markdownDescription": "What kind of server a self-hosted remote is, for author pictures: `{ \"git.acme.test\": \"gitlab\" }`. github.com, gitlab.com and hosts named `gitlab.*` or `github.*` are recognized without it. Other servers are asked nothing.",
-  "setting.linyra.avatarUrlTemplate.markdownDescription": "An avatar service of your own, asked after the remote hosts: `https://avatars.acme.test/{md5}?s={size}`. Placeholders: `{md5}` and `{sha256}` of the trimmed, lowercased email, `{email}`, `{size}`. It must name the author. Empty: none. Only your user settings can set it."
+  "setting.linyra.avatarUrlTemplate.markdownDescription": "An avatar service of your own, asked after the remote hosts: `https://avatars.acme.test/{md5}?s={size}`. Placeholders: `{md5}` and `{sha256}` of the trimmed, lowercased email, `{email}`, `{size}`. It must name the author. Empty: none. Only your user settings can set it.",
+  "command.linyra.ai.translateSearch.title": "Turn a Question into a Search with AI",
+  "command.linyra.ai.explainCommit.title": "Explain with AI",
+  "command.linyra.ai.explainWip.title": "Explain Uncommitted Changes with AI",
+  "command.linyra.ai.explainUnpushed.title": "Explain Unpushed Commits with AI",
+  "command.linyra.ai.explainBranch.title": "Explain Against Current Branch with AI",
+  "command.linyra.ai.generateCommitMessage.title": "Generate Commit Message with AI",
+  "command.linyra.ai.releaseNotes.title": "Write Release Notes with AI",
+  "command.linyra.ai.compareReleaseNotes.title": "Write Release Notes from Compare with AI",
+  "command.linyra.ai.review.title": "Review with AI",
+  "command.linyra.ai.resolveConflicts.title": "Resolve Conflicts with AI…",
+  "command.linyra.ai.explainConflicts.title": "Explain Conflicts with AI",
+  "command.linyra.ai.ask.title": "Ask AI…",
+  "setting.linyra.ai.commitMessageInstructions.description": "Your own rules for AI commit messages (Generate Commit Message with AI), for example a language, a ticket prefix or Conventional Commits. They win over Linyra's defaults."
 }

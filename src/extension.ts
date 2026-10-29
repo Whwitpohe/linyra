@@ -30,6 +30,8 @@ import { BranchController, type BranchAction, type StashAction } from "./branchC
 import { CommitActions } from "./commitActions";
 import { MultiRepo } from "./multiRepo";
 import type { CommitAction } from "./commitActionModel";
+import { aiIfAny } from "./ai/features/commands";
+import { registerAiFeatures } from "./ai/features/register";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   await Promise.all([migratePrivateState(context.workspaceState), migratePrivateState(context.globalState)]);
@@ -105,7 +107,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // The Commit side bar: Commit and Push… pushes through Push… (multiRepo, made below; used only once Linyra runs).
   const commitPanel = new CommitPanel({ context, store: uncommitted, actions: uncommittedActions, run: log.countedRun, ask,
     accents: () => log.accents(), behind: (id) => log.upstream.isBehind(id), shown: () => void log.uncommittedViewShown(),
-    committed: () => log.commitsChanged(), push: (ids) => multiRepo.push(ids) });
+    committed: () => log.commitsChanged(), push: (ids) => multiRepo.push(ids),
+    aiAvailable: () => aiIfAny() !== undefined, generateMessage: (plan, draft, progress, signal) => ai.features.commitMessage(plan, draft, progress, signal) });
   const compare = new CompareStore({
     run: (root, args, signal, opts) => log.countedRun(root, args, signal, opts),
     concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("linyra").get<number>("maxConcurrency", 16))),
@@ -125,6 +128,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     post: (message) => log.postBranchMessage(message), view: (repoId, branch) => log.selectBranch(repoId, branch),
     compare: async (repoId, branch, current) => { await log.selectBranch(repoId, branch); await compareRepos.comparePair({ left: branch, right: current }, repoId); },
     changed: (id) => log.branchChanged(id), concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
+    // The integration suite answers Stash Changes… through Ask's queue: VS Code's plain input box there.
+    ...(process.env.LINYRA_ITEST === "1" ? {} : { stashInput: (repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string) => ai.features.stashInput(repo, untracked, prompt, placeHolder, value) }),
   });
   log.branchSidebar = branchSidebar;
   const multiRepo = new MultiRepo({ viewId: LogView.id, repos: () => log.tickedRepos(), run: log.countedRun, ask,
@@ -348,6 +353,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (s) void copyText(s.message || s.commit.subject);
     }),
   );
+  // The AI features (src/ai/features): commands over the existing ones; the model only through aiService().
+  const ai = registerAiFeatures({ context, log, uncommitted, compare, compareSelection: () => selection.repoId, branches: branchSidebar, mergeDocs, ask, commitArg,
+    shownCommit: () => { const s = changes.current(); return s && s.commit.sha !== UNCOMMITTED ? { repoId: s.commit.repoId, sha: s.commit.sha } : undefined; },
+    compareTarget: (arg) => {
+      const n = compareNode(arg) as { repoId?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
+      return { repoId: typeof n?.repoId === "string" ? n.repoId : typeof n?.owner?.repoId === "string" ? n.owner.repoId : undefined, path: typeof n?.path === "string" ? n.path : undefined };
+    },
+    compareRepos, multiRepo, commitPanel });
   // Test seam for the integration suite only; never registered for users.
   if (process.env.LINYRA_ITEST === "1") {
     context.subscriptions.push(
