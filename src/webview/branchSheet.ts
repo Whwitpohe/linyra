@@ -32,6 +32,8 @@ export class BranchSheetView {
     repoName(repoId: string): string;
     /** The tip's id: select that commit in the Log. */
     selectCommit(repoId: string, sha: string): void;
+    /** The sheet opened for this branch (its pills are marked in the Log); no argument: it closed. */
+    mark(repoId?: string, ref?: string): void;
   }) {
     document.body.append(this.announce);
     this.root.addEventListener("click", (e) => {
@@ -57,6 +59,7 @@ export class BranchSheetView {
    */
   open(repoId: string, ref: string, focus = false): void {
     this.shown = { repoId, ref, focus };
+    this.host.mark(repoId, ref);
     this.changes.classList.add("branch-open");
     // Folded details unfold: the sheet is what was asked for.
     const toggle = document.getElementById("detail-toggle");
@@ -70,6 +73,7 @@ export class BranchSheetView {
     if (!this.shown) return;
     const { repoId, ref } = this.shown;
     this.shown = undefined;
+    this.host.mark();
     this.changes.classList.remove("branch-open");
     this.root.replaceChildren();
     this.post({ type: "branchSheet", action: "close", repoId, ref });

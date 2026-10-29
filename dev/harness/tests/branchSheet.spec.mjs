@@ -53,6 +53,34 @@ test("a pill's click opens the branch's sheet in place of the commit details; Es
   expect(errors).toEqual([]);
 });
 
+test("the open sheet's branch is marked in the Log: its pills only, until the sheet closes", async ({ page }) => {
+  for (const theme of ["dark", "hc-dark"]) {
+    await open(page, { theme });
+    await pill(page, "refs/heads/develop").click();
+    await expect(sheet(page)).toBeVisible();
+    const marked = page.locator('#rows .row-ref[aria-current="true"]');
+    await expect(marked.first()).toBeVisible();
+    // Every marked pill is develop's in acme-web; another branch's pill is not marked.
+    const refs = await marked.evaluateAll((els) => els.map((el) => `${el.dataset.repo} ${el.dataset.ref}`));
+    expect(new Set(refs)).toEqual(new Set(["/work/acme-web refs/heads/develop"]));
+    await expect(page.locator('#rows .row-ref[data-ref]:not([data-ref="refs/heads/develop"])[aria-current]')).toHaveCount(0);
+    // Drawn in the focus border's color, inside the pill (its group clips anything outside).
+    const style = await marked.first().evaluate((el) => {
+      const s = getComputedStyle(el), probe = document.createElement("div");
+      probe.style.color = "var(--vscode-focusBorder)";
+      document.body.append(probe);
+      const focus = getComputedStyle(probe).color;
+      probe.remove();
+      return { style: s.outlineStyle, color: s.outlineColor, offset: s.outlineOffset, focus };
+    });
+    expect(style).toEqual({ style: "solid", color: style.focus, offset: "-1px", focus: style.focus });
+    await sheet(page).locator(".sheet-name").click();
+    await page.keyboard.press("Escape");
+    await expect(sheet(page)).toBeHidden();
+    await expect(page.locator("#rows .row-ref[aria-current]")).toHaveCount(0);
+  }
+});
+
 test("selecting another row closes the sheet", async ({ page }) => {
   await open(page);
   await pill(page, "refs/heads/develop").click();
@@ -60,6 +88,7 @@ test("selecting another row closes the sheet", async ({ page }) => {
   await page.locator("#rows .row").nth(3).click();
   await expect(sheet(page)).toBeHidden();
   await expect(page.locator("#commit-details")).toBeVisible();
+  await expect(page.locator("#rows .row-ref[aria-current]")).toHaveCount(0);
 });
 
 const states = [

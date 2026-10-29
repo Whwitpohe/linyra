@@ -93,6 +93,8 @@ export class CommitList {
   private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, selectedKeys: new Set(), now: 0, skeleton: false };
   /** A branch pill was clicked: show that branch in the Repo List (main.ts). */
   onRevealBranch: (repoId: string, ref: string) => void = () => undefined;
+  /** The branch whose sheet is open: its pills are marked wherever its rows are drawn. */
+  private openBranch: { repoId: string; ref: string } | undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -201,6 +203,24 @@ export class CommitList {
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
     if (drawn) this.paint();
     else if (moved || next.selectedKeys !== prev.selectedKeys) { this.paintSelection(); this.paint(true); }
+  }
+
+  /**
+   * The branch sheet opened for this branch (main.ts): its pills are marked, so the sheet's branch
+   * is seen in the Log. No argument: the sheet closed.
+   */
+  markBranch(repoId?: string, ref?: string): void {
+    this.openBranch = repoId && ref ? { repoId, ref } : undefined;
+    for (const { el } of this.mounted.values()) this.markPills(el);
+  }
+
+  private markPills(row: HTMLElement): void {
+    const open = this.openBranch;
+    for (const pill of row.querySelectorAll<HTMLElement>(".row-ref[data-ref]")) {
+      // aria-current: an attribute, so fitReferences's widths (cached by class and text) still hold.
+      if (open && pill.dataset.repo === open.repoId && pill.dataset.ref === open.ref) pill.setAttribute("aria-current", "true");
+      else pill.removeAttribute("aria-current");
+    }
   }
 
   /** The mounted rows' selected and focused marks, as renderRow sets them. */
@@ -349,6 +369,8 @@ export class CommitList {
     }
     this.fitNames(built);
     this.fitReferences(built);
+    // Rows are built only here: new ones start unmarked.
+    if (this.openBranch) for (const el of built) this.markPills(el);
     if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
     else this.root.removeAttribute("aria-activedescendant");
   }

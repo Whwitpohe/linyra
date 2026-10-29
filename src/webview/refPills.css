@@ -5,6 +5,9 @@
 /* A pill cut to fit keeps its branch's name longest: the joined remotes give way first. */
 .row-refs .pill-part + .pill-part { flex-shrink: 50; }
 .row-refs .pill[data-ref] { cursor: pointer; }
+/* The branch whose sheet is open. Inside the pill: the group clips anything drawn outside it.
+   An outline sits over the parts' tint, keeps the pill's width, and in high contrast replaces its ring. */
+.row-refs .pill[aria-current="true"] { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .row-ref-more { font-variant-numeric: tabular-nums; }
 /* On the focused selection, the parts' text follows the selection's foreground, as the row's own text does. */
 .list:focus .row.focus[aria-selected="true"] .pill-part { color: inherit; }

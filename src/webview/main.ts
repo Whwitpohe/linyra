@@ -102,6 +102,7 @@ const branchSheet = new BranchSheetView(post, {
   accent: (id) => accentOf(accents, id),
   repoName: (id) => state.repos.find((r) => r.id === id)?.name ?? id,
   selectCommit: (repoId, sha) => post({ type: "changesView", message: { type: "selectCommit", repoId, sha } }),
+  mark: (repoId, ref) => list.markBranch(repoId, ref),
 });
 list.onRevealBranch = (repoId, ref) => branchSheet.open(repoId, ref);
 // The hover card's pills too: their commit's row selected and the sheet opened, as a pill in the row does
