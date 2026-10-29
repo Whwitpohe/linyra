@@ -129,6 +129,10 @@ test("OpenAI-compatible offers the usual local servers; a local server needs no 
   await page.locator(".ai-preset", { hasText: "Ollama" }).click();
   await expect(page.locator("#ai-base-url")).toHaveValue("http://localhost:11434/v1");
   await expect(page.locator("#ai-key-note")).toHaveText("A server on this machine or your network often needs no key: leave it empty.");
+  await expect(page.locator("#ai-name"), "no half a name before there is a model").toHaveAttribute("placeholder", "");
+  await page.locator("#ai-model").fill("llama3.1:8b");
+  await expect(page.locator("#ai-name")).toHaveAttribute("placeholder", "localhost:11434 · llama3.1:8b");
+  await page.locator("#ai-model").fill("");
   await expect(page.locator("#ai-model-note")).toHaveText("4 models from localhost:11434: open the list with ↓ or type to filter.");
   const models = await sent(page, "models");
   expect(models.at(-1)).toMatchObject({ draft: { protocol: "openai", baseUrl: "http://localhost:11434/v1" }, key: { kind: "none" } });

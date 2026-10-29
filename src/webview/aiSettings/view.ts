@@ -372,7 +372,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     keyCancel.hidden = !(usesStoredKey(ks) && f.keyMode !== "auto");
     keyInput.placeholder = keyPlaceholder(d.protocol);
     keyEntry.classList.toggle("dropped", !!f.keyDropped && !keyInput.value);
-    nameInput.placeholder = draftName({ ...d, label: "" });
+    nameInput.placeholder = d.model.trim() ? draftName({ ...d, label: "" }) : "";
     byId("ai-key-note").textContent = f.keyDropped && !keyInput.value ? droppedKeyText(f.keyDropped) : keyNote(d, ks, f.keyMode);
     renderEfforts();
     renderChecks();
