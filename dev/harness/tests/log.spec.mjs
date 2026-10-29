@@ -66,6 +66,17 @@ test("the ⋯ menu stays on screen in a short panel and holds the view options",
   await expect(page.locator("#rows .row .hash").first()).toBeVisible();
 });
 
+test("Shift-click selects commits, not their text; the two pane toggles have their own icons", async ({ page }) => {
+  await open(page, { width: 1600, height: 500 });
+  const rows = page.locator("#rows .row[data-index]");
+  await rows.nth(0).locator(".subject").click();
+  await rows.nth(3).locator(".subject").click({ modifiers: ["Shift"] });
+  await expect(page.locator('#rows .row[aria-selected="true"]')).toHaveCount(4);
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+  const icon = (id) => page.locator(`#${id} svg.codicon`).innerHTML();
+  expect(await icon("toggle-changes")).not.toBe(await icon("toolbar-repos"));
+});
+
 for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
   test(`${theme}: VS Code's icons render and the page logs no errors`, async ({ page }) => {
     const errors = await open(page, { theme });
