@@ -130,5 +130,11 @@
   "command.linyra.stash.drop.title": "Drop Stash…",
   "command.linyra.stash.create.title": "Stash Changes…",
   "command.linyra.branch.delete.title": "Delete Branch…",
-  "command.linyra.openChangesEditor.title": "Open Changes in Editor"
+  "command.linyra.openChangesEditor.title": "Open Changes in Editor",
+  "setting.linyra.avatars.markdownDescription": "Author pictures in the Log, in place of initials. `remote` asks only the servers a repository's own remotes name: a GitLab instance's avatar API, and GitHub for its noreply addresses. Pictures are asked only for the rows on screen and kept in memory until the window reloads. A workspace's settings can turn avatars off, never ask more servers. Self-hosted servers: `#linyra.avatarHosts#`; a service of your own: `#linyra.avatarUrlTemplate#`.",
+  "setting.linyra.avatars.off": "No pictures: authors show their initials, and no server is asked.",
+  "setting.linyra.avatars.remote": "Ask only the repository's own remote hosts (GitLab, GitHub).",
+  "setting.linyra.avatars.remoteGravatar": "Ask the remote hosts, then Gravatar for the authors they have no picture of.",
+  "setting.linyra.avatarHosts.markdownDescription": "What kind of server a self-hosted remote is, for author pictures: `{ \"git.acme.test\": \"gitlab\" }`. github.com, gitlab.com and hosts named `gitlab.*` or `github.*` are recognized without it. Other servers are asked nothing.",
+  "setting.linyra.avatarUrlTemplate.markdownDescription": "An avatar service of your own, asked after the remote hosts: `https://avatars.acme.test/{md5}?s={size}`. Placeholders: `{md5}` and `{sha256}` of the trimmed, lowercased email, `{email}`, `{size}`. It must name the author. Empty: none. Only your user settings can set it."
 }

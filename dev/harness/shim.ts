@@ -10,6 +10,7 @@ import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
 import { mockCommits, mockRepos, mockTopoWalk, NOW } from "./mock";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
+import { answerAvatars } from "./mock/avatars";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
@@ -151,6 +152,7 @@ function handle(m: WebviewMessage): void {
     case "select": selectedCommit = all.find((c) => c.repoId === m.repoId && c.sha === m.sha) ?? selectedCommit; postChanges(); return;
     case "openFirst": console.info(`[harness] ${m.type}`, m); return;
     case "openSettings": console.info("[harness] openSettings"); return;
+    case "visibleAuthors": answerAvatars(m, send); return;
   }
 }
 

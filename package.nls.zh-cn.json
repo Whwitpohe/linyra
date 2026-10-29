@@ -130,5 +130,11 @@
   "command.linyra.stash.drop.title": "删除储藏…",
   "command.linyra.stash.create.title": "储藏更改…",
   "command.linyra.branch.delete.title": "删除分支…",
-  "command.linyra.openChangesEditor.title": "在编辑区独立打开更改"
+  "command.linyra.openChangesEditor.title": "在编辑区独立打开更改",
+  "setting.linyra.avatars.markdownDescription": "在日志中用作者头像代替首字母。`remote` 只向仓库自己的远程所在的服务器请求：GitLab 实例的头像 API，以及 GitHub（只针对它的 noreply 邮箱）。只为屏幕上的行请求，结果只保存在内存中，窗口重新加载后清空。工作区设置可以关闭头像，但不能让 Linyra 请求更多服务器。自建服务器见 `#linyra.avatarHosts#`；自己的头像服务见 `#linyra.avatarUrlTemplate#`。",
+  "setting.linyra.avatars.off": "不显示头像：作者显示首字母，不请求任何服务器。",
+  "setting.linyra.avatars.remote": "只向仓库自己的远程主机请求（GitLab、GitHub）。",
+  "setting.linyra.avatars.remoteGravatar": "先向远程主机请求，它们没有的作者再向 Gravatar 请求。",
+  "setting.linyra.avatarHosts.markdownDescription": "自建远程服务器的类型，用于作者头像：`{ \"git.acme.test\": \"gitlab\" }`。github.com、gitlab.com 以及名为 `gitlab.*` 或 `github.*` 的主机无需设置即可识别。其他服务器不会被请求。",
+  "setting.linyra.avatarUrlTemplate.markdownDescription": "自己的头像服务，在远程主机之后请求：`https://avatars.acme.test/{md5}?s={size}`。占位符：`{md5}` 和 `{sha256}`（去掉首尾空格并转为小写后的邮箱的哈希）、`{email}`、`{size}`。模板必须包含作者信息。留空表示不使用。只能在用户设置中设置。"
 }

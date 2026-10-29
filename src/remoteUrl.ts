@@ -32,6 +32,16 @@ function parseRemote(url: string): Remote | undefined {
   return undefined; // file://, ext::, a local path
 }
 
+/**
+ * The web server behind a remote (avatars ask it): https for ssh and scp-like remotes, whose port
+ * is ssh's; scheme and port as written for http(s). Never userinfo. null for a local path.
+ */
+export function remoteHost(remoteUrl: string): { scheme: "https" | "http"; host: string; port?: string } | null {
+  const r = parseRemote(remoteUrl);
+  if (!r || !HOST.test(r.host)) return null;
+  return { scheme: r.scheme, host: r.host.toLowerCase(), ...(r.port ? { port: r.port } : {}) };
+}
+
 export function commitWebUrl(remoteUrl: string, sha: string): string | null {
   if (!SHA.test(sha)) return null;
   const r = parseRemote(remoteUrl);

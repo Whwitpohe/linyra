@@ -21,6 +21,7 @@ const html = renderHtml({ cspSource: "vscode-resource:", nonce: "n0nce", scriptU
   assert.ok(csp.includes("script-src 'nonce-n0nce'"));
   assert.ok(csp.includes("style-src vscode-resource:"));
   assert.ok(!csp.includes("unsafe-inline") && !csp.includes("unsafe-eval"));
+  assert.ok(/img-src [^;]*\bdata:/.test(csp) && !/img-src [^;]*(https?:|\*)/.test(csp), "avatars arrive as data: URIs; the webview itself loads no remote image");
   assert.ok(html.includes(`<script nonce="n0nce" src="vscode-resource:/out/webview.js"></script>`));
   console.log("ok - strict CSP: nonce'd script, no unsafe-inline");
 }
