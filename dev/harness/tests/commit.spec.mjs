@@ -2,12 +2,12 @@
 // native VS Code tree): Amend, the message and its two buttons, in a short view and every theme.
 import { expect, test } from "@playwright/test";
 
-const open = async (page, { theme = "dark", width = 300, height = 180, state = "default" } = {}) => {
+const open = async (page, { theme = "dark", width = 300, height = 180, state = "default", query = "" } = {}) => {
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.setViewportSize({ width, height });
-  await page.goto(`/commit.html?theme=${theme}&state=${state}`);
+  await page.goto(`/commit.html?theme=${theme}&state=${state}${query}`);
   await expect(page.locator("#commit-checked")).not.toBeEmpty();
   return errors;
 };
@@ -101,3 +101,35 @@ for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("the message's checks show as it is typed, and never stop a commit", async ({ page }) => {
+  const errors = await open(page, { height: 320 });
+  const message = page.locator("#commit-message"), hints = page.locator("#commit-hints");
+  await message.fill("fix: guard nil response\n\nThe uploader retried forever.");
+  await expect(hints).toBeHidden();
+  await message.fill(`feat: ${"x".repeat(74)}\nno blank line`);
+  await expect(hints.locator("li")).toHaveText(["The subject is 80 characters: keep it to 72.", "Leave the second line empty: it separates the subject from the body."]);
+  await page.locator("#commit-button").click();
+  await expect.poll(() => sent(page).then((m) => m.some((x) => x.type === "commit"))).toBe(true);
+  await expect(hints).toBeHidden();
+  expect(errors).toEqual([]);
+});
+
+test("commit.template fills an empty box; its # guidance shows under it until the text is changed", async ({ page }) => {
+  await open(page, { query: "&template=on", height: 320 });
+  const message = page.locator("#commit-message"), guidance = page.locator("#commit-guidance");
+  await expect(message).toHaveValue("feat: \n\nRefs: ACME-");
+  await expect(guidance).toHaveText("Why is this change needed?\nWhat does it do?");
+  await expect(page.locator("#commit-hints li")).toContainText(["Still the template's text: fill it in before committing."]);
+  await message.fill("feat: keyboard shortcuts\n\nRefs: ACME-7");
+  await expect(guidance).toBeHidden();
+  await expect(page.locator("#commit-hints")).toBeHidden();
+  await message.fill("");
+  await expect(guidance).toBeVisible();
+});
+
+test("a typed draft is kept over the template", async ({ page }) => {
+  await page.setViewportSize({ width: 300, height: 180 });
+  await page.goto("/commit.html?theme=dark&template=on&message=fix%3A%20mine");
+  await expect(page.locator("#commit-message")).toHaveValue("fix: mine");
+});

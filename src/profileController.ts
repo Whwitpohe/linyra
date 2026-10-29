@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { activeProfiles, deleteProfile, nameProblem, profileFilter, profileNames, readProfiles, renameProfile, repoKey, resolveProfiles, saveProfile, setMembership, type Profiles, type ResolvedProfile } from "./profileModel";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
+import type { MessageRoutes } from "./messageRoutes";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -116,6 +117,10 @@ export class ProfileController {
   }
 
   /** ＋ Save as profile…, the Repo List's right-click, ⋯: the ticked repositories under a name. */
+  register(routes: MessageRoutes): void {
+    routes.on("profileSave", () => this.save());
+  }
+
   async save(): Promise<void> {
     const keys = this.tickedKeys();
     if (keys.length === 0) return;

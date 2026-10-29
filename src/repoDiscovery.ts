@@ -142,11 +142,33 @@ export class RepoDiscovery implements vscode.Disposable {
     return lists.every((list) => list !== undefined && list.length === 0) ? state.HEAD.commit : undefined;
   }
 
+  /**
+   * Uncommitted work as VS Code's Git last found it in a repository it watches, as its status
+   * bar marks it (* + !); undefined when not known. Untracked files count only where it lists them.
+   */
+  workMark(root: string): { changes: boolean; staged: boolean; conflicts: number } | undefined {
+    if (!this.reportsChanges(root)) return;
+    const state = this.vsCodeGitRepo(root)?.state;
+    if (!state?.HEAD || !state.indexChanges || !state.workingTreeChanges) return;
+    return { changes: state.workingTreeChanges.length + (state.untrackedChanges?.length ?? 0) > 0, staged: state.indexChanges.length > 0, conflicts: state.mergeChanges?.length ?? 0 };
+  }
+
   /** The remote names VS Code's Git has for a repository it watches (undefined: ask git). */
   remotes(root: string): string[] | undefined {
     if (!this.reportsChanges(root)) return;
     const state = this.vsCodeGitRepo(root)?.state;
     return state?.HEAD && state.remotes ? state.remotes.map((r) => r.name) : undefined;
+  }
+
+  /**
+   * The checked-out branch's upstream as VS Code's Git has it ("origin/main"), null when it has
+   * none, undefined when VS Code's Git does not watch the repository (ask git).
+   */
+  headUpstream(root: string): string | null | undefined {
+    if (!this.reportsChanges(root)) return;
+    const head = this.vsCodeGitRepo(root)?.state?.HEAD;
+    if (!head) return;
+    return head.upstream?.remote && head.upstream.name ? `${head.upstream.remote}/${head.upstream.name}` : null;
   }
 
   /** The remote URLs VS Code's Git has for a repository it watches, origin's first (undefined: ask git). */

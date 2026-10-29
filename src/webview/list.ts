@@ -9,11 +9,12 @@ import { graphWidthFor, hoverRail, railAt, renderGraph, type FoldAction, type Ra
 import { historyChangeCell, historySubjectNotes } from "./history";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
-import { accentOf, moveSelection, relativeTime, repoColumnChars, separateAdjacentAccents, visibleRange } from "./view";
+import { absoluteTime, accentOf, moveSelection, relativeTime, repoColumnChars, separateAdjacentAccents, visibleRange } from "./view";
+import { DEFAULT_COLUMNS, layoutColumns, type ColumnId, type ColumnLayout, type ColumnPrefs, type SizedColumn } from "./logColumns";
 import { avatarKey } from "./ui/authorDisc";
 import type { ChangesMode } from "../changeStats";
 import type { ChangesStage } from "./changeViz";
-import { changesCell, columnWidth, stageFor, statsFor, statsKeyOf } from "./changesColumn";
+import { changesCell, statsFor, statsKeyOf } from "./changesColumn";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
 export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
@@ -42,8 +43,10 @@ export interface ListProps {
   hashColumn?: boolean;
   /** Each repository's distance from its upstream: the checked-out branch's pill shows it. */
   upstream?: Upstream;
-  /** The Changes column's drawing (the ⋯ menu); none: no column. Not in File History, which has its own. */
+  /** The Changes column's drawing (the column header); none: no column. Not in File History, which has its own. */
   changes?: Exclude<ChangesMode, "off">;
+  /** The column header's widths, hidden columns and date format. */
+  columns?: ColumnPrefs;
 }
 
 const SKELETON_ROWS = 8;
@@ -93,6 +96,29 @@ export class CommitList {
   private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, selectedKeys: new Set(), now: 0, skeleton: false };
   /** A branch pill was clicked: show that branch in the Repo List (main.ts). */
   onRevealBranch: (repoId: string, ref: string) => void = () => undefined;
+  /** The branch whose sheet is open: its pills are marked wherever its rows are drawn. */
+  private openBranch: { repoId: string; ref: string } | undefined;
+  /** The columns (logColumns.ts), worked out at each full paint; the column header draws them too. */
+  private layout: ColumnLayout | undefined;
+  private shown = new Set<ColumnId>();
+  /** The rows' font `ch` and side padding, read once per layout change. */
+  private metrics: { ch: number; padX: number } | undefined;
+  /** The sticky column header's height: the rows start under it. */
+  private headerHeight: number | undefined;
+  /** The columns were worked out (main.ts draws the column header from them). */
+  onLayout: (layout: ColumnLayout) => void = () => undefined;
+  /**
+   * The list's scrollTop as last read or written, and its height (-1: read it once after a resize).
+   * Reading either after a DOM write lays the page out early: holding ↓ laid it out twice a frame.
+   */
+  private top = 0;
+  private viewport = -1;
+  /** A scrollTop this list set, whose scroll event is still to come (forgotten at the next frame if none comes). */
+  private expected: number | undefined;
+  /** A position set while the list was hidden, so never written: placed when it shows (resized()). */
+  private unplaced = false;
+  /** The scroll position the rows being built go by (renderRow: which row prints its repository's name). */
+  private paintTop = 0;
 
   constructor(
     private readonly root: HTMLElement,
@@ -104,8 +130,10 @@ export class CommitList {
   ) {
     // Ctrl/⌘ and Shift select several commits (Combined Changes).
     root.setAttribute("aria-multiselectable", "true");
-    // Several scroll events can arrive per frame: paint once, before the frame.
+    // Several scroll events can arrive per frame: paint once, before the frame. A scroll this list
+    // started has its position known; any other (the wheel, the scrollbar) is read here, once.
     root.addEventListener("scroll", () => {
+      if (this.expected !== undefined) { this.top = this.expected; this.expected = undefined; } else this.top = root.scrollTop;
       if (this.frame) return;
       this.frame = requestAnimationFrame(() => {
         this.frame = 0;
@@ -114,14 +142,11 @@ export class CommitList {
     }, { passive: true });
     window.addEventListener("resize", () => {
       this.rowHeight = 0;
-      this.forgetLayout();
-      this.paint();
+      this.resized();
     });
-    // Dragging a divider narrows the Log without a window resize: re-fit the repo names.
-    new ResizeObserver(() => {
-      this.forgetLayout();
-      this.paint();
-    }).observe(root);
+    // Dragging a divider narrows the Log without a window resize: re-fit the repo names. Hiding
+    // and showing it (another view in its place) resizes it too.
+    new ResizeObserver(() => this.resized()).observe(root);
     // VS Code sets the theme's variables (the font, its size) on <html>: a change there resizes the text.
     new MutationObserver(() => {
       this.forgetLayout();
@@ -197,10 +222,28 @@ export class CommitList {
     // between. Rebuilding every visible row for each such message made scrolling stutter.
     const drawn = changed || next.repoNames !== prev.repoNames || next.behind !== prev.behind || next.me !== prev.me || next.highlightMine !== prev.highlightMine
       || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton
-      || next.upstream !== prev.upstream || next.changes !== prev.changes;
+      || next.upstream !== prev.upstream || next.changes !== prev.changes || next.columns !== prev.columns;
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
     if (drawn) this.paint();
     else if (moved || next.selectedKeys !== prev.selectedKeys) { this.paintSelection(); this.paint(true); }
+  }
+
+  /**
+   * The branch sheet opened for this branch (main.ts): its pills are marked, so the sheet's branch
+   * is seen in the Log. No argument: the sheet closed.
+   */
+  markBranch(repoId?: string, ref?: string): void {
+    this.openBranch = repoId && ref ? { repoId, ref } : undefined;
+    for (const { el } of this.mounted.values()) this.markPills(el);
+  }
+
+  private markPills(row: HTMLElement): void {
+    const open = this.openBranch;
+    for (const pill of row.querySelectorAll<HTMLElement>(".row-ref[data-ref]")) {
+      // aria-current: an attribute, so fitReferences's widths (cached by class and text) still hold.
+      if (open && pill.dataset.repo === open.repoId && pill.dataset.ref === open.ref) pill.setAttribute("aria-current", "true");
+      else pill.removeAttribute("aria-current");
+    }
   }
 
   /** The mounted rows' selected and focused marks, as renderRow sets them. */
@@ -215,7 +258,57 @@ export class CommitList {
   }
 
   resetScroll(): void {
-    this.root.scrollTop = 0;
+    this.setTop(0);
+  }
+
+  /** Scrolls to `value` (kept within the list), remembering it: the scroll event will not read it back. */
+  private setTop(value: number): void {
+    const room = this.clientHeight();
+    const max = Math.max(0, (this.headerHeight ?? 0) + this.display.rows.length * this.height() - room);
+    const next = Math.max(0, Math.min(max, value));
+    if (next === this.top && !this.unplaced) return;
+    this.top = next;
+    // Hidden: nothing scrolls and no event comes. The position is placed when the list shows.
+    this.unplaced = room === 0;
+    if (this.unplaced) return;
+    // The rows' height first: the browser would hold the position to the shorter list it last laid out.
+    if (!this.props.skeleton) this.fitBody(this.display.rows.length * this.height());
+    this.expected = next;
+    this.root.scrollTop = next;
+    // A position the list already had sends no event: what was expected is not kept past this frame
+    // (the frame's scroll events come before its animation frames).
+    requestAnimationFrame(() => { this.expected = undefined; });
+  }
+
+  /** The rows' full height, which the list scrolls over: written only when it changes. */
+  private fitBody(px: number): void {
+    const height = `${px}px`;
+    if (this.body.style.height !== height) this.body.style.height = height;
+  }
+
+  /**
+   * The list was resized, hidden or shown: what was measured may no longer hold, and the position
+   * the list last set is placed again where the page does not have it (one set while hidden never
+   * reached the page; a hidden list shows again at the top).
+   */
+  private resized(): void {
+    this.forgetLayout();
+    const actual = this.root.scrollTop;
+    if (actual !== this.top || this.unplaced) {
+      const wanted = this.top;
+      this.top = actual;
+      this.expected = undefined;
+      this.unplaced = false;
+      // The header counts in how far the list scrolls (setTop's bottom), read before it is used.
+      this.headerHeight = this.root.querySelector<HTMLElement>(".column-header")?.offsetHeight ?? 0;
+      this.setTop(wanted);
+    }
+    this.paint();
+  }
+
+  private clientHeight(): number {
+    if (this.viewport < 0) this.viewport = this.root.clientHeight;
+    return this.viewport;
   }
 
   /** The rows on screen built again from the same props: new avatars arrived (avatars.ts), once per batch. */
@@ -248,15 +341,15 @@ export class CommitList {
   }
 
   private changeFolds(next: ReadonlySet<string>): void {
-    const first = Math.floor(this.root.scrollTop / this.height());
+    const first = Math.floor(this.top / this.height());
     const anchor = this.display.rows[first]?.sourceIndex;
-    const offset = this.root.scrollTop - first * this.height();
+    const offset = this.top - first * this.height();
     this.collapsed.clear(); for (const id of next) this.collapsed.add(id);
     this.rebuild();
     if (anchor !== undefined) {
       let row = this.display.sourceToDisplay.get(anchor);
       if (row === undefined) row = this.display.rows.findIndex((item) => item.segment?.hidden.includes(anchor));
-      if (row !== undefined && row >= 0) this.root.scrollTop = row * this.height() + offset;
+      if (row !== undefined && row >= 0) this.setTop(row * this.height() + offset);
     }
     const selected = this.segments.find((segment) => this.collapsed.has(segment.id) && segment.hidden.some((i) => this.props.selectedKeys.has(commitKey(this.props.rows[i]))));
     if (selected) { this.onSelect(selected.top, { kind: "click", ctrl: false, shift: false }); return; }
@@ -299,36 +392,35 @@ export class CommitList {
     const { rows, selected, skeleton } = this.props;
     const rh = this.height();
     if (!scrolled || skeleton) {
-      // The graph's width (and the hash column, File History) set the references cell's room.
+      // The columns (and the hash column, File History) set the references cell's room.
       this.refRoom = undefined;
       this.listWidth = this.root.clientWidth;
-      this.graphWidth = graphWidthFor(this.graph.columns, this.listWidth * 0.24);
-      const changes = this.changesShown();
-      this.root.classList.toggle("with-changes", changes);
-      if (changes) {
-        this.changesStage = stageFor(this.listWidth);
-        this.root.style.setProperty("--changes-col", `${columnWidth(this.props.changes!, this.changesStage)}px`);
-      }
-      this.root.style.setProperty("--graph-width", `${this.graphWidth}px`);
+      this.writeColumns(this.columnLayout(this.props.columns ?? DEFAULT_COLUMNS));
+      this.onLayout(this.layout!);
       this.mounted.clear();
       clear(this.body);
+      // Read once per layout change, with no rows to lay out.
+      if (this.headerHeight === undefined) this.headerHeight = this.root.querySelector<HTMLElement>(".column-header")?.offsetHeight ?? 0;
     }
     this.root.setAttribute("aria-busy", String(skeleton));
     if (skeleton) {
-      this.body.style.height = `${SKELETON_ROWS * rh}px`;
+      this.fitBody(SKELETON_ROWS * rh);
       for (let i = 0; i < SKELETON_ROWS; i++) {
         this.body.append(this.place(h("div", { class: "row skeleton", "aria-hidden": "true" }, [
           h("span", { class: "bar short" }), h("span"), h("span", { class: "bar" }), h("span", { class: "bar short" }), h("span", { class: "bar short" }),
         ]), i));
       }
-      this.root.setAttribute("aria-rowcount", "0");
+      // Loading: how many rows there will be is not known yet.
+      this.root.setAttribute("aria-rowcount", "-1");
       this.root.removeAttribute("aria-activedescendant");
       return;
     }
-    this.body.style.height = `${this.display.rows.length * rh}px`;
-    this.root.setAttribute("aria-rowcount", String(this.display.rows.length));
-    const { start, end } = visibleRange(this.root.scrollTop, this.root.clientHeight, rh, this.display.rows.length);
-    const top = Math.floor(this.root.scrollTop / rh);
+    this.fitBody(this.display.rows.length * rh);
+    // The column header is the grid's first row: the commits are numbered after it.
+    this.root.setAttribute("aria-rowcount", String(this.display.rows.length + 1));
+    const { start, end } = visibleRange(this.top, this.viewHeight(), rh, this.display.rows.length);
+    const top = Math.floor(this.top / rh);
+    this.paintTop = this.top;
     for (const [i, m] of this.mounted) {
       if (i >= start && i < end && m.top === (i === top)) continue;
       m.el.remove();
@@ -349,8 +441,68 @@ export class CommitList {
     }
     this.fitNames(built);
     this.fitReferences(built);
+    // Rows are built only here: new ones start unmarked.
+    if (this.openBranch) for (const el of built) this.markPills(el);
     if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
     else this.root.removeAttribute("aria-activedescendant");
+  }
+
+  /** The columns as last worked out (the column header draws them). */
+  columns(): ColumnLayout | undefined {
+    return this.layout;
+  }
+
+  /** The rows' height on screen: the list's, less the sticky column header over them. */
+  private viewHeight(): number {
+    return Math.max(0, this.clientHeight() - (this.headerHeight ?? 0));
+  }
+
+  /** The columns at this width for these prefs (logColumns.ts); the rows' font and padding read once per layout change. */
+  private columnLayout(prefs: ColumnPrefs): ColumnLayout {
+    if (!this.metrics) {
+      const s = getComputedStyle(this.root);
+      this.metrics = { ch: chWidth(s.font), padX: parseFloat(s.getPropertyValue("--pad-x")) || 12 };
+    }
+    const { ch, padX } = this.metrics;
+    return layoutColumns({
+      history: !!this.props.historyPath, width: this.listWidth - 2 * padX, outer: this.listWidth, ch, repoChars: this.repoChars(),
+      graphAuto: graphWidthFor(this.graph.columns, this.listWidth * 0.24), hash: this.props.hashColumn === true,
+      changes: this.changesShown() ? this.props.changes : undefined, prefs,
+    });
+  }
+
+  /** One template for the rows, the column header and File History's work row (styles.css --log-columns). */
+  private writeColumns(layout: ColumnLayout): void {
+    this.layout = layout;
+    this.shown = new Set(layout.columns.map((c) => c.id));
+    this.graphWidth = layout.graph;
+    if (layout.changesStage) this.changesStage = layout.changesStage;
+    const pane = this.root.parentElement ?? this.root;
+    pane.style.setProperty("--log-columns", layout.template);
+    pane.style.setProperty("--log-gap", `${layout.gap}px`);
+    pane.classList.toggle("narrow", layout.narrow);
+    pane.classList.toggle("tiny", layout.tiny);
+    // The repository column without names: its color strip alone (narrow, or the name hidden).
+    pane.classList.toggle("repo-strip", layout.repoName === null);
+    for (const id of ["hash", "author", "date"] as const) pane.classList.toggle(`hide-${id}`, !this.shown.has(id));
+    this.root.classList.toggle("with-changes", this.shown.has("changes"));
+    this.root.style.setProperty("--graph-width", `${layout.graph}px`);
+  }
+
+  /**
+   * A column header's sash being dragged: the columns at that width, written without rebuilding a
+   * row or saving it (letting go saves it, and the full paint that follows fits names and pills).
+   * undefined: back to the saved widths.
+   */
+  previewColumn(id: SizedColumn, px: number | undefined): number | undefined {
+    if (!this.layout) return undefined;
+    const prefs = this.props.columns ?? DEFAULT_COLUMNS;
+    const layout = this.columnLayout(px === undefined ? prefs : { ...prefs, widths: { ...prefs.widths, [id]: px } });
+    // The graph's rows keep the width they were drawn at until the drag ends.
+    const pane = this.root.parentElement ?? this.root;
+    pane.style.setProperty("--log-columns", layout.template);
+    this.layout = { ...this.layout, columns: layout.columns, template: layout.template };
+    return layout.columns.find((c) => c.id === id)?.px ?? undefined;
   }
 
   /**
@@ -360,19 +512,18 @@ export class CommitList {
    */
   private fitNames(rows: readonly HTMLElement[]): void {
     const first = rows[0];
-    if (!first) return;
+    const width = this.layout?.repoName;
+    if (!first || !width) return;
     const labels = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".repo-label")]);
     if (labels.length === 0) return;
     // Every name shares one font and inset: read them once per layout change (a resize, a theme),
-    // then only write. The column's width is worked out, not read: reading the grid's tracks
-    // laid out every row just built, and the names written after it laid them out again.
+    // then only write. The column's width is the column model's, not read from the grid's tracks:
+    // that would lay out every row just built, and the names written after it again.
     if (!this.column) {
       const label = textStyle(labels[0]), band = textStyle(labels[0].parentElement!), row = textStyle(first);
       this.column = { font: label.font, paddingX: label.paddingX + band.paddingX, rowPaddingX: row.paddingX, ch: chWidth(label.font) };
     }
-    const { font, paddingX, rowPaddingX, ch } = this.column;
-    // styles.css: minmax(72px, min(var(--repo-col), 25%)), --repo-col being the longest name + 2ch (main.ts).
-    const width = Math.max(72, Math.min((this.repoChars() + 2) * ch, 0.25 * (this.listWidth - rowPaddingX)));
+    const { font, paddingX } = this.column;
     for (const label of labels) label.textContent = fitName(font, label.dataset.name ?? "", width - paddingX);
   }
 
@@ -388,6 +539,9 @@ export class CommitList {
   /** A resize, a divider drag or new props: what was measured may no longer hold. */
   private forgetLayout(): void {
     this.column = undefined;
+    this.viewport = -1;
+    this.metrics = undefined;
+    this.headerHeight = undefined;
     this.refRoom = undefined;
     this.refWidths.clear();
   }
@@ -446,14 +600,15 @@ export class CommitList {
     const offHead = this.props.offHead?.has(commitKey(c)) === true;
     const start = this.display.rows[displayIndex - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[displayIndex + 1]?.commit.repoId !== c.repoId;
-    const showName = start || displayIndex === Math.floor(this.root.scrollTop / this.height());
+    // A name only where the repository column has room for names (a strip in the narrow layout).
+    const showName = this.layout?.repoName != null && (start || displayIndex === Math.floor(this.paintTop / this.height()));
     const segmentId = this.nodeSegments.get(i), segment = segmentId === undefined ? undefined : this.segmentById.get(segmentId);
     const ago = relativeTime(this.props.now, c.time);
     return h("div", {
       class: `row${focus ? " focus" : ""}${mine ? " mine" : ""}${offHead ? " off-head" : ""}`,
       role: "row",
       id: `row-${i}`,
-      "aria-rowindex": String(displayIndex + 1),
+      "aria-rowindex": String(displayIndex + 2),
       "aria-selected": String(this.props.selectedKeys.has(commitKey(c))),
       "data-index": String(i),
       // Right-click: the commit's and its repository's menu (package.json webview/context), not
@@ -474,10 +629,12 @@ export class CommitList {
       ]),
       // File History: what this commit did to the file (M +12 −3).
       this.props.historyPath ? historyChangeCell(c.file) : null,
-      this.props.hashColumn ? h("span", { class: "hash", role: "gridcell" }, [c.sha.slice(0, 8)]) : null,
-      h("span", { class: "author", role: "gridcell" }, [c.author]),
-      this.changesShown() ? changesCell(statsFor(c.repoId, c.sha), this.props.changes!, this.changesStage) : null,
-      h("span", { class: "date", role: "gridcell", "aria-label": whenLabel(this.props.now, c.time, ago) }, [ago]),
+      // The columns the column model shows (logColumns.ts): no hidden cell takes a track.
+      this.shown.has("hash") ? h("span", { class: "hash", role: "gridcell" }, [c.sha.slice(0, 8)]) : null,
+      this.shown.has("author") ? h("span", { class: "author", role: "gridcell" }, [c.author]) : null,
+      this.shown.has("changes") ? changesCell(statsFor(c.repoId, c.sha), this.props.changes!, this.changesStage) : null,
+      this.shown.has("date") ? h("span", { class: "date", role: "gridcell", "aria-label": whenLabel(this.props.now, c.time, ago) },
+        [this.props.columns?.dates === "absolute" ? absoluteTime(c.time) : ago]) : null,
     ]);
   }
 
@@ -512,17 +669,17 @@ export class CommitList {
     const c = this.display.rows[index].commit, name = this.props.repoNames.get(c.repoId) ?? c.repoId;
     const start = this.display.rows[index - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[index + 1]?.commit.repoId !== c.repoId;
-    return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 1), "aria-selected": "false",
+    return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 2), "aria-selected": "false",
       "data-vscode-context": JSON.stringify({ webviewSection: "graphFold", preventDefaultContextMenuItems: true }) }, [
       h("span", { class: `repo-band accent-${accentOf(this.accents, c.repoId)}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", "aria-label": name, title: name },
-        start ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),
+        start && this.layout?.repoName != null ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),
       renderGraph(this.graph.rows[index], c, this.graph.columns, this.graphWidth, this.height(), { folded: { id: segment.id, count: segment.hidden.length }, edges: this.edgeActions }),
       h("span", { role: "gridcell", class: "fold-summary" }, [h("button", { type: "button", class: "fold-expand", "data-fold-expand": segment.id,
         title: localize("Expand {0} hidden commits", segment.hidden.length), "aria-expanded": "false" }, [localize("{0} commits hidden · Expand", segment.hidden.length)])]),
-      this.props.hashColumn ? h("span", { role: "gridcell", class: "hash" }) : null,
-      h("span", { role: "gridcell", class: "author" }),
-      this.changesShown() ? h("span", { role: "gridcell", class: "changes-cell" }) : null,
-      h("span", { role: "gridcell", class: "date" }),
+      this.shown.has("hash") ? h("span", { role: "gridcell", class: "hash" }) : null,
+      this.shown.has("author") ? h("span", { role: "gridcell", class: "author" }) : null,
+      this.shown.has("changes") ? h("span", { role: "gridcell", class: "changes-cell" }) : null,
+      this.shown.has("date") ? h("span", { role: "gridcell", class: "date" }) : null,
     ]);
   }
 
@@ -538,11 +695,13 @@ export class CommitList {
       this.onOpen();
       return;
     }
-    const page = Math.max(1, Math.floor(this.root.clientHeight / this.height()) - 1);
+    const page = Math.max(1, Math.floor(this.viewHeight() / this.height()) - 1);
     const order = this.visibleCommitIndexes();
     const next = moveSelection(e.key, order.indexOf(this.props.selected), order.length, page);
     if (next === null) return;
     e.preventDefault();
+    // Scrolled first, while nothing in this task has touched the page: the scroll needs no early layout.
+    this.scrollToIndex(order[next]);
     this.onSelect(order[next], { kind: "arrow", shift: e.shiftKey });
   }
 
@@ -550,8 +709,9 @@ export class CommitList {
     const rh = this.height();
     const displayIndex = this.display.sourceToDisplay.get(i);
     if (displayIndex === undefined) return;
-    const top = displayIndex * rh;
-    if (top < this.root.scrollTop) this.root.scrollTop = top;
-    else if (top + rh > this.root.scrollTop + this.root.clientHeight) this.root.scrollTop = top + rh - this.root.clientHeight;
+    // Rows sit under the sticky column header: the room they show in is the list's less its height.
+    const top = displayIndex * rh, room = this.viewHeight();
+    if (top < this.top) this.setTop(top);
+    else if (top + rh > this.top + room) this.setTop(top + rh - room);
   }
 }

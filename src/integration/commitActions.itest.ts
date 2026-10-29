@@ -112,6 +112,21 @@ describe("Commit actions", () => {
     assert.strictEqual(git(["branch", "--show-current"]), "");
     assert.strictEqual(head(), start);
     git(["checkout", "main", "--"]);
+    // A local edit in the revision's way: Smart Checkout stashes it, checks out, puts it back.
+    const rev = child(start, "upload.go", "package upload\n\nfunc Retry() {}\n\nfunc Limit() {}\n", "test: a revision that changes upload.go");
+    // On a branch, so the Log lists it (a row's action acts on listed commits only).
+    git(["update-ref", "refs/heads/ci-side", rev]);
+    await send({ type: "refresh" });
+    await listed(rev);
+    fs.writeFileSync(path.join(root, "upload.go"), "// local edit\npackage upload\n\nfunc Retry() {}\n");
+    await answer("Check Out"); await answer("Smart Checkout");
+    await act("commitCheckout", rev);
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Local changes in acme-api would be overwritten by checking out " + rev.slice(0, 7) + ".");
+    assert.strictEqual(head(), rev, "checked out");
+    assert.strictEqual(fs.readFileSync(path.join(root, "upload.go"), "utf8").replace(/\r\n/g, "\n"), "// local edit\npackage upload\n\nfunc Retry() {}\n\nfunc Limit() {}\n", "both: the revision's and the local edit");
+    assert.strictEqual(git(["stash", "list"]), "", "put back: no stash left");
+    git(["checkout", "-f", "main", "--"]);
+    git(["update-ref", "-d", "refs/heads/ci-side"]);
   });
 
   it("resets the current branch in the chosen mode after the question", async () => {
@@ -121,6 +136,10 @@ describe("Commit actions", () => {
     assert.strictEqual(head(), tip, "declined: the branch stays");
     await answer("Mixed"); await answer("Reset");
     await act("commitReset", start);
+    // The question names what leaves the branch, and what happens to the files.
+    const leaving = Number(git(["rev-list", "--count", `${start}..${tip}`]));
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), `Reset main to ${start.slice(0, 7)} in acme-api?`);
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastDetail"), `${leaving} commit${leaving === 1 ? " leaves" : "s leave"} main.\nTheir changes stay in your files, unstaged.`);
     assert.strictEqual(head(), start);
     assert.strictEqual(git(["branch", "--show-current"]), "main");
     const s = await until("the Log after the reset", (x) => !x.rows.some((r) => r.sha === tip));
@@ -171,7 +190,8 @@ describe("Commit actions", () => {
   it("stashes changes, lists the stash in the tree's data, applies, pops and drops it", async () => {
     const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
     fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");
-    await answer("Stash including untracked files"); await answer("ci stash");
+    // One box: the message, and Include new files toggled on (off is the first default).
+    await answer("ci stash|toggle");
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
     assert.ok(!fs.existsSync(path.join(root, "stash-me.txt")), "the work tree is clean");
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
@@ -184,7 +204,8 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.stash.pop", { repoId, ref: "stash@{0}" });
     assert.ok(fs.existsSync(path.join(root, "stash-me.txt")));
     assert.strictEqual((await stashes()).length, 0, "pop removes it");
-    await answer("Stash tracked changes"); await answer("ci again");
+    // Remembered: on now, so toggled off for tracked changes only.
+    await answer("ci again|toggle");
     fs.rmSync(path.join(root, "stash-me.txt"));
     fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// changed\n");
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
@@ -215,6 +236,48 @@ describe("Commit actions", () => {
     assert.ok(both.indexOf("Subject: [PATCH] feat: patch one") < both.indexOf("Subject: [PATCH] feat: patch two") && both.includes("patch two"), "oldest first");
     git(["apply", "--check"], {}, both); // applies to the working tree as it is
     await vscode.commands.executeCommand("linyra.clearSelection");
+  });
+
+  it("Apply Patch… from the clipboard: as changes, or a mailbox as its commits; one that does not fit is refused", async () => {
+    const first = child(start, "patch-one.txt", "1\n", "feat: patch one");
+    const second = child(first, "patch-two.txt", "2\n", "feat: patch two");
+    const mbox = git(["format-patch", "--stdout", `${start}..${second}`]) + "\n";
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", mbox);
+    await answer("From Clipboard"); await answer("Apply as Changes");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied the patch to acme-api (2 files).");
+    assert.strictEqual(fs.readFileSync(path.join(root, "patch-two.txt"), "utf8"), "2\n");
+    assert.strictEqual(head(), start, "changes only: no commit");
+    await until("the applied files in the uncommitted work", (s) => s.uncommitted.some((w) => w.repoId === repoId && w.changes.includes("patch-one.txt")));
+    git(["clean", "-fdq"]);
+
+    await answer("From Clipboard"); await answer("Apply as Commits");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied 2 commits to acme-api.");
+    assert.strictEqual(git(["log", "-2", "--format=%s"]), "feat: patch two\nfeat: patch one");
+
+    // The same patch again no longer fits: declining the three-way merge changes nothing.
+    await answer("From Clipboard"); await answer("Apply as Changes"); await answer("Cancel");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "The patch does not apply cleanly to acme-api.");
+    assert.strictEqual(git(["status", "--porcelain"]), "");
+    // From the Command Palette, no repository given: the patch's files say which one (only acme-api has upload.go).
+    fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// patched\n");
+    const diff = git(["diff", "--", "upload.go"]) + "\n";
+    git(["checkout", "--", "upload.go"]);
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", diff);
+    const asked = await vscode.commands.executeCommand<number>("linyra._itest.asked");
+    await answer("From Clipboard");
+    await vscode.commands.executeCommand("linyra.applyPatch");
+    assert.strictEqual(await vscode.commands.executeCommand<number>("linyra._itest.asked"), asked + 1, "asked only where the patch comes from");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied the patch to acme-api (1 file).");
+    assert.match(fs.readFileSync(path.join(root, "upload.go"), "utf8"), /patched/);
+    git(["checkout", "--", "upload.go"]);
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", "not a patch");
+    await answer("From Clipboard");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "That is not a patch: no diff in it.");
+    git(["reset", "-q", "--hard", start]);
   });
 
   it("Compare with Working Tree…: the files that differ from the commit, the one picked as a diff", async () => {

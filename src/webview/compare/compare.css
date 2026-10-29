@@ -22,35 +22,17 @@ button, input { font: inherit; }
 .compare-splitter { border-left: 1px solid var(--vscode-panel-border); cursor: col-resize; touch-action: none; }
 .compare-splitter.horizontal { border-left: 0; border-top: 1px solid var(--vscode-panel-border); cursor: row-resize; }
 .compare-splitter:hover, .compare-splitter.dragging, .compare-splitter:focus-visible { background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder)); }
-.compare-tree { flex: 1; min-height: 0; overflow: auto; outline: none; padding: 3px 0 8px; }
-.compare-tree-row { display: flex; align-items: center; gap: 6px; height: 25px; min-width: 0; padding-right: 10px; cursor: default; user-select: none; }
-.compare-tree-row:hover { background: var(--vscode-list-hoverBackground); }
-.compare-tree-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
-.compare-tree:focus .compare-tree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-.compare-tree:focus .compare-tree-row.focus { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
+/* A side's rows: the shared tree (ui/fileTree.css), here only its place in the side. */
+.compare-tree { flex: 1; min-height: 0; }
+/* Missing a branch: the list's ▸. */
 .compare-twisty { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; width: 18px; height: 21px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.compare-file-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; font-size: 9px; font-weight: 600; font-family: var(--vscode-editor-font-family); color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
-.compare-file-icon svg { width: 16px; height: 16px; }
-.compare-node-label { flex: 0 1 auto; min-width: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compare-node-description { flex: 0 1 auto; min-width: 0; margin-left: auto; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
-.compare-tree-row.status-A, .compare-tree-row.status-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
-.compare-tree-row.status-M, .compare-tree-row.status-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
-.compare-tree-row.status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
-.compare-tree-row.status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
-.compare-tree-row.same-file { color: var(--vscode-disabledForeground); }
-.compare-tree-row.conflict-file { color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-list-warningForeground)); }
-.compare-file-icon.filetype-js, .compare-file-icon.filetype-jsx, .compare-file-icon.filetype-json { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
-.compare-file-icon.filetype-ts, .compare-file-icon.filetype-tsx, .compare-file-icon.filetype-css { color: var(--vscode-terminal-ansiBlue, var(--vscode-charts-blue)); }
-.compare-file-icon.filetype-vue { color: var(--vscode-terminal-ansiGreen, var(--vscode-charts-green)); }
-.load-more { color: var(--vscode-textLink-foreground); }
-.compare-tree-row.selected .compare-node-label, .compare-tree-row.selected .compare-node-description { color: inherit; }
 .mono, .branch-name { font-family: var(--vscode-editor-font-family); }
 
 .cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 8px; }
 .cbar-pair, .cbar-show { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.cbar-pair { flex: 0 1 520px; max-width: 520px; }
+.cbar-pair { flex: 0 1 680px; max-width: 680px; flex-wrap: wrap; row-gap: 4px; }
 .cbar-show { flex-wrap: wrap; }
-.branch-box { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; }
+.branch-box { flex: 1 1 0; min-width: 110px; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; }
 .branch-box .branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-box .caret { margin-left: auto; color: var(--vscode-descriptionForeground); }
 /* Only the ◀ ▶ marks and the counts are colored: a branch name stays the input's text color (contrast). */
@@ -58,6 +40,19 @@ button, input { font: inherit; }
 .branch-box.right .side-mark, .mono.right, .picker .side-mark.right { color: var(--vscode-charts-yellow); }
 .same { color: var(--vscode-charts-green); }
 .error { color: var(--vscode-errorForeground); }
+/* Merge into ▶…: the one action of the pair, labeled with ▶'s name. */
+/* Not room for both boxes and it: it goes to its own line rather than squeezing the branch names. */
+.merge-button { flex: 0 0 auto; max-width: 100%; min-width: 0; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; margin-left: 4px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; cursor: pointer; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.merge-button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+.merge-button:disabled { color: var(--vscode-disabledForeground); cursor: default; }
+.merge-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.merge-button svg { flex: 0 0 auto; }
+.merge-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty-action { padding: 0 12px 12px; }
+.empty-action[hidden] { display: none; }
+.link-button { padding: 0; border: 0; background: transparent; color: var(--vscode-textLink-foreground); cursor: pointer; text-align: left; }
+.link-button:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+.link-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .icon-button { background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; border-radius: 3px; padding: 1px 6px; cursor: pointer; }
 .icon-button:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); outline: 1px dashed var(--vscode-contrastActiveBorder, transparent); }
 .seg { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; overflow: hidden; }
@@ -66,7 +61,7 @@ button, input { font: inherit; }
 .cbar .icon-button[aria-pressed="true"] { background: var(--vscode-inputOption-activeBackground); border-color: var(--vscode-inputOption-activeBorder, transparent); color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); }
 .cbar .icon-button .button-count { margin-left: 2px; font-size: 11px; vertical-align: 2px; }
 .seg button[aria-pressed="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); box-shadow: inset 0 -2px 0 var(--vscode-focusBorder); }
-button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+button:focus-visible, [tabindex]:not(.ftree):focus-visible, input:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
 .csummary { padding: 0 8px 4px; color: var(--vscode-descriptionForeground); }
 .cmessage { padding: 16px 12px; color: var(--vscode-descriptionForeground); }

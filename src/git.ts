@@ -4,8 +4,11 @@ import { promises as fs } from "fs";
 import { abortError } from "./pool";
 
 export class GitError extends Error {
-  /** stdout: what git printed before failing (merge-tree lists conflicts and exits 1). */
-  constructor(message: string, readonly exitCode: number | null, readonly stdout = "") {
+  /**
+   * stdout: what git printed before failing (merge-tree lists conflicts and exits 1). stderr: all
+   * of it (the message is its main line), so a refused push's "[rejected] … (fetch first)" is there.
+   */
+  constructor(message: string, readonly exitCode: number | null, readonly stdout = "", readonly stderr = "") {
     super(message);
     this.name = "GitError";
   }
@@ -42,6 +45,8 @@ export interface RunOptions {
   tree?: boolean;
   /** Added to the environment. */
   env?: Record<string, string>;
+  /** Everything git wrote to stderr, once it exits (success or not): progress and notes a command's report shows. */
+  onStderr?: (text: string) => void;
 }
 
 /** Kills a process and everything it started: its process group on POSIX, taskkill /T on Windows. */
@@ -92,8 +97,12 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       // Aborted: usually rejected already by the "error" handler, but not when git had exited
       // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
       if (signal?.aborted) return reject(abortError());
+      opts.onStderr?.(Buffer.concat(err).toString("utf8"));
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
-      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || localize("git exited with code {0}", String(code)), code, Buffer.concat(out).toString("utf8")));
+      else {
+        const stderr = Buffer.concat(err).toString("utf8");
+        reject(new GitError(errorLine(stderr) || localize("git exited with code {0}", String(code)), code, Buffer.concat(out).toString("utf8"), stderr));
+      }
     });
   });
 }

@@ -9,6 +9,7 @@ import { clear, h } from "./dom";
 import { pillElement } from "./refPills";
 import { authorDiscHtml } from "./ui/authorDisc";
 import { renderCounts, renderLines } from "./ui/counts";
+import type { HostRoutes } from "./hostRoutes";
 
 /** What the card draws the moment it opens, from the row alone (CommitList.hoverRow). */
 export interface HoverRow {
@@ -127,6 +128,10 @@ export class HoverCard {
   }
 
   /** The host's git show (and the HEAD row's merge target) for the card, if it still shows that commit. */
+  register(routes: HostRoutes): void {
+    routes.on("hoverDetail", (m) => this.receive(m));
+  }
+
   receive(m: Extract<HostMessage, { type: "hoverDetail" }>): void {
     const s = this.shown;
     if (!s || s.key !== keyOf(m)) return;

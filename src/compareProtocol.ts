@@ -14,6 +14,13 @@ export interface CompareTreeRow {
   same?: boolean;
   /** A merge of the two branches would leave this file conflicted. */
   conflict?: boolean;
+  /** A file row's parts, drawn as the Changes view draws them: lines added and deleted (none: binary or new), a rename's old name, and a note (conflict, already on both, both, new, binary). */
+  lines?: { added: number; deleted: number };
+  oldPath?: string;
+  note?: string;
+  untracked?: boolean;
+  /** A file's path in its repository: what the side's filter reads. */
+  path?: string;
   children?: CompareTreeRow[];
   loaded?: boolean;
 }
@@ -23,6 +30,8 @@ export interface CompareSidePage {
   key: string;
   description: string;
   message?: string;
+  /** An empty side's way back, a link under its message: Hide Files Already on Both off, or Only Conflicts off. */
+  emptyAction?: { kind: "showSame" | "showAll"; label: string };
   rows: CompareTreeRow[];
 }
 export interface CompareLayout {

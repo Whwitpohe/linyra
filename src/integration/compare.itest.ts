@@ -793,4 +793,45 @@ describe("Compare Branches", () => {
       await vscode.commands.executeCommand("linyra._itest.compareMode", "files");
     }
   });
+
+  it("Release…: one form before anything runs (repositories, tag, push), then the merge, the tag on ▶ with that repository's notes", async () => {
+    const api = roots["acme-api"], web = roots["acme-web"];
+    const prodWas = git(web, ["rev-parse", "refs/heads/prod"]);
+    type LastForm = { spec: { title: string; fields: { id: string; items?: { label: string; value: boolean; disabled?: string }[]; hint?: string }[] }; problems: Record<string, string> };
+    const lastForm = () => vscode.commands.executeCommand<LastForm>("linyra._itest.lastForm");
+    try {
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await until2("listed", repos, (x) => x.description === "release-1.4 ↔ prod" && x.roots.length === 2);
+      await select("*");
+      // Cancelled: nothing ran, not even the merge.
+      await vscode.commands.executeCommand("linyra._itest.answer", "Cancel");
+      assert.strictEqual(await vscode.commands.executeCommand("linyra.release"), undefined);
+      assert.strictEqual(git(web, ["rev-parse", "refs/heads/prod"]), prodWas, "cancelled before anything ran");
+      const form = (await lastForm()).spec;
+      assert.strictEqual(form.title, "Release release-1.4 into prod");
+      // acme-api would conflict: shown, not offered. No remote in the fixture: the form says prod stays local.
+      assert.deepStrictEqual(form.fields.find((f) => f.id === "repos")?.items?.map((i) => `${i.label} ${i.value} ${i.disabled ?? ""}`), ["acme-web true ", "acme-api false would conflict"]);
+      assert.match(form.fields.find((f) => f.id === "push")?.hint ?? "", /stays local in: acme-web/);
+      // A tag acme-web already has: refused before anything runs.
+      git(web, ["tag", "ci-r1", "HEAD"]);
+      await vscode.commands.executeCommand("linyra._itest.answer", JSON.stringify({ tag: "ci-r1", push: false }));
+      assert.strictEqual(await vscode.commands.executeCommand("linyra.release"), undefined);
+      assert.deepStrictEqual((await lastForm()).problems, { tag: "acme-web already has the tag ci-r1." });
+      assert.strictEqual(git(web, ["rev-parse", "refs/heads/prod"]), prodWas, "refused: nothing merged");
+      git(web, ["tag", "-d", "ci-r1"]);
+      await vscode.commands.executeCommand("linyra._itest.answer", JSON.stringify({ tag: "ci-r1", push: false }));
+      const r = await vscode.commands.executeCommand<{ merged: string[]; tagged: string[]; pushed: string[]; notes: string }>("linyra.release");
+      assert.deepStrictEqual([r?.merged, r?.tagged, r?.pushed], [["acme-web"], ["acme-web"], []]);
+      assert.match(r!.notes, /^## acme-api \(release-1\.4 → prod\)[\s\S]*## acme-web \(release-1\.4 → prod\)\n\n- feat: billing page/, "read before the merge: every repository's");
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.clipboard"), r!.notes, "copied");
+      assert.strictEqual(git(web, ["rev-parse", "refs/heads/prod"]), git(web, ["rev-parse", "release-1.4"]));
+      assert.strictEqual(git(web, ["rev-parse", "ci-r1^{commit}"]), git(web, ["rev-parse", "refs/heads/prod"]), "the tag on ▶'s tip");
+      assert.match(git(web, ["tag", "-l", "-n9", "ci-r1"]), /Release ci-r1[\s\S]*feat: billing page/);
+      assert.strictEqual(git(api, ["tag", "-l", "ci-r1"]), "", "not merged there: not tagged");
+    } finally {
+      git(web, ["update-ref", "refs/heads/prod", prodWas]);
+      try { git(web, ["tag", "-d", "ci-r1"]); } catch { /* not created */ }
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
+    }
+  });
 });

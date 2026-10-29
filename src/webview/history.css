@@ -32,40 +32,19 @@ body.vscode-high-contrast .history-repo::before { background: transparent; outli
 body.vscode-high-contrast .app.history .repo-row.history-repo-row { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 
 /* ── Rows: one repository, so its column is only the strip; the file's change before the author ── */
-.app.history .row, .app.history .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 14ch minmax(48px, 10ch) 8ch; }
-.app.history .list.hash-column .row,
-.app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 14ch 8.5ch minmax(48px, 10ch) 8ch; }
-.app.history .list-pane:not(:has(> .list.hash-column)) > .history-work .hash { display: none; }
+/* The column model's columns (logColumns.ts), as the commit rows below it; the cells it does not show take no track. */
+.app.history .history-work { grid-template-columns: var(--log-columns); column-gap: var(--log-gap, 10px); }
+.list-pane.hide-hash > .history-work .hash, .list-pane.hide-author > .history-work .author, .list-pane.hide-date > .history-work .date { display: none; }
 .app.history .row .repo-band .repo-label, .app.history .history-work .repo-label { display: none; }
 /* Only the strip: none of the room the name takes beside it in the merged Log. */
 .app.history :is(.row, .history-work) .repo-band { padding-left: 0; }
-/* Narrow: no author or hash, as the Log's own narrow rows (both the viewport and the Log's width);
-   narrower still, the letter alone, so the subject keeps its room. */
-@media (max-width: 720px) {
-  .app.history :is(.row, .history-work) :is(.author, .hash) { display: none; }
-  .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
-  .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 11ch 8ch; }
-}
-@container (max-width: 720px) {
-  .app.history :is(.row, .history-work) :is(.author, .hash) { display: none; }
-  .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
-  .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 11ch 8ch; }
-  /* The narrow commit rows' gap (styles.css), so the uncommitted row's columns stay lined up with theirs. */
-  .app.history .history-work { column-gap: 6px; }
-  .history-change { gap: 4px; }
-}
-@container (max-width: 440px) {
-  .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
-  .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 2ch 8ch; }
-  .history-change :is(.line-counts, .history-binary), .history-work-tag { display: none; }
-}
+/* Narrow (the column model's .narrow): the change column shortens; narrower still (.tiny), the letter alone. */
+.list-pane.narrow .history-change { gap: 4px; }
+.list-pane.tiny :is(.history-change :is(.line-counts, .history-binary), .history-work-tag) { display: none; }
 
 .history-change { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.history-status { flex: none; width: 1.4ch; text-align: center; font-weight: 600; font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
-.history-status.status-A, .history-status.status-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
-.history-status.status-M, .history-status.status-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
-.history-status.status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
-.history-status.status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
+/* The letter's colors are the shared ones (ui/fileStatus.css); here only its place in the cell. */
+.history-change .history-status { flex: none; width: 1.4ch; font-size: 0.92em; }
 .history-binary { color: var(--vscode-descriptionForeground); font-size: 0.92em; }
 .history-from { color: var(--vscode-descriptionForeground); }
 /* On a selected row the letter keeps the row's text color, as the line counts do (counts.css). */

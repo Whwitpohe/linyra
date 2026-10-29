@@ -20,16 +20,16 @@ export function renderReposHtml(o: HtmlOptions): string {
       <button id="branch-left" class="branch-box left" aria-haspopup="dialog" title="${escapeHtml(localize("The branch to merge from"))}"><span class="side-mark" aria-hidden="true">◀</span><span id="name-left" class="branch-name"></span><span class="caret" aria-hidden="true">▾</span></button>
       <button id="swap" class="icon-button" title="${escapeHtml(localize("Swap sides"))}" aria-label="${escapeHtml(localize("Swap sides"))}">${codicon("arrow-swap")}</button>
       <button id="branch-right" class="branch-box right" aria-haspopup="dialog" title="${escapeHtml(localize("The branch it goes into"))}"><span class="side-mark" aria-hidden="true">▶</span><span id="name-right" class="branch-name"></span><span class="caret" aria-hidden="true">▾</span></button>
+      <button id="compare-merge" class="merge-button" type="button" disabled>${codicon("git-merge")}<span id="compare-merge-label" class="merge-label">${escapeHtml(localize("Merge…"))}</span></button>
     </div>
     <div class="cbar-show">
       <span class="seg" role="group" aria-label="${escapeHtml(localize("Show"))}"><button id="mode-files" aria-pressed="true">${escapeHtml(localize("Files"))}</button><button id="mode-commits" aria-pressed="false">${escapeHtml(localize("Commits"))}</button></span>
       <button id="refresh" class="icon-button" title="${escapeHtml(localize("Refresh"))}" aria-label="${escapeHtml(localize("Refresh"))}">${codicon("refresh")}</button>
       <button id="compare-hide-same" class="icon-button" title="${escapeHtml(localize("Hide Files Already on Both"))}" aria-label="${escapeHtml(localize("Hide Files Already on Both"))}" aria-pressed="true">${codicon("filter")}</button>
       <button id="compare-only-conflicts" class="icon-button" title="${escapeHtml(localize("Show Only Conflicts"))}" aria-label="${escapeHtml(localize("Show Only Conflicts"))}" aria-pressed="false">${codicon("warning")}</button>
-      <button id="compare-merge" class="icon-button" title="${escapeHtml(localize("Merge ◀ into ▶…"))}" aria-label="${escapeHtml(localize("Merge ◀ into ▶…"))}">${codicon("git-merge")}</button>
       <button id="compare-release-notes" class="icon-button" title="${escapeHtml(localize("Copy ◀ Commits as Release Notes"))}" aria-label="${escapeHtml(localize("Copy ◀ Commits as Release Notes"))}">${codicon("copy")}</button>
-      <button id="compare-layout-horizontal" class="icon-button" title="${escapeHtml(localize("Side-by-side Layout"))}" aria-label="${escapeHtml(localize("Side-by-side Layout"))}">${codicon("split-horizontal")}</button>
-      <button id="compare-layout-stacked" class="icon-button" title="${escapeHtml(localize("Stacked Layout"))}" aria-label="${escapeHtml(localize("Stacked Layout"))}">${codicon("split-vertical")}</button>
+      <button id="compare-layout-horizontal" class="icon-button" title="${escapeHtml(localize("Left and Right Side by Side"))}" aria-label="${escapeHtml(localize("Left and Right Side by Side"))}">${codicon("split-horizontal")}</button>
+      <button id="compare-layout-stacked" class="icon-button" title="${escapeHtml(localize("Left Above Right"))}" aria-label="${escapeHtml(localize("Left Above Right"))}">${codicon("split-vertical")}</button>
       <button id="compare-toggle-left" class="icon-button" title="${escapeHtml(localize("Show or hide left side"))}" aria-label="${escapeHtml(localize("Show or hide left side"))}" aria-pressed="true">${codicon("layout-sidebar-left")}</button>
       <button id="compare-toggle-right" class="icon-button" title="${escapeHtml(localize("Show or hide right side"))}" aria-label="${escapeHtml(localize("Show or hide right side"))}" aria-pressed="true">${codicon("layout-sidebar-right")}</button>
     </div>
@@ -70,6 +70,8 @@ function renderSide(side: "left" | "right"): string {
       <button id="compare-${side}-tree-toggle" class="icon-button" type="button" aria-controls="compare-${side}-tree" aria-label="${escapeHtml(localize("Collapse All"))}" disabled></button>
     </span></div>
     <div id="compare-${side}-message" class="cmessage" role="status" hidden></div>
-    <div id="compare-${side}-tree" class="compare-tree" role="tree" tabindex="0" aria-label="${escapeHtml(label)}"></div>
+    <div id="compare-${side}-empty" class="cmessage" role="status" hidden></div>
+    <div id="compare-${side}-empty-action" class="empty-action" hidden><button id="compare-${side}-empty-link" class="link-button" type="button"></button></div>
+    <div id="compare-${side}-tree" class="compare-tree" role="tree" aria-multiselectable="true" tabindex="0" aria-label="${escapeHtml(label)}"></div>
   </section>`;
 }

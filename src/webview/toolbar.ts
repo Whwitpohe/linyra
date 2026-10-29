@@ -2,11 +2,13 @@ import { localize } from "../i18n";
 import type { ChangesMode } from "../changeStats";
 import type { ChangesLayout, ToolbarAction, ToolbarState } from "../toolbarModel";
 import { codicon } from "./codicons";
-import { byId, h } from "./dom";
+import { byId } from "./dom";
+import { DEFAULT_COLUMNS, type ColumnPrefs } from "./logColumns";
+import { closeMenu, openMenu, showMenu, type MenuEntry } from "./ui/menu";
 
 /** VS Code's own icons for the same actions its Source Control and Git use. */
 const icons = {
-  repos: codicon("repo"),
+  repos: codicon("layout-sidebar-left"),
   compare: codicon("git-compare"),
   fetch: codicon("cloud-download"),
   sync: codicon("sync"),
@@ -15,78 +17,56 @@ const icons = {
   ai: codicon("sparkle"),
 };
 
-/** The Log's view options (the ⋯ menu), saved by the host. */
-export interface ViewOptions { highlightMine: boolean; highlightHead: boolean; hashColumn: boolean; changesColumn: ChangesMode }
+/** The Log's view options (the ⋯ menu and the column header), saved by the host. */
+export interface ViewOptions { highlightMine: boolean; highlightHead: boolean; hashColumn: boolean; changesColumn: ChangesMode; columns: ColumnPrefs }
 
+/**
+ * The Log header's actions and its ⋯ menu: work across repositories, profiles, AI, where the
+ * changed files sit, and what the rows highlight. Each column's own options are on the column
+ * header (columnHeader.ts), not here.
+ */
 export class LogToolbar {
   private state: ToolbarState = { groupByRepo: true, compareShown: false, fetching: false, anyBehind: false };
   private layout: ChangesLayout = "auto";
-  private view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar" };
-  private folds = { canCollapse: false, canExpand: false };
-  private commitsShown = true;
+  private view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar", columns: DEFAULT_COLUMNS };
   private readonly more = byId<HTMLButtonElement>("toolbar-more");
-  private readonly menu = h("div", { id: "toolbar-menu", class: "toolbar-menu", role: "menu", "aria-label": localize("Log actions"), hidden: true });
 
   constructor(private readonly run: (action: ToolbarAction) => void, private readonly changeLayout: (layout: ChangesLayout) => void,
-    private readonly changeView: (patch: Partial<ViewOptions> & { fold?: "collapse" | "expand" }) => void = () => undefined) {
+    private readonly changeView: (patch: Partial<ViewOptions>) => void = () => undefined) {
     for (const [id, action, key] of [["toolbar-repos", "toggleRepos", "repos"], ["toolbar-compare", "toggleCompare", "compare"],
       ["toolbar-fetch", "fetchAll", "fetch"], ["toolbar-update", "updateProject", "update"], ["toolbar-push", "pushAll", "push"], ["toolbar-ai", "aiAsk", "ai"]] as const) {
       const button = byId<HTMLButtonElement>(id);
       button.innerHTML = icons[key];
       button.addEventListener("click", () => this.run(action));
     }
-    document.body.append(this.menu);
-    this.more.addEventListener("click", () => this.menu.hidden ? this.open() : this.close());
+    this.more.addEventListener("click", () => (openMenu()?.id === "toolbar-menu" ? this.reopen(false) : this.open()));
     this.more.addEventListener("keydown", (e) => { if (e.key === "ArrowDown") { e.preventDefault(); this.open(); } });
-    this.menu.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); this.close(true); }
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        const buttons = [...this.menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
-        const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-        buttons[(index + (e.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
-      }
-    });
-    const outside = (e: Event) => { if (!this.menu.hidden && !this.menu.contains(e.target as Node) && !this.more.contains(e.target as Node)) this.close(); };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("focusin", outside);
-    window.addEventListener("resize", () => this.close());
     this.update(this.state);
   }
 
   update(state: ToolbarState): void {
     this.state = state;
-    this.describe("toolbar-repos", localize(state.groupByRepo ? "Hide Repositories" : "Group by Repository"), state.groupByRepo);
+    // It shows and hides the Repo List (it groups no commits): named for what it does.
+    this.describe("toolbar-repos", localize(state.groupByRepo ? "Hide Repo List" : "Show Repo List"), state.groupByRepo);
     this.describe("toolbar-compare", localize(state.compareShown ? "Hide Compare Branches" : "Compare Branches"), state.compareShown);
     this.describe("toolbar-fetch", localize(state.fetching ? "Fetching All Repositories…" : "Fetch All Repositories"));
     byId<HTMLButtonElement>("toolbar-fetch").disabled = state.fetching;
     byId<HTMLButtonElement>("toolbar-update").disabled = state.fetching;
     byId("toolbar-fetch").classList.toggle("fetching", state.fetching);
     byId("toolbar-fetch").innerHTML = state.fetching ? icons.sync : icons.fetch;
-    // Ask AI…: only while AI is on (linyra.ai.enabled); Configure AI… stays in the ⋯ menu.
+    // Ask AI…: only while AI is on (linyra.ai.enabled); Linyra AI… stays in the ⋯ menu.
     byId("toolbar-ai").hidden = !state.ai;
-    if (!this.menu.hidden) this.renderMenu();
-  }
-
-  /** Whether linear history can be folded or unfolded (the ⋯ menu's graph items). */
-  setFolds(folds: { canCollapse: boolean; canExpand: boolean }): void {
-    this.folds = folds;
-    if (!this.menu.hidden) this.renderMenu();
-  }
-
-  /** The graph items apply to the Commits side only. */
-  setCommitsShown(shown: boolean): void {
-    this.commitsShown = shown;
+    this.reopen(true);
   }
 
   updateView(view: ViewOptions): void {
     this.view = view;
-    if (!this.menu.hidden) this.renderMenu();
+    this.reopen(true);
   }
 
   updateLayout(layout: ChangesLayout): void {
     this.layout = layout;
-    if (!this.menu.hidden) this.renderMenu();
+    this.reopen(true);
   }
 
   private describe(id: string, label: string, pressed?: boolean): void {
@@ -96,71 +76,40 @@ export class LogToolbar {
     if (pressed !== undefined) button.setAttribute("aria-pressed", String(pressed));
   }
 
-  private renderMenu(): void {
-    const s = this.state;
-    const items: [ToolbarAction, string, boolean][] = [
-      ["branchesAcross", localize("Branches Across Repositories…"), false],
-      ["fetchAndPullAll", localize("Fetch and Pull All"), s.fetching],
-      ["pullAllBehind", localize("Pull All Repositories Behind"), !s.anyBehind || s.fetching],
-      ["showBehind", localize("Show Only Repositories Behind"), !s.anyBehind],
-      ["profileSwitch", localize("Switch Profile…"), false],
-      ["profileSave", localize("Save Current Repositories as Profile…"), false],
+  /** keep: the open ⋯ menu shows the state now (a fetch that ended); else it closes. Closed: nothing. */
+  private reopen(keep: boolean): void {
+    if (openMenu()?.id !== "toolbar-menu") return;
+    if (keep) this.open(); else closeMenu(true);
+  }
+
+  private entries(): MenuEntry[] {
+    const s = this.state, v = this.view;
+    const action = (a: ToolbarAction, label: string, disabled = false): MenuEntry => ({ label: localize(label), disabled, run: () => this.run(a) });
+    return [
+      action("branchesAcross", "Branches Across Repositories…"),
+      action("tagAcross", "Tag Across Repositories…"),
+      action("runAcross", "Run Git Command Across Repositories…"),
+      action("release", "Release…"),
+      action("insights", "Insights"),
+      ...(s.anyOperation ? [action("abortAll", "Abort in All Repositories…")] : []),
+      action("showBehind", "Show Only Repositories Behind", !s.anyBehind),
+      action("profileSwitch", "Switch Profile…"),
+      action("profileSave", "Save Current Repositories as Profile…"),
+      // AI: one page for its profiles (add, switch, remove) and its settings.
+      { separator: true },
+      action("aiConfigure", "Linyra AI…"),
+      // Where the changed files sit: one choice of three.
+      { separator: true },
+      ...([["auto", "Automatic Changes Layout"], ["sideBySide", "Side-by-side Layout"], ["stacked", "Stacked Layout"]] as const).map(([layout, label]): MenuEntry =>
+        ({ label: localize(label), role: "radio", checked: this.layout === layout, run: () => this.changeLayout(layout) })),
+      // What the rows highlight (the columns' own options are on the column header).
+      { separator: true },
+      { label: localize("Highlight My Commits"), role: "check", checked: v.highlightMine, run: () => this.changeView({ highlightMine: !v.highlightMine }) },
+      { label: localize("Highlight Current Branch"), role: "check", checked: v.highlightHead, run: () => this.changeView({ highlightHead: !v.highlightHead }) },
     ];
-    this.menu.replaceChildren(...items.map(([action, label, disabled]) => {
-      const item = h("button", { type: "button", role: "menuitem", disabled }, [label]);
-      item.addEventListener("click", () => { this.close(true); this.run(action); });
-      return item;
-    }));
-    // AI: configure a provider, switch the model or thinking level, remove a profile.
-    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
-    for (const [action, label] of [["aiConfigure", localize("Configure AI…")], ["aiSwitch", localize("Switch AI Model…")], ["aiRemove", localize("Remove AI Profile…")]] as const) {
-      const item = h("button", { type: "button", role: "menuitem" }, [label]);
-      item.addEventListener("click", () => { this.close(true); this.run(action); });
-      this.menu.append(item);
-    }
-    // Where the changed files sit: one choice of three (they were two toolbar buttons and a menu item).
-    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
-    for (const [layout, label] of [["auto", localize("Automatic Changes Layout")], ["sideBySide", localize("Side-by-side Layout")], ["stacked", localize("Stacked Layout")]] as const) {
-      const item = h("button", { type: "button", role: "menuitemradio", "aria-checked": String(this.layout === layout) }, [label]);
-      item.addEventListener("click", () => { this.close(true); this.changeLayout(layout); });
-      this.menu.append(item);
-    }
-    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
-    const options = [["highlightMine", localize("Highlight My Commits")], ["highlightHead", localize("Highlight Current Branch")], ["hashColumn", localize("Show Hash Column")]] as const;
-    for (const [key, label] of options) {
-      const item = h("button", { type: "button", role: "menuitemcheckbox", "aria-checked": String(this.view[key]) }, [label]);
-      item.addEventListener("click", () => { this.close(true); this.changeView({ [key]: !this.view[key] }); });
-      this.menu.append(item);
-    }
-    // The Changes column: one drawing of four, or none (GitLens's Change Visualization).
-    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
-    for (const [mode, label] of [["off", localize("No Changes Column")], ["numbers", localize("Changes as Numbers")], ["squares", localize("Changes as Squares")],
-      ["bar", localize("Changes as a Bar")], ["bipolar", localize("Changes as a Bipolar Bar")]] as const) {
-      const item = h("button", { type: "button", role: "menuitemradio", "aria-checked": String(this.view.changesColumn === mode) }, [label]);
-      item.addEventListener("click", () => { this.close(true); this.changeView({ changesColumn: mode }); });
-      this.menu.append(item);
-    }
-    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
-    for (const [fold, label, enabled] of [["collapse", localize("Collapse Linear Branches"), this.folds.canCollapse], ["expand", localize("Expand Linear Branches"), this.folds.canExpand]] as const) {
-      const item = h("button", { type: "button", role: "menuitem", disabled: !enabled || !this.commitsShown }, [label]);
-      item.addEventListener("click", () => { this.close(true); this.changeView({ fold }); });
-      this.menu.append(item);
-    }
   }
 
   private open(): void {
-    this.renderMenu();
-    this.menu.hidden = false;
-    this.more.setAttribute("aria-expanded", "true");
-    const box = this.more.getBoundingClientRect();
-    this.menu.style.left = `${Math.max(4, Math.min(box.right - this.menu.offsetWidth, innerWidth - this.menu.offsetWidth - 4))}px`;
-    this.menu.style.top = `${Math.max(4, Math.min(box.bottom + 3, innerHeight - this.menu.offsetHeight - 4))}px`;
-    this.menu.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-  }
-
-  private close(focus = false): void {
-    this.menu.hidden = true;
-    this.more.setAttribute("aria-expanded", "false");
-    if (focus) this.more.focus();
+    showMenu(this.more, this.entries(), { label: localize("Log actions"), owner: this.more, align: "end", id: "toolbar-menu" });
   }
 }

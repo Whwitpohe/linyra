@@ -19,7 +19,12 @@ host.acquireVsCodeApi = () => ({
   postMessage(m: CommitWebviewMessage) {
     host.commitMessages.push(m);
     ai.handle(m);
-    if (m.type === "ready") setTimeout(() => { send({ type: "draft", text: params.get("message") ?? "", amend: false, signOff: false, author: "" }); post(); }, 0);
+    if (m.type === "ready") setTimeout(() => {
+      send({ type: "draft", text: params.get("message") ?? "", amend: false, signOff: false, author: "" });
+      post();
+      // ?template=on: a commit.template with a text and # guidance, as git config commit.template reads it.
+      if (params.get("template") === "on") send({ type: "template", text: "feat: \n\nRefs: ACME-", hint: "Why is this change needed?\nWhat does it do?" });
+    }, 0);
     if (m.type === "history") send({ type: "message", text: "fix(api): retry the upload once\n\nThe second try reuses the token." });
     if (m.type === "author") send({ type: "author", author: m.clear ? "" : "rin <rin@example.com>" });
     if (m.type === "amend" && m.on && !m.text.trim()) send({ type: "amendMessage", text: "fix(web): keep the login callback on preview builds" });

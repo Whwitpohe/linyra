@@ -2,8 +2,11 @@ import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { whyOf } from "./actionErrors";
 import { decorationFor } from "./changesModel";
-import { checkedLabel, commitFiles, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
+import { splitTemplate } from "./commitMessageModel";
+import { gitDirOf, readHead } from "./repoHead";
+import { checkedLabel, checkOnly, commitFiles, commitPartly, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
 import type { CommitHostMessage, CommitWebviewMessage } from "./commitProtocol";
 import type { RunOptions } from "./git";
 import { localize } from "./i18n";
@@ -168,6 +171,25 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     for (const [id, d] of this.decorations) if (!before.has(id)) changed.push(d.uri);
     if (changed.length > 0) this.decorationsChanged.fire(changed);
     this.postState();
+    if (!this.templateSent && this.message) void this.postTemplate();
+    if (this.message) void this.offerMergeMessage();
+  }
+
+  /** commit.template was sent for the box as it is now (after a ready, a commit). */
+  private templateSent = false;
+
+  /**
+   * git's commit.template, read from the first repository read so far (it is usually set once for
+   * the user): one git config, then the file. Sent once the store has a repository to ask.
+   */
+  private async postTemplate(): Promise<void> {
+    if (this.templateSent) return;
+    const w = this.deps.store.works()[0];
+    if (!w) return;
+    this.templateSent = true;
+    const file = (await this.deps.run(w.root, ["config", "--path", "--get", "commit.template"], new AbortController().signal).catch(() => "")).trim();
+    const text = file ? await fs.readFile(path.resolve(w.root, file), "utf8").catch(() => undefined) : undefined;
+    if (text !== undefined) this.post({ type: "template", ...splitTemplate(text) });
   }
 
   private postState(): void {
@@ -222,6 +244,19 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     return item;
   }
 
+  /**
+   * Commit… on a repository (the Uncommitted side, the Changes view): the side bar, that repository's
+   * files checked and the others unchecked, the message box focused. No prompt: the side bar is the
+   * one place a commit is written.
+   */
+  async openFor(repoId: unknown): Promise<void> {
+    if (typeof repoId !== "string" || !this.deps.store.get(repoId)) return;
+    this.choices = checkOnly(this.deps.store.works(), repoId);
+    this.render();
+    await vscode.commands.executeCommand(`${CommitPanel.treeId}.focus`);
+    await vscode.commands.executeCommand(`${CommitPanel.messageId}.focus`);
+  }
+
   /** A checkbox clicked: its files, or (several rows selected) all of theirs. */
   check(rows: readonly { id: string }[], on: boolean): void {
     this.choices = setChecked(this.deps.store.works(), this.choices, rows.flatMap((r) => this.rows.get(r.id) ?? []), on);
@@ -236,6 +271,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
         const draft = this.deps.context.workspaceState.get<{ text?: unknown; amend?: unknown }>(DRAFT_KEY);
         this.post({ type: "draft", text: typeof draft?.text === "string" ? draft.text : "", amend: draft?.amend === true, signOff: this.signOff, author: this.author ?? "" });
         this.postState();
+        this.templateSent = false;
+        void this.postTemplate();
         return;
       }
       case "draft":
@@ -382,19 +419,19 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   }
 
   /**
-   * Rollback…: the rows (or the selection), else every checked file, after one prompt: tracked files
-   * go back to the last commit, an added file only leaves version control. Unversioned files are
-   * not touched: Delete… removes them.
+   * Discard Changes…: the rows (or the selection), else every checked file, after one prompt: tracked
+   * files go back to the last commit, an added file only leaves version control. Unversioned files
+   * are not touched: Delete… removes them.
    */
-  async rollback(arg?: unknown, many?: unknown): Promise<void> {
+  async discard(arg?: unknown, many?: unknown): Promise<void> {
     let rows = this.targets(arg, many);
     if (rows.length === 0) rows = [...this.rows.values()].filter((r) => r.kind === "file" && r.check === "on");
     const files = filesUnder(rows).filter((f) => !this.unversioned(f));
     if (files.length === 0) {
-      vscode.window.setStatusBarMessage(localize("Unversioned files have nothing to roll back: Delete… removes them."), 5000);
+      vscode.window.setStatusBarMessage(localize("New files have no changes to discard: Delete… removes them from disk."), 5000);
       return;
     }
-    await this.deps.actions.rollback(files[0], files);
+    await this.deps.actions.discard(files[0], files);
   }
 
   /** Remove from VCS: added files leave the index (git reset), kept on disk, back under Unversioned Files. No prompt: Add to VCS undoes it. */
@@ -490,14 +527,14 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     this.busy = true;
     this.postState();
     const done: CommitPlan[] = [];
-    const failed: string[] = [];
+    const failed: { name: string; why: string }[] = [];
     try {
       await vscode.window.withProgress({ location: { viewId: CommitPanel.treeId } }, () => runPool(plan, WRITE_CONCURRENCY, async (p) => {
         try {
           await this.commitOne(p, message, options);
           done.push(p);
         } catch (e) {
-          failed.push(localize("{0}: {1}", p.name, gitMessage(e)));
+          failed.push({ name: p.name, why: whyOf(e) });
         }
       }, NEVER));
     } finally {
@@ -511,13 +548,16 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     }
     if (failed.length > 0) {
       // The message stays for another try; the repositories that did commit lost their checked files.
-      this.lastError = failed.join("; ");
-      void vscode.window.showErrorMessage(localize("Linyra could not commit. {0}.", this.lastError.replace(/[.\s]+$/, "")));
+      this.lastError = commitPartly(done.map((p) => p.name), failed);
+      void vscode.window.showErrorMessage(this.lastError);
     } else {
       // The author was for that commit; Sign-off stays as the user left it.
       this.author = undefined;
       await this.saveDraft("", false);
       this.post({ type: "committed" });
+      // The next message starts from the template again, as git's own commit does.
+      this.templateSent = false;
+      void this.postTemplate();
     }
     this.render();
     if (push && done.length > 0) await this.deps.push(new Set(done.map((p) => p.repoId)));
@@ -527,11 +567,43 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
    * One repository's commit of its checked files: new ones are added first, then `git commit
    * --only` takes exactly those paths (whatever else is staged stays staged, out of this commit).
    * The paths go through a file, so no command line grows with the number of files.
+   * In a merge, cherry-pick or revert that stopped, git refuses a partial commit: the checked files
+   * are staged and the commit takes the index, which finishes it (as the JetBrains Commit window does).
    */
   private async commitOne(p: CommitPlan, message: string, { amend, signOff, author }: { amend: boolean; signOff: boolean; author: string | undefined }): Promise<void> {
     if (p.add.length > 0) await this.withPaths(p.root, p.add, ["add"]);
-    await this.withPaths(p.root, p.paths, ["commit", "--only", ...(amend ? ["--amend"] : []), ...(signOff ? ["--signoff"] : []),
-      ...(author ? [`--author=${author}`] : []), "--file=-"], { input: message });
+    const options = [...(amend ? ["--amend"] : []), ...(signOff ? ["--signoff"] : []), ...(author ? [`--author=${author}`] : []), "--file=-"];
+    const op = (await readHead(p.root).catch(() => undefined))?.operation;
+    if (op === "merge" || op === "cherry-pick" || op === "revert") {
+      // Never with a file still conflicted: git add would mark it resolved, its markers and all.
+      const left = (await this.deps.run(p.root, ["diff", "--name-only", "-z", "--diff-filter=U", "--"])).split("\0").filter(Boolean).length;
+      if (left > 0) throw new Error(left === 1 ? localize("1 file still has conflicts: resolve it first (Resolve Conflicts…)") : localize("{0} files still have conflicts: resolve them first (Resolve Conflicts…)", left));
+      await this.withPaths(p.root, p.paths, ["add", "-A"]);
+      await this.deps.run(p.root, ["commit", ...options], undefined, { input: message });
+      return;
+    }
+    await this.withPaths(p.root, p.paths, ["commit", "--only", ...options], { input: message });
+  }
+
+  /** The merge messages already offered (a repository's MERGE_MSG as it was), so each is offered once. */
+  private readonly offeredMerge = new Set<string>();
+
+  /**
+   * A merge, cherry-pick or revert that stopped in a repository with work: git's prepared message
+   * (MERGE_MSG) for an empty box, its # lines as the placeholder. Read from the git dir: no process.
+   */
+  private async offerMergeMessage(): Promise<void> {
+    for (const w of this.deps.store.works()) {
+      if (w.staged.length + w.changes.length === 0) continue;
+      const dir = await gitDirOf(w.root).catch(() => undefined);
+      const text = dir ? await fs.readFile(path.join(dir, "MERGE_MSG"), "utf8").catch(() => undefined) : undefined;
+      if (text === undefined) continue;
+      const key = `${w.root}\0${text}`;
+      if (this.offeredMerge.has(key)) continue;
+      this.offeredMerge.add(key);
+      this.post({ type: "template", ...splitTemplate(text) });
+      return;
+    }
   }
 
   /** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */

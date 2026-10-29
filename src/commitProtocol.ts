@@ -23,6 +23,8 @@ export type CommitHostMessage =
   | { type: "amendMessage"; text: string }
   /** Every repository committed: the box empties. */
   | { type: "committed" }
+  /** git's commit.template: its text for an empty box, its # guidance as the placeholder. */
+  | { type: "template"; text: string; hint: string }
   /**
    * ✨: the AI message so far (done: false, streamed into the box), then once more done. The
    * final text goes in as one undoable edit; no text when done means the box goes back as it was

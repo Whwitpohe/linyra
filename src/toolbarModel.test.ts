@@ -15,3 +15,7 @@ for (const action of [null, {}, "constructor", "__proto__", "vscode.openFolder",
 console.log("ok - all 13 old Log toolbar commands remain reachable with state guards and no arbitrary command execution");
 assert.deepStrictEqual(["aiConfigure", "aiSwitch", "aiRemove"].map((action) => toolbarCommand(action, hidden)), ["linyra.ai.configure", "linyra.ai.switchModel", "linyra.ai.removeProfile"]);
 console.log("ok - the ⋯ menu's AI items run Configure AI…, Switch AI Model… and Remove AI Profile…");
+assert.strictEqual(toolbarCommand("tagAcross", hidden), "linyra.tagAcross");
+assert.strictEqual(toolbarCommand("abortAll", hidden), undefined, "Abort in All Repositories… only while one is in the middle of something");
+assert.strictEqual(toolbarCommand("abortAll", { ...hidden, anyOperation: true }), "linyra.abortAll");
+console.log("ok - the ⋯ menu's Tag Across Repositories… and, while one is stopped, Abort in All Repositories…");

@@ -5,7 +5,8 @@ import { byId } from "./dom";
 import { AuthorFilter } from "./authorFilter";
 import { BranchFilter } from "./branchFilter";
 import { SearchBox, type SearchBoxHost, type ValueKind } from "./searchBox";
-import { SortFilter } from "./sortFilter";
+import { showOrder } from "./sortFilter";
+import type { HostRoutes } from "./hostRoutes";
 
 /**
  * The filter bar. It only reports intent: every change goes to the host, which
@@ -23,7 +24,6 @@ export class FilterBar {
   private readonly searchBox: SearchBox;
   private readonly authorFilter: AuthorFilter;
   private readonly branchFilter: BranchFilter;
-  private readonly sortFilter: SortFilter;
 
   constructor(
     private readonly onChange: (f: FilterState, now?: boolean) => void,
@@ -35,7 +35,6 @@ export class FilterBar {
     this.searchBox = new SearchBox({ ...search, change: (patch, now) => this.onChange({ ...this.current(), ...patch }, now), want: onWantSuggestions });
     this.authorFilter = new AuthorFilter((authors, mine) => this.emit({ author: "", authors: authors.length ? authors : undefined, mine }), () => onWantSuggestions("authors"));
     this.branchFilter = new BranchFilter((branches) => this.emit({ branch: "", branches: branches.length ? branches : undefined }), () => onWantSuggestions("branches"));
-    this.sortFilter = new SortFilter((sort) => this.emit({ sort }));
     this.meButton.addEventListener("click", () => this.emit({ mine: !this.current().mine }));
     // A path filters as you type (debounced by the host); an unsafe one is marked, not sent.
     this.path.addEventListener("input", () => {
@@ -73,7 +72,7 @@ export class FilterBar {
     }
     this.meButton.setAttribute("aria-pressed", String(filter.mine));
     this.branchFilter.update(selectedBranches(filter));
-    this.sortFilter.update(filter.sort);
+    showOrder(filter.sort);
     this.date.value = filter.date;
     this.customRange.hidden = filter.date !== "custom";
     this.from.value = filter.from ?? "";
@@ -81,7 +80,7 @@ export class FilterBar {
     const hash = hashQuery(filter.text);
     byId("hash-search-note").hidden = !hash;
     byId("order-note").hidden = !!hash;
-    for (const id of ["match-case", "whole-word", "use-regex", "match-all", "author", "me", "path", "branch", "date", "from", "to", "sort"]) {
+    for (const id of ["match-case", "whole-word", "use-regex", "match-all", "author", "me", "path", "branch", "date", "from", "to"]) {
       (byId(id) as HTMLInputElement | HTMLButtonElement | HTMLSelectElement).disabled = !!hash;
     }
     document.querySelectorAll<HTMLButtonElement>(".picker-chip-remove").forEach((button) => { button.disabled = !!hash; });
@@ -94,6 +93,14 @@ export class FilterBar {
   }
 
   /** Suggestions for the Author box, author: and committer:: people who committed recently, most commits first. */
+  register(routes: HostRoutes): void {
+    routes.on("suggestions", (m) => {
+      if (m.authors) this.setAuthors(m.authors);
+      if (m.branches) this.setBranches(m.branches);
+      if (m.tags) this.setTags(m.tags);
+    }).on("aiSearchAvailable", (m) => this.setAiAvailable(m.available)).on("aiSearchResult", (m) => this.aiResult(m));
+  }
+
   setAuthors(items: readonly AuthorName[]): void {
     this.authorFilter.setItems(items);
     this.searchBox.setAuthors(items);

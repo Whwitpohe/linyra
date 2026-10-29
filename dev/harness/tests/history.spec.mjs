@@ -42,17 +42,17 @@ test("the chip takes the switch's place: the file, its repository, and × to lea
 test("each row shows what its commit did to the file: the letter, its lines, a rename's old name", async ({ page }) => {
   await open(page);
   const rows = page.locator("#rows .row[data-index]");
-  await expect(rows.first().locator(".history-change .history-status")).toHaveText("M");
+  await expect(rows.first().locator(".history-change .history-status > [aria-hidden]")).toHaveText("M");
   await expect(rows.first().locator(".history-change .count-added")).toHaveText(/^\+\d+$/);
   await expect(rows.first().locator(".history-change .count-deleted")).toHaveText(/^−\d+$/);
   await expect(rows.first().locator(".history-change")).toHaveAttribute("aria-label", /^Modified, \d+ lines added, \d+ deleted$/);
-  const renamed = page.locator("#rows .row", { has: page.locator(".history-status.status-R") });
+  const renamed = page.locator("#rows .row", { has: page.locator(".history-status.file-status-R") });
   await expect(renamed).toHaveCount(1);
   await expect(renamed.locator(".history-from")).toHaveText(" ← src/api-client.ts");
   // The rows before the rename name the file as it was then.
   await expect(page.locator("#rows .row .was-path").first()).toHaveText(" — src/api-client.ts");
   // A, M, D and R in their own Source Control colors.
-  const color = (status) => page.locator(`#rows .row:not([aria-selected="true"]) .history-status.status-${status}`).first().evaluate((el) => getComputedStyle(el).color);
+  const color = (status) => page.locator(`#rows .row:not([aria-selected="true"]) .history-status.file-status-${status}`).first().evaluate((el) => getComputedStyle(el).color);
   expect(await color("R")).not.toBe(await color("M"));
   // One repository: its column is only the strip, without the name.
   for (const label of await page.locator("#rows .row .repo-label").all()) await expect(label).toBeHidden();
@@ -69,7 +69,7 @@ test("the uncommitted row sits above the commits, lined up with them, and opens 
   await expect(work).toBeVisible();
   await expect(work.locator(".subject")).toHaveText("Uncommitted changes");
   await expect(work.locator(".history-work-tag")).toHaveText("partly staged");
-  await expect(work.locator(".history-status")).toHaveText("M");
+  await expect(work.locator(".history-status > [aria-hidden]")).toHaveText("M");
   await expect(work.locator(".count-added")).toHaveText("+4");
   await expect(work.locator(".count-deleted")).toHaveText("−2");
   await expect(work.locator(".history-work-node")).toHaveCount(1);
@@ -102,7 +102,7 @@ test("a file never committed says so, under its uncommitted row", async ({ page 
   await expect(page.locator("#empty p")).toHaveText("Its history appears here once it is committed.");
   await expect(page.locator("#empty button")).toHaveCount(0);
   const work = page.locator("#history-work");
-  await expect(work.locator(".history-status")).toHaveText("A");
+  await expect(work.locator(".history-status > [aria-hidden]")).toHaveText("A");
   await expect(work.locator(".line-counts"), "an untracked file's lines are not counted").toHaveCount(0);
   await expect(work).toHaveAttribute("aria-label", "Uncommitted changes, Added");
   expect((await work.boundingBox()).y).toBeLessThan((await page.locator("#empty").boundingBox()).y);

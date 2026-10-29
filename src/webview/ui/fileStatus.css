@@ -1,0 +1,13 @@
+/* A changed file's status, the same in the Changes view, Compare and File History, as Source Control
+   shows it: the letter in its own column in the status color (U untracked), and a deleted file's
+   name struck through. Line counts are ui/counts.css: + always the add color, − the delete color. */
+.file-status { flex: 0 0 14px; width: 14px; text-align: center; font-size: 12px; font-weight: 600; font-family: var(--vscode-editor-font-family); }
+.file-status-name { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.file-status-A, .file-status-C, .file-status-U { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+.file-status-U { color: var(--vscode-gitDecoration-untrackedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
+.file-status-M, .file-status-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
+.file-status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
+.file-status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
+.deleted-name { text-decoration: line-through; }
+/* On a selected row the letter keeps the row's text color, as the counts do. */
+[aria-selected="true"] .file-status, .selected .file-status { color: inherit; }

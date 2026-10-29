@@ -4,11 +4,12 @@ import { promises as fs } from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { checkValues, initialValues, type FormSpec, type FormValues } from "./formModel";
 import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { addedPaths, commitCount, commitStep, deletePrompt, describeUncommitted, diffFor, discardPlan, discardPrompt, rollbackPlan, rollbackPrompt, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
@@ -36,6 +37,7 @@ export class Ask {
   beforeAnswer: (() => Promise<void>) | undefined;
   /** Test seam: the last warning asked, and how many questions were asked. */
   lastWarning: string | undefined;
+  lastDetail: string | undefined;
   asked = 0;
 
   queue(value: string | undefined): void {
@@ -50,6 +52,7 @@ export class Ask {
       this.beforeAnswer = undefined;
       if (hook) await hook();
       this.lastWarning = message;
+      this.lastDetail = detail;
       return this.answers.shift() === button;
     }
     return (await vscode.window.showWarningMessage(message, { modal: true, detail }, button)) === button;
@@ -89,21 +92,110 @@ export class Ask {
     return chosen ? chosen.map((c) => items.indexOf(c)) : undefined;
   }
 
+  /**
+   * One item, or one item's button (Update Project's 📌 "don't ask again"): its index, and whether
+   * the button was clicked. Testing: the label, or "label|button".
+   */
+  async pickWithButton(items: readonly vscode.QuickPickItem[], placeHolder: string, button: vscode.QuickInputButton): Promise<{ index: number; button: boolean } | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const [label, extra] = (this.answers.shift() ?? "").split("|");
+      const i = items.findIndex((x) => x.label === label);
+      return i < 0 ? undefined : { index: i, button: extra === "button" };
+    }
+    const quick = vscode.window.createQuickPick<vscode.QuickPickItem>();
+    quick.items = items.map((x) => ({ ...x, buttons: [button] }));
+    quick.placeholder = placeHolder;
+    return new Promise((resolve) => {
+      let answer: { index: number; button: boolean } | undefined;
+      quick.onDidAccept(() => { const i = quick.items.indexOf(quick.selectedItems[0]); if (i >= 0) answer = { index: i, button: false }; quick.hide(); });
+      quick.onDidTriggerItemButton((e) => { answer = { index: quick.items.indexOf(e.item), button: true }; quick.hide(); });
+      quick.onDidHide(() => { quick.dispose(); resolve(answer); });
+      quick.show();
+    });
+  }
+
+  /**
+   * One input box with an on/off button in its title (Stash Changes…'s "Include new files"); the
+   * prompt line says the switch's state in words. `extra`: one more button (✨ AI), run with the box
+   * and a signal that stops it when the box closes.
+   * The text and the switch, or undefined when cancelled. Testing: the text, or "text|toggle" (flipped).
+   */
+  async inputWithToggle(o: {
+    title: string; prompt: (on: boolean) => string; placeHolder: string; value: string;
+    toggle: { on: boolean; tooltip: (on: boolean) => string; icon: (on: boolean) => string };
+    extra?: { icon: string; tooltip: string; run(box: vscode.InputBox, on: boolean, signal: AbortSignal): Promise<void> };
+  }): Promise<{ value: string; on: boolean } | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const a = this.answers.shift();
+      if (a === undefined || a === "Cancel") return undefined;
+      const [value, flip] = a.split("|");
+      return { value, on: flip === "toggle" ? !o.toggle.on : o.toggle.on };
+    }
+    const box = vscode.window.createInputBox();
+    let on = o.toggle.on;
+    const toggle = () => ({ iconPath: new vscode.ThemeIcon(o.toggle.icon(on)), tooltip: o.toggle.tooltip(on) });
+    const extra = o.extra ? { iconPath: new vscode.ThemeIcon(o.extra.icon), tooltip: o.extra.tooltip } : undefined;
+    let toggleButton = toggle();
+    const paint = () => { toggleButton = toggle(); box.buttons = extra ? [toggleButton, extra] : [toggleButton]; box.prompt = o.prompt(on); };
+    box.title = o.title;
+    box.placeholder = o.placeHolder;
+    box.value = o.value;
+    box.ignoreFocusOut = true;
+    paint();
+    const closed = new AbortController();
+    return new Promise((resolve) => {
+      let answer: { value: string; on: boolean } | undefined;
+      box.onDidAccept(() => { if (box.busy) return; answer = { value: box.value, on }; box.hide(); });
+      box.onDidTriggerButton(async (b) => {
+        if (b === toggleButton) { on = !on; paint(); return; }
+        if (b === extra && o.extra && !box.busy) await o.extra.run(box, on, closed.signal);
+      });
+      box.onDidHide(() => { closed.abort(); box.dispose(); resolve(answer); });
+      box.show();
+    });
+  }
+
+  /** Opens review forms (set by the extension: it knows where the page's files are). */
+  formOpener: ((spec: FormSpec, check?: (values: FormValues) => Promise<Record<string, string>>) => Promise<FormValues | undefined>) | undefined;
+
+  /**
+   * A review form (Release…, Tag Across Repositories…): every choice on one page, before anything
+   * runs; the checked values, or undefined when cancelled. Testing: the values as JSON, or "Cancel".
+   */
+  async form(spec: FormSpec, check?: (values: FormValues) => Promise<Record<string, string>>): Promise<FormValues | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const a = this.answers.shift();
+      this.lastForm = { spec, problems: {} };
+      if (a === undefined || a === "Cancel") return undefined;
+      const values = checkValues(spec, { ...initialValues(spec), ...(JSON.parse(a) as FormValues) });
+      if (!values) throw new Error(`the queued answer does not fill the form ${spec.id}: ${a}`);
+      // Refused by the host's own check: the form would stay open, saying why; here, nothing runs.
+      const problems = check ? await check(values) : {};
+      this.lastForm.problems = problems;
+      return Object.keys(problems).length > 0 ? undefined : values;
+    }
+    this.lastForm = { spec, problems: {} };
+    return this.formOpener ? this.formOpener(spec, check) : undefined;
+  }
+
+  /** Test seam: the last form shown, and what its host check said about the answer. */
+  lastForm: { spec: FormSpec; problems: Record<string, string> } | undefined;
 }
 
 export interface UncommittedActionsDeps {
   store: UncommittedStore;
   discovery: RepoDiscovery;
   run(cwd: string, args: string[], signal?: AbortSignal, opts?: RunOptions): Promise<string>;
-  /** A commit landed: the Log reads its first page again. */
-  committed(): void;
   /** VS Code's prompts, shared with the Log (one queue for the integration suite). */
   ask: Ask;
 }
 
 /**
- * Stage, Unstage, Discard and Commit for the Log's Uncommitted side, the Changes view and the
- * Commit side bar (CommitPanel, which commits through git itself).
+ * Stage, Unstage, Discard Changes and Delete for the Log's Uncommitted side, the Changes view and
+ * the Commit side bar (CommitPanel, which commits through git itself; Commit… opens it).
  */
 export class UncommittedActions {
   readonly ask: Ask;
@@ -191,33 +283,24 @@ export class UncommittedActions {
     return this.act(this.picks(arg, many), "unstage", (r, paths) => this.deps.discovery.unstage(r.work.root, paths));
   }
 
-  /** A file, a folder, a group, a repository row (all of its work), or several selected rows. Always asks, once. */
+  /**
+   * Discard Changes, one verb wherever uncommitted work is listed: a file, a folder, a group, a
+   * repository row (all of its work), or several selected rows, after one prompt. Tracked files go
+   * back to the last commit, an added file only leaves version control (unstaged, kept on disk).
+   * New files are left alone: Delete… is the command that removes files.
+   */
   async discard(arg: unknown, many?: unknown): Promise<void> {
-    const picks = this.picks(arg, many);
-    if (picks.length === 0) return;
+    const all = this.picks(arg, many);
+    const picks = all.filter((r) => r.files.some((f) => !f.untracked));
+    if (picks.length === 0) {
+      if (all.length > 0) vscode.window.setStatusBarMessage(localize("New files have no changes to discard: Delete… removes them from disk."), 5000);
+      return;
+    }
     const p = picks.length === 1
-      ? discardPrompt(picks[0].work.name, picks[0].files, picks[0].one, picks[0].staged)
+      ? discardPrompt(picks[0].work.name, picks[0].files, picks[0].one && !picks[0].files[0].untracked, picks[0].staged)
       : discardPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
-    await this.act(picks, "discard", (r) => {
-      const plan = discardPlan(r.files, r.staged);
-      return this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
-    });
-  }
-
-  /**
-   * The Commit side bar's Rollback, as the JetBrains IDEs': tracked files back to the last commit,
-   * an added file only out of version control (unstaged, kept on disk). Unversioned files are
-   * left alone: Delete… is the command that removes files.
-   */
-  async rollback(arg: unknown, many?: unknown): Promise<void> {
-    const picks = this.picks(arg, many).filter((r) => r.files.some((f) => !f.untracked));
-    if (picks.length === 0) return;
-    const p = picks.length === 1
-      ? rollbackPrompt(picks[0].work.name, picks[0].files, picks[0].one, picks[0].staged)
-      : rollbackPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
-    if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
-    await this.act(picks, "roll back", async (r) => {
+    await this.act(picks, "discard", async (r) => {
       const plan = rollbackPlan(r.files, r.staged);
       if (plan.unadd.length > 0) await this.unadd(r.work, plan.unadd);
       if (plan.paths.length > 0) await this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
@@ -235,7 +318,10 @@ export class UncommittedActions {
       const paths = new Set(files.map((f) => f.path));
       return files.length === 0 ? [] : [{ work: r.work, files, staged: r.staged.filter((f) => added.has(f.path)), one: paths.size === 1 }];
     });
-    if (picks.length === 0) return;
+    if (picks.length === 0) {
+      vscode.window.setStatusBarMessage(localize("No new files here: Delete… removes only new files (Discard Changes takes back the others)."), 5000);
+      return;
+    }
     const paths = (r: Pick) => [...new Set(r.files.map((f) => f.path))];
     const p = picks.length === 1
       ? deletePrompt(picks[0].work.name, paths(picks[0]), picks[0].one)
@@ -265,47 +351,6 @@ export class UncommittedActions {
   private async unadd(work: RepoWork, paths: readonly string[]): Promise<void> {
     await gitWithPaths(this.deps.run, work.root, paths, ["reset", "-q"]);
     this.deps.store.applied(work.repoId, (w) => withUnadded(w, new Set(paths)));
-  }
-
-  /** ✓ on a repository: its staged files, or (nothing staged) as VS Code's own commit does. */
-  async commit(arg: unknown): Promise<void> {
-    const r = this.resolve(arg && typeof arg === "object" ? { repoId: (arg as Target).repoId } : arg);
-    if (!r || !r.work.canStage) return;
-    const { work } = r;
-    // vscode.git's settings are per folder (resource scope): this repository's folder decides.
-    const git = vscode.workspace.getConfiguration("git", vscode.Uri.file(work.root));
-    const smart = git.get<boolean>("enableSmartCommit", false) === true;
-    const step = commitStep(work.staged.length, work.changes.length, smart);
-    if (step === "nothing") return;
-    if (step === "askStageAll" && !(await this.ask.warning(localize("There are no staged changes in {0}.", work.name), localize("Stage all changes and commit them?"), localize("Stage All and Commit")))) return;
-    // Commit all, as VS Code's own smart commit: git.smartCommitChanges "tracked" leaves new files out.
-    const scope = git.get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
-    const all: boolean | "tracked" = step === "message" ? false : scope === "tracked" ? "tracked" : true;
-    const n = all ? commitCount(work, scope) : work.staged.length;
-    if (n === 0) {
-      // Smart commit of tracked files only, and only new files changed: git would say "nothing to commit".
-      void vscode.window.showInformationMessage(localize("Nothing to commit in {0}: only new files changed, and git.smartCommitChanges is \"tracked\".", work.name));
-      return;
-    }
-    // The Path box hides part of the repository; a commit takes all of it. Say so, with the true numbers.
-    if (this.deps.store.filtered) {
-      const w = await this.deps.store.whole(work.repoId);
-      const real = !w ? n : !all ? w.staged : scope === "tracked" ? w.tracked : w.changes;
-      if (real > n && !(await this.ask.warning(localize("The commit takes {0} in {1}, not {2}.", plural(real, "file"), work.name, n),
-        localize("The Path box shows only part of the repository; {0} outside it would be committed too.", plural(real - n, "file")), localize("Commit {0}", plural(real, "File"))))) return;
-    }
-    const message = await this.ask.input(localize("Commit message for {0}", work.name), localize("Message ({0} {1})", plural(n, "file"), all ? localize("to commit") : localize("staged")));
-    if (!message || message.trim() === "") return;
-    let ok = true;
-    try {
-      await this.deps.discovery.commit(work.root, message, all);
-    } catch (e) {
-      ok = false;
-      this.showError(localize("Linyra could not commit {0}: {1}.", work.name, gitMessage(e)));
-    }
-    await this.deps.store.readRepo(work.repoId);
-    // Only a commit that landed changes the Log.
-    if (ok) this.deps.committed();
   }
 
   /** The diff a row opens, as Source Control: Staged is HEAD ↔ index; Changes is index (or HEAD) ↔ file. */

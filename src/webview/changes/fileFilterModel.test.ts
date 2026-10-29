@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { ChangeRow } from "../../changesProtocol";
-import { filterFiles } from "./fileFilterModel";
+import { changeLines, changeNote, filterFiles } from "./fileFilterModel";
 
 const file = (id: string, path: string, oldPath?: string): ChangeRow => ({ id, kind: "file", label: path.split("/").pop()!, path,
   oldPath, description: "+1 −1", tooltip: path, contextValue: "file", added: 1, deleted: 1 });
@@ -38,4 +38,22 @@ const roots: ChangeRow[] = [{ id: "src", kind: "folder", label: "src", descripti
   assert.strictEqual(result.roots[0].description, "2 commits", "combined repository metadata keeps its meaning");
   assert.deepStrictEqual(filterFiles([], "a"), { roots: [], total: 0, matched: 0 });
   console.log("ok - combined changes and empty states retain repository structure");
+}
+
+{
+  // The note drawn before the counts is searchable (staged, binary, new); the counts themselves are not.
+  const staged = { ...file("staged-id", "src/a.ts"), staged: true };
+  const binary = { ...file("bin-id", "assets/logo.png"), added: null, deleted: null, description: "binary" };
+  const untracked = { ...file("new-id", "notes.md"), untracked: true, added: null, deleted: null, description: "new" };
+  assert.strictEqual(changeNote(staged), "staged");
+  assert.deepStrictEqual(changeLines(staged), { added: 1, deleted: 1 });
+  assert.strictEqual(changeNote(binary), "binary");
+  assert.strictEqual(changeLines(binary), undefined);
+  assert.strictEqual(changeNote(untracked), "new");
+  assert.strictEqual(changeNote(file("plain-id", "src/b.ts")), undefined);
+  const rows = [staged, binary, untracked, file("plain-id", "src/b.ts")];
+  assert.deepStrictEqual(filterFiles(rows, "staged").roots.map((r) => r.id), ["staged-id"]);
+  assert.deepStrictEqual(filterFiles(rows, "binary").roots.map((r) => r.id), ["bin-id"]);
+  assert.strictEqual(filterFiles(rows, "+1").matched, 0, "the + − counts are not text to find");
+  console.log("ok - a file's note (staged, binary, new) is searchable, its counts are not");
 }

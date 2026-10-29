@@ -21,9 +21,9 @@ describe("Linyra panel", () => {
     assert.strictEqual(s.profiles.length, 0, "retired Polylog profiles are ignored");
     assert.strictEqual(vscode.workspace.getConfiguration("linyra").inspect("excludeRepos")?.workspaceValue, undefined, "activation does not migrate old settings");
     const properties = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties;
-    // 6 Log settings, 3 for avatars (linyra.avatars, avatarHosts, avatarUrlTemplate) and 6 for AI
-    // (enabled, profiles, activeProfile, exclude, maxPromptTokens, commitMessageInstructions).
-    assert.strictEqual(Object.keys(properties).length, 15);
+    // 7 Log settings (Update Project's method among them), 3 for avatars (linyra.avatars, avatarHosts,
+    // avatarUrlTemplate) and 6 for AI (enabled, profiles, activeProfile, exclude, maxPromptTokens, commitMessageInstructions).
+    assert.strictEqual(Object.keys(properties).length, 16);
     assert.ok(Object.keys(properties).every((key) => key.startsWith("linyra.")), "only Linyra settings are registered");
   });
 
@@ -413,33 +413,30 @@ describe("Linyra panel", () => {
       await waitFor("client.ts open", () => (vscode.window.activeTextEditor?.document.uri.fsPath === path.join(web.root, "client.ts") ? true : undefined));
       await closeEditors();
 
-      // Discard asks first; Cancel changes nothing.
+      // Discard Changes never deletes a new file: nothing to ask, the file stays. Delete… is the command that does.
+      const asked = await vscode.commands.executeCommand<number>("linyra._itest.asked");
+      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "notes.md" });
+      assert.strictEqual(await vscode.commands.executeCommand<number>("linyra._itest.asked"), asked, "nothing to discard: no question");
+      assert.ok(fs.existsSync(path.join(web.root, "notes.md")), "a new file is not Discard's");
       await answer("Cancel");
-      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "notes.md" });
+      await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id, group: "changes", path: "notes.md" });
       assert.ok(fs.existsSync(path.join(web.root, "notes.md")), "Cancel keeps the file");
-      await answer("Discard File");
-      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "notes.md" });
-      assert.ok(!fs.existsSync(path.join(web.root, "notes.md")), "a new file is deleted when discarded");
+      await answer("Delete");
+      await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id, group: "changes", path: "notes.md" });
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), 'Delete "notes.md"?');
+      assert.ok(!fs.existsSync(path.join(web.root, "notes.md")), "Delete… deletes it");
       await seen("notes.md gone", (i) => !i.some((x) => x.includes("notes.md")));
 
-      // Commit… with a message: the staged files only.
-      await vscode.commands.executeCommand("linyra.stage", { repoId: web.id, group: "changes", path: "client.ts" });
-      await seen("both staged", (i) => i.includes("  Staged | 2"));
-      await answer("feat: commit from the view");
+      // Commit…: the Commit side bar, this repository's files checked, nothing asked; its Commit takes them.
+      const panel = () => vscode.commands.executeCommand<{ checked: string; items: string[] }>("linyra._itest.commitPanel");
+      const before = await vscode.commands.executeCommand<number>("linyra._itest.asked");
       await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
+      assert.strictEqual(await vscode.commands.executeCommand<number>("linyra._itest.asked"), before, "no input box, no modal");
+      await waitFor("acme-web's two files checked", async () => ((await panel()).checked === "2 files checked" ? true : undefined));
+      await vscode.commands.executeCommand("linyra._itest.commitSend", { type: "commit", message: "feat: commit from the view", amend: false, push: false, signOff: false });
       assert.strictEqual(git("log", "-1", "--format=%s"), "feat: commit from the view");
       await until("the new commit at the top of the Log", (x) => x.rows[0]?.subject === "feat: commit from the view");
       await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
-
-      // Nothing staged, git.enableSmartCommit off: it asks; Cancel commits nothing.
-      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 3;\n");
-      await send({ type: "refresh" });
-      await seen("client.ts changed again", (i) => i.includes("acme-web | 1 file [repo.stageable]"));
-      await smart.update("enableSmartCommit", false, vscode.ConfigurationTarget.Global);
-      const before = git("rev-parse", "HEAD");
-      await answer("Cancel");
-      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
-      assert.strictEqual(git("rev-parse", "HEAD"), before, "Cancel: nothing committed");
     } finally {
       await smart.update("enableSmartCommit", undefined, vscode.ConfigurationTarget.Global);
       await answer(undefined); // drop any answer left unused
@@ -617,45 +614,38 @@ describe("Linyra panel", () => {
       assert.strictEqual(await rightText(), "export const ok = 2;\n", "staged again: the new index version, not a stale document");
       await closeEditors();
 
-      // Review Focus 2: Discard a group with new files in it.
+      // Review Focus 2: a group with new files in it. Discard leaves them; Delete… deletes them, after its own prompt.
       write("one.md", "1\n");
       write("two.md", "2\n");
       await send({ type: "refresh" });
       await seen("two new files", (i) => i.some((x) => x.includes("one.md")) && i.some((x) => x.includes("two.md")));
-      await answer("Discard All");
-      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes" });
+      await answer("Delete");
+      await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id, group: "changes" });
       assert.ok(!fs.existsSync(path.join(web.root, "one.md")) && !fs.existsSync(path.join(web.root, "two.md")), "both new files deleted");
 
-      // A failing pre-commit hook: git's own words, and the staged files stay staged.
+      // A failing pre-commit hook, through Commit… (the Commit side bar): git's words, and the staged file stays staged.
+      const commitPanel = () => vscode.commands.executeCommand<{ checked: string; lastError?: string }>("linyra._itest.commitPanel");
+      const commitWith = async (message: string) => {
+        await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
+        await waitFor("acme-web's file checked", async () => ((await commitPanel()).checked === "1 file checked" ? true : undefined));
+        await vscode.commands.executeCommand("linyra._itest.commitSend", { type: "commit", message, amend: false, push: false, signOff: false });
+      };
       const hook = path.join(web.root, ".git", "hooks", "pre-commit");
       fs.writeFileSync(hook, "#!/bin/sh\necho 'acme hook says no' >&2\nexit 1\n", { mode: 0o755 });
-      await answer("feat: blocked by the hook");
-      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
+      await commitWith("feat: blocked by the hook");
       fs.rmSync(hook);
-      const err = (await view()).lastError ?? "";
-      assert.match(err, /acme hook says no/, `the hook's message (${err})`);
+      const err = (await commitPanel()).lastError ?? "";
+      assert.match(err, /acme-web \(.*acme hook says no/, `the repository and the hook's message (${err})`);
+      assert.match(err, /The message is kept/, "and what to do");
       assert.deepStrictEqual(git("diff", "--cached", "--name-only"), "client.ts", "still staged");
       assert.strictEqual(git("rev-parse", "HEAD"), head, "nothing committed");
 
       // A draft in Source Control's message box survives a commit from Linyra.
       const repo = api.getRepository(vscode.Uri.file(web.root))!;
       repo.inputBox.value = "draft: half-written";
-      await answer("feat: committed from Linyra");
-      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
+      await commitWith("feat: committed from Linyra");
       assert.strictEqual(git("log", "-1", "--format=%s"), "feat: committed from Linyra");
       assert.strictEqual(repo.inputBox.value, "draft: half-written", "the Source Control draft is kept");
-
-      // Review Focus 3: nothing staged, git.enableSmartCommit on: commit all without asking; smartCommitChanges "tracked" leaves new files out.
-      write("client.ts", "export const ok = 3;\n");
-      write("scratch.md", "scratch\n");
-      await send({ type: "refresh" });
-      await seen("a change and a new file", (i) => i.some((x) => x.includes("scratch.md")) && i.some((x) => x.includes("client.ts")));
-      await gitCfg().update("enableSmartCommit", true, vscode.ConfigurationTarget.Global);
-      await gitCfg().update("smartCommitChanges", "tracked", vscode.ConfigurationTarget.Global);
-      await answer("feat: smart, tracked only");
-      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
-      assert.strictEqual(git("log", "-1", "--format=%s"), "feat: smart, tracked only", "no question asked: the only answer was the message");
-      assert.match(git("status", "--porcelain"), /\?\? scratch\.md/, "the new file was left out");
     } finally {
       await gitCfg().update("enableSmartCommit", undefined, vscode.ConfigurationTarget.Global);
       await gitCfg().update("smartCommitChanges", undefined, vscode.ConfigurationTarget.Global);
@@ -669,7 +659,7 @@ describe("Linyra panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
-  it("Discard deletes exactly what its prompt listed, and also new files VS Code's Git hides", async () => {
+  it("Delete… deletes exactly what its prompt listed, and also new files VS Code's Git hides", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const cp = require("child_process") as typeof import("child_process");
@@ -690,8 +680,8 @@ describe("Linyra panel", () => {
         await vscode.commands.executeCommand("linyra.refreshUncommitted");
         await seen("late.md read", (i) => i.some((l) => l.includes("late.md")));
       });
-      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
-      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes" });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Delete");
+      await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id, group: "changes" });
       await waitFor("listed.md gone", () => (fs.existsSync(at("listed.md")) ? undefined : true));
       assert.ok(fs.existsSync(at("late.md")), "a file that appeared while the prompt was open is kept");
       // git.untrackedChanges hidden: VS Code's Git does not list new files, Linyra still deletes the one confirmed.
@@ -700,8 +690,8 @@ describe("Linyra panel", () => {
       fs.writeFileSync(at("hidden-new.md"), "3\n");
       await vscode.commands.executeCommand("linyra.refreshUncommitted");
       await seen("hidden-new.md", (i) => i.some((l) => l.includes("hidden-new.md")));
-      await vscode.commands.executeCommand("linyra._itest.answer", "Discard File");
-      await vscode.commands.executeCommand("linyra.discard", { repoId: web.id, group: "changes", path: "hidden-new.md" });
+      await vscode.commands.executeCommand("linyra._itest.answer", "Delete");
+      await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id, group: "changes", path: "hidden-new.md" });
       await waitFor("hidden-new.md deleted", () => (fs.existsSync(at("hidden-new.md")) ? undefined : true));
     } finally {
       await vscode.commands.executeCommand("linyra._itest.beforeAnswer", undefined);
@@ -739,7 +729,7 @@ describe("Linyra panel", () => {
       await waitFor("client.ts restored", () => (fs.readFileSync(at("client.ts"), "utf8") === `${committed}\n` ? true : undefined));
       assert.strictEqual(git("status", "--porcelain"), "", "nothing staged, nothing changed");
 
-      // The whole repository: a staged edit, a staged new file, an edit, an untracked file.
+      // The whole repository: a staged edit, a staged new file, and two untracked files (acme-web tracks client.ts only).
       fs.writeFileSync(at("client.ts"), "export const ok = 3;\n");
       fs.writeFileSync(at("added.ts"), "export {};\n");
       git("add", "client.ts", "added.ts");
@@ -747,10 +737,17 @@ describe("Linyra panel", () => {
       fs.writeFileSync(at("loose.md"), "x\n");
       await send({ type: "refresh" });
       await seen("four files", (i) => i.includes("acme-web | 4 files [repo.stageable]"));
-      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
+      // Discard Changes: tracked files back to the last commit; the added file only leaves version control; new files stay.
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard Changes");
       await vscode.commands.executeCommand("linyra.discardAll", { repoId: web.id });
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastDetail"),
+        "This can't be undone. Staged changes are discarded too. The added file leaves version control and stays on disk as a new file. The 2 new files stay: Delete… removes them.");
+      await waitFor("only the new files left", () => (git("status", "--porcelain").split("\n").sort().join(",") === "?? CHANGELOG.md,?? added.ts,?? loose.md" ? true : undefined));
+      assert.ok(fs.existsSync(at("added.ts")) && fs.existsSync(at("loose.md")) && fs.existsSync(at("CHANGELOG.md")), "no file deleted");
+      // Delete New Files… on the repository row: its new files, after their own prompt.
+      await vscode.commands.executeCommand("linyra._itest.answer", "Delete");
+      await vscode.commands.executeCommand("linyra.deleteNewAll", { webviewSection: "uncommitted", repoId: web.id });
       await waitFor("acme-web clean", () => (git("status", "--porcelain") === "" ? true : undefined));
-      assert.ok(!fs.existsSync(at("added.ts")) && !fs.existsSync(at("loose.md")), "new files deleted, staged or not");
       await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
       assert.strictEqual((await view()).lastError, errorBefore, "no error from Discard");
     } finally {
@@ -803,8 +800,9 @@ describe("Linyra panel", () => {
       assert.strictEqual(git(api.root, "status", "--porcelain"), "?? notes.md", "only the other file is left");
       // The root row: everything in the repository.
       await until("acme-api down to one file", (x) => x.changes.items[0]?.startsWith("acme-api | 1 file") === true);
-      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
-      await vscode.commands.executeCommand("linyra.discardAll", { kind: "commit" });
+      // Only a new file left: Discard has nothing to take; Delete… on the root row deletes it.
+      await vscode.commands.executeCommand("linyra._itest.answer", "Delete");
+      await vscode.commands.executeCommand("linyra.deleteNew", { kind: "commit" });
       await waitFor("acme-api clean", () => (git(api.root, "status", "--porcelain") === "" ? true : undefined));
     } finally {
       await vscode.commands.executeCommand("linyra._itest.answer", undefined);
@@ -868,84 +866,48 @@ describe("Linyra panel", () => {
     await until("nothing uncommitted", (x) => x.workRows.length === 0);
   });
 
-  it("Commit: nothing to take asks nothing; a failed commit leaves the Log alone; a folder's own git settings apply", async () => {
+  it("Commit… opens the Commit side bar with that repository's files checked, never a prompt; a failed commit leaves the Log alone", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const cp = require("child_process") as typeof import("child_process");
     const s0 = await until("six rows", (x) => x.rows.length === 6);
     const web = s0.repos.find((r) => r.name === "acme-web")!;
-    const folder = vscode.workspace.workspaceFolders!.find((f) => f.uri.fsPath === web.root)!;
-    const cfg = vscode.workspace.getConfiguration("git", folder.uri);
+    const api = s0.repos.find((r) => r.name === "acme-api")!;
     const asked = () => vscode.commands.executeCommand<number>("linyra._itest.asked");
-    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("linyra._itest.uncommitted");
+    const panel = () => vscode.commands.executeCommand<{ checked: string; lastError?: string; items: string[] }>("linyra._itest.commitPanel");
     const hook = path.join(web.root, ".git", "hooks", "pre-commit");
     try {
       await vscode.commands.executeCommand("linyra.focusUncommitted");
-      // This folder's own settings (not the user's): smart commit, tracked files only.
-      await cfg.update("enableSmartCommit", true, vscode.ConfigurationTarget.WorkspaceFolder);
-      await cfg.update("smartCommitChanges", "tracked", vscode.ConfigurationTarget.WorkspaceFolder);
-      fs.writeFileSync(path.join(web.root, "brand-new.md"), "x\n");
+      // Work in two repositories; Commit… on acme-web checks acme-web's files only.
+      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 5;\n");
+      fs.writeFileSync(path.join(api.root, "upload.go"), "package upload\n// edited\n");
       await send({ type: "refresh" });
-      await waitFor("brand-new.md", async () => ((await view()).items.some((i) => i.includes("brand-new.md")) ? true : undefined));
+      await waitFor("both repositories in the side bar", async () => ((await panel()).checked === "2 files checked in 2 repositories" ? true : undefined));
       const before = await asked();
       await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
-      assert.strictEqual(await asked(), before, "only a new file and tracked-only smart commit: nothing to commit, nothing asked");
-      // A failed commit: git's words, and no Log reload.
-      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 5;\n");
-      cp.execFileSync("git", ["add", "client.ts"], { cwd: web.root });
-      fs.writeFileSync(hook, "#!/bin/sh\necho 'acme hook says no' >&2\nexit 1\n", { mode: 0o755 });
+      assert.strictEqual(await asked(), before, "no input box, no modal");
+      await waitFor("acme-web's file only", async () => ((await panel()).checked === "1 file checked" ? true : undefined));
+      // Only a new file in the repository: that one is checked (the side bar leaves new files unchecked otherwise).
+      cp.execFileSync("git", ["checkout", "--", "client.ts"], { cwd: web.root });
+      fs.writeFileSync(path.join(web.root, "brand-new.md"), "x\n");
       await send({ type: "refresh" });
-      await waitFor("staged", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
-      const reloads = (await snapshot()).stats.reloads;
-      await vscode.commands.executeCommand("linyra._itest.answer", "feat: blocked");
+      await waitFor("brand-new.md listed", async () => ((await panel()).items.some((i) => i.includes("brand-new.md")) ? true : undefined));
       await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
-      const err = (await view()).lastError ?? "";
-      assert.match(err, /acme hook says no/);
-      assert.ok(!err.endsWith(".."), `one period (${err})`);
+      await waitFor("the new file checked", async () => ((await panel()).checked === "1 file checked" ? true : undefined));
+      // A failed commit: which repository did not commit and why, that the message is kept; no Log reload.
+      fs.writeFileSync(hook, "#!/bin/sh\necho 'acme hook says no' >&2\nexit 1\n", { mode: 0o755 });
+      const reloads = (await snapshot()).stats.reloads;
+      await vscode.commands.executeCommand("linyra._itest.commitSend", { type: "commit", message: "feat: blocked", amend: false, push: false, signOff: false });
+      const err = (await panel()).lastError ?? "";
+      assert.match(err, /^Linyra could not commit: acme-web \(.*acme hook says no.*\)\. The message is kept: fix that, then Commit again\.$/s, err);
       assert.strictEqual((await snapshot()).stats.reloads, reloads, "a failed commit does not reload the Log");
     } finally {
-      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
       fs.rmSync(hook, { force: true });
-      await cfg.update("enableSmartCommit", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-      await cfg.update("smartCommitChanges", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-      // Folder settings live in the repository's .vscode/: gone with the test.
-      fs.rmSync(path.join(web.root, ".vscode"), { recursive: true, force: true });
       fs.rmSync(path.join(web.root, "brand-new.md"), { force: true });
-      cp.execFileSync("git", ["reset", "-q"], { cwd: web.root });
-      cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
-    }
-    await send({ type: "refresh" });
-  });
-
-  it("Commit with the Path box set says how many files the commit really takes, and stops if you decline", async () => {
-    const fs = require("fs") as typeof import("fs");
-    const path = require("path") as typeof import("path");
-    const cp = require("child_process") as typeof import("child_process");
-    const s0 = await until("six rows", (x) => x.rows.length === 6);
-    const web = s0.repos.find((r) => r.name === "acme-web")!;
-    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
-    const head = git("rev-parse", "HEAD");
-    const view = () => vscode.commands.executeCommand<{ items: string[] }>("linyra._itest.uncommitted");
-    try {
-      await vscode.commands.executeCommand("linyra.focusUncommitted");
-      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 7;\n");
-      fs.writeFileSync(path.join(web.root, "outside.md"), "x\n");
-      git("add", "client.ts", "outside.md");
-      // Both staged first (unfiltered), so the next "Staged | 1" is the Path box's own read.
-      await send({ type: "refresh" });
-      await waitFor("both staged", async () => ((await view()).items.some((i) => i.includes("Staged | 2")) ? true : undefined));
-      await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
-      await waitFor("only client.ts shown", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
-      await vscode.commands.executeCommand("linyra._itest.answer", "Cancel");
-      await vscode.commands.executeCommand("linyra.commitRepo", { repoId: web.id });
-      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "The commit takes 2 files in acme-web, not 1.");
-      assert.strictEqual(git("rev-parse", "HEAD"), head, "declined: nothing committed");
-    } finally {
-      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
-      await send({ type: "filter", filter: ALL });
-      git("reset", "-q");
-      fs.rmSync(path.join(web.root, "outside.md"), { force: true });
-      git("checkout", "--", ".");
+      for (const r of [web, api]) {
+        cp.execFileSync("git", ["reset", "-q"], { cwd: r.root });
+        cp.execFileSync("git", ["checkout", "--", "."], { cwd: r.root });
+      }
     }
     await send({ type: "refresh" });
   });
@@ -1522,7 +1484,7 @@ describe("Linyra panel", () => {
       await send({ type: "refresh" });
       await until("docs staged in the store", (x) => work(x, web.id)?.staged.length === 2);
       // Discard rows of two repositories: one prompt for all of them.
-      await vscode.commands.executeCommand("linyra._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("linyra._itest.answer", "Discard Changes");
       await vscode.commands.executeCommand("linyra.discard", row(web.id, "client.ts"), [row(web.id, "client.ts"), row(api.id, "upload.go")]);
       assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Discard changes in 2 files in 2 repositories?");
       await waitFor("both restored", () => (git(web.root, "status", "--porcelain", "--", "client.ts") === "" && git(api.root, "status", "--porcelain") === "" ? true : undefined));

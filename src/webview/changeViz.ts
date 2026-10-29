@@ -1,12 +1,27 @@
 // The Changes column's drawings as numbers, so they can be tested: GitLens's four visualizations
 // (numbers, squares, bar, bipolar) and the ring the narrowest column shows. Pure: no DOM.
-import type { CommitStats } from "../changeStats";
+import type { ChangesMode, CommitStats } from "../changeStats";
 
 /** A churn this large fills the bar: the scale is absolute (√lines), not relative to the rows on screen. */
 export const FULL_CHURN = 1600;
 
 /** How much room the column has, widest first (the Log's width picks one). */
 export type ChangesStage = "full" | "compact" | "mini" | "icon";
+
+/** Per stage, in px: the column's width for a drawing and for numbers, and the drawing's track. */
+export const STAGES: Record<ChangesStage, { column: number; numbers: number; track: number }> = {
+  full: { column: 118, numbers: 124, track: 64 }, compact: { column: 88, numbers: 88, track: 52 },
+  mini: { column: 52, numbers: 52, track: 46 }, icon: { column: 18, numbers: 28, track: 0 },
+};
+export const columnWidth = (mode: Exclude<ChangesMode, "off">, stage: ChangesStage): number => (mode === "numbers" ? STAGES[stage].numbers : STAGES[stage].column);
+
+/** The stage the Log's width allows: the subject keeps most of a narrow Log. */
+export const stageFor = (logWidth: number): ChangesStage => (logWidth >= 1150 ? "full" : logWidth >= 950 ? "compact" : logWidth >= 760 ? "mini" : "icon");
+
+/** The widest stage a column the user sized holds (the column header's sash). */
+export function stageForWidth(mode: Exclude<ChangesMode, "off">, px: number): ChangesStage {
+  return (["full", "compact", "mini"] as const).find((stage) => columnWidth(mode, stage) <= px) ?? "icon";
+}
 
 /** "999+" past what a count shows. */
 export const capped = (n: number, cap = 999): string => (n > cap ? `${cap}+` : String(n));

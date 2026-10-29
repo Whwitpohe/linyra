@@ -1,7 +1,9 @@
 import { branchGroupKey, branchKey, type Branch, type Branches, type BranchSidebarState } from "../branchModel";
 import type { ResolvedProfile } from "../profileModel";
 import { stashLabel, type Stash } from "../stashModel";
+import { worktreeLabel, type Worktree } from "../worktreeModel";
 import type { Repo } from "../types";
+import type { Operation } from "../repoMarkModel";
 import { fuzzyMatch, paneRows, type PaneRow } from "./repoPaneModel";
 
 /**
@@ -11,11 +13,13 @@ import { fuzzyMatch, paneRows, type PaneRow } from "./repoPaneModel";
  */
 export type TreeRow =
   | (PaneRow & { key: string; depth: 0; expanded?: boolean })
-  | { kind: "group"; key: string; depth: 1; repo: Repo; group: "local" | "remote" | "tag" | "stash"; label: string; expanded: boolean }
+  | { kind: "group"; key: string; depth: 1; repo: Repo; group: "local" | "remote" | "tag" | "stash" | "worktree"; label: string; expanded: boolean }
   | { kind: "remote"; key: string; depth: 2; repo: Repo; label: string; expanded: boolean }
   | { kind: "branch"; key: string; depth: 2 | 3; repo: Repo; branch: Branch; label: string; favorite: boolean; parent: string }
   | { kind: "stash"; key: string; depth: 2; repo: Repo; stash: Stash; label: string; parent: string }
-  | { kind: "message"; key: string; depth: 1 | 2; repo: Repo; label: string };
+  | { kind: "worktree"; key: string; depth: 2; repo: Repo; worktree: Worktree; label: string; parent: string }
+  | { kind: "message"; key: string; depth: 1 | 2; repo: Repo; label: string }
+  | { kind: "operation"; key: string; depth: 1; repoId: string; operation: Operation; conflicts: number; child: boolean };
 
 /** One repository's branch listing as the pane holds it. */
 export interface BranchTreeData { data?: Branches; loading?: boolean; error?: string }
@@ -59,7 +63,9 @@ export function treeRows(repos: readonly Repo[], query: string, profiles: readon
     const all = item.data.branches.filter((b) => !q || byName.has(repo.id) || hit(b))
       .sort((a, b) => Number(b.current) - Number(a.current) || Number(favorites.has(branchKey(repo.id, b.ref))) - Number(favorites.has(branchKey(repo.id, a.ref))) || a.name.localeCompare(b.name));
     const stashes = (item.data.stashes ?? []).filter((s) => !q || byName.has(repo.id) || stashLabel(s).toLowerCase().includes(q));
-    if (!all.length && !stashes.length) {
+    // The repository's other worktrees (its own folder is the row above).
+    const worktrees = (item.data.worktrees ?? []).filter((w) => !w.current && (!q || byName.has(repo.id) || worktreeLabel(w).toLowerCase().includes(q)));
+    if (!all.length && !stashes.length && !worktrees.length) {
       rows.push({ kind: "message", key: `${key}\0empty`, depth: 1, repo, label: "No branches" });
       continue;
     }
@@ -90,6 +96,13 @@ export function treeRows(repos: readonly Repo[], query: string, profiles: readon
       rows.push({ kind: "group", key: stashKey, depth: 1, repo, group: "stash", label: "Stashes", expanded: stashOpen });
       if (stashOpen) for (const s of stashes) rows.push({ kind: "stash", key: `${stashKey}\0${s.ref}`, depth: 2, repo, stash: s, label: stashLabel(s), parent: stashKey });
     }
+    // Worktrees, only when the repository has linked ones: open, reveal or remove each.
+    if (worktrees.length) {
+      const wtKey = branchGroupKey("worktree", repo.id);
+      const wtOpen = !!q || open.has(wtKey);
+      rows.push({ kind: "group", key: wtKey, depth: 1, repo, group: "worktree", label: "Worktrees", expanded: wtOpen });
+      if (wtOpen) for (const w of worktrees) rows.push({ kind: "worktree", key: `${wtKey}\0${w.path}`, depth: 2, repo, worktree: w, label: worktreeLabel(w), parent: wtKey });
+    }
   }
   return rows;
 }
@@ -110,6 +123,23 @@ export function expandAll(repos: readonly Repo[], state: BranchSidebarState): Br
 /** Collapse All: every repository, group and remote closed; favorites stay. */
 export function collapseAll(state: BranchSidebarState): BranchSidebarState {
   return { ...state, expanded: [] };
+}
+
+/**
+ * A merge, rebase, cherry-pick, revert or patch series stopped in a repository: a row right under
+ * it that says so, its next step one Enter away (Resolve while files conflict, else Continue).
+ * It shows under a collapsed repository too (what stopped stays in sight); there it is not the
+ * repository's child (`child`: a collapsed tree item shows none).
+ */
+export function withOperations(rows: readonly TreeRow[], stopped: ReadonlyMap<string, { operation: Operation; conflicts: number }>): TreeRow[] {
+  if (stopped.size === 0) return [...rows];
+  const out: TreeRow[] = [];
+  for (const row of rows) {
+    out.push(row);
+    const op = row.kind === "repo" ? stopped.get(row.id) : undefined;
+    if (row.kind === "repo" && op) out.push({ kind: "operation", key: `op\0${row.id}`, depth: 1, repoId: row.id, operation: op.operation, conflicts: op.conflicts, child: row.expanded === true });
+  }
+  return out;
 }
 
 /** The row a child belongs to (Left arrow): the nearest row above it at a smaller depth. */

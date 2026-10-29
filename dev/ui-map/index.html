@@ -31,6 +31,7 @@
   --vs-menu: #ffffff;
   --vs-add: #388a34;
   --vs-mod: #895503;
+  --vs-btn: #005fb8; --vs-btn-fg: #ffffff;
   --c-web: #1a85ff; --c-api: #9b59d0; --c-libs: #2a9d4b; --c-docs: #0ea5b7;
   --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -42,6 +43,7 @@
   --vs-bg: #1f1f1f; --vs-panel: #181818; --vs-border: #2b2b2b; --vs-fg: #cccccc; --vs-dim: #9d9d9d;
   --vs-input: #313131; --vs-input-border: #3c3c3c; --vs-sel: #04395e; --vs-hover: #2a2d2e; --vs-menu: #252526;
   --vs-add: #81b88b; --vs-mod: #e2c08d;
+  --vs-btn: #0078d4; --vs-btn-fg: #ffffff;
   color-scheme: dark;
 } }
 :root[data-theme="dark"] {
@@ -50,6 +52,7 @@
   --vs-bg: #1f1f1f; --vs-panel: #181818; --vs-border: #2b2b2b; --vs-fg: #cccccc; --vs-dim: #9d9d9d;
   --vs-input: #313131; --vs-input-border: #3c3c3c; --vs-sel: #04395e; --vs-hover: #2a2d2e; --vs-menu: #252526;
   --vs-add: #81b88b; --vs-mod: #e2c08d;
+  --vs-btn: #0078d4; --vs-btn-fg: #ffffff;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -168,6 +171,9 @@ section { display: grid; gap: 16px; }
 .ux-bar { display: inline-block; width: 44px; height: 6px; border-radius: 1px; background: linear-gradient(90deg, var(--vs-add) 0 38%, #c74e39 38% 52%, var(--vs-border) 52%); }
 .ux-alias { float: right; color: var(--vs-dim); font-family: var(--mono); }
 .ux-row { display: grid; grid-template-columns: 3px 70px 20px 1fr auto 44px 76px 60px; gap: 8px; align-items: center; height: 26px; font-size: 13px; position: relative; }
+.ux-colhead { display: grid; grid-template-columns: 81px 20px 1fr auto 44px 76px 60px; gap: 8px; align-items: center; height: 22px; padding-left: 0; font-size: 11px; color: var(--vs-dim); border-bottom: 1px solid var(--vs-border); position: relative; }
+.ux-colhead .opt { color: var(--vs-fg); margin-left: 4px; }
+.ux-colhead .sash { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--c-web); }
 .ux-strip { display: block; width: 3px; align-self: stretch; border-radius: 2px; position: relative; }
 .ux-name { white-space: nowrap; }
 .ux-disc { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9px; font-weight: 600; border: 1.5px solid; position: relative; }
@@ -194,6 +200,20 @@ section { display: grid; gap: 16px; }
 .ux-pane { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; position: relative; }
 .ux-menu { margin-top: 6px; padding: 4px 8px; background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 4px; position: relative; }
 .del { color: #c74e39; }
+/* The branch sheet: the Changes view's details area while a branch pill's sheet is open. */
+.bs { display: grid; gap: 8px; padding: 10px; font-size: 12px; align-content: start; }
+.bs-head { display: flex; align-items: center; gap: 6px; position: relative; }
+.bs-tag { font-size: 11px; border: 1px solid var(--vs-dim); color: var(--vs-dim); border-radius: 9px; padding: 0 6px; }
+.bs-card { display: grid; gap: 5px; padding: 8px 10px; border: 1px solid var(--vs-border); border-radius: 4px; position: relative; }
+.bs-title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--vs-dim); }
+.bs-title code { text-transform: none; color: var(--vs-fg); font-weight: 600; }
+.bs-chip { font-size: 11px; font-weight: 600; border: 1px solid currentColor; border-radius: 9px; padding: 0 6px; margin-left: 4px; text-transform: none; letter-spacing: 0; }
+.bs-chip.bad { color: #c74e39; }
+.bs-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.bs-btn { padding: 1px 9px; border: 1px solid var(--vs-input-border); border-radius: 2px; }
+.bs-btn.primary { background: var(--vs-btn); color: var(--vs-btn-fg); border-color: var(--vs-btn); }
+.bs-step { display: flex; align-items: center; gap: 8px; }
+.bs-step .bs-btn { margin-left: auto; }
 </style>
 
 </head>
@@ -273,14 +293,15 @@ section { display: grid; gap: 16px; }
   <div class="gloss">
     <div class="g"><i class="num">1</i><b>Linyra panel</b><span>The "Linyra" tab in VS Code's bottom panel. Holds every Linyra view.</span></div>
     <div class="g"><i class="num">2</i><b>Log view</b><span>The merged history of every repository. Everything on its left side, down to the footer, belongs to it.</span></div>
-    <div class="g"><i class="num">3</i><b>Log header</b><span>One row, as the JetBrains Log keeps it: the Commits | Uncommitted switch, the Filter bar, then the actions — show/hide changed files, repository grouping, Compare, Fetch All, Update Project… (⇣), Push… (⇡) and ⋯. It wraps onto a second row only when the Log is narrow. ⋯ holds Branches Across Repositories…, the pull/profile items, the Uncommitted side bar, the Changes layout (automatic, side by side, stacked), the view options (Highlight My Commits, Highlight Current Branch, Show Hash Column) and Collapse/Expand Linear Branches.</span></div>
+    <div class="g"><i class="num">3</i><b>Log header</b><span>One row, as the JetBrains Log keeps it: the Commits | Uncommitted switch, the Filter bar, then the actions — show/hide changed files, repository grouping, Compare, Fetch All, Update Project… (⇣), Push… (⇡) and ⋯. It wraps onto a second row only when the Log is narrow. ⋯ holds Branches Across Repositories…, Tag Across Repositories…, Run Git Command Across Repositories…, Release… (and, while one is stopped, Abort in All Repositories…), the pull/profile items, the Uncommitted side bar, the Changes layout (automatic, side by side, stacked), and what the rows highlight (Highlight My Commits, Highlight Current Branch); each column's own options are on the Column header (74).</span></div>
     <div class="g"><i class="num">4</i><b>Repo List</b><span>The tree of repositories on the Log's left, as the JetBrains Branches panel groups a multi-root project. Tick to choose which repositories the Log shows; ▸ opens a repository onto its Local, Remote and Tags branches. Today's name in the code is "Repositories pane".</span></div>
     <div class="g"><i class="num">5</i><b>Repo search</b><span>"Find repo or branch": narrows the Repo List by repository name, and finds branch names too (a repository found by a branch opens on the matches).</span></div>
     <div class="g"><i class="num">6</i><b>All repositories row</b><span>Ticks or unticks every repository; shows how many are picked.</span></div>
     <div class="g"><i class="num">6a</i><b>Profile row</b><span>A saved group of repositories (linyra.profiles). Click: tick exactly them; highlighted while the ticks are that profile. ⚠ when some are not in this workspace. Right-click: Show, Update to Current Selection, Rename…, Delete. ⋯ → Switch Profile… does the same with the Repo List hidden.</span></div>
     <div class="g"><i class="num">6b</i><b>Save as profile row</b><span>"＋ Save as profile…": shown while the ticked repositories are neither All nor a profile. Click to name them. Right-click a repository for Profiles… (which profiles it is in).</span></div>
     <div class="g"><i class="num">7</i><b>Sync badge</b><span>↓ commits to pull, ↑ commits not pushed, as of the last fetch.</span></div>
-    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: ▸, checkbox, color dot (same color as its band in the Commit list), name. Right-click for the Repo menu. Opened: its Local, Remote and Tags groups; a branch row filters the Log to it (never checks it out), ☆ marks a favorite, right-click holds the branch actions (tags: check out detached, push, delete).</span></div>
+    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: ▸, checkbox, color dot (same color as its band in the Commit list), name, then its branch with VS Code's * + ! for uncommitted work (a narrow list names only a branch the other ticked repositories are not on, as an icon), and a stopped merge, rebase, cherry-pick or revert as the merge icon, "merging" and "2 conflicts" (a narrow list keeps the icon and the count; right-click: Resolve Conflicts…, Continue, Abort…, Abort in All Repositories…, Apply Patch…). Right-click for the Repo menu. Opened: its Local, Remote and Tags groups; a branch row filters the Log to it (never checks it out), ☆ marks a favorite, right-click holds the branch actions (tags: check out detached, push, delete); a checkout refused for local changes offers Smart Checkout. A Worktrees group lists the repository's linked worktrees: Open in New Window, Reveal, Copy Path, Remove Worktree….</span></div>
+    <div class="g"><i class="num">77</i><b>Stopped operation row</b><span>Under a repository whose merge, rebase, cherry-pick, revert or patch series stopped: "Merge stopped · 2 files conflict" with Resolve… (or Continue once nothing conflicts) and Abort…; Enter runs the next step, right-click holds the same and Continue. A narrow Repo List keeps the buttons' icons. The repository's own badge keeps the merge icon and the count.</span></div>
     <div class="g"><i class="num">9</i><b>Filter bar</b><span>The boxes above the commits. Every filter runs inside git.</span></div>
     <div class="g"><i class="num">10</i><b>Search box</b><span>GitLens's search syntax, pushed into git log: plain words and message: (=:), -message:, author: (@:, @me), committer:, commit: (#:), file: (?:), change: (~:), type: (is:), after: (since:, &gt;:), before: (until:, &lt;:), ref: (^:) and Linyra's repo:. The Operator popup (55) lists them; ↑/↓ recall recent searches; Enter runs at once. Its toggles: Match Case, Whole Word, Regex, Match All (56) and ✨ (57). Hashes still jump straight to their commits.</span></div>
     <div class="g"><i class="num">11</i><b>Author box</b><span>Searchable multi-select checklist, with the Me toggle and each repository's own identity.</span></div>
@@ -292,10 +313,10 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">17</i><b>Commit row</b><span>Repository strip (51), the real parent graph with Author discs (52), the subject, Branch pills (53), author and date. Resting the pointer opens the Commit hover card (54). Hovering a disc of a linear run shows its fold box; selection keeps real commit ids.</span></div>
     <div class="g"><i class="num">18</i><b>Load more</b><span>The next page of commits.</span></div>
     <div class="g"><i class="num">19</i><b>Log footer</b><span>The selected date/topology order, branch-scope coverage, folded count and commit count.</span></div>
-    <div class="g"><i class="num">20</i><b>Changes view</b><span>Integrated changed-file region with its own toolbar, file search and independent scrolling. It can also open as a movable editor tab.</span></div>
-    <div class="g"><i class="num">21</i><b>Commit details</b><span>Under its pane header (66): the title, the message body as written, then the facts in the secondary color — repository, hash, author, date (never broken mid-line), Parent links (66) and the branch pills. Drag its divider to resize; a click on the header folds it.</span></div>
+    <div class="g"><i class="num">20</i><b>Changes view</b><span>Integrated changed-file region with its own toolbar, file search and independent scrolling. It can also open as a movable editor tab. Its files are the same tree as Compare's sides: ↑ ↓ Home End PageUp PageDown (Shift extends, Ctrl moves the focus alone, Ctrl+Space picks), ← → close, open or go up, Enter opens, Space folds a folder, Ctrl+A, and typing a name goes to it.</span></div>
+    <div class="g"><i class="num">21</i><b>Commit details</b><span>Under its pane header (66): the title, the message body as written, then the facts in the secondary color — repository, hash, author, date (never broken mid-line), Parent links (66) and the branch pills. Drag its divider to resize; a click on the header folds it. A branch pill's click shows the Branch sheet (70) here instead.</span></div>
     <div class="g"><i class="num">22</i><b>Folder row</b><span>A folder, with how many changed files it holds.</span></div>
-    <div class="g"><i class="num">23</i><b>File row</b><span>A changed file: +/− lines and its A/M/D/R badge. Click opens the diff.</span></div>
+    <div class="g"><i class="num">23</i><b>File row</b><span>A changed file, drawn the same in the Changes view, Compare's sides and File History: its name in the status color (struck through when deleted), a rename's old name and any note muted, + lines in the add color and − in the delete color whatever the status, then its letter in one column (A, M, D, R, C, T, U untracked). The Commit side bar draws the same letter and color as VS Code's file decoration. Click opens the diff.</span></div>
   </div>
 </section>
 
@@ -311,9 +332,9 @@ section { display: grid; gap: 16px; }
       <div class="menu t"><i class="n tl">25</i>
         <div class="cap">Repo menu</div>
         <div class="it">Pull <span class="ghost">(only when ↓)</span></div><hr>
-        <div class="it">Show Only This Repository</div><div class="it">Hide from the Log</div>
+        <div class="it">Show Only This Repository</div><div class="it">Untick</div>
         <div class="it">Show All Repositories</div><div class="it">Show Only Repositories Behind</div><hr>
-        <div class="it">Open Folder in New Window</div><hr><div class="it">Copy Path</div><hr><div class="it">Exclude from Linyra</div>
+        <div class="it">Open Folder in New Window</div><hr><div class="it">Copy Path</div><hr><div class="it">Always Hide (Settings)</div>
       </div>
       <div class="menu t"><i class="n tl">26</i>
         <div class="cap">Commit menu</div>
@@ -421,10 +442,10 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>Changes toolbar: switch all/changed files, clear a combined selection, expand/collapse all, copy commit data or open Changes independently.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository on the Uncommitted side. A file staged and changed again is in both.</span></div>
     <div class="g"><i class="num">28</i><b>Linyra Compare tab</b><span>A panel tab next to Linyra (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
-    <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>Branch pickers (a side may tick several names; their numbers are the order, ∧ ∨ change it; Default branch is each repository's origin/HEAD), swap, Files/Commits, refresh, shared-file filtering, Show Only Conflicts (pressed while on, with how many files would conflict), Merge ◀ into ▶… (a checklist; into ▶ itself, checked out or not, the working tree untouched where it is not), Copy ◀ Commits as Release Notes, layout, side visibility and Close. All original commands remain reachable.</span></div>
+    <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>Branch pickers (a side may tick several names; their numbers are the order, ∧ ∨ change it; Default branch is each repository's origin/HEAD), swap, Files/Commits, refresh, shared-file filtering, Show Only Conflicts (pressed while on, with how many files would conflict), Merge into ▶… (a labeled button after the pickers, with ▶'s real name: a checklist; into ▶ itself, checked out or not, the working tree untouched where it is not), Copy ◀ Commits as Release Notes, layout (Left and Right Side by Side / Left Above Right), side visibility and Close. All original commands remain reachable.</span></div>
     <div class="g"><i class="num">32</i><b>Branch picker</b><span>Opens under a branch box: a search box over Recent pairs, Favorites ★, Local and Remote, each name "in N repositories".</span></div>
     <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its Repo List color and name (commit counts in the tooltip), and its merge note: ✓ merges cleanly, or ⚠ and how many files would conflict (git merge-tree, in memory). With several names on a side, a second line says which ones it uses ("develop-k → main"). "no common history" or "git error" when it cannot be compared. All repositories, at the top when two or more differ, shows every one in one tree; Ctrl/Shift-click picks several for that tree (Merge and Release Notes then take just those). The merge note turns while its check runs: the list never waits for it. ▸ unfolds the changes committed on both sides. Selecting it fills Left and Right. Right-click: the repository menu.</span></div>
-    <div class="g"><i class="num">34</i><b>Left and Right views</b><span>Two resizable regions within one Compare surface. Folder/commit text selects a row; only the small arrow or a keyboard action folds it; Ctrl/Shift-click selects several (Cherry-Pick takes them all). Each has a filter box. Both sides retain display mode, shared-file filtering, expand/collapse, Show More and file/commit context menus; a conflicted file adds Preview Merge Result.</span></div>
+    <div class="g"><i class="num">34</i><b>Left and Right views</b><span>Two resizable regions within one Compare surface, each the Changes view's tree (20): a click on a folder or commit opens or closes it, its arrow alone keeps the selection; Ctrl/Shift-click selects several (Cherry-Pick takes them all). Each has a filter box (Ctrl+F), which says when nothing matches. Both sides retain display mode, shared-file filtering, expand/collapse, Show More and file/commit context menus; a conflicted file adds Preview Merge Result.</span></div>
     <div class="g"><i class="num">35</i><b>On both duplicates</b><span>Under a Repositories row (its ▸): each change committed on both sides (cherry-picked), with both commit ids.</span></div>
     <div class="g"><i class="num">36</i><b>Missing a branch</b><span>Missing repositories are listed separately. Its small arrow expands the names; the heading text and right-hand blank space do not.</span></div>
   </div>
@@ -456,12 +477,12 @@ section { display: grid; gap: 16px; }
   </div>
   <div class="gloss">
     <div class="g"><i class="num">43</i><b>Commit side bar</b><span>The Linyra icon in the Activity Bar, as the JetBrains Commit window: a native tree of every ticked repository's uncommitted work with a checkbox on each row (files carry your file icon theme's icons and Source Control's letters), and below it the Commit Message view. VS Code's own Activity Bar menu hides it.</span></div>
-    <div class="g"><i class="num">44</i><b>Commit toolbar</b><span>The view's title: how much is uncommitted, then Refresh, Rollback… (Ctrl+Alt+Z: the selected rows, else the checked files, after one prompt) and Collapse All. Its ⋯ menu: Group by Repository and Group by Directory (on or off), Commit Message History….</span></div>
+    <div class="g"><i class="num">44</i><b>Commit toolbar</b><span>The view's title: how much is uncommitted, then Refresh, Discard Changes (Ctrl+Alt+Z: the selected rows, else the checked files, after one prompt) and Collapse All. Its ⋯ menu: Group by Repository and Group by Directory (on or off), Commit Message History….</span></div>
     <div class="g"><i class="num">45</i><b>Changes and Unversioned Files</b><span>Tracked changes, checked by default; new files, unchecked until you check them, under an Unversioned Files that starts collapsed: checked, they are added with the commit; Add to VCS (Ctrl+Alt+A, or the + on the row) adds them now. Staged and unstaged halves of a file are one row: the commit takes the file as it is.</span></div>
     <div class="g"><i class="num">46</i><b>Checkbox</b><span>On a list, repository or folder it checks everything under it. VS Code's checkboxes have no third state: a partly checked row says "2 of 5 files checked".</span></div>
-    <div class="g"><i class="num">47</i><b>Commit file row</b><span>Click (or Ctrl+D): the diff, last commit ↔ working tree. Hover: Open File and one of three, never alike: Rollback (a tracked change: back to the last commit), Remove from VCS (an added file: out of the index, kept on disk) or Delete (a new file: from the disk, Delete key). Right-click: Show Diff, Open File, Add to VCS, Add to .gitignore, Rollback…, Remove from VCS, Delete…, File History, Copy Path. A repository row adds Stash Changes…, Pull, Open Folder.</span></div>
+    <div class="g"><i class="num">47</i><b>Commit file row</b><span>Click (or Ctrl+D): the diff, last commit ↔ working tree. Hover: Open File and one of three, never alike: Discard Changes (a tracked change: back to the last commit), Remove from VCS (an added file: out of the index, kept on disk) or Delete (a new file: from the disk, Delete key). Right-click: Show Diff, Open File, Add to VCS, Add to .gitignore, Discard Changes, Remove from VCS, Delete…, File History, Copy Path. A repository row adds Stash Changes…, Pull, Open Folder.</span></div>
     <div class="g"><i class="num">48</i><b>Amend</b><span>The checked files join each repository's last commit, under the new message. With an empty box it brings the last commit's message to edit; a commit already pushed asks first. Beside it: Sign-off (kept), Author… (the next commit's author, shown under the options until it commits or × clears it) and Commit Message History (Ctrl+M: the messages committed here).</span></div>
-    <div class="g"><i class="num">49</i><b>Commit message</b><span>The Commit Message view below the tree, kept as a draft per workspace. Drag the views' divider to size it.</span></div>
+    <div class="g"><i class="num">49</i><b>Commit message</b><span>The Commit Message view below the tree, kept as a draft per workspace, prefilled from git's commit.template (its # lines are the placeholder). Hints under it: a subject or body line over 72 characters, no blank line after the subject. Drag the views' divider to size it.</span></div>
     <div class="g"><i class="num">50</i><b>Commit and Commit and Push…</b><span>Ctrl+Enter / Ctrl+Alt+K. One commit per repository with checked files, of exactly those files (git commit --only): anything else staged stays staged. Push… then offers the repositories just committed in.</span></div>
   </div>
 </section>
@@ -483,6 +504,9 @@ section { display: grid; gap: 16px; }
             <div><code>file:</code> commits that touched a file, folder or glob <span class="ux-alias">?:</span></div>
             <div><code>ref:</code> a branch, tag or range, in the repositories that have it <span class="ux-alias">^:</span></div>
             <div><code>repo:</code> only these repositories</div>
+          </div>
+          <div class="ux-colhead t"><i class="n l">74</i>
+            <span>Repository</span><span class="t">⑂▾<i class="n tr">75</i></span><span>Message <span class="opt">⌕ ⚙</span></span><span></span><span>Author <span class="opt">⏷</span></span><span class="t">Changes ▾<i class="n tr">76</i></span><span>Date ⏷</span>
           </div>
           <div class="ux-row t"><i class="n l">17</i>
             <span class="ux-strip bg-web t"><i class="n tl">51</i></span><span class="ux-name">acme-web</span>
@@ -526,14 +550,14 @@ section { display: grid; gap: 16px; }
   <div class="gloss">
     <div class="g"><i class="num">51</i><b>Repository strip</b><span>The Repository column: a 3px strip in the repository's color, one unbroken strip for a run of its commits, with the name beside it in the row's text color. Narrow, and in File History, only the strip.</span></div>
     <div class="g"><i class="num">52</i><b>Author disc</b><span>A commit's node: the author's initial (a CJK name: its last character) ringed in the repository's color; a thicker ring is your commit. An avatar covers the initial when the repository's own host has one (linyra.avatars). Merges keep the small hollow dot; hovering a disc of a linear run shows its fold box.</span></div>
-    <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Click: the branch in the Repo List. Right-click: the Repo List's branch menu (and the AI items while AI is on).</span></div>
+    <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Click: its Branch sheet (70) in the Changes view, the pill outlined while the sheet is open. Right-click: the Repo List's branch menu (and the AI items while AI is on).</span></div>
     <div class="g"><i class="num">54</i><b>Commit hover card</b><span>Opens when the pointer rests on a row for half a second: author (you, for your commits), relative and absolute time, hash, repository and pills at once; then one git show adds the message and the file and line counts. On the HEAD row: its merge target and Compare. Leaving the row kills the read.</span></div>
     <div class="g"><i class="num">55</i><b>Operator popup</b><span>Under the Search box while it is empty or an operator is being typed (GitLens's search popup): every operator with an icon, what it does and its aliases; typing a value suggests authors, branches and tags, repositories or types. ↓/↑ move, Enter or Tab picks, Esc closes.</span></div>
     <div class="g"><i class="num">69</i><b>Search help line</b><span>The Operator popup's first line: how to combine filters, or, inside an operator's value, that operator's examples. It stays put while the rows scroll.</span></div>
     <div class="g"><i class="num">56</i><b>Whole Word and Match All</b><span>Beside Match Case and Regex. Whole Word matches whole words only; Match All needs every message term (git's --all-match), where plain words otherwise match any.</span></div>
     <div class="g"><i class="num">57</i><b>✨ in the Search box</b><span>Natural language: what you type goes to Linyra AI, which writes the operator query back into the box and runs it. Unavailable (with a way to set it up) until AI is configured.</span></div>
     <div class="g"><i class="num">58</i><b>Ask AI button</b><span>✨ in the Log header while AI is on: ask Linyra in words; read-only steps run at once, and anything that writes to a repository is listed in one prompt first.</span></div>
-    <div class="g"><i class="num">61</i><b>Changes column</b><span>In the Log, between the author and the date: each commit's files and lines as numbers, squares, a bar (the default) or a bipolar bar — the ⋯ menu picks, or turns it off. It narrows with the Log, down to a ring; one git process per repository on screen, each commit read once a session.</span></div>
+    <div class="g"><i class="num">61</i><b>Changes column</b><span>In the Log, between the author and the date: each commit's files and lines as numbers, squares, a bar (the default) or a bipolar bar — its header's menu picks (76); Columns turns it off. It narrows with the Log, down to a ring; one git process per repository on screen, each commit read once a session.</span></div>
     <div class="g"><i class="num">59</i><b>Change column</b><span>File History only: what each commit did to the file — its letter (A, M, D, R in Source Control's colors) and its lines added and deleted; a rename shows ← the old path.</span></div>
     <div class="g"><i class="num">60</i><b>Uncommitted changes row</b><span>File History only, above the commits when the file has uncommitted work: opens last commit ↔ working tree. No git process: it comes from the same reads as the Uncommitted side.</span></div>
     <div class="g"><i class="num">62</i><b>Uncommitted row</b><span>One repository's uncommitted work: its File counts (63) over the Meter (64), the files, the staged tag, its Work branch pill (65) and when a file was last edited.</span></div>
@@ -543,9 +567,153 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">66</i><b>Details header and parent links</b><span>The Commit details' pane header (VS Code's look; a click folds it) and each parent's hash, which selects that commit in the Log.</span></div>
     <div class="g"><i class="num">67</i><b>Explain link</b><span>In the hover card while AI is on: Explain Changes for this commit.</span></div>
     <div class="g"><i class="num">68</i><b>AI menu items</b><span>Explain, Review and Release Notes on commits; Explain Working Changes, Resolve Conflicts… and Generate Commit Message in the Commit side bar; Explain and Release Notes in Compare. Shown only while linyra.ai.enabled is on; Configure AI… is in the Log's ⋯ menu.</span></div>
+    <div class="g"><i class="num">74</i><b>Column header</b><span>A row over the commits, sticky as they scroll, its cells over the rows' cells (one column layout, logColumns.ts): Repository, Graph, Message, Hash, Author, Changes, Date. A column's options show on hover or focus (Message: search and Columns…; Author: its filter); a filter that is on stays shown (Date's filled funnel). Drag a column's inner edge to resize it, double-click for its automatic width. Right-click, the gear or Shift+F10: Columns — Repository Name, Hash, Author, Changes, Date, Reset Column Widths. One Tab stop, ← → between its buttons.</span></div>
+    <div class="g"><i class="num">75</i><b>Graph menu</b><span>The Graph column's header: the Log's order — By commit date, or By branch structure (git's topological order; the button shows it while on) — and Collapse / Expand Linear Branches. Sorting by another column would tear the graph apart, so only this one orders.</span></div>
+    <div class="g"><i class="num">76</i><b>Changes menu</b><span>The Changes column's drawing: Numbers, Squares, Bar or Bipolar Bar (as GitLens's Change Visualization); a narrow column shows an icon for its header. Date's own menu: Relative or Absolute time, and Filter by Date….</span></div>
   </div>
 </section>
 </div>
+
+<section aria-labelledby="s-sheet">
+  <div class="sec-head"><h2 id="s-sheet">The branch sheet</h2><span class="pill now">Exists</span></div>
+  <p class="how">A branch pill's click (53), or Show Branch Sheet on its right-click, shows the branch in the Changes view where the Commit details (21) were; Esc, × or another row brings them back. Plan <code>docs/superpowers/plans/2026-10-29-branch-sheet.md</code>.</p>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 360px">
+        <div class="view">
+          <div class="vhead">▾ Branch</div>
+          <div class="vbody bs t"><i class="n tl">70</i>
+            <div class="bs-head"><b>⎇ develop</b><span class="bs-tag">checked out</span><span class="desc" style="margin-left:auto">⊙ ⧉ ×</span></div>
+            <div class="desc"><span class="dot bg-web" style="display:inline-block"></span> acme-web · <code>a42a50e</code> feat(web): keyboard shortcuts · dana · 1mo ago</div>
+            <div class="bs-card t"><i class="n tl">71</i>
+              <div class="bs-title">Upstream <code>origin/develop</code><span class="bs-chip bad">Diverged</span></div>
+              <div>2 commits to push · 1 to pull.</div>
+              <div class="desc">Pushed commits were rewritten, or both sides have new commits.</div>
+              <div class="bs-btns"><span class="bs-btn primary">Pull</span><span class="bs-btn">Force Push…</span><span class="bs-btn">Fetch</span></div>
+            </div>
+            <div class="bs-card t"><i class="n tl">72</i>
+              <div class="bs-title">Merges into <code>origin/main</code><span class="bs-chip bad">2 files conflict</span></div>
+              <div>4 commits not on origin/main · 3 behind.</div>
+              <div class="desc">Merging it in stops on them to resolve.</div>
+              <div class="bs-btns"><span class="bs-btn">Merge</span><span class="bs-btn">Rebase</span><span class="bs-btn">Review</span></div>
+            </div>
+            <div class="bs-card t"><i class="n tl">73</i>
+              <div class="bs-title">Next steps</div>
+              <div class="bs-step">Explain the unpushed commits <span class="bs-btn">Explain</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">70</i><b>Branch sheet</b><span>One branch, tag or remote branch: its name and whether it is checked out (or in which worktree), its repository, its tip commit (a click selects it), then the cards below. Read with at most four git processes; it follows ref changes. One primary button on the whole sheet; ⊙ Reveal in Repo List, ⧉ Copy name, × close.</span></div>
+    <div class="g"><i class="num">71</i><b>Upstream card</b><span>A local branch against its upstream as of the last fetch: up to date, to push, to pull, diverged (Pull or Force Push…), gone on the remote (Delete Branch… or Publish), or not published.</span></div>
+    <div class="g"><i class="num">72</i><b>Merges into card</b><span>Its commits not on the merge target and how far behind it is; whether merging it in conflicts, predicted with git merge-tree without writing to the repository (Git 2.38+; otherwise "Conflicts unknown"); merged: safe to delete.</span></div>
+    <div class="g"><i class="num">78</i><b>Across repositories</b><span>The sheet's last card: where the same branch (or tag) is in the other ticked repositories, read only when its button asks (one git process per repository). One line sums it up ("develop is in 12 of 68 repositories: 3 checked out · 2 with commits to push…"); each repository that has it is a row (checked out, ↑ ↓, diverged, gone) that opens its own sheet; the rest are named in one line. Check Out Everywhere… (asks first), Push… and Update Project… run the commands that already work across repositories.</span></div>
+    <div class="g"><i class="num">73</i><b>Next steps</b><span>Never empty, each with its icon: the steps that fit its state (Switch, the worktree that has it, Explain with AI on; a remote branch's Check out, Fetch, Review; a tag's Check out (detached), Create Branch…, Push…), then Show History (its commits alone in the Log), Compare… (with another branch, in every repository) and, for the checked-out branch, Create Branch…. The Upstream's and Merges into's names are links to their own sheets; a pencil beside the upstream changes it.</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-ai">
+  <div class="sec-head"><h2 id="s-ai">The Linyra AI page</h2><span class="pill now">Exists</span></div>
+  <p class="how">One editor tab for Linyra AI: Configure AI…, Switch AI Model… and Remove AI Profile… (the Log's ⋯ menu, the Command Palette) open it, and an AI feature that is not set up yet opens it too. It replaced the popups at the top of the window. Plan <code>docs/superpowers/plans/2026-10-30-ai-settings.md</code>.</p>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 520px">
+        <div class="view t"><i class="n tl">74</i>
+          <div class="vhead">✦ Linyra AI</div>
+          <div class="vbody" style="display:grid; gap:10px; padding:10px">
+            <div class="bs-head t"><i class="n tl">75</i><b>◉ AI features</b><span class="desc">On: ✦ uses “Anthropic · claude-opus-5-5”.</span><span class="desc" style="margin-left:auto">More settings…</span></div>
+            <div class="bs-card t"><i class="n tl">76</i>
+              <div class="bs-head"><b>✓ Anthropic · claude-opus-5-5</b><span class="bs-tag">In use</span><span class="bs-btns" style="margin-left:auto"><span class="bs-btn">Edit</span><span class="bs-btn">Remove…</span></span></div>
+              <div class="desc">Anthropic · api.anthropic.com · Thinking: High · Key stored</div>
+              <div class="bs-card t"><i class="n tl">77</i>
+                <div>⚠ <b>Remove the AI profile “Anthropic · claude-opus-5-5”?</b></div>
+                <div class="desc">Its API key is deleted from VS Code's secret storage. Linyra AI will use “Local llama” instead.</div>
+                <div class="bs-btns"><span class="bs-btn primary">Remove</span><span class="bs-btn">Cancel</span></div>
+              </div>
+            </div>
+            <div class="bs-card t"><i class="n tl">78</i>
+              <div class="bs-title">Add Profile</div>
+              <div>Provider: <b>◉ Anthropic</b> ○ OpenAI-compatible ○ Google Gemini</div>
+              <div>Address: <code>https://api.anthropic.com</code> <span class="desc">Use another address (gateway)…</span></div>
+              <div>API key: ⚿ Stored for api.anthropic.com <span class="bs-btn">Replace</span> <span class="bs-btn">Remove</span></div>
+              <div>Model: <code>claude-opus-5-5 ▾ ⟳</code> <span class="desc">4 models from api.anthropic.com</span></div>
+              <div>Thinking level: <span class="bs-tag">Default</span> <span class="bs-tag">Low</span> … <span class="bs-tag">Max</span></div>
+              <div class="bs-card t"><i class="n tl">79</i>
+                <div><b>✗ The test failed.</b></div>
+                <div class="desc">✓ Reached api.anthropic.com and the key was accepted (4 models).</div>
+                <div class="desc">✗ The provider rejected the request (400). claude-opus-5-5 may not take the thinking level High: try Default.</div>
+              </div>
+              <div class="bs-btns"><span class="bs-btn">Test Connection</span><span class="bs-btn primary">Save</span><span class="bs-btn">Cancel</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">74</i><b>Linyra AI page</b><span>An editor tab, one at a time: the AI switch, the profiles, and the form below them. With no profile it says how to start and opens the form. Keys never reach the page: a profile says only whether one is stored, and for which address.</span></div>
+    <div class="g"><i class="num">75</i><b>AI switch</b><span>linyra.ai.enabled as a VS Code switch, with what it means now (off: nothing is sent; on: which profile ✦ uses). More settings… opens the Settings editor at linyra.ai (exclude globs, prompt size, commit-message rules).</span></div>
+    <div class="g"><i class="num">76</i><b>Profile row</b><span>Its name (the model when the name does not say it), provider, address, thinking level and key. The one in use is marked In use; Use switches with one click; Edit opens the form; Remove… asks first.</span></div>
+    <div class="g"><i class="num">77</i><b>Remove confirmation</b><span>In the row itself: what goes (the API key, from VS Code's secret storage) and, for the profile in use, which one is used next. Remove or Cancel; Esc cancels.</span></div>
+    <div class="g"><i class="num">78</i><b>Profile form</b><span>Provider; address (Anthropic's and Gemini's own shown as text, presets for OpenAI, Ollama and LM Studio); API key (a password field, or Stored with Replace and Remove; a key entered for another address is never sent here); model (the provider's list as you type, ↓ opens it, any id works); thinking level (the levels the model takes); name; Use this profile. Errors show once a field is left; warnings never block Save.</span></div>
+    <div class="g"><i class="num">79</i><b>Test Connection report</b><span>Two steps in plain words: the model list (address and key), then one short answer from the model with its thinking level; for what failed, what to do next and the provider's own words. Stop ends a running test; a change to the form clears the report.</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-insights">
+  <div class="sec-head"><h2 id="s-insights">Linyra Insights</h2><span class="pill now">Exists</span></div>
+  <p class="how">An editor tab: Linyra: Insights, or Visual History on a file or folder (the Explorer, an editor tab, a Changes row). Each tab reads only while shown, one git process per repository (Health: two). Plan <code>docs/superpowers/plans/2026-10-30-insights.md</code>.</p>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 1fr; min-height: 0">
+        <div class="view">
+          <div class="vhead" style="text-transform:none; font-weight:400; font-size:13px; letter-spacing:0">
+            <span class="t" style="display:inline-flex; gap:14px; padding:2px 6px"><i class="n tl">74</i><b>Visual History</b><span class="desc">Files</span><span class="desc">Commits</span><span class="desc">Health</span></span>
+            <span class="tools" style="font-size:13px; gap:12px">
+              <span class="t" style="padding:0 4px"><i class="n tl">75</i>Scope: Ticked repositories (3) ▾</span>
+              <span class="t" style="padding:0 4px"><i class="n tl">76</i>1 week · 4 weeks · <b>3 months</b> · 1 year · All</span>
+              <span class="t" style="padding:0 4px"><i class="n tl">77</i><b>Repository</b> · Author</span>
+            </span>
+          </div>
+          <div class="vbody" style="padding:8px 12px; display:grid; gap:10px">
+            <div class="t" style="padding:6px"><i class="n tl">78</i>
+              <div class="desc">90 commits by 4 authors in 3 repositories · merges not shown</div>
+              <div style="display:grid; grid-template-columns: 110px 1fr; align-items:center; row-gap:6px; margin-top:6px">
+                <span>(D) dana <span class="desc">40</span></span><span>● ○ ●  ●● ○  ●  ○ ●●</span>
+                <span>(R) rin <span class="desc">19</span></span><span>  ○  ●   ● ○    ●</span>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+              <div class="t" style="padding:6px"><i class="n tl">79</i><b>Files</b> <span class="desc">Ticked repositories (3) › acme-web · 625 KB in 18 files</span>
+                <div style="display:grid; grid-template-columns: 2fr 1fr; gap:2px; margin-top:6px; height:70px"><span class="bg-web" style="opacity:.55; padding:2px 4px">package-lock.json</span><span class="bg-api" style="opacity:.55; padding:2px 4px">src</span></div></div>
+              <div class="t" style="padding:6px"><i class="n tl">80</i><b>Commits</b> <span class="desc">Commits per file: 1–4 · 5–34 · 35+</span>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:2px; margin-top:6px; height:70px"><span class="bg-libs" style="padding:2px 4px">upload.go 45</span><span class="bg-libs" style="opacity:.6; padding:2px 4px">retry.go 35</span><span class="bg-libs" style="opacity:.25; padding:2px 4px">store.go 4</span></div></div>
+            </div>
+            <div class="t" style="padding:6px"><i class="n tl">81</i><b>Health</b> <span class="desc">6 suggestions in 3 repositories</span> <span class="bs-btn primary t" style="float:right"><i class="n tl">82</i>Optimize Selected (1)…</span>
+              <div class="desc" style="margin-top:6px">☑ acme-web · 💡 Missing · 💡 8,412 loose · 61 packs · 128,400 files · 💡 Off · 💡 Off · 💡 Off · 💡 Not registered · 6</div>
+              <div class="t" style="margin-top:8px; padding:4px"><i class="n tl">83</i><b>Commit-graph</b> Missing — <span class="desc">Write one: topological order and the graph walk the whole history without it.</span> <span class="bs-btn primary">Write Commit-Graph</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">74</i><b>Insights tabs</b><span>Visual History, Files, Commits, Health. ←/→ move between them; the last one shown is remembered.</span></div>
+    <div class="g"><i class="num">75</i><b>Scope</b><span>The ticked repositories (the Repo List's ticks), one of them, or the file or folder Visual History was opened on. A new tab starts from the ticked repositories.</span></div>
+    <div class="g"><i class="num">76</i><b>Range</b><span>Visual History and Commits: git's --since, by committer date as the Log's date filter.</span></div>
+    <div class="g"><i class="num">77</i><b>Color by</b><span>Visual History: each bubble in its repository's Log color, or in its author's.</span></div>
+    <div class="g"><i class="num">78</i><b>Visual History</b><span>One bubble per commit (area: lines changed), one row per author with the Author disc (52). Hover: the commit; click or Enter: shows it in the Log. Merges are left out; at most 5,000 commits per repository, and it says when it cut.</span></div>
+    <div class="g"><i class="num">79</i><b>Files treemap</b><span>Tracked files at HEAD by size: repositories, folders, files, colored by the file types holding the most bytes. A folder opens on click (the breadcrumb goes back); a file's strip has Open File and Visual History.</span></div>
+    <div class="g"><i class="num">80</i><b>Commits treemap</b><span>The same map sized by the commits touching each file in the range; hot files are stronger red, and every tile names its count.</span></div>
+    <div class="g"><i class="num">81</i><b>Health table</b><span>One row per repository: commit-graph, objects, tracked files, untracked cache, file system monitor, many files, maintenance, each with a recommendation from a threshold.</span></div>
+    <div class="g"><i class="num">82</i><b>Optimize Selected</b><span>Every recommended write in the ticked rows, after one modal that names each command. Rows with something to optimize start ticked.</span></div>
+    <div class="g"><i class="num">83</i><b>Health details</b><span>The selected row's checks: what each means, what to do, and its button (Write Commit-Graph, Run Maintenance…, Turn On/Off, Copy Command). Nothing is written without its confirmation.</span></div>
+  </div>
+</section>
 
 <section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branches in the Repo List</b><span>Each repository's Local/Remote/Tags groups, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out. Branches Across Repositories… checks out, creates or merges one name in every ticked repository.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
 

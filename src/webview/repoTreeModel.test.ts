@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { branchGroupKey, DEFAULT_BRANCH_SIDEBAR, parseBranches } from "../branchModel";
-import { collapseAll, expandAll, parentIndex, repoTreeKey, treeRows, wantedBranchData } from "./repoTreeModel";
+import { collapseAll, expandAll, parentIndex, repoTreeKey, treeRows, wantedBranchData, withOperations } from "./repoTreeModel";
 
 const sha = "a".repeat(40);
 const line = (...f: string[]) => f.join("\0");
@@ -50,4 +50,17 @@ const labels = (rows: ReturnType<typeof treeRows>) => rows.map((r) => `${"  ".re
   assert.deepStrictEqual(none.favorites, ["fav"], "favorites stay");
   assert.deepStrictEqual(labels(treeRows(repos, "", [], null, data, none)), ["All", "acme-web", "acme-api", "acme-libs"]);
   console.log("ok - Expand All opens every repository on its Local branches; Collapse All closes everything, keeping favorites");
+}
+
+{
+  // A stopped merge: a row right under its repository, before its groups; the keyboard's parent is the repository.
+  const state = { ...DEFAULT_BRANCH_SIDEBAR, expanded: [repoTreeKey(repos[0].id), branchGroupKey("local", repos[0].id)] };
+  const rows = withOperations(treeRows(repos, "", [], null, data, state), new Map([[repos[0].id, { operation: "merge" as const, conflicts: 2 }], [repos[2].id, { operation: "rebase" as const, conflicts: 0 }]]));
+  const kinds = rows.map((r) => (r.kind === "operation" ? `op:${r.operation}:${r.conflicts}` : r.kind === "repo" ? r.name : "label" in r ? r.label : r.kind));
+  assert.deepStrictEqual(kinds, ["all", "acme-web", "op:merge:2", "Local", "main", "release-1.4", "Remote", "Tags", "acme-api", "acme-libs", "op:rebase:0"]);
+  assert.strictEqual(parentIndex(rows, 2), 1, "its parent is its repository");
+  assert.deepStrictEqual(rows.flatMap((r) => (r.kind === "operation" ? [r.child] : [])), [true, false], "a collapsed repository's row is not its child (a collapsed item shows none)");
+  assert.strictEqual(new Set(rows.map((r) => r.key)).size, rows.length, "keys stay unique");
+  assert.deepStrictEqual(withOperations(rows.filter((r) => r.kind !== "operation"), new Map()).length, rows.length - 2, "nothing stopped: no row");
+  console.log("ok - a stopped operation is a row right under its repository");
 }

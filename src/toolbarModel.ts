@@ -1,12 +1,14 @@
 export type ChangesLayout = "auto" | "sideBySide" | "stacked";
-export type ToolbarAction = "toggleRepos" | "toggleCompare" | "fetchAll" | "showBehind" | "fetchAndPullAll" | "pullAllBehind" | "profileSwitch" | "profileSave"
-  | "updateProject" | "pushAll" | "branchesAcross" | "aiConfigure" | "aiSwitch" | "aiRemove" | "aiAsk";
+export type ToolbarAction = "toggleRepos" | "toggleCompare" | "fetchAll" | "showBehind" | "fetchAndPullAll" | "pullAllBehind" | "profileSwitch" | "profileSave" | "insights"
+  | "updateProject" | "pushAll" | "branchesAcross" | "tagAcross" | "runAcross" | "release" | "abortAll" | "aiConfigure" | "aiSwitch" | "aiRemove" | "aiAsk";
 
 export interface ToolbarState {
   groupByRepo: boolean;
   compareShown: boolean;
   fetching: boolean;
   anyBehind: boolean;
+  /** A repository is in the middle of a merge, rebase, cherry-pick or revert (Abort in All Repositories…). */
+  anyOperation?: boolean;
   /** linyra.ai.enabled: the header's ✨ Ask AI… button shows. */
   ai?: boolean;
 }
@@ -25,6 +27,11 @@ export function toolbarCommand(action: unknown, state: ToolbarState): string | u
     case "updateProject": return state.fetching ? undefined : "linyra.updateProject";
     case "pushAll": return "linyra.pushAll";
     case "branchesAcross": return "linyra.branchesAcross";
+    case "tagAcross": return "linyra.tagAcross";
+    case "runAcross": return "linyra.runAcross";
+    case "release": return "linyra.release";
+    case "insights": return "linyra.insights";
+    case "abortAll": return state.anyOperation ? "linyra.abortAll" : undefined;
     case "aiConfigure": return "linyra.ai.configure";
     case "aiSwitch": return "linyra.ai.switchModel";
     case "aiRemove": return "linyra.ai.removeProfile";

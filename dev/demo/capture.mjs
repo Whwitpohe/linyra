@@ -200,7 +200,7 @@ try {
     await waitFor("uncommitted workspace",async()=> (await snapshot()).workKnown && await logView.evaluate("return doc.querySelectorAll('.work-row').length>0;"));
     await logView.evaluate(`[...doc.querySelectorAll('.work-row')].find(n=>n.dataset.repo===${JSON.stringify(web.id)})?.click();return true;`);
     await sleep(350);
-    await logView.evaluate("[...doc.querySelectorAll('#file-tree .tree-row')].find(n=>n.textContent.includes('PaymentStep.tsx'))?.click();return true;");
+    await logView.evaluate("[...doc.querySelectorAll('#file-tree .ftree-row')].find(n=>n.textContent.includes('PaymentStep.tsx'))?.click();return true;");
     await shot("screenshot-uncommitted");
     await logView.click("#mode-commits");
 

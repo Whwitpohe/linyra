@@ -1,0 +1,18 @@
+/* Every popup menu (ui/menu.ts) in VS Code's own menu colors, as its context menus draw them. */
+.popup-menu {
+  position: fixed; z-index: 120; min-width: 190px; max-width: calc(100vw - 12px); max-height: calc(100vh - 8px); overflow-y: auto;
+  padding: 4px; border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-input-border, transparent))); border-radius: 5px;
+  background: var(--vscode-menu-background, var(--vscode-dropdown-background)); color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, transparent); font-size: var(--vscode-font-size, 13px);
+}
+.popup-menu button { display: flex; align-items: center; width: 100%; min-height: 24px; padding: 2px 10px 2px 4px; border: 0; border-radius: 3px; background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
+/* A column for the check, so every label starts at the same place. */
+.popup-menu button::before { content: ""; flex: none; width: 1.5em; text-align: center; }
+/* Drawn, not read: aria-checked says it (the empty alternative keeps the ✓ out of the item's name). */
+.popup-menu button[aria-checked="true"]::before { content: "\2713"; content: "\2713" / ""; }
+.popup-menu button:hover:not(:disabled), .popup-menu button:focus { background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground)); outline: none; }
+.popup-menu button:disabled { color: var(--vscode-disabledForeground); cursor: default; }
+.popup-menu-separator { height: 1px; margin: 4px 6px; background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border, var(--vscode-foreground))); }
+.popup-menu-heading { padding: 4px 10px 2px calc(4px + 1.5em); color: var(--vscode-descriptionForeground); font-size: 11px; }
+/* High contrast: the item under the pointer or the keyboard is outlined, as VS Code's menus do. */
+body.vscode-high-contrast .popup-menu button:is(:hover:not(:disabled), :focus), body.vscode-high-contrast-light .popup-menu button:is(:hover:not(:disabled), :focus) { outline: 1px solid var(--vscode-menu-selectionBorder, var(--vscode-contrastActiveBorder, var(--vscode-focusBorder))); outline-offset: -1px; }

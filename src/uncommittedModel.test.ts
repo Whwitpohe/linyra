@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, rollbackPrompt, withAdded, withoutFiles, withUnadded, editedLabel, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, workKinds, type RepoWork, type UNode } from "./uncommittedModel";
+import { viewLabel, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, withAdded, withoutFiles, withUnadded, editedLabel, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, workKinds, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -41,30 +41,27 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
 }
 {
   assert.deepStrictEqual(discardPrompt("acme-web", [f("src/app.ts", "M")], true), { message: 'Discard changes in "src/app.ts"?', detail: "This can't be undone.", button: "Discard File" });
-  assert.strictEqual(discardPrompt("acme-web", [f("src/new.ts", "A", 0, 0, { untracked: true })], true).detail, "This can't be undone. This deletes the new file.");
-  assert.deepStrictEqual(discardPrompt("acme-web", web.changes, false), { message: "Discard changes in 3 files in acme-web?", detail: "This can't be undone. 1 new file will be deleted.", button: "Discard All" });
+  // New files are never deleted by Discard: the prompt says they stay, and which command deletes them.
+  assert.deepStrictEqual(discardPrompt("acme-web", web.changes, false), { message: "Discard changes in 2 files in acme-web?", detail: "This can't be undone. The new file stays: Delete… removes it.", button: "Discard Changes" });
   // The whole repository: notes.md is in both groups and counts once; its staged change goes too.
-  assert.deepStrictEqual(discardPrompt("acme-web", [...web.staged, ...web.changes], false, web.staged), { message: "Discard changes in 3 files in acme-web?", detail: "This can't be undone. Staged changes are discarded too. 1 new file will be deleted.", button: "Discard All" });
-  // A staged new file is deleted; a staged rename unstages both names and deletes the new one.
+  assert.deepStrictEqual(discardPrompt("acme-web", [...web.staged, ...web.changes], false, web.staged), { message: "Discard changes in 2 files in acme-web?", detail: "This can't be undone. Staged changes are discarded too. The new file stays: Delete… removes it.", button: "Discard Changes" });
   const added = f("src/added.ts", "A");
-  assert.strictEqual(discardPrompt("acme-web", [added], true, [added]).detail, "This can't be undone. Staged changes are discarded too. This deletes the new file.");
   const moved = f("src/b.ts", "R", 0, 0, { oldPath: "src/a.ts" });
   assert.deepStrictEqual(discardPlan([moved, ...web.changes], [moved]), { paths: ["src/b.ts", "src/a.ts", "src/app.ts", "src/new.ts", "notes.md"], unstage: ["src/b.ts", "src/a.ts"], remove: ["src/b.ts", "src/new.ts"] });
   // Only the Changes half of a staged new file: it is restored to the index, not deleted.
   assert.deepStrictEqual(discardPlan([added], []).remove, []);
-  // Rollback, as the JetBrains IDEs': an added file (edited since, too) leaves version control and stays.
+  // Discard Changes, as the JetBrains IDEs' Rollback: an added file (edited since, too) leaves version control and stays.
   const addedEdited = f("src/added.ts", "M");
   assert.deepStrictEqual(rollbackPlan([added, addedEdited], [added]), { paths: [], unstage: [], remove: [], unadd: ["src/added.ts"] });
-  // A rename moves back; an unversioned file is not Rollback's: Delete… removes it.
+  // A rename moves back; a new file is not Discard's: Delete… removes it.
   assert.deepStrictEqual(rollbackPlan([moved, ...web.changes], [moved]), { ...discardPlan([moved, web.changes[0], web.changes[2]], [moved]), unadd: [] });
-  assert.deepStrictEqual(rollbackPrompt("acme-web", [added, addedEdited], true, [added]), {
-    message: 'Roll back "src/added.ts"?', detail: "The added file leaves version control and stays on disk, under Unversioned Files.", button: "Rollback",
+  assert.deepStrictEqual(discardPrompt("acme-web", [added, addedEdited], true, [added]), {
+    message: 'Discard changes in "src/added.ts"?', detail: "The added file leaves version control and stays on disk as a new file.", button: "Discard File",
   });
   const more = f("src/more.ts", "A");
-  const mixed = rollbackPrompt("acme-web", [added, more, ...web.staged, ...web.changes], false, [added, more, ...web.staged]);
-  assert.strictEqual(mixed.message, "Roll back 4 files in acme-web?", "the unversioned file is not counted");
-  assert.strictEqual(mixed.detail, "This can't be undone. Staged changes are discarded too. The 2 added files leave version control and stay on disk, under Unversioned Files.");
-  assert.deepStrictEqual(rollbackPrompt("acme-web", web.changes, false), { message: "Roll back 2 files in acme-web?", detail: "This can't be undone.", button: "Rollback" });
+  const mixed = discardPrompt("acme-web", [added, more, ...web.staged, ...web.changes], false, [added, more, ...web.staged]);
+  assert.strictEqual(mixed.message, "Discard changes in 4 files in acme-web?", "the new file is not counted");
+  assert.strictEqual(mixed.detail, "This can't be undone. Staged changes are discarded too. The 2 added files leave version control and stay on disk as new files. The new file stays: Delete… removes it.");
   // Add to VCS, Remove from VCS and Delete are shown at once, as git will show them.
   const added2 = withAdded(web, new Set(["src/new.ts", "notes.md"]));
   assert.deepStrictEqual(added2.staged.map((x) => [x.path, x.status, x.untracked]), [["notes.md", "M", undefined], ["src/new.ts", "A", undefined]], "only the new file moves: staged as added");
@@ -77,11 +74,7 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   // Delete…: its own words and button, never Rollback's.
   assert.deepStrictEqual(deletePrompt("acme-web", ["src/new.ts"], true), { message: 'Delete "src/new.ts"?', detail: "The file is deleted from disk. This can't be undone.", button: "Delete" });
   assert.deepStrictEqual(deletePrompt("2 repositories", ["a.md", "b.md", "c.md"], false), { message: "Delete 3 files in 2 repositories?", detail: "The files are deleted from disk. This can't be undone.", button: "Delete" });
-  assert.strictEqual(commitStep(1, 3, false), "message");
-  assert.strictEqual(commitStep(0, 3, true), "commitAll", "git.enableSmartCommit: commit everything without asking");
-  assert.strictEqual(commitStep(0, 3, false), "askStageAll");
-  assert.strictEqual(commitStep(0, 0, false), "nothing");
-  console.log("ok - Discard's, Rollback's (an added file leaves version control and stays) and Delete's confirmations, Commit's steps");
+  console.log("ok - Discard Changes (an added file leaves version control and stays, a new file is never deleted) and Delete's confirmations");
 }
 {
   const d = describeUncommitted([web, api, clean]);
@@ -99,12 +92,6 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   const ids = JSON.stringify(d.roots).match(/"id":"[^"]+"/g)!;
   assert.strictEqual(new Set(ids).size, ids.length, "ids are unique (the same path in both groups)");
   console.log("ok - the Uncommitted view: repositories, Staged/Changes groups, folders, files, read-only rows");
-}
-{
-  // Commit all, as VS Code's smart commit: git.smartCommitChanges "tracked" leaves new files out.
-  assert.strictEqual(commitCount(web, "all"), 3, "all: tracked and new files");
-  assert.strictEqual(commitCount(web, "tracked"), 2, "tracked: the new file stays out");
-  console.log("ok - Commit all counts what git.smartCommitChanges will commit");
 }
 
 assert.strictEqual(viewLabel({ files: 0, repos: 0 }), "");

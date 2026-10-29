@@ -28,17 +28,40 @@ const state = () => send({ type: "state", pair, mode, hideSame, onlyConflicts, s
 function sides(): void {
   for (const side of ["left", "right"] as const) {
     const file = (name: string, same = false, conflict = false): CompareTreeRow => ({ id: `${selected}/${side}/${name}`, kind: "file", label: name.split("/").pop()!,
-      description: conflict ? "+12 −3 · conflict" : same ? "+1 −0 · already on both" : "+12 −3 · both", tooltip: name, contextValue: conflict ? "compareFile.conflict" : "compareFile", status: "M", same, conflict });
-    const src = onlyConflicts ? [file("src/limits.ts", false, true)] : [file("src/limits.ts", false, true), file("src/upload.ts")];
-    const tree: CompareTreeRow[] = [{ id: `${selected}/${side}-src`, kind: "folder", label: "src", description: String(src.length), tooltip: "src", contextValue: "", loaded: true,
-      children: src }, ...(hideSame || onlyConflicts ? [] : [file("retry.go", true)])];
+      description: conflict ? "+12 −3 · conflict" : same ? "+1 −0 · already on both" : "+12 −3 · both", tooltip: name, contextValue: conflict ? "compareFile.conflict" : "compareFile", status: "M", same, conflict,
+      lines: same ? { added: 1, deleted: 0 } : { added: 12, deleted: 3 }, note: conflict ? "conflict" : same ? "already on both" : "both" });
+    // ?files=kinds: one file of each kind besides, as git reports them (added, deleted, renamed, binary).
+    const kind = (name: string, status: "A" | "D" | "R", lines: { added: number; deleted: number } | undefined, extra: Partial<CompareTreeRow> = {}): CompareTreeRow => ({ id: `${selected}/${side}/${name}`, kind: "file", label: name.split("/").pop()!,
+      description: "", tooltip: name, contextValue: "compareFile", status, ...(lines ? { lines } : {}), ...extra });
+    const kinds = params.get("files") === "kinds" ? [kind("src/new-client.ts", "A", { added: 40, deleted: 0 }), kind("src/old-auth.ts", "D", { added: 0, deleted: 25 }),
+      kind("src/http-client.ts", "R", { added: 2, deleted: 1 }, { oldPath: "src/http.ts" }), kind("assets/logo.png", "A", undefined, { note: "binary" })] : [];
+    const src = onlyConflicts ? [file("src/limits.ts", false, true)] : [file("src/limits.ts", false, true), file("src/upload.ts"), ...kinds];
+    // ?files=many: 480 files in 40 folders under src, for the trees' performance (dev/perf/fileTreeBench.mjs).
+    const many = params.get("files") === "many" ? Array.from({ length: 40 }, (_, d): CompareTreeRow => {
+      const children = Array.from({ length: 12 }, (_, i) => file(`src/module-${d}/part-${i}.ts`, i % 7 === 6, i % 11 === 10));
+      return { id: `${selected}/${side}-src/module-${d}`, kind: "folder", label: `module-${d}`, description: String(children.length), tooltip: `src/module-${d}`, contextValue: "", loaded: true, children };
+    }) : [];
+    const tree: CompareTreeRow[] = [{ id: `${selected}/${side}-src`, kind: "folder", label: "src", description: String(src.length + many.length * 12), tooltip: "src", contextValue: "", loaded: true,
+      children: [...many, ...src] }, ...(hideSame || onlyConflicts ? [] : [file("retry.go", true)])];
     // All repositories: each repository's rows under its name.
     // Several picked ("+", their ids one per line): those, under their names.
     const files: CompareTreeRow[] = selected === "*" || selected.startsWith("+") ? rows.filter((r) => r.status === "differs" && (selected === "*" || selected.slice(1).split("\n").includes(r.repoId))).map((r) => ({ id: `${r.repoId}/${side}/repo`, kind: "repo", label: r.name, description: "2", tooltip: r.name, contextValue: "compareRepoGroup", loaded: true, children: tree.map((t) => ({ ...t, id: `${r.repoId}/${t.id}` })) })) : tree;
     const id = `${selected}/${side}/commit`;
     const sideRows: CompareTreeRow[] = mode === "files" ? files : [{ id, kind: "commit", label: "fix: retry on 503", description: "dana · a42a50e", tooltip: "fix: retry on 503", contextValue: "compareCommit",
       loaded: expanded.has(id), children: expanded.has(id) ? [file("src/upload.ts")] : [] }, { id: `${side}-more`, kind: "more", label: "Show 500 more", description: "", tooltip: "", contextValue: "" }];
-    send({ type: "side", side, key: `${selected}/${pair.left}/${pair.right}/${mode}`, description: `${pair[side]} only · ${selected.split("/").pop()} · ${mode === "files" ? "2 files" : "1 commit"}`, rows: sideRows });
+    const key = `${selected}/${pair.left}/${pair.right}/${mode}`;
+    // ?empty=same: the left side's files are all on both already (hidden); ?empty=conflicts: none would conflict.
+    const empty = side === "left" && mode === "files" ? params.get("empty") : null;
+    if (empty === "same" && hideSame) {
+      send({ type: "side", side, key, description: `${pair[side]} only · acme-api · 0 files · 3 already on both (hidden)`, rows: [],
+        message: "Every file this side changed is already on both branches.", emptyAction: { kind: "showSame", label: "Show 3 files already on both" } });
+      continue;
+    }
+    if (empty === "conflicts" && onlyConflicts) {
+      send({ type: "side", side, key, description: `${pair[side]} only · acme-api · 0 files`, rows: [], message: "No file on this side would conflict.", emptyAction: { kind: "showAll", label: "Show all files" } });
+      continue;
+    }
+    send({ type: "side", side, key, description: `${pair[side]} only · ${selected.split("/").pop()} · ${mode === "files" ? "2 files" : "1 commit"}`, rows: sideRows });
   }
 }
 

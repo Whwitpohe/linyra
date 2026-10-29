@@ -1,5 +1,6 @@
 import { isValidRef } from "./filterModel";
 import type { Stash } from "./stashModel";
+import type { Worktree } from "./worktreeModel";
 
 export interface Branch {
   ref: string;
@@ -20,6 +21,8 @@ export interface Branches {
   current?: string;
   /** The repository's stashes, newest first (read with its branches). */
   stashes?: Stash[];
+  /** Its worktrees when it has linked ones (read from the git dir's files, with its branches). */
+  worktrees?: Worktree[];
 }
 
 export interface BranchSidebarState {
@@ -30,7 +33,7 @@ export interface BranchSidebarState {
 
 export const DEFAULT_BRANCH_SIDEBAR: BranchSidebarState = { mode: "repos", expanded: ["local", "remote"], favorites: [] };
 export const branchKey = (repoId: string, ref: string) => `${repoId}\0${ref}`;
-export const branchGroupKey = (kind: "local" | "remote" | "tag" | "stash", repoId: string) => `${kind}\0${repoId}`;
+export const branchGroupKey = (kind: "local" | "remote" | "tag" | "stash" | "worktree", repoId: string) => `${kind}\0${repoId}`;
 /** Remote refs and tags stay unambiguous even when a local branch uses the same name. */
 export const branchRevision = (branch: Branch, data: Branches): string =>
   branch.kind !== "local" && data.branches.some((b) => b.kind === "local" && b.name === branch.name) ? branch.ref : branch.name;
@@ -74,9 +77,13 @@ export const branchCommands = {
   track: (b: Branch, name: string) => ["checkout", "--track", "-b", name, b.ref, "--"],
   rename: (b: Branch, name: string) => ["branch", "-m", "--", b.name, name],
   delete: (b: Branch) => ["branch", "-d", "--", b.name],
+  /** Delete Anyway: an unmerged branch, after the user saw how many of its commits are on nothing else. */
+  forceDelete: (b: Branch) => ["branch", "-D", "--", b.name],
   merge: (b: Branch) => ["merge", "--no-edit", "--", b.ref],
   rebase: (b: Branch) => ["rebase", "--no-autostash", "--", b.ref],
   checkoutTag: (b: Branch) => ["checkout", "--detach", b.ref, "--"],
   deleteTag: (b: Branch) => ["tag", "-d", "--", b.name],
   worktree: (b: Branch, name: string, destination: string) => ["worktree", "add", "-b", name, "--", destination, b.ref],
+  setUpstream: (b: Branch, upstream: string) => ["branch", `--set-upstream-to=${upstream}`, "--", b.name],
+  unsetUpstream: (b: Branch) => ["branch", "--unset-upstream", "--", b.name],
 };

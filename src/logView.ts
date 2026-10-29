@@ -8,7 +8,7 @@ import type { ChangesSnapshot, ChangesTree, OpenDiffArgs } from "./changesTree";
 import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { readReferences } from "./commitReferences";
 import { debounce } from "./debounce";
-import { toolbarCommand, type ToolbarState, type ChangesLayout } from "./toolbarModel";
+import { toolbarCommand, type ToolbarState } from "./toolbarModel";
 import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
@@ -18,18 +18,19 @@ import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 import { readAvatarSettings, readSettings } from "./settings";
 import { Avatars, visibleAuthors } from "./avatars";
-import { isChangesMode } from "./changeStats";
 import { ChangeStatsReader } from "./changeStatsReader";
 import { parseRemoteConfig } from "./avatarModel";
 import { outputLog } from "./outputLog";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import type { AheadBehind } from "./upstream";
 import { SyncController } from "./syncController";
+import { RepoMarks } from "./repoMarks";
+import { BranchSheet } from "./branchSheet";
+import type { RepoMark } from "./repoMarkModel";
 import { ProfileController } from "./profileController";
 import { RepoCommands } from "./repoCommands";
 import { Suggestions } from "./suggestions";
 import { usesMe } from "./searchQuery";
-import { aiService } from "./ai";
 import { CommitGraphHint } from "./commitGraphHint";
 import { wantsCommitGraphHint } from "./commitGraphModel";
 import type { UncommittedStore } from "./uncommittedStore";
@@ -41,22 +42,19 @@ import { SELECTION_LIMIT } from "./webview/selectionModel";
 import type { BranchController } from "./branchController";
 import { assignAccents, accentOf, shownAccents } from "./webview/view";
 import { HoverDetails } from "./hoverDetail";
+import { HIDE_REPOS_KEY, LogLayoutStore } from "./logLayoutStore";
+import { LogAiSearch } from "./logAiSearch";
+import { MessageRoutes } from "./messageRoutes";
+import { operationCommand } from "./repoMarkModel";
 
 const FILTER_KEY = "linyra.filter";
 /** globalState: true when the user turned Group by Repository off. */
-export const HIDE_REPOS_KEY = "linyra.hideRepos";
+export { HIDE_REPOS_KEY } from "./logLayoutStore";
 /** globalState: the Repositories pane width the user dragged to. */
-const PANE_WIDTH_KEY = "linyra.repoPaneWidth";
 /** globalState: the Log's view options. */
-const HIGHLIGHT_MINE_KEY = "linyra.highlightMine";
-const HIGHLIGHT_HEAD_KEY = "linyra.highlightHead";
-const HASH_COLUMN_KEY = "linyra.hashColumn";
-const CHANGES_COLUMN_KEY = "linyra.changesColumn";
-const DEFAULT_PANE_WIDTH = 190;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
 /** Registered by Linyra AI's features: plain words → an operator query for the search box. */
-const AI_SEARCH_COMMAND = "linyra.ai.translateSearch";
 
 export interface LogDeps {
   discovery: RepoDiscovery;
@@ -109,6 +107,8 @@ export interface LogSnapshot {
   spawnLog: { root: string; cmd: string }[];
   /** Each repository's distance from its upstream (only those with one). */
   sync: Record<string, AheadBehind>;
+  /** The Repo List's marks: each repository's branch, * + ! and stopped operation (test seam). */
+  marks: Record<string, RepoMark>;
   /** Fetch All is running. */
   fetching: boolean;
   toolbar: ToolbarState;
@@ -197,12 +197,22 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private firstLoad: Promise<void> | undefined;
   /** Fetch, Pull and each repository's distance from its upstream. */
   readonly upstream: SyncController;
+  /** Each repository's branch, * + ! and stopped merge or rebase (the Repo List's marks). */
+  readonly marks: RepoMarks;
+  /** A branch pill's sheet in the Changes view's details area. */
+  readonly branchSheet: BranchSheet;
   /** The Repo List's named sets of repositories. */
   readonly profiles: ProfileController;
   /** Repository and commit right-click commands that read or filter. */
   readonly commands: RepoCommands;
   /** The commit hover card's one git show, and the HEAD row's merge target. */
   readonly hover: HoverDetails;
+  /** Each feature's own webview messages (messageRoutes.ts); onMessage keeps the Log's. */
+  private readonly routes = new MessageRoutes();
+  /** The panes' sizes and the view options, in globalState. */
+  private readonly layoutStore: LogLayoutStore;
+  /** The search box's ✨. */
+  private readonly aiSearch: LogAiSearch;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.run = (cwd, args, signal, opts) => {
@@ -219,6 +229,24 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       run: this.run, discovery: deps.discovery, uncommitted: deps.uncommitted, reload: () => this.reload(), remotesFetched: () => this.remotesFetched(),
       refsChanged: (id) => this.refsChanged.fire(id), toolbarChanged: () => this.toolbarChanged(), syncChanged: (byRepo) => this.postSync(byRepo),
     });
+    this.marks = new RepoMarks({
+      repos: () => this.repos, concurrency: () => this.settings().maxConcurrency,
+      changed: (byRepo) => { this.post({ type: "repoMarks", byRepo }); this.toolbarChanged(); },
+      vsCodeWork: (root) => deps.discovery.workMark(root),
+      // git status's answer, unless the Path box narrowed it to part of the repository.
+      storeWork: (id) => {
+        const w = deps.uncommitted.filtered ? undefined : deps.uncommitted.get(id);
+        return w && { changes: w.changes.length > 0, staged: w.staged.length > 0, conflicts: w.conflicts ?? 0 };
+      },
+    });
+    this.branchSheet = new BranchSheet({
+      repos: () => this.repos, run: this.run, post: (m) => this.post(m),
+      ai: () => vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false),
+      currentBranch: (id) => this.marks.get(id)?.branch ?? undefined,
+      compare: (repoId, left, right) => this.hover.compare?.(repoId, left, right),
+      execute: (command, arg) => vscode.commands.executeCommand(command, arg),
+      ticked: () => this.tickedRepos(), concurrency: () => this.settings().maxConcurrency,
+    });
     this.profiles = new ProfileController({
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg),
       setRepoFilter: (ids) => this.setRepoFilter(ids), changed: () => this.postInit(), ask: deps.ask,
@@ -230,6 +258,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.hover = new HoverDetails({ run: this.run, post: (m) => this.post(m), commands: vscode.commands,
       commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined),
       aiEnabled: () => vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false) });
+    this.layoutStore = new LogLayoutStore(context.globalState, {
+      highlightHead: (on) => { if (on) void this.readOffHead(); else this.post({ type: "offHead", keys: [] }); },
+      changed: () => this.postInit(),
+      visibilityChanged: () => this.deps.changes.visibilityChanged(),
+    });
+    this.aiSearch = new LogAiSearch((m) => this.post(m));
+    for (const feature of [this.layoutStore, this.aiSearch, this.branchSheet, this.hover, this.profiles, this.suggestions, this.changeStats]) feature.register(this.routes);
+    this.routes
+      .on("branchSidebar", (m) => this.branchSidebar?.handle(m))
+      .on("visibleAuthors", (m) => this.avatars.want(visibleAuthors(m.authors, (id) => this.repos.some((r) => r.id === id))))
+      .on("operation", (m) => this.runOperation(m))
+      .onReady({ before: () => { this.branchSidebar?.ready(); this.avatars.webviewReset(); } });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
     deps.changes.selectCommit = (repoId, sha) => this.revealCommit(repoId, sha);
@@ -237,8 +277,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       deps.discovery.onDidChange(() => this.reposChangedSoon()),
       this.onDidChangeRefs((id) => this.refreshCurrentReferences(id)),
       this.onDidChangeRefs((id) => this.hover.refsChanged(id)),
+      this.onDidChangeRefs((id) => this.branchSheet.refsChanged(id)),
       // The switch's badge and rows, and the Changes view while on the Uncommitted side.
       deps.uncommitted.onDidChange(() => {
+        this.marks.publish();
         this.postUncommitted();
         this.showWorkTree();
         this.postHistoryWork();
@@ -248,7 +290,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (e.affectsConfiguration("linyra.ai.enabled")) this.toolbarChanged();
       }),
       // The search box's ✨ toggle follows Linyra AI's settings.
-      vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration("linyra.ai")) void this.postAiSearch(); }),
+      vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration("linyra.ai")) void this.aiSearch.postAvailable(); }),
     );
   }
 
@@ -260,7 +302,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       await this.reload();
     })();
     this.webviewView = view;
-    this.deps.changes.attach((message) => this.post({ type: "changesView", message }), () => !!this.webviewView?.visible && this.layout().showChanges !== false);
+    this.deps.changes.attach((message) => this.post({ type: "changesView", message }), () => !!this.webviewView?.visible && this.layoutStore.layout().showChanges !== false);
     const out = vscode.Uri.joinPath(this.context.extensionUri, "out");
     view.webview.options = { enableScripts: true, localResourceRoots: [out] };
     view.webview.html = renderHtml({
@@ -286,11 +328,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   async onMessage(m: WebviewMessage): Promise<void> {
     if (!m || typeof m !== "object") return; // webview input is untrusted
+    if (await this.routes.dispatch(m)) return;
     switch (m.type) {
-      case "branchSidebar": await this.branchSidebar?.handle(m); return;
       case "ready":
-        this.branchSidebar?.ready();
-        this.avatars.webviewReset();
+        await this.routes.ready("before");
         this.readyCount++;
         if (!this.stats.readyAt) this.stats.readyAt = Date.now();
         // The first load started when the view was created; wait for it, then
@@ -302,12 +343,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.setLogMode(this.openUncommitted ? "uncommitted" : "commits");
         this.openUncommitted = false;
         this.postInit(true);
-        // A re-created webview lost the suggestions it had: send them again (only then).
-        this.suggestions.replay();
+        // What each feature tells a new page again (the suggestions it lost, whether ✨ is on…).
+        await this.routes.ready("after");
         if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
+        this.post({ type: "repoMarks", byRepo: { ...this.marks.byRepo() } });
         this.postUncommitted();
         this.postHistoryWork(true);
-        void this.postAiSearch();
         // A reload on its way posts its page to this webview too.
         if (this.queryState === null) { if (!this.reloading) await this.reload(); }
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
@@ -372,9 +413,6 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "openHistoryWork":
         await this.openHistoryWork();
         return;
-      case "wantSuggestions":
-        if (m.kind === "authors" || m.kind === "branches" || m.kind === "tags") await this.suggestions.load(m.kind);
-        return;
       case "toolbarAction": {
         const command = toolbarCommand(m.action, this.toolbarState());
         if (command) await vscode.commands.executeCommand(command);
@@ -384,88 +422,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "changesView":
         await this.deps.changes.onMessage(m.message);
         return;
-      case "layout":
-        if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
-        if (typeof m.changesPaneWidth === "number" && Number.isFinite(m.changesPaneWidth)) await this.context.globalState.update("linyra.changesPaneWidth", Math.max(180, Math.min(1600, Math.round(m.changesPaneWidth))));
-        if (typeof m.changesPaneHeight === "number" && Number.isFinite(m.changesPaneHeight)) await this.context.globalState.update("linyra.changesPaneHeight", Math.max(96, Math.min(1200, Math.round(m.changesPaneHeight))));
-        if (typeof m.showChanges === "boolean") await this.context.globalState.update("linyra.showChanges", m.showChanges);
-        if (m.changesLayout === "auto" || m.changesLayout === "sideBySide" || m.changesLayout === "stacked") await this.context.globalState.update("linyra.changesLayout", m.changesLayout);
-        if (typeof m.highlightMine === "boolean") await this.context.globalState.update(HIGHLIGHT_MINE_KEY, m.highlightMine);
-        if (typeof m.hashColumn === "boolean") await this.context.globalState.update(HASH_COLUMN_KEY, m.hashColumn);
-        if (isChangesMode(m.changesColumn)) await this.context.globalState.update(CHANGES_COLUMN_KEY, m.changesColumn);
-        if (typeof m.highlightHead === "boolean") {
-          await this.context.globalState.update(HIGHLIGHT_HEAD_KEY, m.highlightHead);
-          if (m.highlightHead) void this.readOffHead(); else this.post({ type: "offHead", keys: [] });
-        }
-        if (typeof m.showChanges === "boolean" || typeof m.highlightMine === "boolean" || typeof m.highlightHead === "boolean" || typeof m.hashColumn === "boolean" || isChangesMode(m.changesColumn)) this.postInit();
-        this.deps.changes.visibilityChanged();
-        return;
-      case "profileSave":
-        await this.profiles.save();
-        return;
-      case "visibleAuthors":
-        this.avatars.want(visibleAuthors(m.authors, (id) => this.repos.some((r) => r.id === id)));
-        return;
-      case "wantStats":
-        void this.changeStats.want(Array.isArray(m.commits) ? m.commits : []);
-        return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
         return;
-      case "hover": await this.hover.show(m.repoId, m.sha); return;
-      case "hoverEnd": this.hover.end(); return;
-      case "hoverAction": await this.hover.action(m.action, m.repoId, m.sha); return;
-      case "aiSearch":
-        await this.aiSearch(m.text);
-        return;
-      case "aiConfigure":
-        await this.aiConfigure();
-        return;
     }
   }
 
-  /** The search box's ✨ mode needs linyra.ai.translateSearch and a configured Linyra AI. */
-  private async aiSearchAvailable(): Promise<boolean> {
-    if (!(await vscode.commands.getCommands(true)).includes(AI_SEARCH_COMMAND)) return false;
-    try {
-      return aiService().configured;
-    } catch {
-      return false;
-    }
-  }
-
-  private async postAiSearch(): Promise<void> {
-    this.post({ type: "aiSearchAvailable", available: await this.aiSearchAvailable() });
-  }
-
-  /** Plain words → an operator query; the webview puts it in the box and runs it. */
-  private async aiSearch(raw: unknown): Promise<void> {
-    if (typeof raw !== "string" || raw.trim() === "") return;
-    const text = raw.trim().slice(0, 2000);
-    if (!(await this.aiSearchAvailable())) {
-      this.post({ type: "aiSearchResult", text, error: localize("Natural-language search needs Linyra AI. Set it up, then try again.") });
-      return this.postAiSearch();
-    }
-    try {
-      const query = await vscode.commands.executeCommand<unknown>(AI_SEARCH_COMMAND, text);
-      if (typeof query !== "string" || query.trim() === "") throw new Error(localize("Linyra AI did not return a search."));
-      this.post({ type: "aiSearchResult", text, query: query.replace(/\s+/g, " ").trim().slice(0, 2000) });
-    } catch (e) {
-      this.post({ type: "aiSearchResult", text, error: messageOf(e) });
-    }
-  }
-
-  /** The ✨ toggle while Linyra AI is not available: its own setup, or its settings without it. */
-  private async aiConfigure(): Promise<void> {
-    try {
-      await aiService().ensureReady();
-    } catch {
-      const open = localize("Open Settings");
-      if (await vscode.window.showInformationMessage(localize("Natural-language search needs Linyra AI. Set it up, then try again."), open) === open) {
-        await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.ai");
-      }
-    }
-    await this.postAiSearch();
+  /** The Repo List's stopped-operation row: the same commands as its right-click menu. */
+  private async runOperation(m: Extract<WebviewMessage, { type: "operation" }>): Promise<void> {
+    const op = typeof m.repoId === "string" ? this.marks.get(m.repoId)?.operation : undefined;
+    if (op && (m.action === "resolve" || m.action === "continue" || m.action === "abort")) await vscode.commands.executeCommand(operationCommand(op, m.action), { repoId: m.repoId });
   }
 
   private settings() {
@@ -483,27 +449,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return parseRemoteConfig(await this.run(repo.root, ["config", "--get-regexp", String.raw`^remote\..*\.url$`], signal).catch(() => ""));
   }
 
-  private layout(): Layout {
-    const width = this.context.globalState.get<number>(PANE_WIDTH_KEY, DEFAULT_PANE_WIDTH);
-    return {
-      repoPaneWidth: typeof width === "number" && Number.isFinite(width) ? width : DEFAULT_PANE_WIDTH,
-      groupByRepo: !this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false),
-      changesPaneWidth: this.context.globalState.get<number>("linyra.changesPaneWidth", 360),
-      changesPaneHeight: this.context.globalState.get<number>("linyra.changesPaneHeight", 240),
-      showChanges: this.context.globalState.get<boolean>("linyra.showChanges", true),
-      changesLayout: this.context.globalState.get<ChangesLayout>("linyra.changesLayout", "auto"),
-      highlightMine: this.context.globalState.get<boolean>(HIGHLIGHT_MINE_KEY, false),
-      highlightHead: this.context.globalState.get<boolean>(HIGHLIGHT_HEAD_KEY, false),
-      hashColumn: this.context.globalState.get<boolean>(HASH_COLUMN_KEY, false),
-      changesColumn: ((v) => (isChangesMode(v) ? v : "bar"))(this.context.globalState.get<unknown>(CHANGES_COLUMN_KEY)),
-    };
-  }
-
   private toolbarState(): ToolbarState {
     const flags = this.deps.toolbarFlags?.();
-    return { groupByRepo: this.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
+    return { groupByRepo: this.layoutStore.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
       fetching: this.upstream.fetching,
       anyBehind: this.upstream.anyBehind(),
+      anyOperation: Object.values(this.marks.byRepo()).some((m) => m.operation !== undefined),
       ai: vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false) };
   }
 
@@ -526,7 +477,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.toolbarChanged();
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoId: repo.id, repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layout(), history, profiles: this.profiles.resolved(), ...(forceMode ? { logMode: this.logMode } : {}) });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layoutStore.layout(), history, profiles: this.profiles.resolved(), ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**
@@ -814,6 +765,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.backgroundFor = key;
     void this.loadMe();
     void this.upstream.read(undefined, true); // VS Code's Git has counted the repositories it watches
+    void this.marks.read();
     // Uncommitted work: once, after the first page (the switch's badge), then kept current by events.
     void this.deps.uncommitted.readAll();
     // Suggestions are read when their box is first focused (wantSuggestions), not here.
@@ -863,8 +815,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // processes is what they would compete for): the commit rows first, then the uncommitted work
     // (last, so on the Uncommitted side its files are what the Changes view settles on), then how
     // far each is from its upstream.
+    if (changed && this.backgroundFor !== undefined) void this.marks.read();
     if (force || changed || (this.queryState === null && !this.reloading)) await this.reload();
     if (force) {
+      void this.marks.read();
       await this.deps.uncommitted.readAll(true);
       await this.upstream.read();
     }
@@ -893,6 +847,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    */
   windowFocused(): void {
     if (this.webviewView?.visible) void this.deps.uncommitted.readUnreported();
+    // A merge stopped or a branch checked out in a terminal: files only, no git process.
+    if (this.backgroundFor !== undefined) void this.marks.read();
   }
 
   /**
@@ -957,9 +913,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   repoStateChanged(root: string, headMoved: boolean, initial = false): void {
     // vscode.git's first status of a repository is not a change: the background read covers it.
     if (!initial) this.deps.uncommitted.touch(root);
-    if (!headMoved) return;
     const repo = this.innermost(root)?.r;
     if (!repo) return;
+    // Any report: a merge that stopped or a rebase step leaves HEAD's commit where it was.
+    this.marks.touched(repo.id);
+    if (!headMoved) return;
     this.refsChanged.fire(repo.id);
     this.upstream.touched(repo.id);
   }
@@ -1037,6 +995,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async reposChanged(repoIds: readonly string[]): Promise<void> {
     this.suggestions.branchesChanged();
     for (const id of repoIds) void this.deps.uncommitted.readRepo(id);
+    void this.marks.read(new Set(repoIds));
     await this.reload();
     await this.upstream.read(new Set(repoIds));
     this.refsChanged.fire(undefined);
@@ -1044,6 +1003,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   async branchChanged(repoId: string): Promise<void> {
     this.suggestions.branchesChanged();
+    void this.marks.read(new Set([repoId]));
     await this.reload();
     await this.deps.uncommitted.readRepo(repoId);
     await this.upstream.read(new Set([repoId]));
@@ -1161,7 +1121,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return {
       repos: this.repos, profiles: this.profiles.resolved(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.suggestions.branches, authors: this.suggestions.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
-      layout: this.layout(),
+      layout: this.layoutStore.layout(),
       historyWork: this.historyWork(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,
@@ -1178,6 +1138,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       workTotals: totals(this.deps.uncommitted.works()),
       workKnown: this.deps.uncommitted.known,
       sync: Object.fromEntries(this.upstream.byRepo()),
+      marks: { ...this.marks.byRepo() },
       fetching: this.upstream.fetching, toolbar: this.toolbarState(),
       reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
@@ -1228,7 +1189,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * clocks), and only while the option is on. The answer is a decoration, never a filter.
    */
   private async readOffHead(): Promise<void> {
-    if (!this.context.globalState.get<boolean>(HIGHLIGHT_HEAD_KEY, false)) return;
+    if (!this.layoutStore.layout().highlightHead) return;
     const epoch = ++this.offHeadEpoch;
     const oldest = new Map<string, number>();
     for (const c of this.rows) oldest.set(c.repoId, Math.min(oldest.get(c.repoId) ?? Infinity, c.time));
@@ -1404,6 +1365,28 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** A parent hash in the commit details: that commit alone, selected in the Log, if it is listed. */
+  /** The repositories, listed now when the Log has not listed them yet (Insights opened first). */
+  async ensureRepos(): Promise<void> {
+    if (this.repos.length === 0) await this.loadRepos();
+  }
+
+  /**
+   * Shows a commit in the Log (Insights' bubbles): selected where it is listed; else found by its
+   * hash, as the search box finds one whatever the other filters say, and selected once listed.
+   */
+  async showCommit(repoId: string, sha: string): Promise<void> {
+    if (!isSha(sha) || !this.repos.some((r) => r.id === repoId)) return;
+    await vscode.commands.executeCommand(`${LogView.id}.focus`);
+    if (await this.revealCommit(repoId, sha)) return;
+    if (this.history) await this.setHistory(null);
+    this.filter = { ...this.filter, text: sha };
+    this.persistFilter();
+    this.postInit();
+    this.reloadSoon.cancel();
+    await this.reload();
+    await this.revealCommit(repoId, sha);
+  }
+
   private async revealCommit(repoId: string, sha: string): Promise<boolean> {
     if (!this.findCommit(repoId, sha)) return false;
     const ref = { repoId, sha };
@@ -1608,9 +1591,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** A commit was made outside the Log (the Uncommitted view): read the first page again. */
+  /** A pill's Show Branch Details: the webview selects its row and opens the sheet, focused. */
+  showBranchSheet(arg: unknown): void {
+    const a = arg as { repoId?: unknown; ref?: unknown } | undefined;
+    if (typeof a?.repoId === "string" && typeof a.ref === "string" && this.repos.some((r) => r.id === a.repoId)) this.post({ type: "branchSheetShow", repoId: a.repoId, ref: a.ref });
+  }
+
   commitsChanged(): void {
     this.reloadSoon.cancel();
     void this.reload();
+    // A commit may have finished a merge, cherry-pick or revert: the marks follow at once, not on
+    // VS Code's Git's word (which can come late, or not at all where it does not watch the repository).
+    if (this.backgroundFor !== undefined) void this.marks.read();
   }
 
   private post(m: HostMessage): void {
@@ -1632,6 +1624,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.detail.abort();
     this.hover.end();
     this.upstream.dispose();
+    this.marks.dispose();
+    this.branchSheet.dispose();
     this.commands.dispose();
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();

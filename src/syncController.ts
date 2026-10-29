@@ -298,7 +298,11 @@ export class SyncController implements vscode.Disposable {
     if (skipped.length > 0) {
       const list = skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join(", ");
       const more = skipped.length > 3 ? localize(" and {0} more", skipped.length - 3) : "";
-      void vscode.window.showWarningMessage(localize("Linyra pulled {0} of {1} repositories. Left as they were: {2}{3}. Pull those in Source Control or a terminal.", pulled.length, pulled.length + skipped.length, list, more));
+      // A fast-forward cannot take a diverged branch: Update Project merges or rebases it.
+      const update = localize("Update Project…");
+      void vscode.window.showWarningMessage(localize("Linyra pulled {0} of {1} repositories. Left as they were: {2}{3}.", pulled.length, pulled.length + skipped.length, list, more), update).then((pick) => {
+        if (pick === update) void vscode.commands.executeCommand("linyra.updateProject");
+      });
     } else {
       vscode.window.setStatusBarMessage(pullSummary(pulled.length), 8000);
     }

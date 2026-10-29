@@ -10,12 +10,7 @@
   --changes-axis: color-mix(in srgb, var(--vscode-foreground) 55%, transparent);
   --changes-notch: var(--vscode-panel-background, var(--vscode-editor-background));
 }
-/* The column sits between the author and the date (as GitLens orders them); --changes-col is the stage's width (list.ts). */
-.list.with-changes .row { grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) minmax(48px, 10ch) var(--changes-col, 52px) 8ch; }
-.list.with-changes.hash-column .row { grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) 8.5ch minmax(48px, 10ch) var(--changes-col, 52px) 8ch; }
-@container (max-width: 720px) {
-  .list.with-changes .row, .list.with-changes.hash-column .row { grid-template-columns: 3px var(--graph-width, 32px) minmax(0, 1fr) var(--changes-col, 18px) 7ch; }
-}
+/* The column sits between the author and the date (as GitLens orders them), at the width and stage the column model gives it (logColumns.ts). */
 .changes-cell { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
 .changes-files { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .changes-files-icon { width: 12px; height: 12px; }

@@ -55,9 +55,10 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
   assert.strictEqual(describeUncommitted([binaryWork]).roots[0].children[0].children[0].description, "二进制");
   assert.strictEqual(tree.children[0].label, "已暂存");
   assert.strictEqual(tree.children[0].group, "staged");
-  const prompt = discardPrompt("acme-api", [f], true, [f]);
+  const edited = { path: "note.txt", status: "M" as const, added: 1, deleted: 0 };
+  const prompt = discardPrompt("acme-api", [edited, f], true, []);
   assert.strictEqual(prompt.button, "放弃文件更改");
-  assert.ok(prompt.detail.includes("无法撤销") && prompt.detail.includes("删除新文件"));
+  assert.ok(prompt.detail.includes("无法撤销") && prompt.detail.includes("新文件保留"), prompt.detail);
   configureI18n("en");
   assert.strictEqual(decorationFor("M")?.tooltip, "Modified");
   assert.strictEqual(describeUncommitted([]).message, "No uncommitted changes in the ticked repositories.");

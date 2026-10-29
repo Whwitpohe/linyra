@@ -8,6 +8,7 @@ import { byId, clear, h } from "./dom";
 import { GRAPH_INSET } from "./graph";
 import { chipPath, fileChangeLabel, fileChangeView, nameNotes } from "./historyModel";
 import { renderLines } from "./ui/counts";
+import { renderStatus } from "./ui/fileStatus";
 
 /** The file File History shows, as the host's init names it. */
 export interface HistoryTarget {
@@ -24,7 +25,7 @@ export function historyChangeCell(file: Commit["file"], role = "gridcell"): HTML
   const label = fileChangeLabel(v);
   cell.setAttribute("aria-label", label);
   cell.title = label;
-  cell.append(h("span", { class: `history-status status-${v.status}`, "aria-hidden": "true" }, [v.status]));
+  cell.append(renderStatus(v.status, false, "history-status"));
   if (v.lines === null) cell.append(h("span", { class: "history-binary", "aria-hidden": "true" }, [localize("binary")]));
   else if (v.lines) {
     const lines = renderLines(v.lines.added, v.lines.deleted);

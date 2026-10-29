@@ -4,6 +4,7 @@ import type { RunGit } from "./logQuery";
 import { isAbortError } from "./pool";
 import type { HostMessage } from "./protocol";
 import type { Commit, Repo } from "./types";
+import type { MessageRoutes } from "./messageRoutes";
 
 /** Explain Commit, registered by Linyra's AI features when they are there: the card links to it only then. */
 export const EXPLAIN_COMMAND = "linyra.ai.explainCommit";
@@ -40,6 +41,10 @@ export class HoverDetails {
   compare: ((repoId: string, left: string, right: string) => Promise<void>) | undefined;
 
   constructor(private readonly host: HoverHost) {}
+
+  register(routes: MessageRoutes): void {
+    routes.on("hover", (m) => this.show(m.repoId, m.sha)).on("hoverEnd", () => this.end()).on("hoverAction", (m) => this.action(m.action, m.repoId, m.sha));
+  }
 
   async show(repoId: unknown, sha: unknown): Promise<void> {
     this.end();

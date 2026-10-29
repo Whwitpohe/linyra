@@ -51,7 +51,7 @@ async function newestMtime(root: string, paths: readonly string[]): Promise<numb
 /** Whether a new read shows the same work as the last one (then nobody is told). */
 function sameWork(a: RepoWork | undefined, b: RepoWork): boolean {
   if (a === undefined) return b.staged.length + b.changes.length === 0;
-  return a.head === b.head && a.editedAt === b.editedAt && JSON.stringify(a.branch) === JSON.stringify(b.branch)
+  return a.head === b.head && a.editedAt === b.editedAt && a.conflicts === b.conflicts && JSON.stringify(a.branch) === JSON.stringify(b.branch)
     && JSON.stringify(a.staged) === JSON.stringify(b.staged) && JSON.stringify(a.changes) === JSON.stringify(b.changes);
 }
 
@@ -197,15 +197,6 @@ export class UncommittedStore implements vscode.Disposable {
     return this.scope.pathspecs.length > 0;
   }
 
-  /** The whole repository's uncommitted work, ignoring the Path box (what a commit would take). */
-  async whole(repoId: string): Promise<{ staged: number; changes: number; tracked: number } | undefined> {
-    const r = this.scope.repos.find((x) => x.id === repoId);
-    if (!r) return undefined;
-    const split = splitStatus(await this.deps.run(r.root, statusArgs([]), new AbortController().signal));
-    const paths = (fs: readonly { path: string }[]) => new Set(fs.map((f) => f.path)).size;
-    return { staged: paths(split.staged), changes: paths(split.changes), tracked: paths(split.changes.filter((f) => !f.untracked)) };
-  }
-
   /** The work of the repositories read so far, in Repo List order. */
   works(): RepoWork[] {
     return this.scope.repos.flatMap((r) => {
@@ -341,7 +332,8 @@ export class UncommittedStore implements vscode.Disposable {
       editedAt = await newestMtime(r.root, present);
     }
     if (staged.length + changes.length > 0) this.dirty.add(r.id); else this.dirty.delete(r.id);
-    return { repoId: r.id, root: r.root, name: r.name, head, ...(branch ? { branch } : {}), staged, changes, editedAt, canStage: this.deps.canStage(r.root) };
+    const conflicts = split.changes.filter((e) => e.conflicted).length;
+    return { repoId: r.id, root: r.root, name: r.name, head, ...(branch ? { branch } : {}), staged, changes, ...(conflicts > 0 ? { conflicts } : {}), editedAt, canStage: this.deps.canStage(r.root) };
   }
 
   private changedSoon(): void {

@@ -191,8 +191,41 @@ test("a parent hash in the details selects that commit in the Log", async ({ pag
 
 test("a changed file's line counts take the add and delete colors", async ({ page }) => {
   await open(page);
-  const stats = page.locator("#file-tree .tree-row .row-stats .line-counts").first();
+  const stats = page.locator("#file-tree .ftree-row .ftree-end .line-counts").first();
   await expect(stats).toBeVisible();
   expect(await stats.locator(".count-added").evaluate((el) => getComputedStyle(el).color)).toBe(await themeColor(page, "--vscode-gitDecoration-addedResourceForeground"));
   expect(await stats.locator(".count-deleted").evaluate((el) => getComputedStyle(el).color)).toBe(await themeColor(page, "--vscode-gitDecoration-deletedResourceForeground"));
+});
+
+test("Automatic layout: the changed files sit beside the Log while it keeps 520px for its subjects; below that they go under it", async ({ page }) => {
+  for (const [width, stacked] of [[1500, false], [1000, true], [800, true]]) {
+    await open(page, { width, height: 700 });
+    const workspace = page.locator(".workspace");
+    if (stacked) await expect(workspace).toHaveClass(/\bstacked\b/);
+    else await expect(workspace).not.toHaveClass(/\bstacked\b/);
+    const log = await page.locator("#list").evaluate((el) => el.clientWidth);
+    expect(log, `${width}px window`).toBeGreaterThanOrEqual(520);
+    // The subjects are there to read, not squeezed out.
+    expect(await page.locator("#rows .row .subject").first().evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(120);
+  }
+});
+
+test("Automatic layout follows the Repo List's divider: widened, it leaves the Log too little room, and the files go under it", async ({ page }) => {
+  await open(page, { width: 1200, height: 700 });
+  const workspace = page.locator(".workspace");
+  await expect(workspace).not.toHaveClass(/\bstacked\b/);
+  await page.locator("#splitter").focus();
+  for (let i = 0; i < 14; i++) await page.keyboard.press("ArrowRight");
+  await expect(workspace).toHaveClass(/\bstacked\b/);
+  expect(await page.locator("#list").evaluate((el) => el.clientWidth)).toBeGreaterThanOrEqual(520);
+});
+
+test("Automatic layout follows the panel: narrowed, the changed files move under the Log; widened, back beside it", async ({ page }) => {
+  await open(page, { width: 1500, height: 700 });
+  const workspace = page.locator(".workspace");
+  await expect(workspace).not.toHaveClass(/\bstacked\b/);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await expect(workspace).toHaveClass(/\bstacked\b/);
+  await page.setViewportSize({ width: 1500, height: 700 });
+  await expect(workspace).not.toHaveClass(/\bstacked\b/);
 });

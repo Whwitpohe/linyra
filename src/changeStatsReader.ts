@@ -5,6 +5,7 @@
 import { parseStats, statsArgs, statsRequests, type CommitStats } from "./changeStats";
 import type { RunGit } from "./logQuery";
 import { runPool } from "./pool";
+import type { MessageRoutes } from "./messageRoutes";
 
 /** Read stats kept for the session: enough for every row a long scroll shows, bounded. */
 const KEEP = 20_000;
@@ -28,6 +29,11 @@ export class ChangeStatsReader {
   constructor(private readonly host: StatsHost) {}
 
   /** The commits on screen (untrusted: {repoId, sha}[] from the webview). */
+  register(routes: MessageRoutes): void {
+    // Not awaited: a newer request aborts this one, and the webview waits for nothing.
+    routes.on("wantStats", (m) => { void this.want(Array.isArray(m.commits) ? m.commits : []); });
+  }
+
   async want(commits: readonly unknown[]): Promise<void> {
     const ready: StatsBatch = {};
     const missing: [string, string, string[]][] = [];

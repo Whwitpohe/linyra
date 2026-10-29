@@ -4,13 +4,15 @@ import { selectedBranches, type FilterState } from "../filterModel";
 import type { HostMessage, WebviewMessage } from "../protocol";
 import type { Repo } from "../types";
 import { codiconElement } from "./codicons";
-import { byId, clear, h } from "./dom";
+import { byId, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo } from "./repoPaneModel";
-import { collapseAll, expandAll, parentIndex, treeRows, wantedBranchData, type BranchTreeData, type TreeRow } from "./repoTreeModel";
+import { collapseAll, expandAll, parentIndex, treeRows, wantedBranchData, withOperations, type BranchTreeData, type TreeRow } from "./repoTreeModel";
 import { profileFilter, type ResolvedProfile } from "../profileModel";
 import { syncLabel, type AheadBehind } from "../upstream";
+import { drift, headText, markTitle, operationLabel, operationName, spokenLabel, workSuffix, type RepoMark } from "../repoMarkModel";
 import { absoluteTime, accentOf, assignAccents } from "./view";
+import type { HostRoutes } from "./hostRoutes";
 
 /**
  * The Repositories pane: one tree, as the JetBrains Branches panel groups a multi-root project.
@@ -34,6 +36,12 @@ export class RepoPane {
   private readonly data = new Map<string, BranchTreeData>();
   /** The Log's filter: the branch it shows is marked. */
   private filter: FilterState | undefined;
+  /**
+   * Each row's element by its key, with what it was drawn from: a row that would look the same
+   * keeps its element (and its checkbox), so a cursor move or a mark changes a row, not the list.
+   */
+  private built = new Map<string, { sig: string; el: HTMLElement; refresh?: () => void }>();
+  private width = -1;
   private get hidden(): boolean { return this.list.hidden; }
 
   constructor(private readonly onChange: (repoIds: string[] | null) => void, private readonly post: (m: WebviewMessage) => void = () => undefined) {
@@ -48,8 +56,14 @@ export class RepoPane {
         this.list.focus();
       }
     });
-    // Dragging the divider resizes the pane without a window resize.
-    new ResizeObserver(() => this.fitNames()).observe(this.list);
+    // Dragging the divider resizes the pane without a window resize. Only a new width changes
+    // what fits: rows added by opening a repository change the height alone.
+    new ResizeObserver((entries) => {
+      const width = entries[entries.length - 1].contentRect.width;
+      if (width === this.width) return;
+      this.width = width;
+      this.fitNames();
+    }).observe(this.list);
     this.filterInput.addEventListener("input", () => {
       if (this.hidden) return;
       this.active = 0;
@@ -72,11 +86,16 @@ export class RepoPane {
     });
     this.list.addEventListener("click", (e) => {
       const target = e.target as Element;
+      const opButton = target.closest<HTMLElement>("[data-op-action]");
+      if (opButton) { this.post({ type: "operation", action: opButton.dataset.opAction as "resolve" | "continue" | "abort", repoId: opButton.dataset.repo! }); return; }
       const el = target.closest<HTMLElement>("[data-row]");
       if (!el) return;
       const i = Number(el.dataset.row);
       this.active = i;
       const row = this.rows[i];
+      // A stopped operation's next step runs from its buttons or Enter: a stray click on the row
+      // (or Space) must not continue a merge. It only moves the cursor there.
+      if (row.kind === "operation") { this.list.focus(); this.render(); return; }
       if (target.closest(".tree-twisty") && "expanded" in row && row.expanded !== undefined) { this.list.focus(); this.toggle(row); return; }
       if (target.closest(".branch-star") && row.kind === "branch") {
         this.post({ type: "branchSidebar", action: "favorite", repoId: row.repo.id, ref: row.branch.ref });
@@ -123,6 +142,19 @@ export class RepoPane {
     this.render(false);
   }
   private idsKey: string | null | undefined;
+  /** Each repository's branch, its * + ! and a merge or rebase that stopped. */
+  private marks: Readonly<Record<string, RepoMark>> = {};
+
+  register(routes: HostRoutes): void {
+    routes.on("sidebarState", (m) => this.applyBranchState(m.state)).on("branchTree", (m) => this.receiveBranches(m)).on("repoMarks", (m) => this.setMarks(m.byRepo));
+  }
+
+  setMarks(byRepo: Readonly<Record<string, RepoMark>>): void {
+    if (JSON.stringify(byRepo) === JSON.stringify(this.marks)) return;
+    this.marks = byRepo;
+    // Arrives on its own (a checkout anywhere): never scroll the list the user is reading.
+    this.render(false);
+  }
 
   /** Share adjacency repairs without moving the repository list's scroll position. */
   setAccents(accents: ReadonlyMap<string, number>): void {
@@ -171,7 +203,13 @@ export class RepoPane {
       return;
     }
     if (row.kind === "group" || row.kind === "remote") { this.toggle(row); return; }
-    if (row.kind === "message") return;
+    // Enter on a stopped operation: its next step. Space (toggle) does nothing there.
+    if (row.kind === "operation") {
+      if (!toggle) this.post({ type: "operation", action: row.conflicts > 0 ? "resolve" : "continue", repoId: row.repoId });
+      return;
+    }
+    // A worktree's actions are on its right-click (Open in New Window, Remove…).
+    if (row.kind === "message" || row.kind === "worktree") return;
     const allIds = this.repos.map((r) => r.id);
     // A box ticks itself when clicked; the pane must be rebuilt even when the filter comes out
     // the same (All when all are shown, or the last repo), or the boxes stop telling the truth.
@@ -230,10 +268,10 @@ export class RepoPane {
   /**
    * Names wider than the pane are cut in the middle to what fits, so repos that share a
    * prefix stay apart. Not while searching: the highlighted letters need the whole name.
+   * `spans`: only these (rows just drawn); a row kept as it was keeps its fitted name.
    */
-  private fitNames(): void {
+  private fitNames(spans = [...this.list.querySelectorAll<HTMLElement>(".repo-name[data-name]")]): void {
     if (this.filterInput.value.trim()) return;
-    const spans = [...this.list.querySelectorAll<HTMLElement>(".repo-name[data-name]")];
     if (spans.length === 0) return;
     // Write, read, write: one layout for the whole list instead of one per row.
     for (const span of spans) span.textContent = span.dataset.name ?? "";
@@ -278,114 +316,203 @@ export class RepoPane {
       this.data.set(repo.id, { loading: true });
       this.post({ type: "branchSidebar", action: "load", repoId: repo.id });
     }
-    this.rows = treeRows(this.repos, query, this.profiles, this.repoIds, this.data, this.state);
+    const stopped = new Map(Object.entries(this.marks).flatMap(([id, m]) => (m.operation ? [[id, { operation: m.operation, conflicts: m.work?.conflicts ?? 0 }] as const] : [])));
+    this.rows = withOperations(treeRows(this.repos, query, this.profiles, this.repoIds, this.data, this.state), stopped);
     const revealed = this.revealing === undefined ? -1 : this.rows.findIndex((r) => r.key === this.revealing);
     if (revealed >= 0) { this.active = revealed; this.revealing = undefined; reveal = true; }
     this.active = Math.min(this.active, this.rows.length - 1);
     const count = this.repoIds === null ? String(this.repos.length) : `${this.repoIds.length}/${this.repos.length}`;
     const shown = this.filter ? selectedBranches(this.filter) : [];
-    clear(this.list);
+    // The branch most ticked repositories are on: a repository on another stands out.
+    const { common, others } = drift(this.marks, this.repoIds ?? this.repos.map((r) => r.id));
+    // Each row is drawn only when what it shows changed (its sig); the rest keep their elements.
+    const next = new Map<string, { sig: string; el: HTMLElement; refresh?: () => void }>();
+    const wanted: HTMLElement[] = [], fresh: HTMLElement[] = [];
+    const keep = (key: string, sig: string, make: () => HTMLElement, refresh?: () => void): HTMLElement => {
+      const old = this.built.get(key);
+      const reuse = old !== undefined && old.sig === sig;
+      const el = reuse ? old.el : make();
+      // A box ticks itself when clicked: a kept row's box is told its state again.
+      if (reuse) old.refresh?.(); else fresh.push(el);
+      next.set(key, { sig, el, refresh: reuse ? old.refresh : refresh });
+      wanted.push(el);
+      return el;
+    };
+    const searching = query.trim() ? query : "";
+    const rowAt: HTMLElement[] = [];
     this.rows.forEach((row, i) => {
-      const base = (extra: string) => ({
-        class: `${i === this.active ? "repo-row active" : "repo-row"}${extra}`, role: "treeitem", id: `repo-row-${i}`, "data-row": String(i),
-        "aria-level": String(row.depth + 1),
-      });
+      const base = (extra: string) => ({ class: `repo-row${extra}`, role: "treeitem", "aria-level": String(row.depth + 1) });
       const indent = (el: HTMLElement) => { if (row.depth) el.style.paddingLeft = `${10 + row.depth * 14}px`; return el; };
+      const sig = (...parts: unknown[]) => JSON.stringify([row.kind, row.depth, ...parts]);
       if (row.kind === "group" || row.kind === "remote") {
-        this.list.append(indent(h("div", { ...base(" tree-group"), "aria-expanded": String(row.expanded), "aria-selected": "false" },
+        rowAt[i] = keep(row.key, sig(row.label, row.expanded), () => indent(h("div", { ...base(" tree-group"), "aria-expanded": String(row.expanded), "aria-selected": "false" },
           [this.twisty(row.expanded), h("span", { class: "repo-name" }, [row.kind === "group" ? localize(row.label) : row.label])])));
         return;
       }
       if (row.kind === "stash") {
         const s = row.stash;
-        this.list.append(indent(h("div", { ...base(" branch-row stash-row"), "aria-selected": "false", title: `${s.subject}\n${s.ref} · ${absoluteTime(s.time)}`,
+        rowAt[i] = keep(row.key, sig(row.repo.id, s, row.label), () => indent(h("div", { ...base(" branch-row stash-row"), "aria-selected": "false", title: `${s.subject}\n${s.ref} · ${absoluteTime(s.time)}`,
           "data-vscode-context": JSON.stringify({ webviewSection: "stash", repoId: row.repo.id, ref: s.ref, preventDefaultContextMenuItems: true }),
         }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("archive")]), h("span", { class: "branch-name" }, [row.label])])));
         return;
       }
+      if (row.kind === "worktree") {
+        const w = row.worktree;
+        rowAt[i] = keep(row.key, sig(row.repo.id, w, row.label), () => indent(h("div", { ...base(" branch-row worktree-row"), "aria-selected": "false",
+          title: [w.path, w.locked ? localize("Locked: git will not remove it.") : "", w.missing ? localize("Its folder is gone: Remove forgets it.") : ""].filter(Boolean).join("\n"),
+          // Right-click a worktree: Open in New Window, Reveal, Copy Path, Remove… (package.json webview/context).
+          "data-vscode-context": JSON.stringify({ webviewSection: "worktree", repoId: row.repo.id, path: w.path, worktreeMain: w.main, worktreeMissing: w.missing === true, preventDefaultContextMenuItems: true }),
+        }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("folder")]),
+          h("span", { class: `branch-name${w.missing ? " missing" : ""}` }, [row.label])])));
+        return;
+      }
+      if (row.kind === "operation") {
+        // "Merge stopped · 2 files conflict", and what to do about it, under the repository.
+        const name = operationName(row.operation);
+        const text = row.conflicts === 1 ? localize("{0} stopped · 1 file conflicts", name)
+          : row.conflicts > 1 ? localize("{0} stopped · {1} files conflict", name, row.conflicts) : localize("{0} stopped · ready to continue", name);
+        const button = (action: "resolve" | "continue" | "abort", label: string, icon: Parameters<typeof codiconElement>[0]) =>
+          h("button", { type: "button", class: "op-action", tabindex: "-1", "data-op-action": action, "data-repo": row.repoId, title: label, "aria-label": label }, [codiconElement(icon), h("span", { class: "op-action-label" }, [label])]);
+        const next = row.conflicts > 0 ? localize("Resolve Conflicts…") : localize("Continue");
+        rowAt[i] = keep(row.key, sig(row.operation, row.conflicts, row.child), () => indent(h("div", { ...base(` op-row${row.conflicts > 0 ? " conflicted" : ""}`), "aria-selected": "false",
+          // Under a collapsed repository it is that repository's neighbour, not its child.
+          ...(row.child ? {} : { "aria-level": "1" }),
+          "aria-label": `${text}. ${localize("Enter: {0}", next)}`,
+          // Right-click: the repository's operation menu (Continue, Abort…, Resolve Conflicts…).
+          "data-vscode-context": JSON.stringify({ webviewSection: "repo", repoId: row.repoId, operation: row.operation, ...(row.conflicts > 0 ? { conflicts: true } : {}), preventDefaultContextMenuItems: true }),
+        }, [
+          this.twisty(undefined),
+          h("span", { class: "op-icon", "aria-hidden": "true" }, [codiconElement("git-merge")]),
+          h("span", { class: "op-text" }, [text]),
+          h("span", { class: "op-actions", "aria-hidden": "true" }, [
+            row.conflicts > 0 ? button("resolve", localize("Resolve…"), "edit") : button("continue", localize("Continue"), "check"),
+            button("abort", localize("Abort…"), "discard"),
+          ]),
+        ])));
+        return;
+      }
       if (row.kind === "message") {
-        this.list.append(indent(h("div", { ...base(" branch-message"), "aria-selected": "false" }, [this.twisty(undefined), h("span", { class: "repo-name" }, [localize(row.label)])])));
+        rowAt[i] = keep(row.key, sig(row.label), () => indent(h("div", { ...base(" branch-message"), "aria-selected": "false" }, [this.twisty(undefined), h("span", { class: "repo-name" }, [localize(row.label)])])));
         return;
       }
       if (row.kind === "branch") {
         const b = row.branch, data = this.data.get(row.repo.id)?.data;
         const selected = !!data && shown.some((ref) => ref === b.ref || ref === branchRevision(b, data)) && this.filter?.repoIds?.length === 1 && this.filter.repoIds[0] === row.repo.id;
-        const title = [b.name, b.upstream ? localize("Tracks {0}", b.upstream) : "", syncLabel(b)?.title ?? ""].filter(Boolean).join("\n");
-        this.list.append(indent(h("div", { ...base(`${selected ? " selected" : ""} branch-row`), "aria-selected": String(selected), title,
-          "data-vscode-context": JSON.stringify({ webviewSection: "branch", repoId: row.repo.id, ref: b.ref, branchLocal: b.kind === "local", branchRemote: b.kind === "remote",
-            branchTag: b.kind === "tag", branchCurrent: b.current, preventDefaultContextMenuItems: true }),
-        }, [
-          this.twisty(undefined),
-          h("span", { class: `branch-mark${b.current ? " current" : ""}`, "aria-hidden": "true" }, [codiconElement(b.current ? "check" : b.kind === "tag" ? "tag" : "git-branch")]),
-          h("span", { class: "branch-name" }, [row.label]),
-          h("button", { class: `branch-star${row.favorite ? " favorite" : ""}`, type: "button", tabindex: "-1", "aria-pressed": String(row.favorite),
-            title: localize(row.favorite ? "Remove from Favorites" : "Add to Favorites"), "aria-label": localize("Favorite branch {0}", b.name) }, [codiconElement(row.favorite ? "star-full" : "star-empty")]),
-        ])));
+        rowAt[i] = keep(row.key, sig(row.repo.id, b, row.label, row.favorite, selected), () => {
+          const title = [b.name, b.upstream ? localize("Tracks {0}", b.upstream) : "", syncLabel(b)?.title ?? ""].filter(Boolean).join("\n");
+          return indent(h("div", { ...base(`${selected ? " selected" : ""} branch-row`), "aria-selected": String(selected), title,
+            "data-vscode-context": JSON.stringify({ webviewSection: "branch", repoId: row.repo.id, ref: b.ref, branchLocal: b.kind === "local", branchRemote: b.kind === "remote",
+              branchTag: b.kind === "tag", branchCurrent: b.current, preventDefaultContextMenuItems: true }),
+          }, [
+            this.twisty(undefined),
+            h("span", { class: `branch-mark${b.current ? " current" : ""}`, "aria-hidden": "true" }, [codiconElement(b.current ? "check" : b.kind === "tag" ? "tag" : "git-branch")]),
+            h("span", { class: "branch-name" }, [row.label]),
+            h("button", { class: `branch-star${row.favorite ? " favorite" : ""}`, type: "button", tabindex: "-1", "aria-pressed": String(row.favorite),
+              title: localize(row.favorite ? "Remove from Favorites" : "Add to Favorites"), "aria-label": localize("Favorite branch {0}", b.name) }, [codiconElement(row.favorite ? "star-full" : "star-empty")]),
+          ]));
+        });
         return;
       }
       if (row.kind === "profile") {
         const p = row.profile;
         const names = p.ids.map((id) => this.repos.find((r) => r.id === id)?.name ?? id).join(", ");
-        const missing = p.missing.length > 0 ? localize("\n{0} not in this workspace: {1} (skipped)", p.missing.length, p.missing.join(", ")) : "";
-        this.list.append(h("div", {
-          ...base(` profile-row${row.active ? " current" : ""}`), "aria-selected": String(row.active),
-          title: `${p.name}: ${names || localize("no repository found")}${missing}`,
-          "aria-label": localize("Profile {0}, {1} repositories{2}", p.name, p.ids.length, p.missing.length ? localize(", {0} not found", p.missing.length) : ""),
-          // Right-click a profile: Show, Update, Rename, Delete (package.json webview/context).
-          "data-vscode-context": JSON.stringify({ webviewSection: "profile", profile: p.name, updatable: !(row.active && p.missing.length === 0), preventDefaultContextMenuItems: true }),
-        }, [
-          this.twisty(undefined),
-          h("span", { class: "profile-icon", "aria-hidden": "true" }),
-          h("span", { class: "repo-name" }, [p.name]),
-          p.missing.length > 0 ? h("span", { class: "profile-missing", "aria-hidden": "true" }, ["⚠"]) : null,
-          h("span", { class: "repo-count" }, [String(p.ids.length)]),
-        ]));
+        rowAt[i] = keep(row.key, sig(p, row.active, names), () => {
+          const missing = p.missing.length > 0 ? localize("\n{0} not in this workspace: {1} (skipped)", p.missing.length, p.missing.join(", ")) : "";
+          return h("div", {
+            ...base(` profile-row${row.active ? " current" : ""}`), "aria-selected": String(row.active),
+            title: `${p.name}: ${names || localize("no repository found")}${missing}`,
+            "aria-label": localize("Profile {0}, {1} repositories{2}", p.name, p.ids.length, p.missing.length ? localize(", {0} not found", p.missing.length) : ""),
+            // Right-click a profile: Show, Update, Rename, Delete (package.json webview/context).
+            "data-vscode-context": JSON.stringify({ webviewSection: "profile", profile: p.name, updatable: !(row.active && p.missing.length === 0), preventDefaultContextMenuItems: true }),
+          }, [
+            this.twisty(undefined),
+            h("span", { class: "profile-icon", "aria-hidden": "true" }),
+            h("span", { class: "repo-name" }, [p.name]),
+            p.missing.length > 0 ? h("span", { class: "profile-missing", "aria-hidden": "true" }, ["⚠"]) : null,
+            h("span", { class: "repo-count" }, [String(p.ids.length)]),
+          ]);
+        });
         return;
       }
       // A line between All and the profiles, and the repositories.
       if (row.kind === "repo" && i > 0 && this.rows[i - 1].kind !== "repo" && this.rows[i - 1].depth === 0 && this.rows.some((r) => r.kind === "profile")) {
-        this.list.append(h("div", { class: "repo-divider", role: "presentation" }));
+        keep("\0divider", "", () => h("div", { class: "repo-divider", role: "presentation" }));
       }
       const id = row.kind === "repo" ? row.id : null;
       const name = row.kind === "repo" ? row.name : localize("All repositories");
       const checked = id === null ? this.repoIds === null : isChecked(this.repoIds, id);
+      // "All repositories" shows a dash while only some are picked.
+      const indeterminate = id === null && this.repoIds !== null && this.repoIds.length > 0;
       const accent = id === null ? null : accentOf(this.accents, id);
       const ab = id === null ? undefined : this.sync[id];
-      const badge = ab ? syncLabel(ab) : null;
+      const mark = id === null ? undefined : this.marks[id];
+      const expanded = row.kind === "repo" ? row.expanded === true : undefined;
       // VS Code Elements' checkbox, for VS Code's own box, tick and hover. Presentational:
       // the row is the tree item and handles the click and the keyboard.
-      const box = document.createElement("vscode-checkbox");
-      box.className = "repo-check";
-      box.setAttribute("aria-hidden", "true");
-      box.tabIndex = -1;
-      box.checked = checked;
-      // "All repositories" shows a dash while only some are picked.
-      box.indeterminate = id === null && this.repoIds !== null && this.repoIds.length > 0;
-      this.list.append(h("div", {
-        ...base(""),
-        "aria-selected": String(checked),
-        "aria-expanded": row.kind === "repo" ? String(row.expanded === true) : undefined,
-        title: id ?? localize("Show commits from every repository"),
-        // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
-        "aria-label": id === null ? `${name}, ${count}` : badge ? `${name}, ${badge.title}` : name,
-        // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
-        // behind: the menu offers Pull (package.json webview/context).
-        "data-vscode-context": JSON.stringify(id === null ? { webviewSection: "repoList", preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: id, behind: (ab?.behind ?? 0) > 0, preventDefaultContextMenuItems: true }),
-      }, [
-        this.twisty(row.kind === "repo" ? row.expanded === true : undefined),
-        box,
-        accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
-        h("span", { class: "repo-name", "data-name": id === null ? undefined : name }, id === null ? [name] : this.highlighted(name)),
-        id === null ? h("span", { class: "repo-count" }, [count]) : null,
-        // ↓ to pull and ↑ to push, each in its own color (as the JetBrains branch widget: incoming blue, outgoing green).
-        badge && ab ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [
-          ab.behind > 0 ? h("span", { class: "sync-in" }, [`↓${ab.behind}`]) : null,
-          ab.ahead > 0 ? h("span", { class: "sync-out" }, [`↑${ab.ahead}`]) : null,
-        ]) : null,
-      ]));
+      let box: HTMLElementTagNameMap["vscode-checkbox"] | undefined;
+      const tell = () => { if (box) { box.checked = checked; box.indeterminate = indeterminate; } };
+      rowAt[i] = keep(row.key, sig(id, name, checked, indeterminate, accent, ab, mark, mark ? common : null, id !== null && others.has(id), expanded, id === null ? count : "", searching), () => {
+        const badge = ab ? syncLabel(ab) : null;
+        const conflicts = mark?.work?.conflicts ?? 0;
+        const suffix = mark ? workSuffix(mark.work) : "";
+        box = document.createElement("vscode-checkbox");
+        box.className = "repo-check";
+        box.setAttribute("aria-hidden", "true");
+        box.tabIndex = -1;
+        tell();
+        return h("div", {
+          ...base(""),
+          "aria-selected": String(checked),
+          "aria-expanded": expanded === undefined ? undefined : String(expanded),
+          title: id === null ? localize("Show commits from every repository") : [id, ...(mark ? markTitle(mark, common) : [])].join("\n"),
+          // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
+          // It carries the whole mark too: branch, differs, uncommitted work, what stopped.
+          "aria-label": id === null ? `${name}, ${count}` : spokenLabel([name, ...(mark ? markTitle(mark, common) : []), badge?.title ?? ""]),
+          // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
+          // behind: the menu offers Pull; operation: Continue, Abort and Resolve Conflicts (package.json webview/context).
+          "data-vscode-context": JSON.stringify(id === null ? { webviewSection: "repoList", preventDefaultContextMenuItems: true }
+            : { webviewSection: "repo", repoId: id, behind: (ab?.behind ?? 0) > 0, ...(mark?.operation ? { operation: mark.operation } : {}), ...(conflicts > 0 ? { conflicts: true } : {}), preventDefaultContextMenuItems: true }),
+        }, [
+          this.twisty(expanded),
+          box,
+          accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
+          h("span", { class: "repo-name", "data-name": id === null ? undefined : name }, id === null ? [name] : this.highlighted(name)),
+          id === null ? h("span", { class: "repo-count" }, [count]) : null,
+          // develop*+, as VS Code's status bar names a branch; in the warning color when the other
+          // ticked repositories are on another. A narrow pane names only that one; the * + ! stay.
+          mark ? h("span", { class: `repo-branch${others.has(id!) ? " drift" : ""}`, "aria-hidden": "true" }, [codiconElement(mark.branch === null ? "git-commit" : "git-branch"), h("span", { class: "branch-text" }, [headText(mark)])]) : null,
+          suffix ? h("span", { class: "repo-work", "aria-hidden": "true" }, [suffix]) : null,
+          // merging · 2 conflicts: a narrow pane keeps the icon and the count (the merge icon: never the profiles' ⚠).
+          mark?.operation ? h("span", { class: `repo-op${conflicts > 0 ? " conflicted" : ""}`, "aria-hidden": "true" }, [
+            codiconElement("git-merge"), h("span", { class: "op-word" }, [operationLabel(mark.operation)]),
+            conflicts > 0 ? h("span", { class: "op-count" }, [String(conflicts), h("span", { class: "op-noun" }, [` ${localize(conflicts === 1 ? "conflict" : "conflicts")}`])]) : null,
+          ]) : null,
+          // ↓ to pull and ↑ to push, each in its own color (as the JetBrains branch widget: incoming blue, outgoing green).
+          badge && ab ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [
+            ab.behind > 0 ? h("span", { class: "sync-in" }, [`↓${ab.behind}`]) : null,
+            ab.ahead > 0 ? h("span", { class: "sync-out" }, [`↑${ab.ahead}`]) : null,
+          ]) : null,
+        ]);
+      }, tell);
     });
-    if (this.rows.every((r) => r.kind !== "repo") && this.repos.length > 0 && query.trim()) this.list.append(h("p", { class: "hint" }, [localize("No repositories match.")]));
-    this.fitNames();
+    if (this.rows.every((r) => r.kind !== "repo") && this.repos.length > 0 && query.trim()) keep("\0hint", "", () => h("p", { class: "hint" }, [localize("No repositories match.")]));
+    // Rows that left go; the kept ones stay where they are, so opening a repository only inserts.
+    const keepSet = new Set(wanted);
+    for (const child of [...this.list.children]) if (!keepSet.has(child as HTMLElement)) child.remove();
+    let at = this.list.firstElementChild;
+    for (const el of wanted) {
+      if (el === at) at = at.nextElementSibling;
+      else this.list.insertBefore(el, at);
+    }
+    this.built = next;
+    // A row's place: its index for the click and the keyboard, and the cursor.
+    rowAt.forEach((el, i) => {
+      const rowId = `repo-row-${i}`;
+      if (el.id !== rowId) el.id = rowId;
+      if (el.dataset.row !== String(i)) el.dataset.row = String(i);
+      el.classList.toggle("active", i === this.active);
+    });
+    this.fitNames(fresh.flatMap((el) => [...el.querySelectorAll<HTMLElement>(".repo-name[data-name]")]));
     this.list.setAttribute("aria-activedescendant", `repo-row-${this.active}`);
     if (reveal) this.list.querySelector(".repo-row.active")?.scrollIntoView({ block: "nearest" });
   }

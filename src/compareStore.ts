@@ -9,6 +9,7 @@ import {
   resolveInput, setRemoteNames, sideCountArgs, type Pair, type RepoCompare, type Side, type SideCommit,
 } from "./compareModel";
 import { GitError } from "./git";
+import { objectsDir } from "./mergeCheck";
 import type { RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import { branchSuggestions } from "./repos";
@@ -395,23 +396,4 @@ export class CompareStore implements vscode.Disposable {
   }
 }
 
-/**
- * The repository's object directory, read from the disk (no git process): .git/objects, or for a
- * worktree or submodule (.git is a "gitdir:" file) the one its common directory names.
- */
-async function objectsDir(root: string): Promise<string | undefined> {
-  const dotGit = path.join(root, ".git");
-  try {
-    let gitDir = dotGit;
-    if ((await fs.stat(dotGit)).isFile()) {
-      const m = /^gitdir:\s*(.+?)\s*$/m.exec(await fs.readFile(dotGit, "utf8"));
-      if (!m) return undefined;
-      gitDir = path.resolve(root, m[1]);
-    }
-    const common = await fs.readFile(path.join(gitDir, "commondir"), "utf8").then((c) => path.resolve(gitDir, c.trim()), () => gitDir);
-    const objects = path.join(common, "objects");
-    return (await fs.stat(objects)).isDirectory() ? objects : undefined;
-  } catch {
-    return undefined;
-  }
-}
+

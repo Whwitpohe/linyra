@@ -109,7 +109,7 @@ test("↑/↓ move the selection; a narrow Log drops the time, and no row runs p
 test("zh-cn: the tag, the pill and the time are translated", async ({ page }) => {
   await open(page, { locale: "zh-cn" });
   await expect(row(page, "acme-web").locator(".work-tag")).toHaveText(["1 个已暂存"]);
-  await expect(row(page, "acme-libs").locator(".work-pill .pill-status")).toHaveText("未发布");
+  await expect(row(page, "acme-libs").locator(".work-pill .pill-status")).toHaveText("未推送到远程");
   await expect(row(page, "acme-api").locator(".work-pill")).toHaveAttribute("title", "main · 已与 origin/main 同步");
   await expect(row(page, "acme-web").locator(".work-edited")).toHaveText("2 分钟前编辑");
 });

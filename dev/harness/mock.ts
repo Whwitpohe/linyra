@@ -1,6 +1,7 @@
 // Dev-only mock data. Neutral names only (CLAUDE.md constraint 3).
 import type { Commit, Repo } from "../../src/types";
 import { commitKey } from "../../src/types";
+import type { RepoMark } from "../../src/repoMarkModel";
 
 /** 2026-09-23T12:00:00Z — fixed so screenshots are reproducible. */
 export const NOW = 1790164800;
@@ -41,6 +42,19 @@ function sha(n: number): string {
     s += x.toString(16).padStart(8, "0");
   }
   return s.slice(0, 40);
+}
+
+/**
+ * The Repo List's marks: most repositories on develop, acme-web with changes, acme-libs stopped in
+ * a merge with conflicts on another branch, and (in bigger workspaces) the odd detached HEAD.
+ */
+export function mockMarks(repos: Repo[]): Record<string, RepoMark> {
+  const clean = { changes: false, staged: false, conflicts: 0 };
+  return Object.fromEntries(repos.map((r, i): [string, RepoMark] => [r.id,
+    r.name === "acme-libs" ? { branch: "feature/login", operation: "merge", work: { changes: true, staged: true, conflicts: 2 } }
+      : r.name === "acme-web" ? { branch: "develop", work: { changes: true, staged: false, conflicts: 0 } }
+      : i % 9 === 7 ? { branch: null, detached: "1a2b3c4", work: clean }
+      : { branch: "develop", work: clean }]));
 }
 
 export function mockCommits(repos: Repo[], scenario: string): Commit[] {

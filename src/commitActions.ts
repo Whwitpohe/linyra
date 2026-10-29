@@ -1,7 +1,8 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
-import { commitCommands, newRefProblem, parseRefNames, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
+import { commitCommands, commitFailed, newRefProblem, parseRefNames, resetDistanceArgs, resetPrompt, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
+import { gitText, whyOf } from "./actionErrors";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
 import type { RepoDiscovery } from "./repoDiscovery";
@@ -13,8 +14,8 @@ import { compareWithWorkingTree } from "./workingTreeDiff";
 const WRITE_SIGNAL = new AbortController().signal;
 /** Writes may take the index lock; git's words stay English for stoppedReason; never an editor. */
 const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C", GIT_EDITOR: "true" };
+import { guardCheckout } from "./smartCheckout";
 
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const short = (sha: string) => sha.slice(0, 7);
 const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
@@ -40,6 +41,8 @@ export interface CommitActionHost {
 export class CommitActions {
   /** Repositories with an action running: a second one waits for nothing and does nothing. */
   private readonly busy = new Set<string>();
+  /** The last error shown (integration test seam). */
+  lastError: string | undefined;
 
   constructor(private readonly host: CommitActionHost) {}
 
@@ -66,9 +69,10 @@ export class CommitActions {
       }
     } catch (e) {
       wrote = true; // a stopped cherry-pick or revert still changed the working tree
-      const reason = stoppedReason(action, messageOf(e));
+      const reason = stoppedReason(action, gitText(e));
       if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
-      void vscode.window.showErrorMessage(localize("Commit action failed in {0}: {1}", repo.name, reason ? localize(reason) : messageOf(e)));
+      this.lastError = commitFailed(action, short(commit.sha), repo.name, reason ? localize(reason) : whyOf(e));
+      void vscode.window.showErrorMessage(this.lastError);
     } finally {
       try {
         if (wrote) {
@@ -101,9 +105,9 @@ export class CommitActions {
         }
         done.push(`${repo.name} (${applied})`);
       } catch (e) {
-        const reason = stoppedReason(action, messageOf(e));
+        const reason = stoppedReason(action, gitText(e));
         if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
-        stopped.push(`${repo.name} (${localize("{0} of {1} done", applied, ordered.length)}: ${reason ? localize(reason) : messageOf(e)})`);
+        stopped.push(`${repo.name} (${localize("{0} of {1} done", applied, ordered.length)}: ${reason ? localize(reason) : whyOf(e)})`);
       } finally {
         try {
           await this.host.discovery.branchRepository(repo.root)?.status?.();
@@ -145,26 +149,31 @@ export class CommitActions {
         const i = await this.host.ask.pick(modes, localize("Reset {0} to {1}", branch, short(commit.sha)));
         if (i === undefined) return undefined;
         const { mode } = modes[i];
-        const detail = mode === "hard"
-          ? localize("Uncommitted changes in {0} are discarded. This cannot be undone.", repo.name)
-          : localize("Commits after {0} leave the branch; the files keep their changes.", short(commit.sha));
-        if (!(await this.host.ask.warning(localize("Reset {0} to {1} in {2}?", branch, short(commit.sha), repo.name), detail, localize("Reset")))) return undefined;
+        // What leaves the branch (and how much of it is on its upstream), what arrives: two counts, read
+        // together. The upstream from VS Code's Git where it watches the repository, else one rev-parse.
+        const known = this.host.discovery.headUpstream(repo.root);
+        const upstream = known !== undefined ? known ?? undefined
+          : (await this.host.run(repo.root, ["rev-parse", "--abbrev-ref", "@{upstream}"], WRITE_SIGNAL).catch(() => "")).trim() || undefined;
+        const [all, local] = await Promise.all([undefined, upstream ?? ""].map((notOn) => this.host.run(repo.root, resetDistanceArgs(commit.sha, notOn), WRITE_SIGNAL).catch(() => "")));
+        const [leaving = 0, arriving = 0] = all.trim().split(/\s+/).map(Number);
+        const pushed = Math.max(0, leaving - (Number(local.trim().split(/\s+/)[0]) || 0));
+        const p = resetPrompt({ branch, target: short(commit.sha), repo: repo.name, mode, leaving, pushed, upstream, arriving });
+        if (!(await this.host.ask.warning(p.message, p.detail, p.button))) return undefined;
         await git(commitCommands.reset(commit.sha, mode));
         return localize("Reset {0} to {1} in {2}.", branch, short(commit.sha), repo.name);
       }
       case "checkout": {
         if (!(await this.host.ask.warning(localize("Check out {0} in {1}?", short(commit.sha), repo.name),
           localize("HEAD is detached there: new commits belong to no branch until you create one."), localize("Check Out")))) return undefined;
-        if (native?.checkout) await native.checkout(commit.sha);
-        else await git(commitCommands.checkout(commit.sha));
+        // Refused for local changes: offered as a Smart Checkout, as a branch's checkout is.
+        if (!(await this.smart(repo.name, short(commit.sha), git, () => (native?.checkout ? native.checkout(commit.sha) : git(commitCommands.checkout(commit.sha)))))) return undefined;
         return localize("Checked out {0} in {1}.", short(commit.sha), repo.name);
       }
       case "newBranch": {
         const taken = parseRefNames(await this.host.run(repo.root, ["for-each-ref", "--format=%(refname:short)", "refs/heads"], WRITE_SIGNAL));
         const name = await this.askName(localize("New branch at {0}", short(commit.sha)), localize("Branch name"), taken, "branch");
         if (!name) return undefined;
-        if (native?.createBranch) await native.createBranch(name, true, commit.sha);
-        else await git(commitCommands.newBranch(commit.sha, name));
+        if (!(await this.smart(repo.name, name, git, () => (native?.createBranch ? native.createBranch(name, true, commit.sha) : git(commitCommands.newBranch(commit.sha, name)))))) return undefined;
         return localize("Created branch {0} at {1} in {2}.", name, short(commit.sha), repo.name);
       }
       case "undo": case "reword": {
@@ -280,6 +289,13 @@ export class CommitActions {
     if (remotes.length === 1) return remotes[0];
     const i = await this.host.ask.pick(remotes.map((label) => ({ label })), localize("Remote to push to"));
     return i === undefined ? undefined : remotes[i];
+  }
+
+  /** A checkout refused for local changes: offered as a Smart Checkout (stash, check out, put back). false: declined. */
+  private smart(repo: string, target: string, git: (args: string[]) => Promise<string>, checkout: () => Promise<unknown>): Promise<boolean> {
+    return guardCheckout(repo, target, git, checkout, (p) => this.host.ask.warning(p.message, p.detail, p.button), (report) => {
+      if (report) void vscode.window.showWarningMessage(report);
+    });
   }
 
   private async askName(prompt: string, placeHolder: string, taken: readonly string[], kind: "branch" | "tag"): Promise<string | undefined> {

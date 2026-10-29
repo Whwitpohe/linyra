@@ -44,6 +44,7 @@
   --vscode-gitDecoration-addedResourceForeground: #587c0c;
   --vscode-gitDecoration-modifiedResourceForeground: #895503;
   --vscode-gitDecoration-deletedResourceForeground: #ad0707;
+  --vscode-list-warningForeground: #855f00;
   --vscode-gitDecoration-conflictingResourceForeground: #ad0707;
   --vscode-charts-red: #e51400;
   --vscode-charts-blue: #1a85ff;

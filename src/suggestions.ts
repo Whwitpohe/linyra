@@ -3,6 +3,7 @@ import { runPool } from "./pool";
 import type { AuthorName, BranchName, HostMessage } from "./protocol";
 import { authorSuggestions, branchSuggestions } from "./repos";
 import type { Repo } from "./types";
+import type { MessageRoutes } from "./messageRoutes";
 
 export type SuggestionKind = "authors" | "branches" | "tags";
 
@@ -34,6 +35,12 @@ export class Suggestions {
   private readonly readFor = new Map<SuggestionKind, string>();
 
   constructor(private readonly host: SuggestionHost) {}
+
+  register(routes: MessageRoutes): void {
+    routes.on("wantSuggestions", (m) => (m.kind === "authors" || m.kind === "branches" || m.kind === "tags" ? this.load(m.kind) : undefined));
+    // A re-created webview lost the suggestions it had: send them again (only then).
+    routes.onReady({ after: () => this.replay() });
+  }
 
   async load(kind: SuggestionKind): Promise<void> {
     this.wanted.add(kind);
