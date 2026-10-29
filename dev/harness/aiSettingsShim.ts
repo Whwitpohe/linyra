@@ -8,7 +8,7 @@ import type { AiModel } from "../../src/ai/types";
 //   open    list (default) | add | first: what the command opened it on
 //   models  ok (default) | fail (nothing listening) | auth (401) | empty | slow (never answers)
 //   test    ok (default) | auth | notfound | network | level | nolist | slow
-//   save    ok (default) | fail | slow (answers after 600 ms)
+//   save    ok (default) | fail | slow (answers after 2 s)
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
 document.getElementById("theme")!.setAttribute("href", `themes/${theme}.css`);
@@ -112,7 +112,7 @@ host.acquireVsCodeApi = () => ({
           activeId = id;
           enabled = true;
         } else activeId ??= profiles.length === 1 ? id : activeId;
-        later(mode("save", "ok") === "slow" ? 600 : 100, () => {
+        later(mode("save", "ok") === "slow" ? 2000 : 100, () => {
           state();
           send({ type: "done", action: "save", id, note: m.use ? `Saved. Linyra AI now uses ${label}.` : `Saved “${label}”.` });
         });

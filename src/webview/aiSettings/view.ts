@@ -396,13 +396,15 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
 
   // ── The model list ──────────────────────────────────────────────────────
 
+  /** A load the page starts itself (the form opened, the address changed): it never takes a typed key. */
   function scheduleModels(delay: number): void {
     clearTimeout(modelsTimer);
-    modelsTimer = setTimeout(() => loadModels(false), delay);
+    modelsTimer = setTimeout(() => loadModels(false, true), delay);
   }
 
-  /** The model list no longer fits the form: a reply still on its way is dropped. */
+  /** The model list no longer fits the form: a reply still on its way is dropped, a load still to come is not made. */
   function invalidateModels(): void {
+    clearTimeout(modelsTimer);
     models = [];
     load = { state: "idle" };
     loadedFor = "";
@@ -435,10 +437,12 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     } else scheduleModels(delay);
   }
 
-  function loadModels(force: boolean): void {
+  /** `auto`: started by the page, not by opening the list; a typed key waits for the list to be opened. */
+  function loadModels(force: boolean, auto = false): void {
     if (!form) return;
     const d = form.draft;
     const choice = currentChoice(form);
+    if (auto && choice.kind === "new") return;
     if (modelsReadable(d, choice) !== "yes") {
       invalidateModels();
       renderChecks();
@@ -468,7 +472,13 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
   const suggest = new SuggestBox(modelInput, modelBox, {
     matches(force) {
       if (!form) return { items: [] };
-      if (load.state === "loading") return { items: [], hint: { text: localize("Fetching the models of {0}…"), code: [hostOf(form.draft.baseUrl)] } };
+      const fetching = { items: [], hint: { text: localize("Fetching the models of {0}…"), code: [hostOf(form.draft.baseUrl)] } };
+      if (load.state === "loading") return fetching;
+      // ↓ (or ▾) on a list not read yet reads it: opening the list is what sends a typed key.
+      if (force && load.state === "idle" && modelsReadable(form.draft, currentChoice(form)) === "yes") {
+        queueMicrotask(() => loadModels(false));
+        return fetching;
+      }
       if (load.state !== "loaded") {
         const note = force ? modelsNote(load, modelsReadable(form.draft, currentChoice(form)), form.draft.baseUrl) : undefined;
         return { items: [], hint: note ? { text: note.text, code: [] } : undefined };
