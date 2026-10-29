@@ -21,17 +21,23 @@ band names its repository, as the root column does in the JetBrains Log.
   history folding; Highlight My Commits, Highlight Current Branch, a hash column. One header
   row holds the switch, the filters and the actions.
 - **Repo List:** one tree — each repository opens onto its Local, Remote and Tags groups, with
-  favorites; checkout, new branch, rename, delete, merge, rebase, push, pull, compare, worktree;
-  tags check out detached, push and delete; a Stashes group (Apply, Pop, Drop, Show Changes) and
-  Stash Changes… on a repository.
+  favorites; checkout (Smart Checkout when local changes are in the way), new branch, rename,
+  delete, merge, rebase, push, pull, compare, worktree; tags check out detached, push and delete; a
+  Stashes group (Apply, Pop, Drop, Show Changes) and Stash Changes… on a repository; a Worktrees
+  group (open, reveal, remove). Each row names its branch with VS Code's * + !, marks one on
+  another branch than the rest, and a stopped merge, rebase, cherry-pick or revert (Resolve
+  Conflicts…, Continue, Abort, Abort in All Repositories) — read from the git dir's files.
 - **Commit rows:** cherry-pick and revert (several selected commits at once), reset current branch to here, checkout revision,
   new branch or tag from a commit, Compare with Working Tree, Create Patch, Push All up to Here; on HEAD, Undo
   Commit and Edit Commit Message (subject).
   Each runs in the commit's own repository, through VS Code's Git where its API has the
   operation, and asks before moving a branch or HEAD (and warns when the commit is pushed).
 - **Across repositories:** Branches Across Repositories… (check out, create or merge one name
-  in every ticked repository), Push… (every repository's outgoing commits in one dialog) and
-  Update Project (Fetch All, then merge or rebase each onto its upstream — never autostash).
+  in every ticked repository), Tag Across Repositories…, Push… (every repository's outgoing
+  commits in one dialog; a diverged branch force pushed with a lease, never main, master or
+  git.branchProtection), Update Project (Fetch All, then merge or rebase each onto its upstream —
+  never autostash), Run Git Command Across Repositories… (each one's output in one document) and
+  Release… (Compare's notes, merge, tag and push, each asked).
   With the Log focused, the JetBrains shortcuts: Ctrl+T (Update Project), Ctrl+Shift+K (Push…).
 - **Commit details:** full message and references, changed-files tree, native diffs,
   Combined Changes of several commits, file history, blame.
@@ -39,7 +45,8 @@ band names its repository, as the root column does in the JetBrains Log.
   view in the panel — and the Commit side bar on the left, the JetBrains Commit window: a checkbox
   per file, one message, Amend, Commit / Commit and Push… of the checked files in every
   repository (`git commit --only`), Rollback, Remove from VCS, Delete, Add to .gitignore; stage, unstage,
-  discard, commit.
+  discard, commit; message hints (72-character lines, the blank line) and git's commit.template;
+  Apply Patch… from a file or the clipboard.
 - **Sync:** Fetch All, Pull, Pull All Behind, ahead/behind badges; Compare Branches — several
   names per side (each repository uses the first it has), conflicts predicted in memory
   (`git merge-tree` with a scratch object directory: the repository is not written), All
