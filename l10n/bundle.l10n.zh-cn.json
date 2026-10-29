@@ -612,5 +612,7 @@
   "{0} checked in {1}": "已勾选 {1}中的 {0}",
   "{0} of {1} checked": "已勾选 {0}/{1}",
   "Untracked": "未跟踪",
-  "Some files checked": "部分文件已勾选"
+  "Some files checked": "部分文件已勾选",
+  "New files: check them to add them with the commit, or Add to VCS (Ctrl+Alt+A) to add them now.": "新文件：勾选后会随提交一起加入版本控制，也可以用“加入版本控制”（Ctrl+Alt+A）立即加入。",
+  "Linyra could not add the files. {0}.": "Linyra 未能加入这些文件。{0}。"
 }

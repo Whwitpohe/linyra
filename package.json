@@ -329,6 +329,12 @@
         "icon": "$(discard)"
       },
       {
+        "command": "linyra.commitPanel.add",
+        "title": "%command.linyra.commitPanel.add.title%",
+        "category": "Linyra",
+        "icon": "$(add)"
+      },
+      {
         "command": "linyra.stage",
         "title": "%command.linyra.stage.title%",
         "category": "Linyra",
@@ -733,6 +739,11 @@
           "group": "inline@1"
         },
         {
+          "command": "linyra.commitPanel.add",
+          "when": "view == linyra.commit && viewItem =~ /unversioned|untracked/",
+          "group": "inline@1"
+        },
+        {
           "command": "linyra.commitPanel.rollback",
           "when": "view == linyra.commit",
           "group": "inline@2"
@@ -748,6 +759,11 @@
           "group": "0_diff@2"
         },
         {
+          "command": "linyra.commitPanel.add",
+          "when": "view == linyra.commit && viewItem =~ /unversioned|untracked/",
+          "group": "1_modification@0"
+        },
+        {
           "command": "linyra.commitPanel.rollback",
           "when": "view == linyra.commit",
           "group": "1_modification@1"
@@ -759,7 +775,7 @@
         },
         {
           "command": "linyra.repoPull",
-          "when": "view == linyra.commit && viewItem == commitRepo.behind",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo.behind/",
           "group": "2_sync@1"
         },
         {
@@ -1131,6 +1147,10 @@
         },
         {
           "command": "linyra.commitPanel.rollback",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.add",
           "when": "false"
         }
       ],
@@ -1721,6 +1741,12 @@
         "command": "linyra.commitPanel.rollback",
         "key": "ctrl+alt+z",
         "mac": "cmd+alt+z",
+        "when": "focusedView == linyra.commit"
+      },
+      {
+        "command": "linyra.commitPanel.add",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
         "when": "focusedView == linyra.commit"
       }
     ]

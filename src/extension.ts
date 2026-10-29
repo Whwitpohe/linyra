@@ -258,6 +258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
     vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
     vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.rollback(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.add", (arg?: unknown, many?: unknown) => commitPanel.addToVcs(arg, many)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
     vscode.commands.registerCommand("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedActions.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),

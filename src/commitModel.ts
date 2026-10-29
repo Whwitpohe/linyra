@@ -97,7 +97,7 @@ function describeFiles(nodes: readonly TreeNode[], files: ReadonlyMap<string, Co
       const children = describeFiles(n.children, files, path, base, w, choices);
       const c = counts(children);
       return { id: `${base}:d:${path}`, kind: "folder", label: n.name, description: c.check === "mixed" ? `${c.checked}/${c.files}` : String(c.files), tooltip: path,
-        repoId: w.repoId, path, children, contextValue: "commitFolder", ...c };
+        repoId: w.repoId, path, children, contextValue: `commitFolder${base.startsWith("unversioned:") ? ".unversioned" : ""}`, ...c };
     }
     const f = files.get(n.file.path)!;
     const state = f.untracked ? localize("new") : localize(statusName[f.status ?? "M"] ?? "modified");
@@ -135,12 +135,15 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
       repos.push({
         id: base, kind: "repo", label: w.name, description: partly(c, plural(c.files, "file")), repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c,
         tooltip: w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name),
-        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}`,
+        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}`,
       });
     }
     if (repos.length === 0) continue;
     const c = counts(repos);
-    lists.push({ id: list, kind: "list", label, description: partly(c, plural(c.files, "file")), tooltip: label, children: repos, contextValue: "commitList", ...c });
+    lists.push({ id: list, kind: "list", label, description: partly(c, plural(c.files, "file")), children: repos, ...c,
+      // New files enter version control either way, as in the JetBrains IDEs: checked, with the commit; or now, by Add to VCS.
+      tooltip: untracked ? localize("New files: check them to add them with the commit, or Add to VCS (Ctrl+Alt+A) to add them now.") : label,
+      contextValue: untracked ? "commitList.unversioned" : "commitList" });
   }
   const plan = commitPlan(works, choices);
   return {

@@ -50,6 +50,7 @@
   "command.linyra.refreshUncommitted.title": "刷新未提交更改",
   "command.linyra.commitPanel.diff.title": "显示差异",
   "command.linyra.commitPanel.rollback.title": "回滚…",
+  "command.linyra.commitPanel.add.title": "加入版本控制",
   "command.linyra.stage.title": "暂存更改",
   "command.linyra.stageAll.title": "暂存全部更改",
   "command.linyra.unstage.title": "取消暂存更改",

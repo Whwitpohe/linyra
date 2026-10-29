@@ -57,8 +57,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   readonly onDidChangeTreeData = this.treeChanged.event;
   private readonly decorationsChanged = new vscode.EventEmitter<vscode.Uri[]>();
   readonly onDidChangeFileDecorations = this.decorationsChanged.event;
-  private decorations = new Map<string, vscode.FileDecoration>();
-  private decorated: vscode.Uri[] = [];
+  /** Each file row's letter by its URI; `key` tells a changed one (only those are announced). */
+  private decorations = new Map<string, { uri: vscode.Uri; decoration: vscode.FileDecoration; key: string }>();
   private message: vscode.WebviewView | undefined;
   private messageDisposables: vscode.Disposable[] = [];
   private readonly disposables: vscode.Disposable[] = [];
@@ -122,10 +122,10 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     this.checked = d.checked;
     this.tree.message = !this.deps.store.started ? localize("Reading uncommitted changes…") : d.message;
     this.tree.description = viewLabel(totals(works));
-    // Each file's letter and color, as Source Control shows them.
-    const before = this.decorated;
+    // Each file's letter and color, as Source Control shows them. Only rows whose letter came, went
+    // or changed are announced: VS Code caps a provider that reports every row on each change.
+    const before = this.decorations;
     this.decorations = new Map();
-    this.decorated = [];
     for (const row of this.rows.values()) {
       if (row.kind !== "file") continue;
       const dec = row.untracked
@@ -133,11 +133,11 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
         : decorationFor(row.status);
       if (!dec) continue;
       const uri = this.uriFor(row);
-      this.decorations.set(uri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
-      this.decorated.push(uri);
+      this.decorations.set(uri.toString(), { uri, decoration: new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)), key: `${dec.badge}|${dec.color}` });
     }
     this.treeChanged.fire(undefined);
-    const changed = [...before, ...this.decorated];
+    const changed = [...before].filter(([id, d]) => this.decorations.get(id)?.key !== d.key).map(([, d]) => d.uri);
+    for (const [id, d] of this.decorations) if (!before.has(id)) changed.push(d.uri);
     if (changed.length > 0) this.decorationsChanged.fire(changed);
     this.postState();
   }
@@ -155,7 +155,7 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-    return uri.scheme === TREE_SCHEME ? this.decorations.get(uri.toString()) : undefined;
+    return uri.scheme === TREE_SCHEME ? this.decorations.get(uri.toString())?.decoration : undefined;
   }
 
   getChildren(row?: CommitRow): CommitRow[] {
@@ -249,6 +249,31 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     await this.deps.actions.discard(files[0], files);
   }
 
+  /**
+   * Add to VCS: the new files under the rows (or the selection) are added (git add), as the JetBrains
+   * IDEs' Add to VCS does. They move to Changes, checked. (Checked and committed, they are added too.)
+   */
+  async addToVcs(arg?: unknown, many?: unknown): Promise<void> {
+    const files = filesUnder(this.targets(arg, many)).filter((f) => this.rows.has(`unversioned:${f.repoId}:f:${f.path}`));
+    const byRepo = new Map<string, string[]>();
+    for (const f of files) byRepo.set(f.repoId, [...(byRepo.get(f.repoId) ?? []), f.path]);
+    const failed: string[] = [];
+    await Promise.all([...byRepo].map(async ([repoId, paths]) => {
+      const work = this.deps.store.get(repoId);
+      if (!work) return;
+      try {
+        await this.withPaths(work.root, paths, ["add"]);
+      } catch (e) {
+        failed.push(localize("{0}: {1}", work.name, gitMessage(e)));
+      }
+      await this.deps.store.readRepo(repoId);
+    }));
+    if (failed.length > 0) {
+      this.lastError = failed.join("; ");
+      void vscode.window.showErrorMessage(localize("Linyra could not add the files. {0}.", this.lastError.replace(/[.\s]+$/, "")));
+    }
+  }
+
   /** Amend ticked with an empty box, and its commit goes to one repository: that commit's message, to edit. */
   private async lastMessage(): Promise<void> {
     const works = this.deps.store.works();
@@ -309,15 +334,16 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
    * The paths go through a file, so no command line grows with the number of files.
    */
   private async commitOne(p: CommitPlan, message: string, amend: boolean): Promise<void> {
-    const list = path.join(os.tmpdir(), `linyra-commit-${randomBytes(8).toString("hex")}`);
-    const fromList = [`--pathspec-from-file=${list}`, "--pathspec-file-nul"];
+    if (p.add.length > 0) await this.withPaths(p.root, p.add, ["add"]);
+    await this.withPaths(p.root, p.paths, ["commit", "--only", ...(amend ? ["--amend"] : []), "--file=-"], { input: message });
+  }
+
+  /** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */
+  private async withPaths(root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
+    const list = path.join(os.tmpdir(), `linyra-paths-${randomBytes(8).toString("hex")}`);
     try {
-      if (p.add.length > 0) {
-        await fs.writeFile(list, p.add.join("\0"));
-        await this.deps.run(p.root, ["add", ...fromList], undefined, { env: WRITE_ENV });
-      }
-      await fs.writeFile(list, p.paths.join("\0"));
-      await this.deps.run(p.root, ["commit", "--only", ...(amend ? ["--amend"] : []), "--file=-", ...fromList], undefined, { input: message, env: WRITE_ENV });
+      await fs.writeFile(list, paths.join("\0"));
+      await this.deps.run(root, [...args, `--pathspec-from-file=${list}`, "--pathspec-file-nul"], undefined, { env: WRITE_ENV, ...opts });
     } finally {
       await fs.rm(list, { force: true });
     }

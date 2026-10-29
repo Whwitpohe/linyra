@@ -50,6 +50,7 @@
   "command.linyra.refreshUncommitted.title": "Refresh Uncommitted",
   "command.linyra.commitPanel.diff.title": "Show Diff",
   "command.linyra.commitPanel.rollback.title": "Rollback…",
+  "command.linyra.commitPanel.add.title": "Add to VCS",
   "command.linyra.stage.title": "Stage Changes",
   "command.linyra.stageAll.title": "Stage All Changes",
   "command.linyra.unstage.title": "Unstage Changes",

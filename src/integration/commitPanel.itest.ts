@@ -39,7 +39,7 @@ describe("Commit side bar", () => {
     await answer(undefined);
     for (const r of Object.values(repos)) {
       git(r.root, "reset", "-q", "--hard", r.start);
-      for (const name of ["ci-staged.ts", "ci-notes.md"]) fs.rmSync(path.join(r.root, name), { force: true });
+      for (const name of ["ci-staged.ts", "ci-notes.md", "ci-new.md"]) fs.rmSync(path.join(r.root, name), { force: true });
     }
     await send({ type: "refresh" });
     await until("the fixture log again", (s) => s.rows.length === 6);
@@ -102,11 +102,22 @@ describe("Commit side bar", () => {
     assert.deepStrictEqual(git(repos.web.root, "diff", "--cached", "--name-only").split("\n"), ["ci-staged.ts"], "still staged, still out");
   });
 
-  it("Rollback: the row after one prompt; a new file is deleted", async () => {
-    await shows("the staged file listed", (x) => x.items.some((i) => i.trim() === "[ ] ci-staged.ts"));
-    await answer("Discard File");
-    await vscode.commands.executeCommand("linyra.commitPanel.rollback", { id: row("changes", "web", "ci-staged.ts") });
-    await waitFor("the file rolled back", () => (!fs.existsSync(file("web", "ci-staged.ts")) ? true : undefined));
+  it("Add to VCS: a new file is added now, and moves to Changes, checked", async () => {
+    fs.writeFileSync(file("web", "ci-new.md"), "new\n");
+    await refresh();
+    await shows("the new file, unversioned", (x) => x.items.includes("[ ] Unversioned Files | 1 file"));
+    await vscode.commands.executeCommand("linyra.commitPanel.add", { id: row("unversioned", "web", "ci-new.md") });
+    assert.deepStrictEqual(git(repos.web.root, "diff", "--cached", "--name-only").split("\n").sort(), ["ci-new.md", "ci-staged.ts"], "git add, nothing more");
+    const p = await shows("it moved to Changes", (x) => !x.items.some((i) => i.includes("Unversioned")) && x.items.some((i) => i.trim() === "[x] ci-new.md"));
+    assert.ok(p.items.some((i) => i.trim() === "[ ] ci-staged.ts"), "other choices stay");
+  });
+
+  it("Rollback: the selected rows after one prompt; new files are deleted", async () => {
+    await shows("both files listed", (x) => x.items.some((i) => i.trim() === "[ ] ci-staged.ts") && x.items.some((i) => i.trim() === "[x] ci-new.md"));
+    const selected = [{ id: row("changes", "web", "ci-staged.ts") }, { id: row("changes", "web", "ci-new.md") }];
+    await answer("Discard All");
+    await vscode.commands.executeCommand("linyra.commitPanel.rollback", selected[0], selected);
+    await waitFor("the files rolled back", () => (!fs.existsSync(file("web", "ci-staged.ts")) && !fs.existsSync(file("web", "ci-new.md")) ? true : undefined));
     assert.strictEqual(git(repos.web.root, "status", "--porcelain"), "", "nothing left in acme-web");
     await shows("nothing left to commit", (x) => x.items.length === 0);
   });
