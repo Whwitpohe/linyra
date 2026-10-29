@@ -151,6 +151,46 @@ section { display: grid; gap: 16px; }
 .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--page); font: 500 14px/1.3 var(--font); padding: 9px 14px; border-radius: 6px; box-shadow: 0 6px 18px rgb(0 0 0 / .25); opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 10; }
 .toast.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .t, .toast { transition: none; } }
+/* ---------- Rows, pills, hover card, search, File History (2026-10) ---------- */
+.ux-grid { display: grid; grid-template-columns: 1fr 360px; gap: 18px; }
+.ux-log, .ux-hist { display: grid; align-content: start; gap: 12px; padding: 14px; background: var(--vs-bg); border: 1px solid var(--vs-border); min-width: 0; }
+.ux-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ux-switch { font-size: 12px; padding: 2px 6px; border: 1px solid var(--vs-input-border); border-radius: 4px; white-space: nowrap; }
+.ux-badge { background: var(--vs-dim); color: var(--vs-bg); border-radius: 8px; padding: 0 5px; font-size: 11px; }
+.ux-search { flex: 1; display: flex; gap: 6px; align-items: center; color: var(--vs-fg); }
+.ux-tog { padding: 0 3px; border-radius: 3px; color: var(--vs-dim); position: relative; }
+.ux-tools { display: flex; gap: 10px; white-space: nowrap; }
+.ux-tools > span { position: relative; padding: 0 2px; }
+.ux-pop { display: grid; gap: 4px; padding: 6px 10px; background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 4px; font-size: 12px; width: 70%; }
+.ux-pop code { color: var(--vs-mod); }
+.ux-alias { float: right; color: var(--vs-dim); font-family: var(--mono); }
+.ux-row { display: grid; grid-template-columns: 3px 70px 20px 1fr auto 44px 60px; gap: 8px; align-items: center; height: 26px; font-size: 13px; position: relative; }
+.ux-strip { display: block; width: 3px; align-self: stretch; border-radius: 2px; position: relative; }
+.ux-name { white-space: nowrap; }
+.ux-disc { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9px; font-weight: 600; border: 1.5px solid; position: relative; }
+.ux-disc.mine { border-width: 2.5px; }
+.ux-disc.big { width: 32px; height: 32px; font-size: 14px; }
+.ring-web { border-color: var(--c-web); background: color-mix(in srgb, var(--c-web) 22%, transparent); }
+.ring-api { border-color: var(--c-api); background: color-mix(in srgb, var(--c-api) 22%, transparent); }
+.ux-pill { display: inline-flex; font-size: 11px; border-radius: 9px; overflow: visible; position: relative; white-space: nowrap; }
+.ux-pill > * { padding: 0 6px; background: color-mix(in srgb, var(--c-docs) 22%, transparent); }
+.ux-pill > b { border-radius: 9px 0 0 9px; } .ux-pill > span { border-radius: 0 9px 9px 0; background: color-mix(in srgb, var(--c-api) 22%, transparent); }
+.ux-card { display: grid; gap: 5px; width: 62%; padding: 10px 12px; background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 4px; box-shadow: 0 6px 18px rgb(0 0 0 / 0.16); font-size: 12px; }
+.ux-card-top { display: flex; gap: 8px; align-items: center; }
+.ux-links { display: flex; gap: 14px; color: var(--c-web); }
+.ux-links u { position: relative; }
+.ux-work { display: grid; grid-template-columns: auto auto 1fr auto auto auto; gap: 10px; align-items: center; font-size: 13px; position: relative; padding-block: 4px; }
+.ux-counts { display: inline-grid; gap: 3px; position: relative; font-weight: 600; font-size: 12px; }
+.ux-meter { display: block; height: 4px; width: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--vs-add) 0 92%, var(--vs-mod) 92%); position: relative; }
+.ux-tag { font-size: 11px; border: 1px solid var(--vs-add); color: var(--vs-add); border-radius: 9px; padding: 0 6px; }
+.ux-chip { font-size: 12px; padding: 2px 8px; border-radius: 4px; background: var(--vs-sel); position: relative; }
+.ux-hrow { display: grid; grid-template-columns: 3px 1fr auto; gap: 8px; align-items: center; height: 24px; font-size: 13px; position: relative; }
+.ux-hrow.ux-wip { grid-template-columns: 3px 1fr auto auto; border-bottom: 1px dashed var(--vs-border); }
+.ux-change { font-size: 12px; position: relative; white-space: nowrap; }
+.ux-details { display: grid; gap: 4px; font-size: 12px; border-top: 1px solid var(--vs-border); padding-top: 8px; }
+.ux-pane { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; position: relative; }
+.ux-menu { margin-top: 6px; padding: 4px 8px; background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 4px; position: relative; }
+.del { color: #c74e39; }
 </style>
 
 </head>
@@ -239,18 +279,18 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">7</i><b>Sync badge</b><span>↓ commits to pull, ↑ commits not pushed, as of the last fetch.</span></div>
     <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: ▸, checkbox, color dot (same color as its band in the Commit list), name. Right-click for the Repo menu. Opened: its Local, Remote and Tags groups; a branch row filters the Log to it (never checks it out), ☆ marks a favorite, right-click holds the branch actions (tags: check out detached, push, delete).</span></div>
     <div class="g"><i class="num">9</i><b>Filter bar</b><span>The boxes above the commits. Every filter runs inside git.</span></div>
-    <div class="g"><i class="num">10</i><b>Search box</b><span>Ordinary text matches messages across selected repositories; full or 7+ character hashes locate commits directly. sha: accepts 4+ hexadecimal characters; other filters are temporarily ignored during lookup.</span></div>
+    <div class="g"><i class="num">10</i><b>Search box</b><span>GitLens's search syntax, pushed into git log: plain words and message: (=:), -message:, author: (@:, @me), committer:, commit: (#:), file: (?:), change: (~:), type: (is:), after: (since:, &gt;:), before: (until:, &lt;:), ref: (^:) and Linyra's repo:. The Operator popup (55) lists them; ↑/↓ recall recent searches; Enter runs at once. Its toggles: Match Case, Whole Word, Regex, Match All (56) and ✨ (57). Hashes still jump straight to their commits.</span></div>
     <div class="g"><i class="num">11</i><b>Author box</b><span>Searchable multi-select checklist, with the Me toggle and each repository's own identity.</span></div>
     <div class="g"><i class="num">12</i><b>Path box</b><span>Commits that touched a file, folder or glob.</span></div>
     <div class="g"><i class="num">13</i><b>Branch box</b><span>All local and remote branches by default. Search and select several names; Git returns their union. A repository without any selected branch is skipped, not replaced with its current branch.</span></div>
     <div class="g"><i class="num">14</i><b>Date range</b><span>24 hours, 7 days, 30 days, all time, or custom.</span></div>
     <div class="g"><i class="num">15</i><b>Refresh button</b><span>Reads every repository again.</span></div>
     <div class="g"><i class="num">16</i><b>Commits | Uncommitted switch</b><span>At the top of the Log. Its badge counts the uncommitted files in the ticked repositories. Uncommitted shows one Uncommitted list row per repository with work (files, change meter, staged/new tags, when edited); clicking one shows its files in the Changes view. Right-click a row or the Changes view root for Commit…, Stage All, Unstage All and Discard All Changes; a file or folder there for Stage, Unstage and Discard. Several selected rows act together.</span></div>
-    <div class="g"><i class="num">17</i><b>Commit row</b><span>Repository band, real parent graph, subject, compact branch/tag references, author and date. Explicit graph controls fold complete linear histories; selection keeps real commit ids.</span></div>
+    <div class="g"><i class="num">17</i><b>Commit row</b><span>Repository strip (51), the real parent graph with Author discs (52), the subject, Branch pills (53), author and date. Resting the pointer opens the Commit hover card (54). Hovering a disc of a linear run shows its fold box; selection keeps real commit ids.</span></div>
     <div class="g"><i class="num">18</i><b>Load more</b><span>The next page of commits.</span></div>
     <div class="g"><i class="num">19</i><b>Log footer</b><span>The selected date/topology order, branch-scope coverage, folded count and commit count.</span></div>
     <div class="g"><i class="num">20</i><b>Changes view</b><span>Integrated changed-file region with its own toolbar, file search and independent scrolling. It can also open as a movable editor tab.</span></div>
-    <div class="g"><i class="num">21</i><b>Commit details</b><span>Full message below the files, preserving paragraphs/trailers, author/email/time/hash, colored refs and containing branches. Drag its divider to resize; only its small arrow collapses it.</span></div>
+    <div class="g"><i class="num">21</i><b>Commit details</b><span>Under its pane header (66): the title, the message body as written, then the facts in the secondary color — repository, hash, author, date (never broken mid-line), Parent links (66) and the branch pills. Drag its divider to resize; a click on the header folds it.</span></div>
     <div class="g"><i class="num">22</i><b>Folder row</b><span>A folder, with how many changed files it holds.</span></div>
     <div class="g"><i class="num">23</i><b>File row</b><span>A changed file: +/− lines and its A/M/D/R badge. Click opens the diff.</span></div>
   </div>
@@ -262,7 +302,7 @@ section { display: grid; gap: 16px; }
   <div class="stage">
     <div class="menus">
       <div class="menu t"><i class="n tl">24</i>
-        <div class="cap">Mode bar · File History</div>
+        <div class="cap">File History chip · File History</div>
         <div class="it">All commits · src/checkout/PaymentStep.tsx · acme-web ✕</div>
       </div>
       <div class="menu t"><i class="n tl">25</i>
@@ -280,7 +320,7 @@ section { display: grid; gap: 16px; }
     </div>
   </div>
   <div class="gloss">
-    <div class="g"><i class="num">24</i><b>Mode bar</b><span>Appears above the Filter bar in File History, with a way back to all commits.</span></div>
+    <div class="g"><i class="num">24</i><b>File History chip</b><span>In File History the Commits | Uncommitted switch becomes this chip: the file, its repository, and × to go back to every commit. No separate bar any more.</span></div>
     <div class="g"><i class="num">25</i><b>Repo menu</b><span>Right-click a Repo List row, or any row of that repository in the Commit list.</span></div>
     <div class="g"><i class="num">26</i><b>Commit menu</b><span>Right-click a Commit row: the commit's items first (Compare with Working Tree…, Create Patch…, Push All up to Here… among them), then the Repo menu.</span></div>
   </div>
@@ -374,7 +414,7 @@ section { display: grid; gap: 16px; }
     </div>
   </div>
   <div class="gloss">
-    <div class="g"><i class="num">27</i><b>Uncommitted side</b><span>The Log's Uncommitted tab ("Show Uncommitted Changes in the Log" opens it; the Commit side bar, 43, shows the same work to commit): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
+    <div class="g"><i class="num">27</i><b>Uncommitted side</b><span>The Log's Uncommitted tab (the Commit side bar, 43, shows the same work to commit): one Uncommitted row (62) per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>Changes toolbar: switch all/changed files, clear a combined selection, expand/collapse all, copy commit data or open Changes independently.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository on the Uncommitted side. A file staged and changed again is in both.</span></div>
     <div class="g"><i class="num">28</i><b>Linyra Compare tab</b><span>A panel tab next to Linyra (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
@@ -420,6 +460,83 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">48</i><b>Amend</b><span>The checked files join each repository's last commit, under the new message. With an empty box it brings the last commit's message to edit; a commit already pushed asks first. Beside it: Sign-off (kept), Author… (the next commit's author, shown under the options until it commits or × clears it) and Commit Message History (Ctrl+M: the messages committed here).</span></div>
     <div class="g"><i class="num">49</i><b>Commit message</b><span>The Commit Message view below the tree, kept as a draft per workspace. Drag the views' divider to size it.</span></div>
     <div class="g"><i class="num">50</i><b>Commit and Commit and Push…</b><span>Ctrl+Enter / Ctrl+Alt+K. One commit per repository with checked files, of exactly those files (git commit --only): anything else staged stays staged. Push… then offers the repositories just committed in.</span></div>
+  </div>
+</section>
+<section aria-labelledby="s-logux">
+  <div class="sec-head"><h2 id="s-logux">Rows, pills, the hover card, search and File History</h2><span class="pill now">Exists</span></div>
+  <p class="how">Parts added in the October 2026 Log work (plan <code>docs/superpowers/plans/2026-10-29-log-ux-search-ai.md</code>). The left mock is the merged Log with its search box open; the right one is File History.</p>
+  <div class="stage">
+    <div class="vs ux">
+      <div class="ux-grid">
+        <div class="ux-log">
+          <div class="ux-head">
+            <span class="ux-switch"><b>Commits</b> Uncommitted <span class="ux-badge">5</span></span>
+            <span class="input ux-search t"><i class="n tl">10</i>author:@me file:src/** retry <span class="ux-tog">Aa</span><span class="ux-tog t">ab ✓✓<i class="n tr">56</i></span><span class="ux-tog">.*</span><span class="ux-tog t">✨<i class="n tr">57</i></span></span>
+            <span class="ux-tools"><span class="t">✨<i class="n tr">58</i></span> ⟳ ⇣ ⇡ ⋯</span>
+          </div>
+          <div class="ux-pop t"><i class="n tl">55</i>
+            <div><code>author:</code> by author name or email; @me is you <span class="ux-alias">@:</span></div>
+            <div><code>file:</code> commits that touched a file, folder or glob <span class="ux-alias">?:</span></div>
+            <div><code>ref:</code> a branch, tag or range, in the repositories that have it <span class="ux-alias">^:</span></div>
+            <div><code>repo:</code> only these repositories</div>
+          </div>
+          <div class="ux-row t"><i class="n l">17</i>
+            <span class="ux-strip bg-web t"><i class="n tl">51</i></span><span class="ux-name">acme-web</span>
+            <span class="ux-disc ring-web mine t">D<i class="n tr">52</i></span>
+            <span class="subj">feat: add retry to uploader</span>
+            <span class="ux-pill t"><b>⎇ develop ↑1</b><span>☁ origin</span><i class="n tr">53</i></span><span class="who">dana</span><span class="when">just now</span>
+          </div>
+          <div class="ux-row"><span class="ux-strip bg-api"></span><span class="ux-name">acme-api</span><span class="ux-disc ring-api">R</span><span class="subj">refactor: split request builder</span><span></span><span class="who">rin</span><span class="when">1h ago</span></div>
+          <div class="ux-card t"><i class="n tl">54</i>
+            <div class="ux-card-top"><span class="ux-disc ring-web mine big">D</span><div><b>You</b> · just now (2026-09-23 20:00)<br><span class="who">acme-web · 0000303</span></div></div>
+            <b>feat: add retry to uploader</b>
+            <div class="who">Keep the upload preview in step with the saved configuration.</div>
+            <div><span class="add">+1</span> <span class="mod">✎3</span> <span class="del">−1</span> <span class="who">5 files changed</span> <span class="add">+42</span> <span class="del">−7</span></div>
+            <div class="who">Merge target origin/main · 2 ahead · <u>Compare</u></div>
+            <div class="ux-links"><u>Copy Hash</u> <u>Open on Remote</u> <u class="t">Explain<i class="n tr">67</i></u></div>
+          </div>
+          <div class="ux-work t"><i class="n l">62</i>
+            <span class="chip web">acme-web</span>
+            <span class="ux-counts t"><span class="add">+143</span> <span class="mod">✎3</span><i class="n tr">63</i><span class="ux-meter t"><i class="n r">64</i></span></span>
+            <span class="subj who">notes.md, src/app.ts, src/new.ts</span>
+            <span class="ux-tag">1 staged</span>
+            <span class="ux-pill t"><b>⎇ develop</b><span>☁</span><i class="n tr">65</i></span>
+            <span class="when">edited 2m ago</span>
+          </div>
+        </div>
+        <div class="ux-hist">
+          <div class="ux-head"><span class="ux-chip t">⟲ src/client.ts · <span class="web">acme-web</span> ×<i class="n tl">24</i></span></div>
+          <div class="ux-hrow ux-wip t"><i class="n tl">60</i><span class="ux-strip bg-web"></span><i>Uncommitted changes</i><span class="mod">M</span><span><span class="add">+4</span> <span class="del">−2</span></span></div>
+          <div class="ux-hrow"><span class="ux-strip bg-web"></span><span class="subj">feat: add retry to uploader</span><span class="ux-change t"><span class="mod">M</span> <span class="add">+9</span> <span class="del">−9</span><i class="n tr">59</i></span></div>
+          <div class="ux-hrow"><span class="ux-strip bg-web"></span><span class="subj">revert: … <span class="who">← src/api-client.ts</span></span><span class="ux-change"><span class="add">R</span> <span class="add">+6</span> <span class="del">−8</span></span></div>
+          <div class="ux-details">
+            <div class="ux-pane t">▾ COMMIT DETAILS<i class="n tl">66</i></div>
+            <b>feat: add retry to uploader</b>
+            <div class="who">acme-web · 0000303 · dana · 2026-09-23 20:00 · parent <u>8e8c410</u></div>
+            <div class="ux-menu t">Explain Changes · Review Changes · Release Notes…<i class="n tl">68</i></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">51</i><b>Repository strip</b><span>The Repository column: a 3px strip in the repository's color, one unbroken strip for a run of its commits, with the name beside it in the row's text color. Narrow, and in File History, only the strip.</span></div>
+    <div class="g"><i class="num">52</i><b>Author disc</b><span>A commit's node: the author's initial (a CJK name: its last character) ringed in the repository's color; a thicker ring is your commit. An avatar covers the initial when the repository's own host has one (linyra.avatars). Merges keep the small hollow dot; hovering a disc of a linear run shows its fold box.</span></div>
+    <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Click: the branch in the Repo List. Right-click: the Repo List's branch menu (and the AI items while AI is on).</span></div>
+    <div class="g"><i class="num">54</i><b>Commit hover card</b><span>Opens when the pointer rests on a row for half a second: author (you, for your commits), relative and absolute time, hash, repository and pills at once; then one git show adds the message and the file and line counts. On the HEAD row: its merge target and Compare. Leaving the row kills the read.</span></div>
+    <div class="g"><i class="num">55</i><b>Operator popup</b><span>Under the Search box while it is empty or an operator is being typed: every operator with what it does and its aliases; typing a value suggests authors, branches and tags, repositories or types.</span></div>
+    <div class="g"><i class="num">56</i><b>Whole Word and Match All</b><span>Beside Match Case and Regex. Whole Word matches whole words only; Match All needs every message term (git's --all-match), where plain words otherwise match any.</span></div>
+    <div class="g"><i class="num">57</i><b>✨ in the Search box</b><span>Natural language: what you type goes to Linyra AI, which writes the operator query back into the box and runs it. Unavailable (with a way to set it up) until AI is configured.</span></div>
+    <div class="g"><i class="num">58</i><b>Ask AI button</b><span>✨ in the Log header while AI is on: ask Linyra in words; read-only steps run at once, and anything that writes to a repository is listed in one prompt first.</span></div>
+    <div class="g"><i class="num">59</i><b>Change column</b><span>File History only: what each commit did to the file — its letter (A, M, D, R in Source Control's colors) and its lines added and deleted; a rename shows ← the old path.</span></div>
+    <div class="g"><i class="num">60</i><b>Uncommitted changes row</b><span>File History only, above the commits when the file has uncommitted work: opens last commit ↔ working tree. No git process: it comes from the same reads as the Uncommitted side.</span></div>
+    <div class="g"><i class="num">62</i><b>Uncommitted row</b><span>One repository's uncommitted work: its File counts (63) over the Meter (64), the files, the staged tag, its Work branch pill (65) and when a file was last edited.</span></div>
+    <div class="g"><i class="num">63</i><b>File counts</b><span>Files by kind as GitLens draws working changes: +new ✎modified −deleted →renamed, each in its Source Control color. The header totals use the same counts across repositories.</span></div>
+    <div class="g"><i class="num">64</i><b>Meter</b><span>The share of new, modified and deleted files as one bar, kept under the counts.</span></div>
+    <div class="g"><i class="num">65</i><b>Work branch pill</b><span>The repository's checked-out branch: ↑/↓ from its upstream, ☁ when in step, "unpublished" without one, a short hash when detached. Read from the same git status, no extra process.</span></div>
+    <div class="g"><i class="num">66</i><b>Details header and parent links</b><span>The Commit details' pane header (VS Code's look; a click folds it) and each parent's hash, which selects that commit in the Log.</span></div>
+    <div class="g"><i class="num">67</i><b>Explain link</b><span>In the hover card while AI is on: Explain Changes for this commit.</span></div>
+    <div class="g"><i class="num">68</i><b>AI menu items</b><span>Explain, Review and Release Notes on commits; Explain Working Changes, Resolve Conflicts… and Generate Commit Message in the Commit side bar; Explain and Release Notes in Compare. Shown only while linyra.ai.enabled is on; Configure AI… is in the Log's ⋯ menu.</span></div>
   </div>
 </section>
 </div>
