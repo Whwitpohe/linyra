@@ -87,3 +87,12 @@ for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("the ⋯ menu holds Configure AI…, Switch AI Model… and Remove AI Profile…", async ({ page }) => {
+  await open(page);
+  await page.click("#toolbar-more");
+  const menu = page.locator("#toolbar-menu");
+  for (const name of ["Configure AI…", "Switch AI Model…", "Remove AI Profile…"]) await expect(menu.getByRole("menuitem", { name, exact: true })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Configure AI…", exact: true }).click();
+  await expect(menu).toBeHidden();
+});

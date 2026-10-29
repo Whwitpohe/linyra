@@ -1,6 +1,6 @@
 export type ChangesLayout = "auto" | "sideBySide" | "stacked";
 export type ToolbarAction = "toggleRepos" | "toggleCompare" | "fetchAll" | "showBehind" | "fetchAndPullAll" | "pullAllBehind" | "profileSwitch" | "profileSave"
-  | "updateProject" | "pushAll" | "branchesAcross";
+  | "updateProject" | "pushAll" | "branchesAcross" | "aiConfigure" | "aiSwitch" | "aiRemove";
 
 export interface ToolbarState {
   groupByRepo: boolean;
@@ -23,6 +23,9 @@ export function toolbarCommand(action: unknown, state: ToolbarState): string | u
     case "updateProject": return state.fetching ? undefined : "linyra.updateProject";
     case "pushAll": return "linyra.pushAll";
     case "branchesAcross": return "linyra.branchesAcross";
+    case "aiConfigure": return "linyra.ai.configure";
+    case "aiSwitch": return "linyra.ai.switchModel";
+    case "aiRemove": return "linyra.ai.removeProfile";
     default: return undefined;
   }
 }

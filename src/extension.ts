@@ -32,10 +32,14 @@ import { MultiRepo } from "./multiRepo";
 import type { CommitAction } from "./commitActionModel";
 import { aiIfAny } from "./ai/features/commands";
 import { registerAiFeatures } from "./ai/features/register";
+import { LinyraAi } from "./ai/service";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   await Promise.all([migratePrivateState(context.workspaceState), migratePrivateState(context.globalState)]);
   configureI18n(vscode.env.language, vscode.l10n.bundle);
+  // The AI service (aiService() for every AI feature) and Configure / Switch / Remove AI.
+  const aiCore = new LinyraAi(context);
+  context.subscriptions.push(aiCore, ...aiCore.commands());
   const discovery = new RepoDiscovery();
   // All Files reads one folder at a time, through the Log's counted runner (the spawn log sees it).
   const ALL_FILES_KEY = "linyra.changesAllFiles";

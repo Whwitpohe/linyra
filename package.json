@@ -808,6 +808,21 @@
         "command": "linyra.historyBlame",
         "title": "%command.linyra.historyBlame.title%",
         "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.configure",
+        "title": "%command.linyra.ai.configure.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.switchModel",
+        "title": "%command.linyra.ai.switchModel.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.ai.removeProfile",
+        "title": "%command.linyra.ai.removeProfile.title%",
+        "category": "Linyra"
       }
     ],
     "menus": {
@@ -2272,6 +2287,98 @@
           "default": "",
           "editPresentation": "multilineText",
           "description": "%setting.linyra.ai.commitMessageInstructions.description%"
+        },
+        "linyra.ai.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "markdownDescription": "%setting.linyra.ai.enabled.markdownDescription%"
+        },
+        "linyra.ai.profiles": {
+          "type": "array",
+          "default": [],
+          "scope": "application",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "protocol",
+              "baseUrl",
+              "model"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "anthropic",
+                  "gemini"
+                ]
+              },
+              "baseUrl": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "none",
+                  "minimal",
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "default": "default"
+              }
+            }
+          },
+          "markdownDescription": "%setting.linyra.ai.profiles.markdownDescription%"
+        },
+        "linyra.ai.activeProfile": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "markdownDescription": "%setting.linyra.ai.activeProfile.markdownDescription%"
+        },
+        "linyra.ai.exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "package-lock.json",
+            "npm-shrinkwrap.json",
+            "pnpm-lock.yaml",
+            "*.lock",
+            "bun.lockb",
+            "go.sum",
+            "*.min.*",
+            "dist/",
+            "out/",
+            "build/",
+            "node_modules/",
+            ".env*",
+            "*.pem",
+            "*.key"
+          ],
+          "markdownDescription": "%setting.linyra.ai.exclude.markdownDescription%"
+        },
+        "linyra.ai.maxPromptTokens": {
+          "type": "number",
+          "default": 50000,
+          "minimum": 0,
+          "markdownDescription": "%setting.linyra.ai.maxPromptTokens.markdownDescription%"
         }
       }
     },
@@ -2353,6 +2460,7 @@
     "bundle:commit": "esbuild src/webview/commit/main.ts --bundle --outfile=out/commit.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@playwright/test": "^1.64.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.19.43",
