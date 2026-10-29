@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { matchSuggestions, suggestKey, type Suggestion } from "./suggestModel";
+import { hintParts, matchSuggestions, suggestKey, type Suggestion } from "./suggestModel";
 
 const people: Suggestion[] = [
   { value: "dana", label: "dana", detail: "dana@example.com · 41" },
@@ -29,4 +29,12 @@ const people: Suggestion[] = [
   assert.strictEqual(suggestKey("ArrowDown", -1, 0), null, "an empty list ignores keys");
   assert.strictEqual(suggestKey("a", 0, 3), null);
   console.log("ok - suggestion keys: ↑/↓ wrap, Enter and Tab pick, Esc closes");
+}
+{
+  assert.deepStrictEqual(hintParts({ text: "Use a date, e.g. {0}, or {1}", code: ["after:2026-10-01", "since:3.weeks.ago"] }),
+    [["Use a date, e.g. ", false], ["after:2026-10-01", true], [", or ", false], ["since:3.weeks.ago", true]], "text and code in order");
+  assert.deepStrictEqual(hintParts({ text: "{1} 或 {0}", code: ["a", "b"] }), [["b", true], [" 或 ", false], ["a", true]], "a translation may reorder them");
+  assert.deepStrictEqual(hintParts({ text: "Combine {0} and {2}", code: ["x"] }), [["Combine ", false], ["x", true], [" and {2}", false]], "a placeholder without code stays text");
+  assert.deepStrictEqual(hintParts({ text: "Plain", code: [] }), [["Plain", false]]);
+  console.log("ok - suggestion hints: examples drawn as code where the text puts them");
 }
