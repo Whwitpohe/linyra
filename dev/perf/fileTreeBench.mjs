@@ -20,7 +20,7 @@ const server = createServer((req, res) => {
   if (!file.startsWith(dist) || !existsSync(file)) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
   createReadStream(file).pipe(res);
-}).listen(0);
+}).listen(0, "127.0.0.1");
 const browser = await chromium.launch();
 const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
@@ -36,7 +36,7 @@ for (const v of views) {
   await page.addInitScript(() => window.addEventListener("message", (e) => {
     if ((e.data?.type === "changes" || (e.data?.type === "side" && e.data.side === "left")) && !String(e.data.key).startsWith("bench-")) window.__benchPage = e.data;
   }));
-  await page.goto(`http://localhost:${server.address().port}/${v.url}`);
+  await page.goto(`http://127.0.0.1:${server.address().port}/${v.url}`);
   await page.locator(`${v.tree} [role="treeitem"]`).nth(20).waitFor();
   await page.waitForTimeout(400);
   const cdp = await page.context().newCDPSession(page);

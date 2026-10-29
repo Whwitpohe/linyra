@@ -89,13 +89,36 @@ message to the host.
 three runs). Changes: `changes.html?state=many`, 301 files under two folders. Compare:
 `repos.html?files=many`, 480 files in 40 folders on a side.
 
-Before (three runs):
+Two frames (33 ms) is the floor of a single action, one frame (16.7 ms) of a held key. The median
+of the three runs' medians:
 
-BEFORE_TABLE
+| Case | Changes before | Changes after | Compare before | Compare after |
+|---|---:|---:|---:|---:|
+| First render | 349 | 66 | 419 | 83 |
+| Collapse All | 33 | 34 | 487 | 49 |
+| Expand All | 217 | 50 | 514 | 51 |
+| A filter keystroke | 50 | 33 | 550 | 34 |
+| Clearing the filter | 271 | 83 | 617 | 67 |
+| Holding ↓, per press | 30 | 17 | 71 | 20 |
+| Holding ↓, longest press | 38 | 20 | 108 | 40 |
+| Rows in the DOM | 303 | 35 | 523 | 46 |
 
-After:
+The synchronous part of a first render (the page message, then style and layout forced): Changes
+289 → 42 ms, Compare 628 → 49 ms.
 
-AFTER_TABLE
+What made the difference:
+
+- Only the rows on screen (and the focused one) exist: 35 or 46 instead of 303 or 523.
+- A row keeps its element while its node, depth and open state are the same. Moving the
+  selection repaints two rows; before, every row's classes and attributes were set on every move.
+- Compare's open state was found by searching all rows for each branch (quadratic): Collapse All
+  took half a second with 480 files. The flattening knows it.
+- No layout is read per row: `scrollIntoView` on every move became arithmetic, and the height
+  comes from a ResizeObserver.
+- A first version still held ↓ at two frames a press: rows that had left the screen were removed
+  after the reordering pass, so every scroll by a row moved all of them (420 elements restyled,
+  707 of 811 layout objects dirty). Removing them first leaves 36 and 27; `contain` on the tree
+  and its rows keeps a redrawn row's layout and paint to itself.
 
 Commit side bar (native): `dev/perf/commitTreeBench.ts`, the host model at full speed:
 300 files 1.8 ms to describe, 1000 files 4.1 ms, 3000 files 9.2 ms; a folder's check and the
