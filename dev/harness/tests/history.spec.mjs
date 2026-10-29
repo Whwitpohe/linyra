@@ -103,7 +103,8 @@ test("a file never committed says so, under its uncommitted row", async ({ page 
   await expect(page.locator("#empty button")).toHaveCount(0);
   const work = page.locator("#history-work");
   await expect(work.locator(".history-status")).toHaveText("A");
-  await expect(work.locator(".count-added")).toHaveText("+18");
+  await expect(work.locator(".line-counts"), "an untracked file's lines are not counted").toHaveCount(0);
+  await expect(work).toHaveAttribute("aria-label", "Uncommitted changes, Added");
   expect((await work.boundingBox()).y).toBeLessThan((await page.locator("#empty").boundingBox()).y);
 });
 

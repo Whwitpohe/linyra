@@ -10,6 +10,7 @@ import type { RepoWork } from "./uncommittedModel";
  * The file's uncommitted change, from its repository's work: null when it has none. A file
  * staged and changed again is one change, HEAD to the working tree: its status is the stronger
  * one (new or deleted wins), its lines the two halves' sum (null when either half is binary).
+ * An untracked file has no line counts (git diff does not count it).
  */
 export function historyWorkOf(w: RepoWork | undefined, path: string): HistoryWork | null {
   if (!w) return null;
@@ -20,12 +21,15 @@ export function historyWorkOf(w: RepoWork | undefined, path: string): HistoryWor
   if (halves.length === 0) return null;
   const untracked = change?.untracked === true;
   const status = untracked ? "A" : change?.status === "D" ? "D" : staged?.status ?? change?.status ?? "M";
-  const binary = halves.some((f) => f.added === null || f.deleted === null);
+  const counted = halves.filter((f) => !f.untracked);
+  const binary = counted.some((f) => f.added === null || f.deleted === null);
   const oldPath = staged?.oldPath ?? change?.oldPath;
   return {
     path: (change ?? staged)!.path, ...(oldPath ? { oldPath } : {}), status, untracked, staged: staged !== undefined, partlyStaged: staged !== undefined && change !== undefined,
-    added: binary ? null : halves.reduce((n, f) => n + (f.added ?? 0), 0),
-    deleted: binary ? null : halves.reduce((n, f) => n + (f.deleted ?? 0), 0),
+    ...(counted.length === 0 ? {} : {
+      added: binary ? null : counted.reduce((n, f) => n + (f.added ?? 0), 0),
+      deleted: binary ? null : counted.reduce((n, f) => n + (f.deleted ?? 0), 0),
+    }),
   };
 }
 

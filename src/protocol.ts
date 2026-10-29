@@ -60,9 +60,9 @@ export interface HistoryWork {
   staged: boolean;
   /** Staged, then changed again. */
   partlyStaged: boolean;
-  /** null: binary. */
-  added: number | null;
-  deleted: number | null;
+  /** null: binary; absent: not counted (an untracked file). */
+  added?: number | null;
+  deleted?: number | null;
 }
 
 /** Extension host → webview. */

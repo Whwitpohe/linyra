@@ -16,8 +16,8 @@ const f = (path: string, added: number | null, deleted: number | null, extra: Pa
   assert.deepStrictEqual(historyWorkOf(work([f("src/client.ts", 10, 0, { status: "A" })], [f("src/client.ts", 2, 1)]), "src/client.ts"),
     { path: "src/client.ts", status: "A", untracked: false, staged: true, partlyStaged: true, added: 12, deleted: 1 }, "staged new, changed again: still new, both halves' lines");
   assert.strictEqual(historyWorkOf(work([f("src/client.ts", 1, 0)], [f("src/client.ts", 0, 9, { status: "D" })]), "src/client.ts")?.status, "D", "deleted after staging: the commit deletes it");
-  assert.deepStrictEqual(historyWorkOf(work([], [f("notes.md", 3, 0, { status: "A", untracked: true })]), "notes.md"),
-    { path: "notes.md", status: "A", untracked: true, staged: false, partlyStaged: false, added: 3, deleted: 0 }, "a new file is added (A), whatever git called it");
+  assert.deepStrictEqual(historyWorkOf(work([], [f("notes.md", 0, 0, { status: "A", untracked: true })]), "notes.md"),
+    { path: "notes.md", status: "A", untracked: true, staged: false, partlyStaged: false }, "a new file is added (A), its lines not counted (git diff does not count untracked files)");
   assert.strictEqual(historyWorkOf(work([], [f("logo.png", null, null)]), "logo.png")?.added, null, "binary: no line counts");
   assert.deepStrictEqual(historyWorkOf(work([f("src/api.ts", 1, 1, { status: "R", oldPath: "src/client.ts" })], []), "src/client.ts"),
     { path: "src/api.ts", oldPath: "src/client.ts", status: "R", untracked: false, staged: true, partlyStaged: false, added: 1, deleted: 1 }, "a staged rename belongs to the file's history under either name");

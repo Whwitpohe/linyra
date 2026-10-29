@@ -39,7 +39,7 @@ export function historyRows(all: readonly Commit[], h: MockHistory, f: FilterSta
 /** ?work=off: no uncommitted change. Otherwise the file is modified, or new when never committed. */
 export function historyWork(h: MockHistory | null, params: URLSearchParams): HistoryWork | null {
   if (!h || params.get("work") === "off") return null;
-  if (!FILES[h.path]) return { path: h.path, status: "A", untracked: true, staged: false, partlyStaged: false, added: 18, deleted: 0 };
+  if (!FILES[h.path]) return { path: h.path, status: "A", untracked: true, staged: false, partlyStaged: false };
   if (FILES[h.path].binary) return null;
   return { path: h.path, status: "M", untracked: false, staged: true, partlyStaged: true, added: 4, deleted: 2 };
 }

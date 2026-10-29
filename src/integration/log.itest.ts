@@ -1829,6 +1829,131 @@ describe("Linyra panel", () => {
     }
   });
 
+  it("File History: each row's status and lines, the uncommitted row, two rows compared, blame, a re-created and a new file, Folder History", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await closeEditors();
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const who = { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    const git = (...a: string[]) => cp.execFileSync("git", a, { cwd: web.root, env: who }).toString().trim();
+    const head = git("rev-parse", "HEAD");
+    const at = (f: string) => path.join(web.root, f);
+    const activeDiff = (ok: (t: vscode.TabInputTextDiff) => boolean) => waitFor("a diff", () => {
+      const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      return t instanceof vscode.TabInputTextDiff && ok(t) ? t : undefined;
+    });
+    const text = async (uri: vscode.Uri) => (await vscode.workspace.openTextDocument(uri)).getText();
+    try {
+      // Each row: the file's status letter and its lines, from the history's own git log (--raw --numstat).
+      await vscode.commands.executeCommand("linyra.fileHistory", vscode.Uri.file(at("client.ts")));
+      let s = await until("client.ts history", (x) => x.history?.path === "client.ts" && x.rows.length === 2 && x.done);
+      assert.deepStrictEqual(s.rows.map((r) => [r.subject, r.file]), [
+        ["fix: guard nil response", { path: "client.ts", status: "M", added: 1, deleted: 1 }],
+        ["feat: scaffold web", { path: "client.ts", status: "A", added: 1, deleted: 0 }],
+      ]);
+      assert.strictEqual(s.historyWork, null, "nothing uncommitted: no row above the commits");
+      const [newer, older] = s.rows;
+
+      // The uncommitted row comes from the uncommitted store: a save reads the work, no git log.
+      await until("the newest revision is shown", (x) => x.changes.items[0]?.startsWith("fix: guard nil") === true);
+      const mark = await waitFor("git to go quiet", async () => {
+        const a = await snapshot();
+        await sleep(1000);
+        const b = await snapshot();
+        return b.spawnLog.length === a.spawnLog.length ? b : undefined;
+      });
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(at("client.ts")));
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(doc.uri, new vscode.Position(1, 0), "export const two = 2;\n");
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
+      s = await until("the uncommitted row", (x) => x.historyWork !== null);
+      assert.deepStrictEqual(s.historyWork, { path: "client.ts", status: "M", untracked: false, staged: false, partlyStaged: false, added: 1, deleted: 0 });
+      if (s.stats.reloads === mark.stats.reloads) {
+        assert.deepStrictEqual(s.spawnLog.slice(mark.spawnLog.length).filter((x) => x.cmd === "log"), [], "the row costs no git log");
+      }
+      // It opens the file from the last commit to the working tree.
+      await closeEditors();
+      await send({ type: "openHistoryWork" });
+      const work = await activeDiff((t) => t.modified.scheme === "file");
+      assert.strictEqual(await text(work.original), "export const ok = true;\n", "the left side is the last commit");
+      assert.strictEqual(path.basename(work.modified.fsPath), "client.ts");
+
+      // Two rows: the file between their revisions, not Combined Changes.
+      await closeEditors();
+      await send({ type: "selectMany", items: [{ repoId: newer.repoId, sha: newer.sha }, { repoId: older.repoId, sha: older.sha }], focus: { repoId: newer.repoId, sha: newer.sha } });
+      const pair = await activeDiff((t) => t.original.query.includes(older.sha) && t.modified.query.includes(newer.sha));
+      assert.deepStrictEqual([await text(pair.original), await text(pair.modified)], ["export {};\n", "export const ok = true;\n"], "older on the left, newer on the right");
+      s = await until("the focused commit in Changes", (x) => x.changes.items[0]?.startsWith("fix: guard nil") === true);
+      assert.deepStrictEqual(s.changes.combined, [], "no Combined Changes");
+
+      // Blame at This Revision: the file at that commit, where the Log's blame draws.
+      await closeEditors();
+      await vscode.commands.executeCommand("linyra.historyBlame", { repoId: older.repoId, sha: older.sha });
+      const blamed = await waitFor("the blame at the older revision", async () => {
+        const b = await vscode.commands.executeCommand<{ uri: string; text: string } | undefined>("linyra._itest.blame");
+        return b && b.uri.includes(older.sha) ? b : undefined;
+      });
+      assert.match(blamed.text, /feat: scaffold web/);
+      await send({ type: "exitHistory" });
+      await until("all commits", (x) => x.history === null && x.historyWork === null);
+
+      // A path deleted and created again keeps its earlier history; the new file is its uncommitted row.
+      git("checkout", "-q", "--", "client.ts");
+      git("rm", "-q", "client.ts");
+      git("commit", "-q", "-m", "chore: drop the client");
+      fs.writeFileSync(at("client.ts"), "export const again = 1;\n");
+      await send({ type: "refresh" });
+      await until("client.ts new again", (x) => x.uncommitted.some((w) => w.repoId === web.id && w.changes.includes("client.ts")));
+      // From the Commit side bar: its file row.
+      await vscode.commands.executeCommand("linyra.fileHistory", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
+      s = await until("the re-created path's history", (x) => x.history?.path === "client.ts" && x.rows.length === 3 && x.done);
+      assert.deepStrictEqual(s.rows.map((r) => r.file?.status), ["D", "M", "A"]);
+      assert.deepStrictEqual(s.rows[0].file, { path: "client.ts", status: "D", added: 0, deleted: 1 });
+      assert.deepStrictEqual(s.historyWork, { path: "client.ts", status: "A", untracked: true, staged: false, partlyStaged: false });
+      // Blame on the row that deleted the file has nothing to show (its menu leaves it out).
+      await closeEditors();
+      await vscode.commands.executeCommand("linyra.historyBlame", { repoId: web.id, sha: s.rows[0].sha });
+      await sleep(300);
+      assert.strictEqual(tabCount(), 0);
+      await send({ type: "exitHistory" });
+      await until("all commits", (x) => x.history === null);
+
+      // Never committed: no rows (the webview says so), only the uncommitted row.
+      fs.writeFileSync(at("notes.md"), "todo\n");
+      await send({ type: "refresh" });
+      await until("notes.md uncommitted", (x) => x.uncommitted.some((w) => w.repoId === web.id && w.changes.includes("notes.md")));
+      await vscode.commands.executeCommand("linyra.fileHistory", { kind: "file", repoId: web.id, group: "changes", path: "notes.md" });
+      s = await until("notes.md history", (x) => x.history?.path === "notes.md" && x.done);
+      assert.deepStrictEqual([s.rows.length, s.historyWork?.status, s.historyWork?.untracked], [0, "A", true]);
+      await send({ type: "exitHistory" });
+      await until("all commits", (x) => x.history === null);
+
+      // Folder History: the Log's Path filter for a folder of one repository (from the Commit side bar's folder row).
+      fs.mkdirSync(at("src"), { recursive: true });
+      fs.writeFileSync(at("src/view.ts"), "export {};\n");
+      git("add", "src/view.ts");
+      git("commit", "-q", "-m", "feat: a view");
+      await send({ type: "filter", filter: { ...ALL, date: "7d", text: "nothing matches this" } });
+      await vscode.commands.executeCommand("linyra.folderHistory", { kind: "folder", repoId: web.id, path: "src" });
+      s = await until("the folder's commits", (x) => x.filter.path === "src" && x.done && x.rows.length === 1);
+      assert.deepStrictEqual([s.history, s.logMode, s.filter.repoIds, s.filter.date, s.filter.text], [null, "commits", [web.id], "all", ""], "no mode of its own: the Path filter, its repository, all time");
+      assert.strictEqual(s.rows[0].subject, "feat: a view");
+      assert.strictEqual(s.persistedFilter?.path, "src", "a filter like any other: saved for the next window");
+    } finally {
+      await closeEditors();
+      if ((await snapshot()).history) await send({ type: "exitHistory" });
+      git("reset", "-q", "--hard", head);
+      git("clean", "-fdq");
+      await send({ type: "filter", filter: ALL });
+      await send({ type: "refresh" });
+      await until("six rows again", (x) => x.rows.length === 6 && x.filter.path === undefined);
+    }
+  });
+
   it("a selected branch skips repositories without it; multiple selections form a union and persist", async () => {
     await send({ type: "filter", filter: { ...ALL, branch: "prod" } });
     let s = await until("prod in acme-api only", (x) => x.rows.length === 1 && x.branchUse?.found === 1);
