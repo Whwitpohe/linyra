@@ -307,3 +307,28 @@
 3. 合并到 `feat/log-ux-integration`，顺序是 A → B → C → D → E → F → H → G。package.json 和 l10n 用 JSON 感知的方式合并。每合一个分支跑一次全量验收。
 4. 第二轮接线：G 的功能挂到 A/C/E 的界面上（详情面板的"解释"、悬停卡片链接、✨ 搜索），然后更新 UI Map（`dev/ui-map/index.html`），给新部件命名。
 5. 全量验收：lint、typecheck、unit、itest、test:ui、四种主题截图、滚动和启动基准。然后交给维护者审阅，并通知另一个会话（1.7.0）可以在此基础上继续。
+
+---
+
+## 7. 实施结果与偏离计划之处（2026-10-29）
+
+八个工作流已全部合进 `feat/log-ux-integration`。下面记录实现时和上文不一样的地方，以代码为准。
+
+- **H 头像**：VS Code 不允许字符串设置下面再挂子设置（`linyra.avatars.hosts` 会被丢弃），因此设置改为 `linyra.avatars`、`linyra.avatarHosts`、`linyra.avatarUrlTemplate`。另外两条：
+  - 工作区设置只能收紧 `linyra.avatars`，不能放宽。
+  - `avatarUrlTemplate` 只接受用户级设置。
+- **C 合并目标**：改为一次 `for-each-ref`（同时取上游 remote 和 `refs/remotes/*/HEAD`）加一次 `rev-list --left-right --count`，仍是两个进程。
+- **D 文件历史**：用 `--raw --numstat`（`--name-status` 和 `--numstat` 不能同时用）。代价：普通文件每页多 12–37ms；2 万次提交的极端文件，每页多约 100ms。
+- **E 搜索**：
+  - 裸词按 GitLens 规则是"或"，短语要加引号或打开"全部匹配"。
+  - 无效正则会直接报错，不再按纯文本搜索。
+  - `ref:` 通过 `--ignore-missing --end-of-options` 放进每个仓库那唯一一次 `git log`，没有额外进程。
+  - `change:`（pickaxe）不限日期时很慢：15 个仓库、3188 个提交，全量需要 32s。所以选"全部时间"时搜索框会提示缩短日期范围。
+- **F AI 核心**：
+  - Anthropic 用官方 SDK `@anthropic-ai/sdk`（Apache-2.0，已写进 ThirdPartyNotices），按需动态加载。`out/extension.js` 从 328KB 增加到 779KB。
+  - `linyra.ai.enabled`、`profiles`、`activeProfile` 只接受用户级设置；密钥按 origin 存在 SecretStorage 里。
+- **集成时补的接线**：
+  - AI 菜单项和悬停卡片里的"解释"，只在 `linyra.ai.enabled` 打开时显示。
+  - Log 头部的 ✨"问 AI"按钮（`linyra.ai.ask`）。
+  - 头像到达后只重绘一次。
+  - 文件历史的泳道起点改为复用 `GRAPH_INSET`。
