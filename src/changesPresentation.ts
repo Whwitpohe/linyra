@@ -5,7 +5,7 @@ import { UNCOMMITTED, type Commit } from "./types";
 function detail(c: Commit, repoName: string, message = c.subject): CommitDetails {
   const lines = message.replace(/\r\n/g, "\n").split("\n");
   return { repoId: c.repoId, repoName, sha: c.sha, title: lines.shift() || c.subject,
-    body: lines.join("\n").replace(/^\n/, ""), author: c.author, email: c.email, time: c.time };
+    body: lines.join("\n").replace(/^\n/, ""), author: c.author, email: c.email, time: c.time, parents: c.parents };
 }
 
 export function commitDetails(state: ChangesState | null, combined: CombinedState | null): CommitDetails[] {

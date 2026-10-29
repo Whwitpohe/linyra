@@ -36,7 +36,7 @@ export function renderChangesBody(): string {
     <div id="file-tree" class="file-tree" role="tree" aria-multiselectable="true" aria-label="${escapeHtml(localize("Changed files"))}" tabindex="0"></div>
   </section>
   <div id="detail-splitter" class="detail-splitter" role="separator" aria-orientation="horizontal" aria-label="${escapeHtml(localize("Resize commit details"))}" title="${escapeHtml(localize("Drag to resize commit details. Double-click to reset."))}" aria-controls="commit-details" tabindex="0" hidden></div>
-  <div id="detail-heading" class="detail-heading" hidden><button id="detail-toggle" class="detail-toggle" type="button" aria-expanded="true" aria-controls="commit-details" aria-label="${escapeHtml(localize("Hide commit details"))}" title="${escapeHtml(localize("Hide commit details"))}"><span id="detail-toggle-icon" aria-hidden="true">▾</span></button><span>${escapeHtml(localize("Commit details"))}</span></div>
+  <div id="detail-heading" class="detail-heading" hidden><button id="detail-toggle" class="detail-toggle" type="button" aria-expanded="true" aria-controls="commit-details" aria-label="${escapeHtml(localize("Hide commit details"))}" title="${escapeHtml(localize("Hide commit details"))}">${codicon("chevron-down", "detail-chevron")}</button><span class="detail-heading-label">${escapeHtml(localize("Commit details"))}</span></div>
   <section id="commit-details" class="commit-details" aria-label="${escapeHtml(localize("Commit details"))}" tabindex="0" hidden></section>
 </main>
 <div id="copy-status" class="sr-only" role="status"></div>

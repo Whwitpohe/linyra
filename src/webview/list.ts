@@ -5,7 +5,7 @@ import { clear, h } from "./dom";
 import type { HoverRow } from "./hoverCard";
 import { commitPills, rowRefs, type Upstream } from "./refPills";
 import { fitName, textStyle } from "./measure";
-import { hoverRail, railAt, renderGraph, type FoldAction, type RailAction } from "./graph";
+import { graphWidthFor, hoverRail, railAt, renderGraph, type FoldAction, type RailAction } from "./graph";
 import { historyChangeCell, historySubjectNotes } from "./history";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
@@ -57,7 +57,7 @@ function untitled(graph: SVGSVGElement): SVGSVGElement {
 export class CommitList {
   private rowHeight = 0;
   private frame = 0;
-  /** The repo column's width and its chips' font, read once per layout change rather than on every scroll paint. */
+  /** The repo column's width and its names' font, read once per layout change rather than on every scroll paint. */
   private column: { width: number; font: string; paddingX: number } | undefined;
   private graph: CommitGraph = { rows: [], columns: 0 };
   /** Each row's parents as row indexes, extended page by page instead of rebuilt (fold segments and the graph share it). */
@@ -107,6 +107,7 @@ export class CommitList {
       this.column = undefined;
       this.paint();
     }).observe(root);
+    // Avatars arrive in batches after the rows that show their discs: AvatarFeed (avatars.ts) calls redraw() once per batch.
     root.addEventListener("keydown", (e) => this.onKey(e));
     body.addEventListener("click", (e) => {
       const fold = (e.target as Element).closest<HTMLElement>("[data-fold-collapse], [data-fold-expand]");
@@ -267,7 +268,7 @@ export class CommitList {
     const { rows, selected, skeleton } = this.props;
     const rh = this.height();
     if (!scrolled || skeleton) {
-      this.graphWidth = Math.max(28, Math.min(12 + Math.max(0, this.graph.columns - 1) * 16, this.root.clientWidth * 0.24));
+      this.graphWidth = graphWidthFor(this.graph.columns, this.root.clientWidth * 0.24);
       this.root.style.setProperty("--graph-width", `${this.graphWidth}px`);
       this.mounted.clear();
       clear(this.body);
@@ -306,7 +307,7 @@ export class CommitList {
       this.mounted.set(i, { el, top: i === top });
       built.push(el);
     }
-    this.fitChips(built);
+    this.fitNames(built);
     this.fitReferences(built);
     if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
     else this.root.removeAttribute("aria-activedescendant");
@@ -315,22 +316,23 @@ export class CommitList {
   /**
    * A repo name longer than its column is cut in the middle, to exactly what fits: repos
    * that share a prefix differ at the end, and the browser's own ellipsis would hide it.
-   * The full name stays in the chip's tooltip and accessible name.
+   * The full name stays in the band's tooltip and accessible name.
    */
-  private fitChips(rows: readonly HTMLElement[]): void {
+  private fitNames(rows: readonly HTMLElement[]): void {
     const first = rows[0];
     if (!first) return;
-    const chips = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".chip")]);
-    if (chips.length === 0) return;
-    // Every chip shares one font and padding: read them (and the column) once per layout, then only
+    const labels = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".repo-label")]);
+    if (labels.length === 0) return;
+    // Every name shares one font and inset: read them (and the column) once per layout, then only
     // write. A read here forces the new rows' style mid-frame; a scroll must not pay for it.
     if (!this.column) {
       const width = parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]);
       if (!Number.isFinite(width)) return;
-      this.column = { width, ...textStyle(chips[0]) };
+      const label = textStyle(labels[0]), band = textStyle(labels[0].parentElement!);
+      this.column = { width, font: label.font, paddingX: label.paddingX + band.paddingX };
     }
     const { width, font, paddingX } = this.column;
-    for (const chip of chips) chip.textContent = fitName(font, chip.dataset.name ?? "", width - paddingX);
+    for (const label of labels) label.textContent = fitName(font, label.dataset.name ?? "", width - paddingX);
   }
 
   /** Keep whole reference badges; summarize overflow instead of clipping the last branch. */
@@ -366,8 +368,11 @@ export class CommitList {
     const accent = accentOf(this.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
     const focus = i === this.props.selected;
-    const myEmail = this.props.highlightMine ? this.props.me?.[c.repoId] : undefined;
-    const mine = !!myEmail && myEmail.toLowerCase() === c.email.toLowerCase();
+    // My commit (the repository's user.email): its graph disc always has the thicker ring;
+    // Highlight My Commits also bolds its text.
+    const myEmail = this.props.me?.[c.repoId];
+    const own = !!myEmail && myEmail.toLowerCase() === c.email.toLowerCase();
+    const mine = own && this.props.highlightMine === true;
     const offHead = this.props.offHead?.has(commitKey(c)) === true;
     const start = this.display.rows[displayIndex - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[displayIndex + 1]?.commit.repoId !== c.repoId;
@@ -387,10 +392,10 @@ export class CommitList {
         head: c.refs?.some((ref) => ref.kind === "head") === true, ...(this.props.historyPath ? { historyFileDeleted: c.file?.status === "D" } : {}), preventDefaultContextMenuItems: true }),
     }, [
       h("span", { class: `repo-band accent-${accent}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name },
-        showName ? [h("span", { class: "chip repo-label", "data-name": name }, [name])] : []),
+        showName ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),
       untitled(renderGraph(this.graph.rows[displayIndex], c, this.graph.columns, this.graphWidth, this.height(), {
         node: segment ? { id: segment.id, count: segment.hidden.length, expand: this.collapsed.has(segment.id) } : undefined, edges: this.edgeActions,
-      })),
+      }, own)),
       // No title tooltips on the subject, node, hash or date: the hover card shows all of it (hoverCard.ts).
       h("span", { class: "commit-message", role: "gridcell" }, [
         h("span", { class: "subject" }, [c.subject, ...(this.props.historyPath ? historySubjectNotes(c.file, this.props.historyPath) : [])]),
@@ -424,7 +429,7 @@ export class CommitList {
     return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 1), "aria-selected": "false",
       "data-vscode-context": JSON.stringify({ webviewSection: "graphFold", preventDefaultContextMenuItems: true }) }, [
       h("span", { class: `repo-band accent-${accentOf(this.accents, c.repoId)}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", "aria-label": name, title: name },
-        start ? [h("span", { class: "chip repo-label", "data-name": name }, [name])] : []),
+        start ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),
       renderGraph(this.graph.rows[index], c, this.graph.columns, this.graphWidth, this.height(), { folded: { id: segment.id, count: segment.hidden.length }, edges: this.edgeActions }),
       h("span", { role: "gridcell", class: "fold-summary" }, [h("button", { type: "button", class: "fold-expand", "data-fold-expand": segment.id,
         title: localize("Expand {0} hidden commits", segment.hidden.length), "aria-expanded": "false" }, [localize("{0} commits hidden · Expand", segment.hidden.length)])]),

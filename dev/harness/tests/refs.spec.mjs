@@ -100,7 +100,8 @@ test("the card opens after the pointer rests 500 ms: the row's data at once, the
   expect(await messages(page)).toEqual([]);
   await expect(card(page)).toBeVisible();
   // At once, from the row.
-  await expect(card(page).locator(".hover-author")).toHaveText("dana");
+  // The harness's "me" is dana in every repository (shim.ts), so her commit reads as mine.
+  await expect(card(page).locator(".hover-author")).toHaveText("You");
   await expect(card(page).locator(".hover-when")).toHaveText(/^just now \(\d{4}-\d\d-\d\d \d\d:\d\d\)$/);
   await expect(card(page).locator(".hover-repo")).toHaveText("acme-web");
   await expect(card(page).locator(".hover-subject")).toHaveText("feat: add retry to uploader");

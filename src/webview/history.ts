@@ -5,6 +5,7 @@ import { localize } from "../i18n";
 import type { HistoryWork } from "../protocol";
 import type { Commit } from "../types";
 import { byId, clear, h } from "./dom";
+import { GRAPH_INSET } from "./graph";
 import { chipPath, fileChangeLabel, fileChangeView, nameNotes } from "./historyModel";
 import { renderLines } from "./ui/counts";
 
@@ -93,8 +94,8 @@ export class HistoryChip {
 }
 
 const SVG = "http://www.w3.org/2000/svg";
-/** The first lane's centre in the commit graph (graph.ts): the dashed node sits on it. */
-const LANE0 = 6;
+/** The first lane's centre in the commit graph: the dashed node sits on it. */
+const LANE0 = GRAPH_INSET;
 
 function svg(tag: string, attrs: Record<string, string | number>): SVGElement {
   const el = document.createElementNS(SVG, tag);

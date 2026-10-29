@@ -217,6 +217,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined) });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
+    deps.changes.selectCommit = (repoId, sha) => this.revealCommit(repoId, sha);
     this.disposables.push(
       deps.discovery.onDidChange(() => this.reposChangedSoon()),
       this.onDidChangeRefs((id) => this.refreshCurrentReferences(id)),
@@ -1322,6 +1323,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const ref = { repoId: focus.commit.repoId, sha: focus.commit.sha };
     this.post({ type: "setSelection", items: [ref], focus: ref });
     await this.showDetail(ref.repoId, ref.sha);
+  }
+
+  /** A parent hash in the commit details: that commit alone, selected in the Log, if it is listed. */
+  private async revealCommit(repoId: string, sha: string): Promise<boolean> {
+    if (!this.findCommit(repoId, sha)) return false;
+    const ref = { repoId, sha };
+    this.post({ type: "setSelection", items: [ref], focus: ref });
+    await this.showDetail(repoId, sha);
+    return true;
   }
 
   /** A Combined Changes file: only what the selected commits did to it (spec section 4). */

@@ -33,6 +33,8 @@ export interface CommitDetails {
   accent?: number;
   refs?: CommitReference[];
   containingBranches?: string[];
+  /** The commit's parents: each one selects that commit in the Log. */
+  parents?: string[];
 }
 
 export interface ChangesPage {
@@ -55,4 +57,6 @@ export type ChangesMessage =
   | { type: "expand"; id: string }
   | { type: "open"; id: string }
   | { type: "selection"; ids: string[] }
-  | { type: "copy"; sha: string; field: "sha" | "message" };
+  | { type: "copy"; sha: string; field: "sha" | "message" }
+  /** A parent hash in the commit details: select that commit in the Log. */
+  | { type: "selectCommit"; repoId: string; sha: string };

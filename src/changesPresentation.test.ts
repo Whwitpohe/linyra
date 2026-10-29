@@ -15,6 +15,7 @@ const state: ChangesState = {
   assert.strictEqual(detail.body, "First paragraph.\n\n- Keep line breaks\n- Keep <literal> markup\n\nCo-Authored-By: Rin <rin@example.com>");
   assert.strictEqual(detail.sha, state.commit.sha);
   assert.strictEqual(detail.email, state.commit.email);
+  assert.deepStrictEqual(commitDetails({ ...state, commit: { ...state.commit, parents: ["b".repeat(40), "c".repeat(40)] } }, null)[0].parents, ["b".repeat(40), "c".repeat(40)], "the parents, which select in the Log");
   assert.deepStrictEqual(commitDetails({ ...state, message: state.message.replace(/\n/g, "\r\n") }, null), [detail]);
   assert.strictEqual(commitDetails({ ...state, message: "", status: "loading" }, null)[0].body, "");
   assert.deepStrictEqual(commitDetails(null, null), []);

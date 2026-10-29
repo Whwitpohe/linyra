@@ -88,8 +88,12 @@ function reload(): void {
 const WORK = mockWork(repos, NOW);
 
 let logMode: "commits" | "uncommitted" = "commits";
+/** The harness user is dana in every repository (her commits' discs have the thicker ring). */
+const ME = Object.fromEntries(repos.map((r) => [r.id, "dana@example.com"]));
 let selectedCommit = all[0];
 let allFiles = false;
+/** The repository colors the Log reports (its details' marker takes the commit's). */
+let accents: Record<string, number> = {};
 const harnessWindow = window as unknown as { harnessMessages: WebviewMessage[] };
 harnessWindow.harnessMessages = [];
 function postChanges(): void {
@@ -102,7 +106,7 @@ function postChanges(): void {
     ] }, { id: "readme", kind: "file", label: "README.md", path: "README.md", description: "+2 −0", tooltip: "README.md", contextValue: "file", status: "M", added: 2, deleted: 0 }],
     details: [{ repoId: repo.id, repoName: repo.name, sha: selectedCommit.sha, title: selectedCommit.subject,
       body: "Keep the preview configuration in sync.\n\nCo-Authored-By: Rin <rin@example.com>", author: selectedCommit.author, email: selectedCommit.email, time: selectedCommit.time,
-      refs: selectedCommit.refs, containingBranches: ["HEAD", "main", "origin/main"] }],
+      accent: accents[repo.id], refs: selectedCommit.refs, containingBranches: ["HEAD", "main", "origin/main"], parents: selectedCommit.parents }],
   };
   send({ type: "changesView", message }, 0);
 }
@@ -119,12 +123,19 @@ function handle(m: WebviewMessage): void {
       if (m.action === "toggleCompare") toolbarState.compareShown = !toolbarState.compareShown;
       if (m.action === "fetchAll") { toolbarState.fetching = true; setTimeout(() => { toolbarState.fetching = false; send({ type: "toolbar", state: toolbarState }, 0); }, 600); }
       send({ type: "toolbar", state: toolbarState }, 0);
-      send({ type: "init", repos, filter, hasMe: true, layout, history, logMode, profiles: [] }, 0);
+      send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode, profiles: [] }, 0);
       return;
     }
     case "changesView":
       if (m.message.type === "ready") postChanges();
       if (m.message.type === "copy") send({ type: "changesView", message: { type: "copied" } }, 0);
+      // A parent hash in the details: select it when it is loaded, as LogView.revealCommit does.
+      if (m.message.type === "selectCommit") {
+        const { repoId, sha } = m.message;
+        const found = matched.slice(0, offset).find((c) => c.repoId === repoId && c.sha === sha);
+        if (found) { selectedCommit = found; send({ type: "setSelection", items: [{ repoId, sha }], focus: { repoId, sha } }, 0); postChanges(); }
+        else console.info("[harness] not loaded", m.message);
+      }
       if (m.message.type === "action" && (m.message.action === "allFiles" || m.message.action === "changedFiles")) { allFiles = m.message.action === "allFiles"; postChanges(); }
       return;
     case "branchSidebar": {
@@ -136,19 +147,20 @@ function handle(m: WebviewMessage): void {
         { ref: "refs/remotes/origin/master", name: "origin/master", sha: "d".repeat(40), kind: "remote", current: false, remote: "origin", remoteBranch: "master", ahead: 0, behind: 0 },
       ] } });
       if (m.action === "favorite" && m.repoId && m.ref) { const key = `${m.repoId}\0${m.ref}`, favorites = new Set(branchState.favorites); if (favorites.has(key)) favorites.delete(key); else favorites.add(key); branchState = { ...branchState, favorites: [...favorites] }; sessionStorage.setItem("branch-sidebar", JSON.stringify(branchState)); send({ type: "sidebarState", state: branchState }, 0); }
-      if (m.action === "select" && m.repoId && m.ref) { filter = { ...filter, repoIds: [m.repoId], branch: m.ref.replace(/^refs\/(heads|remotes)\//, "") }; send({ type: "init", repos, filter, hasMe: true, layout, history: null, profiles: [] }, 0); reload(); }
+      if (m.action === "select" && m.repoId && m.ref) { filter = { ...filter, repoIds: [m.repoId], branch: m.ref.replace(/^refs\/(heads|remotes)\//, "") }; send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history: null, profiles: [] }, 0); reload(); }
       return;
     }
-    case "ready": send({ type: "init", repos, filter, hasMe: true, layout, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); send({ type: "historyWork", work: historyWork(history, params) }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); send({ type: "historyWork", work: historyWork(history, params) }, 0); reload(); return;
     case "logMode": logMode = m.mode; console.info(`[harness] ${m.type}`, m); return;
     case "selectWork": case "openHistoryWork": case "selectMany": console.info(`[harness] ${m.type}`, m); return;
-    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout, history, logMode, profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); reload(); return;
+    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode, profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); reload(); return;
     case "layout": layout = { ...layout, ...m }; sessionStorage.setItem("linyra-layout", JSON.stringify(layout)); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;
     case "loadMore": page(true); return;
     case "select": selectedCommit = all.find((c) => c.repoId === m.repoId && c.sha === m.sha) ?? selectedCommit; postChanges(); return;
     case "openFirst": console.info(`[harness] ${m.type}`, m); return;
+    case "accents": accents = m.accents; postChanges(); return;
     case "openSettings": console.info("[harness] openSettings"); return;
     case "visibleAuthors": answerAvatars(m, send); return;
   }

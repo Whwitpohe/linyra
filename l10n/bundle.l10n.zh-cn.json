@@ -852,5 +852,10 @@
   "No commit on the selected branches touches {0}.": "所选分支上没有涉及 {0} 的提交。",
   "Show All Branches": "显示全部分支",
   "Not committed yet": "还没有提交过",
-  "Its history appears here once it is committed.": "提交后这里会出现它的历史。"
+  "Its history appears here once it is committed.": "提交后这里会出现它的历史。",
+  "Select in the Log": "在日志中选中",
+  "Select parent commit {0} in the Log": "在日志中选中父提交 {0}",
+  "Parent:": "父提交：",
+  "Parents:": "父提交：",
+  "Commit {0} is not loaded in the Log. Load more commits, or search for its hash.": "提交 {0} 还没有加载到日志中。请加载更多提交，或搜索它的哈希。"
 }

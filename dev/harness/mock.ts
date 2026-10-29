@@ -79,7 +79,8 @@ export function mockCommits(repos: Repo[], scenario: string): Commit[] {
         : i === 3 ? [{ kind: "local", name: "release-1.4" }, { kind: "remote", name: "origin/release-1.4" }]
         : i === 4 ? [{ kind: "local", name: "fix/preview" }] : [] }));
   }
-  const perRepo = scenario === "many" ? 240 : 40;
+  // "long": three repositories, deep history (few lanes: the graph draws author discs while scrolling).
+  const perRepo = scenario === "many" ? 240 : scenario === "long" ? 1000 : 40;
   const out: Commit[] = [];
   repos.forEach((r, ri) => {
     for (let i = 0; i < perRepo; i++) {

@@ -6,7 +6,10 @@ import { codicon, codiconElement } from "../codicons";
 import { attachSplitter } from "../splitter";
 import { absoluteTime, moveSelection } from "../view";
 import { filterFiles } from "./fileFilterModel";
+import { referencePills } from "./referencePills";
 import { updateTreeToggle } from "../treeToggle";
+import { renderLines } from "../ui/counts";
+import { renderPill } from "../ui/pill";
 
 export interface SavedState { detailHeight?: number; key?: string; collapsed?: string[]; detailsCollapsed?: boolean; fileFilter?: string }
 export interface ChangesApi {
@@ -54,7 +57,6 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
     detailToggle.setAttribute("aria-expanded", String(!detailsCollapsed));
     detailToggle.title = localize(detailsCollapsed ? "Show commit details" : "Hide commit details");
     detailToggle.setAttribute("aria-label", detailToggle.title);
-    byId("detail-toggle-icon").textContent = detailsCollapsed ? "▸" : "▾";
     const height = detailHeight(wantedHeight, availableHeight());
     app.style.setProperty("--detail-height", `${height}px`);
     splitter.setAttribute("aria-valuemin", String(detailHeight(0, availableHeight())));
@@ -72,11 +74,12 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   }, "y");
   splitter.addEventListener("pointerdown", (e) => { if (e.button === 0) document.body.classList.add("resizing"); });
   splitter.addEventListener("dblclick", () => { wantedHeight = 240; resize(); save(); });
-  detailToggle.addEventListener("click", () => { detailsCollapsed = !detailsCollapsed; resize(); save(); });
+  // The whole header folds the details, as a VS Code pane header does (the button's click reaches it too).
+  detailHeading.addEventListener("click", () => { detailsCollapsed = !detailsCollapsed; resize(); save(); });
   new ResizeObserver(resize).observe(app);
 
-  // VS Code's own icons; "tags" (several references) is the same tag.
-  const icons = { tag: "tag", tags: "tag", copy: "copy", twisty: "chevron-right", folder: "folder", file: "file" } as const;
+  // VS Code's own icons.
+  const icons = { copy: "copy", twisty: "chevron-right", folder: "folder", file: "file" } as const;
   function icon(name: keyof typeof icons, className: string): HTMLElement {
     return h("span", { class: className, "aria-hidden": "true" }, [codiconElement(icons[name])]);
   }
@@ -148,7 +151,7 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
       } else if (node.added !== null && node.added !== undefined) {
         const stats = h("span", { class: "row-stats" }, [
           node.staged ? h("span", { class: "row-description" }, [localize("staged")]) : null,
-          h("span", { class: "added" }, [`+${node.added}`]), h("span", { class: "deleted" }, [`−${node.deleted ?? 0}`]),
+          renderLines(node.added, node.deleted ?? 0),
         ]);
         el.append(stats);
       } else el.append(h("span", { class: "row-stats row-description" }, [node.description]));
@@ -266,13 +269,15 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
     copy.addEventListener("click", () => post({ type: "copy", sha: commit.sha, field: "message" }));
     const sha = h("button", { class: "sha", type: "button", title: `${localize("Copy Commit SHA")}\n${commit.sha}`, "aria-label": localize("Copy Commit SHA") }, [commit.sha.slice(0, 7)]);
     sha.addEventListener("click", () => post({ type: "copy", sha: commit.sha, field: "sha" }));
-    const referenceGroups = ["head", "local", "tag", "remote"].flatMap((kind) => {
-      const refs = commit.refs?.filter((ref) => ref.kind === kind) ?? [];
-      return refs.length ? [h("span", { class: `ref-group ref-${kind}` }, [
-        icon(refs.length > 1 ? "tags" : "tag", "ref-icon"),
-        h("span", { class: "ref-names" }, refs.flatMap((ref, i) => [i ? ", " : "", h("span", { title: ref.name }, [ref.name])])),
-      ])] : [];
+    // A parent hash selects that commit in the Log (the host says so when it is not loaded).
+    const parents = (commit.parents ?? []).map((parent) => {
+      const short = parent.slice(0, 7);
+      const link = h("button", { class: "sha parent-sha", type: "button", title: `${localize("Select in the Log")}\n${parent}`,
+        "aria-label": localize("Select parent commit {0} in the Log", short) }, [short]);
+      link.addEventListener("click", () => post({ type: "selectCommit", repoId: commit.repoId, sha: parent }));
+      return link;
     });
+    const pills = referencePills(commit.refs ?? []).map((segments) => renderPill(segments));
     const branches = commit.containingBranches;
     const branchList = h("div", { class: "containing-list" }, (branches ?? []).map((branch) => h("div", {}, [branch])));
     const branchKey = `${commit.repoId}\0${commit.sha}`;
@@ -290,12 +295,16 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
       commit.body ? h("pre", { class: "commit-body" }, [commit.body]) : null,
       h("div", { class: "commit-meta" }, [
         h("div", { class: "commit-info" }, [
-          h("span", { class: `repo-marker accent-${commit.accent ?? 3}`, title: commit.repoName, "aria-label": commit.repoName }),
-          sha, ` ${localize("Author")} `, h("span", { class: "commit-author" }, [commit.author]), " ",
-          h("span", { class: "commit-email" }, [`<${commit.email}>`]), ", ",
+          h("span", { class: `repo-marker accent-${commit.accent ?? 3}`, "aria-hidden": "true" }),
+          h("span", { class: "commit-repo" }, [commit.repoName]), " · ", sha,
+        ]),
+        h("div", { class: "commit-byline" }, [
+          h("span", { class: "commit-author" }, [commit.author]), " ",
+          h("span", { class: "commit-email", title: commit.email }, [`<${commit.email}>`]), " · ",
           h("time", { class: "commit-date", datetime: new Date(commit.time * 1000).toISOString() }, [absoluteTime(commit.time)]),
         ]),
-        referenceGroups.length ? h("div", { class: "commit-refs", "aria-label": localize("Commit references") }, referenceGroups) : null,
+        parents.length ? h("div", { class: "commit-parents" }, [localize(parents.length > 1 ? "Parents:" : "Parent:"), " ", ...parents.flatMap((link, i) => i ? [" ", link] : [link])]) : null,
+        pills.length ? h("div", { class: "commit-refs", "aria-label": localize("Commit references") }, pills) : null,
         branches ? h("div", { class: "containing-branches" }, [
           h("div", { class: "containing-heading" }, [localize("In {0} branches:", branches.length), " ", branches.length ? toggleBranches : null]),
           branchList,

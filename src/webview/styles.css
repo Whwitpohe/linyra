@@ -63,7 +63,10 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
   .log-header > .work-totals { order: 3; }
   .header-actions { order: 4; margin-left: 0; }
 }
-.header-actions .icon-button[aria-pressed="true"] { background: var(--vscode-inputOption-activeBackground); color: var(--vscode-inputOption-activeForeground); outline: 1px solid var(--vscode-inputOption-activeBorder); outline-offset: -1px; }
+/* A toggled action, as VS Code's own toolbars draw it: a fill, no frame. High contrast leaves the
+   fill unset, so there it keeps a frame. */
+.header-actions .icon-button[aria-pressed="true"] { background: var(--vscode-actionBar-toggledBackground, var(--vscode-inputOption-activeBackground)); color: var(--vscode-icon-foreground); }
+body.vscode-high-contrast .header-actions .icon-button[aria-pressed="true"] { outline: 1px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
 .toolbar-divider { align-self: stretch; width: 1px; margin: 4px; background: var(--vscode-panel-border); }
 .toolbar-menu { position: fixed; z-index: 120; min-width: 210px; max-width: calc(100vw - 12px); max-height: calc(100vh - 8px); overflow-y: auto; padding: 5px; border: 1px solid var(--vscode-widget-border, var(--vscode-input-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); color: var(--vscode-menu-foreground, var(--vscode-foreground)); box-shadow: 0 4px 12px var(--vscode-widget-shadow); }
 .toolbar-menu button { display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: 3px; background: transparent; color: inherit; font: inherit; text-align: left; }
@@ -315,15 +318,19 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
    theme foreground, so contrast still does not depend on the hue. */
 body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 
-/* Adjacent commits of one repository share a single uninterrupted color band. */
+/* The repository column: one continuous 3px strip in the repository's color for each run of its
+   commits, the name beside it in the row's own text color (color is a marker; the name is always
+   printed). Where the repository changes, each strip stops 3px short. No tint and no frame, in
+   high contrast too: a strip reads there as it is. The strip is the band's background, not a
+   pseudo-element: no extra box on every row while scrolling. */
 .repo-band {
-  align-self: stretch; display: flex; align-items: flex-start; min-width: 0; overflow: hidden;
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  align-self: stretch; display: flex; align-items: flex-start; min-width: 0; overflow: hidden; padding-left: 10px;
+  background: linear-gradient(var(--accent), var(--accent)) 0 0 / 3px 100% no-repeat;
 }
-body.vscode-light .repo-band { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.repo-band.band-start { border-top: 1px solid var(--vscode-panel-background, var(--vscode-editor-background)); border-top-left-radius: 3px; border-top-right-radius: 3px; }
-.repo-band.band-end { border-bottom: 1px solid var(--vscode-panel-background, var(--vscode-editor-background)); border-bottom-left-radius: 3px; border-bottom-right-radius: 3px; }
-.repo-band .repo-label, body.vscode-light .repo-band .repo-label { background: transparent; border-radius: 0; line-height: var(--row-height); padding: 0 6px; }
+.repo-band.band-start { background-position: 0 3px; background-size: 3px calc(100% - 3px); }
+.repo-band.band-end { background-size: 3px calc(100% - 3px); }
+.repo-band.band-start.band-end { background-size: 3px calc(100% - 6px); }
+.repo-band .repo-label { min-width: 0; overflow: hidden; white-space: nowrap; line-height: var(--row-height); }
 .commit-graph { display: block; overflow: hidden; align-self: stretch; }
 .graph-edge { fill: none; stroke: var(--accent); stroke-width: 1.4; }
 .graph-cut { stroke-dasharray: 2 2; opacity: 0.65; }
@@ -334,9 +341,17 @@ body.vscode-light .repo-band { background: color-mix(in srgb, var(--accent) 22%,
 .graph-point:hover .graph-node { stroke: var(--vscode-foreground); stroke-width: 2; }
 .commit-graph.rail-hover { cursor: pointer; }
 .graph-edge-hover { fill: none; stroke: var(--vscode-foreground); stroke-width: 2; pointer-events: none; }
-.graph-fold-box { fill: var(--vscode-panel-background, var(--vscode-editor-background)); stroke: var(--accent); stroke-width: 1.5; }
-.graph-fold-sign { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
-.graph-fold-control:hover .graph-fold-box, .graph-fold-control:hover .graph-fold-sign { stroke: var(--vscode-foreground); stroke-width: 2; }
+/* ⊟ / ⊞: one path, the box filled to cover the rails, and its sign. */
+.graph-fold-box { fill: var(--vscode-panel-background, var(--vscode-editor-background)); stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; }
+.graph-fold-control:hover .graph-fold-box { stroke: var(--vscode-foreground); stroke-width: 2; }
+/* A commit's author disc (ui/authorDisc.css) answers the pointer as the dot did. */
+.graph-point:hover .author-disc-ring { stroke: var(--vscode-foreground); }
+/* High contrast draws rings, not tints: my commits too (only their ring is thicker). */
+body.vscode-high-contrast .commit-graph .author-disc.mine .author-disc-ring { fill: var(--vscode-editor-background); }
+/* Linear history that can fold: its ⊟ takes the node's place only while the pointer is on it. */
+.graph-fold-control[data-fold-collapse] .graph-fold-box { opacity: 0; }
+.graph-fold-control[data-fold-collapse]:hover .graph-fold-box { opacity: 1; }
+.graph-fold-control[data-fold-collapse]:hover :is(.author-disc-ring, .author-disc-initial, .author-disc-image, .graph-node) { opacity: 0; }
 .fold-summary { min-width: 0; overflow: hidden; }
 .fold-expand { max-width: 100%; height: auto; padding: 1px 3px; border: 0; background: transparent; color: var(--vscode-textLink-foreground); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fold-expand:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
@@ -367,14 +382,15 @@ body.vscode-high-contrast .chip { background: transparent; outline: 1px solid va
    which vanishes on HC light). */
 body.vscode-high-contrast .author-chip { background: transparent; color: var(--vscode-foreground); outline: 1px solid var(--vscode-contrastBorder); outline-offset: -1px; }
 
-/* ── Narrow editor groups: stack list above detail ──────────────────────── */
-@media (max-width: 720px) {
-  /* The repository column narrows to its color strip, as the JetBrains Log's root column does:
-     the name stays in the band's tooltip and accessible name. */
-  .row, .list.hash-column .row { grid-template-columns: 6px var(--graph-width, 32px) minmax(0, 1fr) 8ch; column-gap: 6px; }
-  .row .repo-band .repo-label { display: none; }
-  .row .author { display: none; }
-  .row .hash { display: none; }
+/* ── A narrow Log ───────────────────────────────────────────────────────── */
+/* The Log's own width (.log is the container), not the window's: the Log shares the panel with
+   the changed files. The repository column narrows to its strip, as the JetBrains Log's root
+   column does (the name stays in the strip's tooltip and accessible name); the author, hash and
+   references leave the subject the room. */
+@container (max-width: 720px) {
+  .row, .list.hash-column .row { grid-template-columns: 3px var(--graph-width, 32px) minmax(0, 1fr) 8ch; column-gap: 6px; }
+  .row .repo-band { padding-left: 0; }
+  .row .repo-band .repo-label, .row .author, .row .hash, .row .row-refs { display: none; }
 }
 
 /* The Log's Commits | Uncommitted switch (VS Code's segmented look, theme colors only). */

@@ -37,6 +37,8 @@ body.vscode-high-contrast .app.history .repo-row.history-repo-row { outline: 1px
 .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 14ch 8.5ch minmax(48px, 10ch) 8ch; }
 .app.history .list-pane:not(:has(> .list.hash-column)) > .history-work .hash { display: none; }
 .app.history .row .repo-band .repo-label, .app.history .history-work .repo-label { display: none; }
+/* Only the strip: none of the room the name takes beside it in the merged Log. */
+.app.history :is(.row, .history-work) .repo-band { padding-left: 0; }
 /* Narrow: no author or hash, as the Log's own narrow rows (both the viewport and the Log's width);
    narrower still, the letter alone, so the subject keeps its room. */
 @media (max-width: 720px) {
@@ -48,6 +50,8 @@ body.vscode-high-contrast .app.history .repo-row.history-repo-row { outline: 1px
   .app.history :is(.row, .history-work) :is(.author, .hash) { display: none; }
   .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
   .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 11ch 8ch; }
+  /* The narrow commit rows' gap (styles.css), so the uncommitted row's columns stay lined up with theirs. */
+  .app.history .history-work { column-gap: 6px; }
   .history-change { gap: 4px; }
 }
 @container (max-width: 440px) {

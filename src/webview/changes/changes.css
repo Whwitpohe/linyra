@@ -18,7 +18,9 @@
 #changes-pane .icon-button { border: 0; border-radius: 3px; background: transparent; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; }
 #changes-pane .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
 #changes-pane .icon-button:disabled { color: var(--vscode-disabledForeground); cursor: default; }
-#changes-pane .icon-button[aria-pressed="true"] { background: var(--vscode-inputOption-activeBackground); color: var(--vscode-inputOption-activeForeground); }
+/* A toggled action, as VS Code's toolbars draw it: a fill, no frame (high contrast: a frame). */
+#changes-pane .icon-button[aria-pressed="true"] { background: var(--vscode-actionBar-toggledBackground, var(--vscode-inputOption-activeBackground)); color: var(--vscode-icon-foreground); }
+:is(.vscode-high-contrast #changes-pane, #changes-pane.vscode-high-contrast) .icon-button[aria-pressed="true"] { outline: 1px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
 #changes-pane .changes-menu { position: fixed; z-index: 130; min-width: 185px; max-width: calc(100vw - 12px); padding: 5px; border: 1px solid var(--vscode-widget-border, var(--vscode-input-border)); border-radius: 4px; background: var(--vscode-menu-background, var(--vscode-dropdown-background)); color: var(--vscode-menu-foreground, var(--vscode-foreground)); box-shadow: 0 4px 12px var(--vscode-widget-shadow); }
 #changes-pane .changes-menu button { display: block; width: 100%; padding: 5px 8px; border: 0; border-radius: 3px; background: transparent; color: inherit; text-align: left; }
 #changes-pane .changes-menu button:hover, #changes-pane .changes-menu button:focus-visible { background: var(--vscode-list-hoverBackground); }
@@ -44,48 +46,49 @@
 #changes-pane .old-path { flex: 1 3 0; min-width: 0; color: inherit; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 #changes-pane .row-description { overflow: hidden; text-overflow: ellipsis; }
 #changes-pane .row-stats { margin-left: auto; flex: 0 0 auto; display: inline-flex; justify-content: flex-end; gap: 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Lines added and deleted, in Source Control's add and delete colors (ui/counts.css). */
+#changes-pane .row-stats .line-counts { gap: 7px; font-size: inherit; }
 #changes-pane .status { flex: 0 0 12px; text-align: center; font-size: 11px; }
 #changes-pane .change-A, #changes-pane .change-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
 #changes-pane .change-M, #changes-pane .change-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
 #changes-pane .change-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
 #changes-pane .change-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
 #changes-pane .tree-row.selected .file-name, #changes-pane .tree-row.selected .row-stats > span, #changes-pane .tree-row.selected .status { color: inherit; }
-#changes-pane .detail-splitter { flex: 0 0 6px; cursor: row-resize; touch-action: none; position: relative; border-top: 1px solid var(--vscode-panel-border); }
-#changes-pane .detail-splitter::after { content: ""; position: absolute; inset: -2px 0; }
-#changes-pane .detail-splitter::before { content: ""; position: absolute; width: 28px; height: 2px; left: calc(50% - 14px); top: 1px; background: var(--vscode-descriptionForeground); border-radius: 1px; }
+/* The sash between the files and the details draws no line of its own (the details' header draws
+   the one line); it lights up as VS Code's sash does, and its grab area reaches into the header. */
+#changes-pane .detail-splitter { flex: 0 0 6px; cursor: row-resize; touch-action: none; position: relative; }
+#changes-pane .detail-splitter::after { content: ""; position: absolute; inset: -2px 0 -3px; z-index: 1; }
 #changes-pane .detail-splitter:hover, #changes-pane .detail-splitter.dragging, #changes-pane .detail-splitter:focus-visible { background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder)); }
 body.resizing #changes-pane { cursor: row-resize; user-select: none; }
-#changes-pane .detail-heading { flex: 0 0 26px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); cursor: default; }
-#changes-pane .detail-toggle { flex: 0 0 22px; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: inherit; }
-#changes-pane .detail-toggle:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
-#changes-pane #detail-toggle-icon { width: 12px; text-align: center; }
-#changes-pane .commit-details { flex: 0 0 var(--detail-height, 240px); min-height: 0; overflow: auto; padding: 10px 12px 16px; user-select: text; font-family: var(--vscode-editor-font-family); }
+/* The details' header, as a VS Code pane header in the panel: 22px, 11px bold capitals, a chevron;
+   a click anywhere on it folds the details. */
+#changes-pane .detail-heading { flex: 0 0 22px; display: flex; align-items: center; gap: 2px; min-width: 0; padding: 0 8px 0 2px; border-top: 1px solid var(--vscode-panelSectionHeader-border, var(--vscode-panel-border)); background: var(--vscode-panelSectionHeader-background, transparent); color: var(--vscode-panelSectionHeader-foreground, var(--vscode-foreground)); font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; user-select: none; }
+#changes-pane .detail-heading-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#changes-pane .detail-toggle { flex: 0 0 20px; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: inherit; }
+#changes-pane .detail-toggle[aria-expanded="false"] .detail-chevron { transform: rotate(-90deg); }
+/* The details: the UI font, with the message body in the editor's; the facts below in the secondary color. */
+#changes-pane .commit-details { flex: 0 0 var(--detail-height, 240px); min-height: 0; overflow: auto; padding: 10px 14px 16px; user-select: text; font-family: var(--vscode-font-family); }
 #changes-pane .commit + .commit { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--vscode-panel-border); }
 #changes-pane .commit-heading { display: flex; gap: 12px; align-items: flex-start; }
 #changes-pane .commit-heading .commit-title { flex: 1; min-width: 0; }
 #changes-pane .commit-heading .icon-button { flex: 0 0 22px; color: var(--vscode-descriptionForeground); }
 #changes-pane .commit-copy { opacity: 0; }
 #changes-pane .commit:hover .commit-copy, #changes-pane .commit-copy:focus-visible { opacity: 1; }
-#changes-pane .commit-title { font-size: inherit; font-weight: 500; line-height: 1.55; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
-#changes-pane .commit-body { margin: 10px 0 0; font: inherit; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
-#changes-pane .commit-meta { margin-top: 16px; font-size: 12px; line-height: 1.5; }
-#changes-pane .commit-info { overflow-wrap: anywhere; }
-#changes-pane .repo-marker { display: inline-block; width: 13px; height: 13px; border-radius: 3px; background: var(--accent, var(--vscode-charts-green)); vertical-align: -2px; margin-right: 4px; }
-#changes-pane .commit-author, #changes-pane .commit-email { color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
+#changes-pane .commit-title { font-size: 1.08em; font-weight: 600; line-height: 1.4; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vscode-foreground); }
+#changes-pane .commit-body { margin: 8px 0 0; font-family: var(--vscode-editor-font-family); font-size: inherit; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+#changes-pane .commit-meta { margin-top: 12px; font-size: 12px; line-height: 1.65; color: var(--vscode-descriptionForeground); }
+#changes-pane .repo-marker { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--accent, var(--vscode-charts-green)); vertical-align: 1px; margin-right: 6px; }
+#changes-pane :is(.commit-repo, .commit-author) { color: var(--vscode-foreground); }
+/* A date or an address is never broken across lines; one too long for the pane is cut short. */
+#changes-pane .commit-email { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+#changes-pane .commit-date { white-space: nowrap; }
 #changes-pane .sha { border: 0; background: transparent; color: var(--vscode-textLink-foreground); padding: 0; font-family: var(--vscode-editor-font-family); font-size: 12px; }
 #changes-pane .sha:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground); }
-#changes-pane .commit-refs { display: flex; flex-wrap: wrap; gap: 5px 10px; margin-top: 8px; }
-#changes-pane .ref-group { display: inline-flex; align-items: flex-start; gap: 4px; min-width: 0; }
-#changes-pane .ref-icon { display: inline-flex; flex: 0 0 14px; width: 14px; height: 16px; align-items: center; }
-#changes-pane .ref-icon svg { width: 14px; height: 14px; }
-#changes-pane .ref-names { color: var(--vscode-foreground); overflow-wrap: anywhere; }
-#changes-pane .ref-head, #changes-pane .ref-tag { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
-#changes-pane .ref-local { color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
-#changes-pane .ref-remote { color: var(--vscode-descriptionForeground); }
-#changes-pane .containing-branches { margin-top: 12px; }
-#changes-pane .branches-toggle { border: 0; background: transparent; padding: 0; font: inherit; color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
-#changes-pane .branches-toggle:hover { text-decoration: underline; }
-#changes-pane .containing-list { margin-top: 3px; overflow-wrap: anywhere; }
+#changes-pane .commit-refs { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 8px; }
+#changes-pane .containing-branches { margin-top: 10px; }
+#changes-pane .branches-toggle { border: 0; background: transparent; padding: 0; font: inherit; color: var(--vscode-textLink-foreground); }
+#changes-pane .branches-toggle:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground); }
+#changes-pane .containing-list { margin-top: 2px; color: var(--vscode-foreground); overflow-wrap: anywhere; }
 #changes-pane .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 body.vscode-high-contrast #changes-pane .tree-row.selected, body.vscode-high-contrast-light #changes-pane .tree-row.selected { outline: 1px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
 @media (max-width: 320px) {
