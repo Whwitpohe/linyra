@@ -78,8 +78,8 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   detailHeading.addEventListener("click", () => { detailsCollapsed = !detailsCollapsed; resize(); save(); });
   new ResizeObserver(resize).observe(app);
 
-  // VS Code's own icons; "tags" (several references) is the same tag.
-  const icons = { tag: "tag", tags: "tag", copy: "copy", twisty: "chevron-right", folder: "folder", file: "file" } as const;
+  // VS Code's own icons.
+  const icons = { copy: "copy", twisty: "chevron-right", folder: "folder", file: "file" } as const;
   function icon(name: keyof typeof icons, className: string): HTMLElement {
     return h("span", { class: className, "aria-hidden": "true" }, [codiconElement(icons[name])]);
   }
