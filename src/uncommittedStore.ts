@@ -83,6 +83,8 @@ export class UncommittedStore implements vscode.Disposable {
   private readonly saved = new Set<string>();
   /** Repositories git itself last found changes in (kept when they leave the scope): never cleaned on VS Code's Git's word. */
   private readonly dirty = new Set<string>();
+  /** Repositories git is reading now (how many reads): VS Code's word waits for git's. */
+  private readonly gitReading = new Map<string, number>();
   private readonly touchedSoon = debounce(() => {
     const ids = new Set(this.touched);
     const trusted = new Set([...ids].filter((id) => !this.saved.has(id)));
@@ -285,11 +287,23 @@ export class UncommittedStore implements vscode.Disposable {
     // to confirm a repository already known clean: its event can come before it has read the
     // working tree again, and its word must never erase changes git itself reported.
     // "Known" outlives the scope: a repository unticked with changes and ticked again is still
-    // one git saw changes in, whatever a stale VS Code's Git says.
-    const cleanHead = trusted && !this.dirty.has(r.id) ? this.deps.cleanHead?.(r.root) : undefined;
+    // one git saw changes in, whatever a stale VS Code's Git says. And while git itself is reading
+    // the repository, its answer is the one awaited: VS Code's "clean" from a later, faster read
+    // would otherwise land last and throw away the changes git is about to report.
+    const cleanHead = trusted && !this.dirty.has(r.id) && !this.gitReading.has(r.id) ? this.deps.cleanHead?.(r.root) : undefined;
     if (cleanHead !== undefined) return { repoId: r.id, root: r.root, name: r.name, head: cleanHead, staged: [], changes: [], editedAt: null, canStage: this.deps.canStage(r.root) };
     this.reads.push({ root: r.root, why });
     if (process.env.LINYRA_ITEST !== "1" && this.reads.length > 200) this.reads.splice(0, this.reads.length - 200);
+    this.gitReading.set(r.id, (this.gitReading.get(r.id) ?? 0) + 1);
+    try {
+      return await this.readWithGit(r, specs, signal);
+    } finally {
+      const n = (this.gitReading.get(r.id) ?? 1) - 1;
+      if (n > 0) this.gitReading.set(r.id, n); else this.gitReading.delete(r.id);
+    }
+  }
+
+  private async readWithGit(r: Repo, specs: readonly string[], signal: AbortSignal): Promise<RepoWork> {
     // One call for a clean repository: --branch carries the last commit's id too.
     const out = await this.deps.run(r.root, statusArgs(specs), signal);
     const head = headOf(out);
