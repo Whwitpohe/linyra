@@ -367,7 +367,11 @@ export class RepoPane {
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
         h("span", { class: "repo-name", "data-name": id === null ? undefined : name }, id === null ? [name] : this.highlighted(name)),
         id === null ? h("span", { class: "repo-count" }, [count]) : null,
-        badge ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [badge.text]) : null,
+        // ↓ to pull and ↑ to push, each in its own color (as the JetBrains branch widget: incoming blue, outgoing green).
+        badge && ab ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [
+          ab.behind > 0 ? h("span", { class: "sync-in" }, [`↓${ab.behind}`]) : null,
+          ab.ahead > 0 ? h("span", { class: "sync-out" }, [`↑${ab.ahead}`]) : null,
+        ]) : null,
       ]));
     });
     if (this.rows.every((r) => r.kind !== "repo") && this.repos.length > 0 && query.trim()) this.list.append(h("p", { class: "hint" }, [localize("No repositories match.")]));

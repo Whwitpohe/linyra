@@ -110,9 +110,11 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .branch-row:hover .branch-star, .branch-star.favorite, .branch-star:focus-visible { opacity: 1; }
 .branch-star.favorite { color: var(--vscode-charts-yellow); }
 .repo-rows { overflow-y: auto; min-height: 0; padding: 2px 0 6px; }
-/* ↓ commits to pull, ↑ not pushed: arrows carry the meaning, so no color is needed for it. */
-.repo-sync { margin-left: auto; flex: none; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
-.repo-sync.behind { color: var(--vscode-foreground); font-weight: 600; }
+/* ↓ commits to pull (incoming: blue), ↑ commits not pushed (outgoing: green), as the JetBrains branch widget colors them. */
+.repo-sync { margin-left: auto; flex: none; display: inline-flex; gap: 4px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.repo-sync.behind { font-weight: 600; }
+.repo-sync .sync-in { color: var(--vscode-charts-blue); }
+.repo-sync .sync-out { color: var(--vscode-charts-green); }
 .repo-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
 .repo-row { display: flex; align-items: center; gap: 7px; height: 22px; min-width: 0; padding: 0 10px; overflow: hidden; cursor: pointer; white-space: nowrap; }
 .repo-row:hover { background: var(--vscode-list-hoverBackground); }
