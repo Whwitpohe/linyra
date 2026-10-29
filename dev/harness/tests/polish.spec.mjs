@@ -191,7 +191,7 @@ test("a parent hash in the details selects that commit in the Log", async ({ pag
 
 test("a changed file's line counts take the add and delete colors", async ({ page }) => {
   await open(page);
-  const stats = page.locator("#file-tree .tree-row .row-stats .line-counts").first();
+  const stats = page.locator("#file-tree .ftree-row .ftree-end .line-counts").first();
   await expect(stats).toBeVisible();
   expect(await stats.locator(".count-added").evaluate((el) => getComputedStyle(el).color)).toBe(await themeColor(page, "--vscode-gitDecoration-addedResourceForeground"));
   expect(await stats.locator(".count-deleted").evaluate((el) => getComputedStyle(el).color)).toBe(await themeColor(page, "--vscode-gitDecoration-deletedResourceForeground"));
