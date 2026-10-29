@@ -148,7 +148,7 @@ export class CommitList {
       if (!row) return;
       root.focus();
       this.onSelect(Number(row.dataset.index), { kind: "click", ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
-      // A plain click on a branch pill also shows the branch in the Repo List.
+      // A plain click on a branch pill also shows that branch (where: main.ts's onRevealBranch).
       const pill = (e.target as Element).closest<HTMLElement>(".row-ref[data-ref]");
       if (pill?.dataset.repo && pill.dataset.ref && !(e.ctrlKey || e.metaKey || e.shiftKey)) this.onRevealBranch(pill.dataset.repo, pill.dataset.ref);
     });
