@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { gitEnv, makeRepo } from "./fixtures";
 import { readHead } from "./repoHead";
-import { abortArgs, abortPrompt, continueArgs, drift, headText, markTitle, operationOf, parseHead, rebasedBranch, spokenLabel, workSuffix, type RepoMark } from "./repoMarkModel";
+import { operationCommand, abortArgs, abortPrompt, continueArgs, drift, headText, markTitle, operationOf, parseHead, rebasedBranch, spokenLabel, workSuffix, type RepoMark } from "./repoMarkModel";
 
 {
   assert.deepStrictEqual(parseHead("ref: refs/heads/develop\n"), { branch: "develop" });
@@ -136,3 +136,9 @@ void (async () => {
     fs.rmSync(home, { recursive: true, force: true });
   }
 })().catch((e) => { console.error(e); process.exit(1); });
+
+{
+  assert.deepStrictEqual([operationCommand("merge", "continue"), operationCommand("cherry-pick", "abort"), operationCommand("am", "continue"), operationCommand("rebase", "resolve")],
+    ["linyra.continueMerge", "linyra.abortCherryPick", "linyra.continueAm", "linyra.resolveConflicts"]);
+  console.log("ok - a stopped operation's commands, by name");
+}

@@ -6,6 +6,7 @@ import { AuthorFilter } from "./authorFilter";
 import { BranchFilter } from "./branchFilter";
 import { SearchBox, type SearchBoxHost, type ValueKind } from "./searchBox";
 import { showOrder } from "./sortFilter";
+import type { HostRoutes } from "./hostRoutes";
 
 /**
  * The filter bar. It only reports intent: every change goes to the host, which
@@ -92,6 +93,14 @@ export class FilterBar {
   }
 
   /** Suggestions for the Author box, author: and committer:: people who committed recently, most commits first. */
+  register(routes: HostRoutes): void {
+    routes.on("suggestions", (m) => {
+      if (m.authors) this.setAuthors(m.authors);
+      if (m.branches) this.setBranches(m.branches);
+      if (m.tags) this.setTags(m.tags);
+    }).on("aiSearchAvailable", (m) => this.setAiAvailable(m.available)).on("aiSearchResult", (m) => this.aiResult(m));
+  }
+
   setAuthors(items: readonly AuthorName[]): void {
     this.authorFilter.setItems(items);
     this.searchBox.setAuthors(items);

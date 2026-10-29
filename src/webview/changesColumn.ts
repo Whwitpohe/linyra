@@ -5,6 +5,7 @@ import type { WebviewMessage } from "../protocol";
 import { abbreviated, arcPath, bar, bipolar, capped, ringSweep, squares, STAGES, type ChangesStage } from "./changeViz";
 import { codiconElement } from "./codicons";
 import { h } from "./dom";
+import type { HostRoutes } from "./hostRoutes";
 
 /**
  * The Log's Changes column, as GitLens's Commit Graph draws it: a commit's files and lines as
@@ -143,6 +144,10 @@ export class ChangesFeed {
   }
 
   /** The host's batch: [files, added, deleted] by repoId\0sha. */
+  register(routes: HostRoutes): void {
+    routes.on("stats", (m) => this.receive(m.byKey));
+  }
+
   receive(byKey: Record<string, [number, number, number]>): void {
     const keys = new Set<string>();
     for (const [key, v] of Object.entries(byKey)) {

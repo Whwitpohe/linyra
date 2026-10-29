@@ -1,5 +1,6 @@
 import type { WebviewMessage } from "../protocol";
 import { onAvatars, setAvatars } from "./ui/authorDisc";
+import type { HostRoutes } from "./hostRoutes";
 
 /** The rows must stay put this long before the host hears whose they are: a fast scroll asks for nothing on the way. */
 const SETTLE_MS = 250;
@@ -30,6 +31,10 @@ export class AvatarFeed {
   }
 
   /** The host's batch. reset: the settings changed, so the avatars received before are dropped (an empty URI draws the initial). */
+  register(routes: HostRoutes): void {
+    routes.on("avatars", (m) => this.receive(m.byEmail, m.reset));
+  }
+
   receive(byEmail: Record<string, string>, reset = false): void {
     const next: Record<string, string> = {};
     if (reset) for (const email of this.received) next[email] = "";

@@ -12,6 +12,7 @@ import { profileFilter, type ResolvedProfile } from "../profileModel";
 import { syncLabel, type AheadBehind } from "../upstream";
 import { drift, headText, markTitle, operationLabel, operationName, spokenLabel, workSuffix, type RepoMark } from "../repoMarkModel";
 import { absoluteTime, accentOf, assignAccents } from "./view";
+import type { HostRoutes } from "./hostRoutes";
 
 /**
  * The Repositories pane: one tree, as the JetBrains Branches panel groups a multi-root project.
@@ -140,6 +141,10 @@ export class RepoPane {
   private idsKey: string | null | undefined;
   /** Each repository's branch, its * + ! and a merge or rebase that stopped. */
   private marks: Readonly<Record<string, RepoMark>> = {};
+
+  register(routes: HostRoutes): void {
+    routes.on("sidebarState", (m) => this.applyBranchState(m.state)).on("branchTree", (m) => this.receiveBranches(m)).on("repoMarks", (m) => this.setMarks(m.byRepo));
+  }
 
   setMarks(byRepo: Readonly<Record<string, RepoMark>>): void {
     if (JSON.stringify(byRepo) === JSON.stringify(this.marks)) return;

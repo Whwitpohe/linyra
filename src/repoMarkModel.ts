@@ -120,6 +120,13 @@ export function spokenLabel(parts: string[]): string {
   return parts.filter(Boolean).map((p) => p.replace(/ \([*+!]\)/g, "")).reduce((said, p) => (said ? `${said}${/[.!?。！？]$/.test(said) ? " " : ", "}${p}` : p), "");
 }
 
+/** The command that continues, aborts or resolves a stopped operation (registered in extension.ts). */
+export function operationCommand(op: Operation, action: "continue" | "abort" | "resolve"): string {
+  if (action === "resolve") return "linyra.resolveConflicts";
+  const name = op === "cherry-pick" ? "CherryPick" : op === "am" ? "Am" : op[0].toUpperCase() + op.slice(1);
+  return `linyra.${action}${name}`;
+}
+
 /** "Merge", "Rebase": a sentence's subject, and the commands' titles. */
 export function operationName(op: Operation): string {
   switch (op) {

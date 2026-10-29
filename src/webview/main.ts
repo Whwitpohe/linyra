@@ -19,17 +19,16 @@ import { CommitList, type Gesture } from "./list";
 import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { applyGesture, keepListed, SELECTION_LIMIT, type Selection } from "./selectionModel";
-import { attachSplitter } from "./splitter";
-import { PaneWidth } from "./repoPaneModel";
 import { accentOf, assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, type EmptyAction } from "./view";
 import { renderWorkTotals, WorkList } from "./workList";
 import { AvatarFeed } from "./avatars";
 import { ChangesFeed } from "./changesColumn";
 import { LogToolbar, type ViewOptions } from "./toolbar";
-import type { ChangesLayout } from "../toolbarModel";
 import { HoverCard } from "./hoverCard";
 import { BranchSheetView } from "./branchSheet";
 import { revealTarget, type Upstream } from "./refPills";
+import { HostRoutes } from "./hostRoutes";
+import { PanelLayout } from "./panelLayout";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -195,44 +194,13 @@ for (const el of Object.values(tabs)) {
 const historyChip = new HistoryChip(() => post({ type: "exitHistory" }));
 const historyWorkRow = new HistoryWorkRow(byId("history-work"), () => post({ type: "openHistoryWork" }));
 let historyWork: HistoryWork | null = null;
-const splitter = byId("splitter");
-const paneWidth = new PaneWidth();
-const workspace = byId("workspace");
-const changesPane = byId("changes-pane");
-const changesSplitter = byId("changes-splitter");
-const changesVerticalSplitter = byId("changes-splitter-vertical");
-const changesToggle = byId<HTMLButtonElement>("toggle-changes");
-let changesWidth = 360;
-let changesHeight = 240;
-let showChanges = true;
-let changesLayout: ChangesLayout = "auto";
-
-function applyChangesLayout(): void {
-  // Automatic: side by side only while the Log keeps room for its subjects (520px beside the Repo
-  // List and the files); the space the Log would keep decides, not the whole panel's width.
-  const repoList = byId("repo-pane").offsetWidth;
-  const sideLog = workspace.clientWidth - Math.max(180, Math.min(changesWidth, workspace.clientWidth - 320)) - 5 - (repoList ? repoList + 5 : 0);
-  const stacked = changesLayout === "stacked" || (changesLayout === "auto" && showChanges && sideLog < 520) || workspace.clientWidth < 505;
-  const size = stacked ? Math.max(96, Math.min(changesHeight, workspace.clientHeight - 160)) : Math.max(180, Math.min(changesWidth, workspace.clientWidth - 320));
-  workspace.classList.toggle("stacked", stacked);
-  workspace.classList.toggle("no-changes", !showChanges);
-  workspace.style.setProperty("--changes-size", `${size}px`);
-  changesPane.hidden = !showChanges;
-  changesSplitter.hidden = !showChanges || stacked;
-  changesVerticalSplitter.hidden = !showChanges || !stacked;
-  // Its icon says what it shows (the changed files), not where they sit: beside the Repo List's
-  // toggle, two mirrored layout icons read as one control.
-  changesToggle.setAttribute("aria-pressed", String(showChanges));
-  changesSplitter.setAttribute("aria-valuenow", String(size));
-  changesVerticalSplitter.setAttribute("aria-valuenow", String(size));
-  toolbar.updateLayout(changesLayout);
-}
-const saveChangesLayout = () => post({ type: "layout", repoPaneWidth: paneWidth.shown, changesPaneWidth: changesWidth, changesPaneHeight: changesHeight, showChanges, changesLayout });
+/** Where the Repo List and the changed files sit (panelLayout.ts). */
+const panel = new PanelLayout({ post, changed: (mode) => toolbar.updateLayout(mode) });
 /** View options, each repository's user.email, and the listed commits HEAD does not reach. */
 let view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar", columns: DEFAULT_COLUMNS };
 let me: Readonly<Record<string, string>> = {};
 let offHead: ReadonlySet<string> = new Set();
-const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); }, (patch) => changeView(patch));
+const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => panel.setMode(layout), (patch) => changeView(patch));
 /** A view option changed (the ⋯ menu or the column header): saved by the host, the Log drawn again. */
 function changeView(patch: Partial<ViewOptions>): void {
   view = { ...view, ...patch };
@@ -248,28 +216,6 @@ function applyChangesColumn(): void {
   changesFeed.enabled = view.changesColumn !== "off";
   if (changesFeed.enabled) changesFeed.refresh();
 }
-changesToggle.addEventListener("click", () => { showChanges = !showChanges; applyChangesLayout(); saveChangesLayout(); });
-attachSplitter(changesSplitter, {
-  get: () => changesSplitter.getBoundingClientRect().left,
-  set: (left) => { changesWidth = Math.max(180, Math.min(workspace.clientWidth - left - 5, workspace.clientWidth - 320)); applyChangesLayout(); },
-  commit: saveChangesLayout,
-});
-attachSplitter(changesVerticalSplitter, {
-  get: () => changesVerticalSplitter.getBoundingClientRect().top,
-  set: (top) => { changesHeight = Math.max(96, Math.min(workspace.clientHeight - top - 5, workspace.clientHeight - 160)); applyChangesLayout(); },
-  commit: saveChangesLayout,
-}, "y");
-new ResizeObserver(applyChangesLayout).observe(workspace);
-
-function showPaneWidth(width: number): void {
-  appEl.style.setProperty("--repo-pane-width", `${width}px`);
-  splitter.setAttribute("aria-valuenow", String(width));
-}
-const applyPaneWidth = (width: number) => showPaneWidth(paneWidth.set(width, window.innerWidth));
-
-// Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
-attachSplitter(splitter, { get: () => paneWidth.shown, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth.shown }) });
-window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.innerWidth)));
 /**
  * Shared repo hues honor both the commit bands and the Repo List's own order. That order is the
  * unsearched list: typing in the Repo List's search box never recolors the Log.
@@ -297,16 +243,18 @@ moreEl.addEventListener("click", () => {
   post({ type: "loadMore" });
 });
 
+/** The host's messages that a part of the page owns (hostRoutes.ts); the switch below keeps the Log's. */
+const routes = new HostRoutes();
+for (const part of [repoPane, avatars, changesFeed, hoverCard, branchSheet, filters]) part.register(routes);
+routes
+  .on("toolbar", (m) => { toolbar.update(m.state); refreshHeader(); })
+  .on("focusChanges", () => byId("file-tree").focus())
+  .on("changesView", (m) => changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })))
+  .on("branchSheetShow", (m) => openSheetFor(m.repoId, m.ref, true));
 window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
   const m = e.data;
+  if (routes.dispatch(m)) return;
   switch (m.type) {
-    case "toolbar": toolbar.update(m.state); refreshHeader(); return;
-    case "focusChanges": byId("file-tree").focus(); return;
-    case "changesView": changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })); return;
-    case "sidebarState": repoPane.applyBranchState(m.state); return;
-    case "branchTree": repoPane.receiveBranches(m); return;
-    case "avatars": avatars.receive(m.byEmail, m.reset); return;
-    case "stats": changesFeed.receive(m.byKey); return;
     case "init": {
       const previousNames = new Map(state.repos.map((repo) => [repo.id, repo.name]));
       if (m.repos.length !== state.repos.length || m.repos.some((repo) => previousNames.get(repo.id) !== repo.name)) {
@@ -332,12 +280,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       appEl.classList.toggle("history", !!m.history);
       // Locked during File History: out of the keyboard order too, not only the mouse's.
       byId("repo-pane").toggleAttribute("inert", !!m.history);
-      applyPaneWidth(m.layout.repoPaneWidth);
-      changesWidth = m.layout.changesPaneWidth ?? changesWidth;
-      changesHeight = m.layout.changesPaneHeight ?? changesHeight;
-      showChanges = m.layout.showChanges ?? true;
-      changesLayout = m.layout.changesLayout ?? "auto";
-      applyChangesLayout();
+      panel.restore(m.layout);
       me = m.me ?? {};
       view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true, changesColumn: m.layout.changesColumn ?? "bar",
         columns: columnPrefs(m.layout.columns) };
@@ -354,24 +297,11 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "uncommitted":
       work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
-    case "hoverDetail": hoverCard.receive(m); return;
-    case "branchSheet": branchSheet.receive(m); return;
-    case "branchSheetShow": openSheetFor(m.repoId, m.ref, true); return;
-    case "repoMarks":
-      repoPane.setMarks(m.byRepo);
-      return;
     case "sync":
       repoPane.setSync(m.byRepo);
       upstream = m.byRepo;
       behind = new Set(Object.entries(m.byRepo).filter(([, ab]) => ab.behind > 0).map(([id]) => id));
       break;
-    case "suggestions":
-      if (m.authors) filters.setAuthors(m.authors);
-      if (m.branches) filters.setBranches(m.branches);
-      if (m.tags) filters.setTags(m.tags);
-      return;
-    case "aiSearchAvailable": filters.setAiAvailable(m.available); return;
-    case "aiSearchResult": filters.aiResult(m); return;
     case "loading":
       state.loading = true;
       clearTimeout(skeletonTimer);
@@ -628,8 +558,6 @@ mountChanges({
   getState: () => (vscode.getState() as { changes?: SavedState } | undefined)?.changes,
   setState: (changes) => vscode.setState({ ...((vscode.getState() ?? {}) as object), changes }),
 }, changesEvents);
-applyChangesLayout();
-// The automatic layout follows the panel's width (dragging VS Code's panel resizes this window).
-window.addEventListener("resize", () => { if (changesLayout === "auto") applyChangesLayout(); });
+panel.apply();
 render();
 post({ type: "ready" });

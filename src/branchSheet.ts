@@ -8,6 +8,7 @@ import { conflictCount } from "./mergeCheck";
 import { isAbortError } from "./pool";
 import type { HostMessage } from "./protocol";
 import type { Repo } from "./types";
+import type { MessageRoutes } from "./messageRoutes";
 
 export interface BranchSheetHost {
   repos(): readonly Repo[];
@@ -91,6 +92,16 @@ export class BranchSheet implements vscode.Disposable {
     // Behind with commits of its own: would bringing the target in conflict? Checked in memory.
     if (counts.ahead > 0 && counts.behind > 0) data.target.conflicts = await conflictCount(this.host.run, repo.root, r.sha, target, signal);
     return data;
+  }
+
+  register(routes: MessageRoutes): void {
+    routes.on("branchSheet", async (m) => {
+      if (m.action === "open") await this.open(m.repoId, m.ref);
+      else if (m.action === "close") this.close();
+      else await this.action(m.action, m.repoId, m.ref);
+    });
+    // A new webview shows no sheet: nothing is read for one nobody sees.
+    routes.onReady({ before: () => this.close() });
   }
 
   /** A button of the sheet: the existing command for it, then the sheet read again. */

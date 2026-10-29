@@ -5,6 +5,7 @@ import type { HostMessage, WebviewMessage } from "../protocol";
 import { codiconElement } from "./codicons";
 import { byId, h } from "./dom";
 import { absoluteTime, relativeTime } from "./view";
+import type { HostRoutes } from "./hostRoutes";
 
 type SheetMessage = Extract<HostMessage, { type: "branchSheet" }>;
 
@@ -81,6 +82,10 @@ export class BranchSheetView {
     this.root.replaceChildren();
     this.post({ type: "branchSheet", action: "close", repoId, ref });
     if (focusList) document.getElementById("list")?.focus();
+  }
+
+  register(routes: HostRoutes): void {
+    routes.on("branchSheet", (m) => this.receive(m));
   }
 
   receive(m: SheetMessage): void {

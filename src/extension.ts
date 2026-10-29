@@ -32,7 +32,7 @@ import { MultiRepo } from "./multiRepo";
 import { OperationActions } from "./operationActions";
 import { PatchActions } from "./patchActions";
 import { RunAcross } from "./runAcross";
-import { OPERATIONS } from "./repoMarkModel";
+import { OPERATIONS, operationCommand } from "./repoMarkModel";
 import type { CommitAction } from "./commitActionModel";
 import { aiIfAny } from "./ai/features/commands";
 import { registerAiFeatures } from "./ai/features/register";
@@ -236,13 +236,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("linyra.showRepos", () => log.setGroupByRepo(true)),
     vscode.commands.registerCommand("linyra.resolveConflicts", (arg?: unknown) => operations.resolve(arg)),
-    ...OPERATIONS.flatMap((op) => {
-      const name = op === "cherry-pick" ? "CherryPick" : op === "am" ? "Am" : op[0].toUpperCase() + op.slice(1);
-      return [
-        vscode.commands.registerCommand(`linyra.continue${name}`, (arg?: unknown) => operations.continue(arg, op)),
-        vscode.commands.registerCommand(`linyra.abort${name}`, (arg?: unknown) => operations.abort(arg, op)),
-      ];
-    }),
+    ...OPERATIONS.flatMap((op) => [
+      vscode.commands.registerCommand(operationCommand(op, "continue"), (arg?: unknown) => operations.continue(arg, op)),
+      vscode.commands.registerCommand(operationCommand(op, "abort"), (arg?: unknown) => operations.abort(arg, op)),
+    ]),
     vscode.commands.registerCommand("linyra.abortAll", () => operations.abortAll()),
     vscode.commands.registerCommand("linyra.applyPatch", (arg?: unknown) => patches.apply(arg)),
     vscode.commands.registerCommand("linyra.showBranchSheet", (arg?: unknown) => log.showBranchSheet(arg)),
