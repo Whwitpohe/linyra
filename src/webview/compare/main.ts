@@ -220,7 +220,7 @@ function select(repoId: string, single: boolean): void {
 window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
   const m = e.data;
   switch (m.type) {
-    case "side": sideTrees[m.side].receive(m); return;
+    case "side": sideTrees[m.side].receive(m); renderEmptyAction(m.side, m.emptyAction); return;
     case "focusSide": sideTrees[m.side].focus(); return;
     case "state":
       pair = m.pair;
@@ -281,13 +281,18 @@ function renderState(message?: string): void {
   byId("mode-commits").setAttribute("aria-pressed", String(mode === "commits"));
   // One control per setting: Files | Commits and Hide Files Already on Both apply to both sides,
   // so they live once in the toolbar (each side's header keeps only its own Collapse All).
+  // A toggle keeps its name; aria-pressed (and the filled funnel) says whether it is on.
   const hideButton = byId<HTMLButtonElement>("compare-hide-same");
   hideButton.disabled = mode !== "files";
-  hideButton.title = localize(hideSame ? "Show Files Already on Both" : "Hide Files Already on Both");
-  hideButton.setAttribute("aria-label", hideButton.title);
   hideButton.setAttribute("aria-pressed", String(hideSame));
   hideButton.innerHTML = codicon(hideSame ? "filter-filled" : "filter");
   renderConflictsButton();
+  // Merge into ▶…: the action of the pair, with ▶'s real name; there once two different branches are picked.
+  const merge = byId<HTMLButtonElement>("compare-merge");
+  const ready = !!pair?.left && !!pair.right && pair.left !== pair.right;
+  merge.disabled = !ready;
+  byId("compare-merge-label").textContent = ready ? localize("Merge into {0}…", sideLabel(pair!.right)) : localize("Merge…");
+  merge.title = ready ? localize("Merge {0} into {1} in the repositories listed here (you pick which first)", sideLabel(pair!.left), sideLabel(pair!.right)) : localize("Pick two different branches to merge");
   const msg = byId("message");
   msg.hidden = message === undefined;
   msg.textContent = message ?? "";
@@ -302,11 +307,27 @@ function renderConflictsButton(): void {
   const button = byId<HTMLButtonElement>("compare-only-conflicts");
   const files = rows.reduce((n, r) => n + (r.conflicts ?? 0), 0);
   button.disabled = mode !== "files" || (files === 0 && !onlyConflicts);
-  button.title = mode !== "files" ? localize("Show Only Conflicts") : files === 0 && !onlyConflicts ? localize("No file would conflict")
-    : localize(onlyConflicts ? "Show All Files" : "Show Only Conflicts");
-  button.setAttribute("aria-label", button.title);
+  // Its name stays; aria-pressed says whether it is on, the tooltip why it is grayed.
+  button.title = mode === "files" && files === 0 && !onlyConflicts ? localize("Show Only Conflicts (no file would conflict)") : localize("Show Only Conflicts");
+  button.setAttribute("aria-label", localize("Show Only Conflicts"));
   button.setAttribute("aria-pressed", String(onlyConflicts));
   button.replaceChildren(codiconElement("warning"), ...(files > 0 ? [h("span", { class: "button-count" }, [String(files)])] : []));
+}
+
+/** An empty side's link back ("Show 3 files already on both"), under its message. */
+function renderEmptyAction(side: "left" | "right", action: { kind: "showSame" | "showAll"; label: string } | undefined): void {
+  const box = byId(`compare-${side}-empty-action`);
+  box.hidden = !action;
+  const link = byId<HTMLButtonElement>(`compare-${side}-empty-link`);
+  link.textContent = action?.label ?? "";
+  link.dataset.kind = action?.kind ?? "";
+}
+for (const side of ["left", "right"] as const) {
+  byId(`compare-${side}-empty-link`).addEventListener("click", (e) => {
+    const kind = (e.currentTarget as HTMLElement).dataset.kind;
+    if (kind === "showSame") post({ type: "hideSame", hide: false });
+    else if (kind === "showAll") post({ type: "onlyConflicts", on: false });
+  });
 }
 
 function renderMissing(missing: string[]): void {
