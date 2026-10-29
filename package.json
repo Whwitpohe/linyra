@@ -649,6 +649,11 @@
         "category": "Linyra"
       },
       {
+        "command": "linyra.branch.upstream",
+        "title": "%command.linyra.branch.upstream.title%",
+        "category": "Linyra"
+      },
+      {
         "command": "linyra.branch.fetch",
         "title": "%command.linyra.branch.fetch.title%",
         "category": "Linyra"
@@ -1432,6 +1437,10 @@
           "when": "false"
         },
         {
+          "command": "linyra.branch.upstream",
+          "when": "false"
+        },
+        {
           "command": "linyra.branch.fetch",
           "when": "false"
         },
@@ -2120,6 +2129,11 @@
           "command": "linyra.branch.rename",
           "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchLocal",
           "group": "1_branch@3"
+        },
+        {
+          "command": "linyra.branch.upstream",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchLocal",
+          "group": "2_sync@4"
         },
         {
           "command": "linyra.branch.fetch",

@@ -114,6 +114,7 @@
   "command.linyra.branch.checkout.title": "Check Out Branch…",
   "command.linyra.branch.create.title": "New Branch from Here…",
   "command.linyra.branch.rename.title": "Rename Branch…",
+  "command.linyra.branch.upstream.title": "Change Upstream…",
   "command.linyra.branch.fetch.title": "Fetch Repository",
   "command.linyra.branch.pull.title": "Pull Current Branch",
   "command.linyra.branch.push.title": "Push Branch…",

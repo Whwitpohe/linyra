@@ -95,7 +95,7 @@ const states = [
   ["ahead", { up: [null, "3 commits to push.", ["Push", "Fetch"]], target: [null, "4 commits not on origin/main.", ["Review"]] }],
   ["behind", { up: [null, "3 commits to pull.", ["Pull", "Fetch"]], target: ["No conflicts", "4 commits not on origin/main · 5 behind.", ["Merge", "Rebase", "Review"]] }],
   ["clean", { up: ["Up to date", "As of the last fetch.", ["Fetch"]] }],
-  ["unpublished", { up: [null, "Not published.", ["Publish"]] }],
+  ["unpublished", { up: [null, "Not published.", ["Publish", "Set Upstream…"]] }],
   ["gone", { up: ["Gone", "Deleted on the remote.", ["Publish"]] }],
   ["unknown", { target: ["Conflicts unknown", "4 commits not on origin/main · 5 behind.", ["Merge", "Rebase", "Review"]] }],
 ];
@@ -125,6 +125,39 @@ test("a branch merged and not checked out: safe to delete, and no Switch (it wou
   await expect(sheet(page).locator(".sheet-badge")).toHaveCount(0);
 });
 
+test("an up-to-date, checked-out branch still has next steps, each with its icon and its command", async ({ page }) => {
+  await open(page, { sheet: "clean" });
+  await pill(page, "refs/heads/develop").click();
+  const steps = sheet(page).locator(".sheet-step");
+  await expect(steps.locator(".step-text")).toHaveText(["Show only its history in the Log", "Compare it with another branch", "Create a branch from it"]);
+  expect(await steps.locator(".step-icon svg").count()).toBe(3);
+  expect(await buttons(sheet(page).locator(".sheet-steps"))).toEqual(["Show History", "Compare…", "Create Branch…"]);
+  await steps.locator(".sheet-button", { hasText: "Show History" }).click();
+  await expect.poll(async () => (await sent(page)).map((m) => m.action)).toContain("history");
+  await steps.locator(".sheet-button", { hasText: "Compare…" }).click();
+  await expect.poll(async () => (await sent(page)).map((m) => m.action)).toContain("compareWith");
+});
+
+test("the upstream's and the merge target's names are links to their own sheets; the pencil changes the upstream", async ({ page }) => {
+  await open(page);
+  await pill(page, "refs/heads/develop").click();
+  const upstream = card(page, "Upstream").locator("button.card-subject");
+  await expect(upstream).toHaveText("origin/develop");
+  expect(await upstream.evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
+  const pencil = card(page, "Upstream").locator('button[data-action="setUpstream"]');
+  await expect(pencil).toHaveAttribute("aria-label", "Change Upstream…");
+  await pencil.click();
+  await expect.poll(async () => (await sent(page)).map((m) => m.action)).toContain("setUpstream");
+  await expect(card(page, "Merges into").locator("button.card-subject")).toHaveText("origin/main");
+  // From the keyboard: the remote branch's sheet opens and takes the focus.
+  await upstream.focus();
+  await page.keyboard.press("Enter");
+  await expect(sheet(page).locator(".sheet-name")).toHaveText("origin/develop");
+  await expect(page.locator(".detail-heading-branch")).toHaveText("Remote Branch");
+  await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe("branch-sheet");
+  expect((await sent(page)).filter((m) => m.action === "open").map((m) => m.ref)).toContain("refs/remotes/origin/develop");
+});
+
 test("a branch checked out in another worktree: Open it there, no Switch", async ({ page }) => {
   await open(page, { sheet: "worktree" });
   await pill(page, "refs/heads/develop").click();
@@ -137,10 +170,10 @@ test("a remote branch and a tag: no cards, their own next steps; AI off leaves E
   await pill(page, "refs/remotes/origin/release-1.4").click();
   await expect(sheet(page).locator(".sheet-name")).toHaveText("origin/release-1.4");
   await expect(sheet(page).locator(".sheet-card:not(.sheet-steps)")).toHaveCount(0);
-  await expect(sheet(page).locator(".step-text")).toHaveText(["Check it out as a local branch", "Fetch it from its remote", "Review it against the checked-out branch"]);
+  await expect(sheet(page).locator(".step-text")).toHaveText(["Check it out as a local branch", "Fetch it from its remote", "Review it against the checked-out branch", "Show only its history in the Log"]);
   await pill(page, "refs/tags/v1.4.0").click();
   await expect(sheet(page).locator(".sheet-name")).toHaveText("v1.4.0");
-  await expect(sheet(page).locator(".step-text")).toHaveText(["Check it out (detached HEAD)", "Create a branch from it", "Push it to a remote"]);
+  await expect(sheet(page).locator(".step-text")).toHaveText(["Check it out (detached HEAD)", "Create a branch from it", "Push it to a remote", "Show only its history in the Log"]);
   await expect(sheet(page).locator(".step-text", { hasText: "Explain" })).toHaveCount(0);
 });
 

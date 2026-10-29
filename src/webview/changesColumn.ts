@@ -2,7 +2,7 @@ import "./changesColumn.css";
 import type { ChangesMode, CommitStats } from "../changeStats";
 import { localize } from "../i18n";
 import type { WebviewMessage } from "../protocol";
-import { abbreviated, arcPath, bar, bipolar, capped, ringSweep, squares, type ChangesStage } from "./changeViz";
+import { abbreviated, arcPath, bar, bipolar, capped, ringSweep, squares, STAGES, type ChangesStage } from "./changeViz";
 import { codiconElement } from "./codicons";
 import { h } from "./dom";
 
@@ -13,15 +13,7 @@ import { h } from "./dom";
  * element painted with gradients (or one small SVG), so a row stays light while scrolling.
  */
 
-/** Per stage, in px: the column's width for a drawing and for numbers, and the drawing's track. */
-export const STAGES: Record<ChangesStage, { column: number; numbers: number; track: number }> = {
-  full: { column: 118, numbers: 124, track: 64 }, compact: { column: 88, numbers: 88, track: 52 },
-  mini: { column: 52, numbers: 52, track: 46 }, icon: { column: 18, numbers: 28, track: 0 },
-};
-export const columnWidth = (mode: Exclude<ChangesMode, "off">, stage: ChangesStage): number => (mode === "numbers" ? STAGES[stage].numbers : STAGES[stage].column);
-
-/** The stage the Log's width allows: the subject keeps most of a narrow Log. */
-export const stageFor = (logWidth: number): ChangesStage => (logWidth >= 1150 ? "full" : logWidth >= 950 ? "compact" : logWidth >= 760 ? "mini" : "icon");
+export { STAGES, columnWidth, stageFor, stageForWidth } from "./changeViz";
 
 /** Stats read this session (they never change), by repoId\0sha: rows drawn later find them at once. */
 const stats = new Map<string, CommitStats>();

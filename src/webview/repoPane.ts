@@ -7,10 +7,10 @@ import { codiconElement } from "./codicons";
 import { byId, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo } from "./repoPaneModel";
-import { collapseAll, expandAll, parentIndex, treeRows, wantedBranchData, type BranchTreeData, type TreeRow } from "./repoTreeModel";
+import { collapseAll, expandAll, parentIndex, treeRows, wantedBranchData, withOperations, type BranchTreeData, type TreeRow } from "./repoTreeModel";
 import { profileFilter, type ResolvedProfile } from "../profileModel";
 import { syncLabel, type AheadBehind } from "../upstream";
-import { drift, headText, markTitle, operationLabel, spokenLabel, workSuffix, type RepoMark } from "../repoMarkModel";
+import { drift, headText, markTitle, operationLabel, operationName, spokenLabel, workSuffix, type RepoMark } from "../repoMarkModel";
 import { absoluteTime, accentOf, assignAccents } from "./view";
 
 /**
@@ -85,6 +85,8 @@ export class RepoPane {
     });
     this.list.addEventListener("click", (e) => {
       const target = e.target as Element;
+      const opButton = target.closest<HTMLElement>("[data-op-action]");
+      if (opButton) { this.post({ type: "operation", action: opButton.dataset.opAction as "resolve" | "continue" | "abort", repoId: opButton.dataset.repo! }); return; }
       const el = target.closest<HTMLElement>("[data-row]");
       if (!el) return;
       const i = Number(el.dataset.row);
@@ -193,6 +195,8 @@ export class RepoPane {
       return;
     }
     if (row.kind === "group" || row.kind === "remote") { this.toggle(row); return; }
+    // Enter on a stopped operation: its next step.
+    if (row.kind === "operation") { this.post({ type: "operation", action: row.conflicts > 0 ? "resolve" : "continue", repoId: row.repoId }); return; }
     // A worktree's actions are on its right-click (Open in New Window, Remove…).
     if (row.kind === "message" || row.kind === "worktree") return;
     const allIds = this.repos.map((r) => r.id);
@@ -301,7 +305,8 @@ export class RepoPane {
       this.data.set(repo.id, { loading: true });
       this.post({ type: "branchSidebar", action: "load", repoId: repo.id });
     }
-    this.rows = treeRows(this.repos, query, this.profiles, this.repoIds, this.data, this.state);
+    const stopped = new Map(Object.entries(this.marks).flatMap(([id, m]) => (m.operation ? [[id, { operation: m.operation, conflicts: m.work?.conflicts ?? 0 }] as const] : [])));
+    this.rows = withOperations(treeRows(this.repos, query, this.profiles, this.repoIds, this.data, this.state), stopped);
     const revealed = this.revealing === undefined ? -1 : this.rows.findIndex((r) => r.key === this.revealing);
     if (revealed >= 0) { this.active = revealed; this.revealing = undefined; reveal = true; }
     this.active = Math.min(this.active, this.rows.length - 1);
@@ -348,6 +353,29 @@ export class RepoPane {
           "data-vscode-context": JSON.stringify({ webviewSection: "worktree", repoId: row.repo.id, path: w.path, worktreeMain: w.main, worktreeMissing: w.missing === true, preventDefaultContextMenuItems: true }),
         }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("folder")]),
           h("span", { class: `branch-name${w.missing ? " missing" : ""}` }, [row.label])])));
+        return;
+      }
+      if (row.kind === "operation") {
+        // "Merge stopped · 2 files conflict", and what to do about it, under the repository.
+        const name = operationName(row.operation);
+        const text = row.conflicts === 1 ? localize("{0} stopped · 1 file conflicts", name)
+          : row.conflicts > 1 ? localize("{0} stopped · {1} files conflict", name, row.conflicts) : localize("{0} stopped · ready to continue", name);
+        const button = (action: "resolve" | "continue" | "abort", label: string, icon: Parameters<typeof codiconElement>[0]) =>
+          h("button", { type: "button", class: "op-action", tabindex: "-1", "data-op-action": action, "data-repo": row.repoId, title: label, "aria-label": label }, [codiconElement(icon), h("span", { class: "op-action-label" }, [label])]);
+        const next = row.conflicts > 0 ? localize("Resolve Conflicts…") : localize("Continue");
+        rowAt[i] = keep(row.key, sig(row.operation, row.conflicts), () => indent(h("div", { ...base(` op-row${row.conflicts > 0 ? " conflicted" : ""}`), "aria-selected": "false",
+          "aria-label": `${text}. ${localize("Enter: {0}", next)}`,
+          // Right-click: the repository's operation menu (Continue, Abort…, Resolve Conflicts…).
+          "data-vscode-context": JSON.stringify({ webviewSection: "repo", repoId: row.repoId, operation: row.operation, ...(row.conflicts > 0 ? { conflicts: true } : {}), preventDefaultContextMenuItems: true }),
+        }, [
+          this.twisty(undefined),
+          h("span", { class: "op-icon", "aria-hidden": "true" }, [codiconElement("git-merge")]),
+          h("span", { class: "op-text" }, [text]),
+          h("span", { class: "op-actions", "aria-hidden": "true" }, [
+            row.conflicts > 0 ? button("resolve", localize("Resolve…"), "edit") : button("continue", localize("Continue"), "check"),
+            button("abort", localize("Abort…"), "discard"),
+          ]),
+        ])));
         return;
       }
       if (row.kind === "message") {

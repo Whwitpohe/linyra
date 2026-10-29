@@ -77,7 +77,6 @@ export function renderHtml(o: HtmlOptions): string {
           <span aria-hidden="true">–</span>
           <input id="to" type="date" aria-label="${escapeHtml(localize("To date"))}">
         </span>
-        <button id="sort" class="icon-button" type="button" aria-label="${escapeHtml(localize("Sort"))}" aria-haspopup="menu" aria-expanded="false">${codicon("sort-precedence")}</button>
         <button id="refresh" class="icon-button" type="button" aria-label="${escapeHtml(localize("Refresh"))}" title="${escapeHtml(localize("Refresh"))}">${codicon("refresh")}</button>
       </form>
       <span class="header-actions" role="toolbar" aria-label="${escapeHtml(localize("Log actions"))}">

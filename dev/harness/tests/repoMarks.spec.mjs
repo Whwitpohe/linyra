@@ -27,10 +27,10 @@ test("a wide Repo List names every branch, its * + !, and a stopped merge with i
   // acme-libs is on another branch (marked) and stopped in a merge with 2 conflicts.
   await expect(libs.locator(".repo-branch")).toHaveClass(/drift/);
   await expect(libs.locator(".repo-branch")).toHaveText("feature/login");
-  await expect(libs.locator(".op-word")).toHaveText("merging");
-  await expect(libs.locator(".op-count")).toHaveText("2 conflicts");
-  expect(await shown(libs.locator(".op-word"))).toBe(true);
-  expect(await shown(libs.locator(".op-noun"))).toBe(true);
+  // The badge keeps the icon and the count; the row under it says what stopped.
+  await expect(libs.locator(".op-count")).toContainText("2");
+  expect(await shown(libs.locator(".op-word"))).toBe(false);
+  expect(await shown(libs.locator(".op-count"))).toBe(true);
   expect(await shown(libs.locator(".repo-work")), "the badge says it: no * + ! beside it").toBe(false);
   await expect(libs).toHaveAttribute("title", /On branch feature\/login\nMost of the ticked repositories are on develop\.\nUncommitted: modified \(\*\), staged \(\+\)\nMerge stopped: 2 files have conflicts \(!\)/);
   await expect(libs).toHaveAttribute("aria-label", /^acme-libs, On branch feature\/login, Most of the ticked repositories are on develop\. Uncommitted: modified, staged, Merge stopped: 2 files have conflicts\. /);
@@ -71,3 +71,40 @@ for (const theme of ["light", "hc-dark", "hc-light"]) {
     expect(errors).toEqual([]);
   });
 }
+
+test("a stopped merge has its own row under the repository: what stopped, Resolve… and Abort…, Enter for the next step", async ({ page }) => {
+  const errors = await open(page, { width: 420 });
+  const op = page.locator("#repo-rows .op-row");
+  await expect(op).toHaveCount(1);
+  await expect(op.locator(".op-text")).toHaveText("Merge stopped · 2 files conflict");
+  await expect(op.locator(".op-action")).toHaveText(["Resolve…", "Abort…"]);
+  // Right under acme-libs, a level below it.
+  const order = await page.locator("#repo-rows .repo-row").evaluateAll((rows) => rows.map((r) => r.querySelector(".repo-name")?.dataset.name ?? (r.classList.contains("op-row") ? "op" : "")));
+  expect(order[order.indexOf("acme-libs") + 1]).toBe("op");
+  await expect(op).toHaveAttribute("aria-level", "2");
+  await expect(op).toHaveAttribute("aria-label", /Merge stopped · 2 files conflict\. Enter: Resolve Conflicts…/);
+  expect(JSON.parse(await op.getAttribute("data-vscode-context"))).toMatchObject({ webviewSection: "repo", repoId: "/work/acme-libs", operation: "merge", conflicts: true });
+  // Its buttons ask the host for the matching command; the list's cursor does not move for them.
+  const asked = () => page.evaluate(() => window.harnessMessages.filter((m) => m.type === "operation"));
+  await op.locator(".op-action", { hasText: "Abort…" }).click();
+  await expect.poll(async () => (await asked()).at(-1)).toEqual({ type: "operation", action: "abort", repoId: "/work/acme-libs" });
+  // From the keyboard: the row is a tree item; Enter is its next step.
+  await page.locator("#repo-rows").focus();
+  const index = Number(await op.getAttribute("data-row"));
+  for (let i = 0; i < index; i++) await page.keyboard.press("ArrowDown");
+  await expect(op).toHaveClass(/active/);
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await asked()).at(-1)).toEqual({ type: "operation", action: "resolve", repoId: "/work/acme-libs" });
+  expect(errors).toEqual([]);
+});
+
+test("narrow: the stopped merge's buttons keep their icons, their words go to the tooltips", async ({ page }) => {
+  await open(page, { width: 220 });
+  const op = page.locator("#repo-rows .op-row");
+  await expect(op).toBeVisible();
+  expect(await shown(op.locator(".op-action-label").first())).toBe(false);
+  expect(await shown(op.locator(".op-action .codicon").first())).toBe(true);
+  await expect(op.locator(".op-action").first()).toHaveAttribute("title", "Resolve…");
+  const box = await op.boundingBox(), pane = await page.locator("#repo-rows").boundingBox();
+  expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width + 1);
+});

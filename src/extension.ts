@@ -167,7 +167,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.commitCompareLocal", (arg: unknown) => commitActions.compareLocal(arg)),
     vscode.commands.registerCommand("linyra.commitCreatePatch", (arg: unknown) => commitActions.createPatch(arg)),
   );
-  for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase"] satisfies BranchAction[]) {
+  for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase", "upstream"] satisfies BranchAction[]) {
     context.subscriptions.push(vscode.commands.registerCommand(`linyra.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
   }
   context.subscriptions.push(branchSidebar, log.onDidChangeRefs((id) => void branchSidebar.refresh(id)));
@@ -266,7 +266,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerFileDecorationProvider(sides.left),
     vscode.window.registerFileDecorationProvider(sides.right),
     vscode.commands.registerCommand("linyra.compareBranches", () => compareRepos.open()),
-    vscode.commands.registerCommand("linyra.compareWith", () => (log.branchBox ? compareRepos.compareWith(log.branchBox) : compareRepos.pick())),
+    // { name }: the branch sheet's Compare… (that branch on ◀, the other side picked); else the Branch box's.
+    vscode.commands.registerCommand("linyra.compareWith", (arg?: { name?: unknown }) => {
+      const left = typeof arg?.name === "string" ? arg.name : log.branchBox;
+      return left ? compareRepos.compareWith(left) : compareRepos.pick();
+    }),
     vscode.commands.registerCommand("linyra.comparePick", () => compareRepos.pick()),
     vscode.commands.registerCommand("linyra.compareClose", () => compareRepos.close()),
     // The Log toolbar's toggles: the outline icon shows a view, the filled one (shown) hides it.

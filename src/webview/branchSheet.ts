@@ -37,6 +37,9 @@ export class BranchSheetView {
   }) {
     document.body.append(this.announce);
     this.root.addEventListener("click", (e) => {
+      // A card's branch name: that branch's own sheet (from the keyboard, the focus goes with it).
+      const link = (e.target as Element).closest<HTMLButtonElement>("button[data-open]");
+      if (link && this.shown) { this.open(this.shown.repoId, link.dataset.open!, e.detail === 0); return; }
       const button = (e.target as Element).closest<HTMLButtonElement>("button[data-action]");
       if (!button || !this.shown) return;
       const { repoId, ref } = this.shown;
@@ -99,7 +102,8 @@ export class BranchSheetView {
     this.render(head, [
       this.tip(d),
       ...cards,
-      steps.length > 0 ? this.group(localize("Next steps"), undefined, undefined, steps.map((s) => h("div", { class: "sheet-step" }, [h("span", { class: "step-text" }, [s.text]), this.button(s.action, s.label)])), "sheet-steps") : null,
+      this.group({ title: localize("Next steps") }, steps.map((s) => h("div", { class: "sheet-step" }, [
+        h("span", { class: "step-icon", "aria-hidden": "true" }, [codiconElement(s.icon)]), h("span", { class: "step-text" }, [s.text]), this.button(s.action, s.label)])), "sheet-steps"),
     ]);
     // "Branch develop. Diverged, origin/develop. 2 files conflict, origin/main."
     this.say([`${kindLabel(d.kind)} ${d.name}`, ...shownCards.map((c) => [c.chip?.text ?? c.status, c.subject].filter(Boolean).join(", "))].join(". "));
@@ -146,13 +150,19 @@ export class BranchSheetView {
     ]);
   }
 
-  /** A card: a group named by its heading (not a landmark of its own). */
-  private group(title: string, subject: string | undefined, chip: SheetCard["chip"], body: (HTMLElement | null)[], extra = ""): HTMLElement {
+  /**
+   * A card: a group named by its heading (not a landmark of its own). Its branch name links to that
+   * branch's sheet; a pencil beside it changes it (Change Upstream…).
+   */
+  private group(head: Pick<SheetCard, "title" | "subject" | "subjectRef" | "chip" | "edit">, body: (HTMLElement | null)[], extra = ""): HTMLElement {
     const id = `sheet-card-${++ids}`;
+    const { title, subject, subjectRef, chip, edit } = head;
     return h("div", { class: `sheet-card${extra ? ` ${extra}` : ""}`, role: "group", "aria-labelledby": id }, [
       h("h4", { class: "card-title", id }, [
         h("span", {}, [title]),
-        subject ? h("span", { class: "card-subject" }, [subject]) : null,
+        subject && subjectRef ? h("button", { type: "button", class: "card-subject link", "data-open": subjectRef, title: localize("Show {0}", subject) }, [subject])
+          : subject ? h("span", { class: "card-subject" }, [subject]) : null,
+        edit ? this.icon(edit.action, "edit", edit.label) : null,
         chip ? h("span", { class: `chip ${chip.tone}` }, [chip.text]) : null,
       ]),
       ...body,
@@ -160,7 +170,7 @@ export class BranchSheetView {
   }
 
   private card(c: SheetCard): HTMLElement {
-    return this.group(c.title, c.subject, c.chip, [
+    return this.group(c, [
       h("p", { class: "card-status" }, [c.status]),
       c.hint ? h("p", { class: "card-hint" }, [c.hint]) : null,
       c.buttons.length > 0 ? h("div", { class: "card-buttons" }, c.buttons.map((b) => this.button(b.action, b.label, b.primary))) : null,
@@ -171,7 +181,7 @@ export class BranchSheetView {
     return h("button", { type: "button", class: `sheet-button${primary ? " primary" : ""}`, "data-action": action }, [label]);
   }
 
-  private icon(action: string, icon: "target" | "copy" | "close", label: string): HTMLElement {
+  private icon(action: string, icon: "target" | "copy" | "close" | "edit", label: string): HTMLElement {
     return h("button", { type: "button", class: "icon-button", "data-action": action, title: label, "aria-label": label }, [codiconElement(icon)]);
   }
 }

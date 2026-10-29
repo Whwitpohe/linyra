@@ -6,7 +6,7 @@ export type SheetKind = "local" | "remote" | "tag";
 
 /** One for-each-ref line for the ref (local branch, remote branch or tag). */
 export function sheetRefArgs(ref: string): string[] {
-  return ["for-each-ref", "--format=%(refname)%00%(objectname)%00%(*objectname)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(worktreepath)%00%(subject)%00%(*subject)%00%(authorname)%00%(*authorname)%00%(creatordate:unix)%00%(*authordate:unix)%00%(authordate:unix)", "--", ref];
+  return ["for-each-ref", "--format=%(refname)%00%(objectname)%00%(*objectname)%00%(HEAD)%00%(upstream:short)%00%(upstream:track)%00%(worktreepath)%00%(subject)%00%(*subject)%00%(authorname)%00%(*authorname)%00%(creatordate:unix)%00%(*authordate:unix)%00%(authordate:unix)%00%(upstream)", "--", ref];
 }
 
 export interface SheetRef {
@@ -18,6 +18,8 @@ export interface SheetRef {
   current: boolean;
   /** "origin/develop"; null when none is configured. */
   upstream: string | null;
+  /** Its full name ("refs/remotes/origin/develop", or refs/heads/… for a local upstream): the sheet links it. */
+  upstreamRef: string | null;
   ahead: number;
   behind: number;
   /** The upstream is configured but its branch is gone (deleted on the remote and pruned). */
@@ -37,11 +39,11 @@ export function parseSheetRef(stdout: string, ref: string): SheetRef | undefined
   const line = stdout.split("\n").map((l) => l.replace(/\r$/, "")).find((l) => l.startsWith(`${ref}\0`));
   const kind = kindOf(ref);
   if (!line || !kind) return undefined;
-  const [, sha = "", peeled = "", head = "", upstream = "", track = "", worktree = "", subject = "", peeledSubject = "", author = "", peeledAuthor = "", created = "", peeledDate = "", authored = ""] = line.split("\0");
+  const [, sha = "", peeled = "", head = "", upstream = "", track = "", worktree = "", subject = "", peeledSubject = "", author = "", peeledAuthor = "", created = "", peeledDate = "", authored = "", upstreamRef = ""] = line.split("\0");
   const n = (re: RegExp) => Number(re.exec(track)?.[1] ?? 0);
   return {
     ref, name: shortName(ref), kind, sha: peeled || sha, current: head === "*",
-    upstream: upstream || null, ahead: n(/ahead (\d+)/), behind: n(/behind (\d+)/), gone: /\bgone\b/.test(track),
+    upstream: upstream || null, upstreamRef: upstreamRef || null, ahead: n(/ahead (\d+)/), behind: n(/behind (\d+)/), gone: /\bgone\b/.test(track),
     worktree, subject: peeledSubject || subject, author: peeledAuthor || author,
     time: Number(peeledDate || authored || created) || 0,
   };
@@ -56,8 +58,8 @@ export interface BranchSheetData {
   kind: SheetKind;
   current: boolean;
   tip: { sha: string; subject: string; author: string; time: number };
-  /** Local branches only. */
-  upstream?: { name: string | null; ahead: number; behind: number; gone: boolean };
+  /** Local branches only. ref: the upstream's full name, for its link. */
+  upstream?: { name: string | null; ref?: string | null; ahead: number; behind: number; gone: boolean };
   /** Local branches with a merge target other than themselves. conflicts: undefined not checked, null unknown. */
   target?: { name: string; ahead: number; behind: number; conflicts?: number | null };
   /** Checked out in another worktree (its folder). */
@@ -67,7 +69,13 @@ export interface BranchSheetData {
 }
 
 /** The buttons a card or step can carry; each runs one of Linyra's existing commands. */
-export type SheetAction = "fetch" | "push" | "pull" | "forcePush" | "publish" | "merge" | "rebase" | "review" | "delete" | "switch" | "openWorktree" | "explain" | "createBranch" | "pushTag";
+export type SheetAction = "fetch" | "push" | "pull" | "forcePush" | "publish" | "merge" | "rebase" | "review" | "delete" | "switch" | "openWorktree" | "explain" | "createBranch" | "pushTag"
+  | "history" | "compareWith" | "setUpstream";
+
+/** A next step's icon (VS Code's codicons the webview bundles). */
+export type StepIcon = "arrow-swap" | "folder" | "sparkle" | "history" | "git-compare" | "git-branch" | "git-commit" | "cloud-download" | "diff" | "repo-push";
+
+export interface SheetStep { text: string; action: SheetAction; label: string; icon: StepIcon }
 
 export type Tone = "good" | "bad" | "neutral";
 
@@ -76,6 +84,10 @@ export interface SheetCard {
   title: string;
   /** The ref the title names ("origin/develop"), shown in the editor font. */
   subject?: string;
+  /** Its full name: the subject is a link to that ref's own sheet. */
+  subjectRef?: string;
+  /** A pencil beside the subject (Change Upstream…). */
+  edit?: { action: SheetAction; label: string };
   chip?: { text: string; tone: Tone };
   status: string;
   /** Why, or what it means: a muted second line. */
@@ -95,12 +107,21 @@ export const worktreeName = (p: string): string => p.replace(/[\\/]+$/, "").spli
 
 /** The upstream card (local branches): its state as of the last fetch, and what can be done. */
 export function upstreamCard(d: BranchSheetData): SheetCard | undefined {
+  const card = upstreamState(d);
+  // The upstream's name opens its own sheet; the pencil beside it changes what the branch tracks.
+  return card && d.upstream?.name ? { ...card, subjectRef: d.upstream.ref ?? undefined, edit: { action: "setUpstream", label: localize("Change Upstream…") } } : card;
+}
+
+function upstreamState(d: BranchSheetData): SheetCard | undefined {
   const u = d.upstream;
   if (d.kind !== "local" || !u) return undefined;
   const title = localize("Upstream");
   const fetch = { action: "fetch" as const, label: localize("Fetch") };
   const commits = (n: number) => plural(n, "{0} commit", "{0} commits");
-  if (!u.name) return { title, status: localize("Not published."), hint: localize("No remote branch tracks it yet."), buttons: [{ action: "publish", label: localize("Publish"), primary: true }] };
+  if (!u.name) {
+    return { title, status: localize("Not published."), hint: localize("No remote branch tracks it yet."),
+      buttons: [{ action: "publish", label: localize("Publish"), primary: true }, { action: "setUpstream", label: localize("Set Upstream…") }] };
+  }
   if (u.gone) {
     // Usually its pull request merged and the host deleted it: clean up, rather than push it back.
     return {
@@ -130,6 +151,12 @@ export function upstreamCard(d: BranchSheetData): SheetCard | undefined {
 
 /** The merge target card (local branches): its own commits, how far behind, conflicts, merged. */
 export function targetCard(d: BranchSheetData): SheetCard | undefined {
+  const card = targetState(d);
+  // The target is a remote branch (hoverModel's merge target): its name opens its own sheet.
+  return card && d.target ? { ...card, subjectRef: `refs/remotes/${d.target.name}` } : card;
+}
+
+function targetState(d: BranchSheetData): SheetCard | undefined {
   const t = d.target;
   if (d.kind !== "local" || !t) return undefined;
   const title = localize("Merges into");
@@ -155,27 +182,30 @@ export function targetCard(d: BranchSheetData): SheetCard | undefined {
 }
 
 /**
- * The next steps, only those that fit its state: switch to it (not a merged branch: it changes
- * nothing), the worktree that has it, a tag's own, and Explain where there is something to explain.
+ * The next steps that fit its state, never none: what to do with it now (switch to it — not a
+ * merged branch, where that changes nothing — the worktree that has it, a tag's own, Explain where
+ * there is something to explain), then what every ref offers: its history alone in the Log, a
+ * comparison with another branch, a branch from it. Pull requests and rewriting history are not
+ * Linyra's (no hosting integration, no interactive rebase).
  */
-export function nextSteps(d: BranchSheetData): { text: string; action: SheetAction; label: string }[] {
-  const steps: { text: string; action: SheetAction; label: string }[] = [];
+export function nextSteps(d: BranchSheetData): SheetStep[] {
+  const step = (text: string, action: SheetAction, label: string, icon: StepIcon): SheetStep => ({ text: localize(text), action, label: localize(label), icon });
+  const history = step("Show only its history in the Log", "history", "Show History", "history");
   if (d.kind === "tag") {
-    steps.push({ text: localize("Check it out (detached HEAD)"), action: "switch", label: localize("Switch") });
-    steps.push({ text: localize("Create a branch from it"), action: "createBranch", label: localize("Create Branch…") });
-    steps.push({ text: localize("Push it to a remote"), action: "pushTag", label: localize("Push…") });
-    return steps;
+    return [step("Check it out (detached HEAD)", "switch", "Switch", "git-commit"), step("Create a branch from it", "createBranch", "Create Branch…", "git-branch"),
+      step("Push it to a remote", "pushTag", "Push…", "repo-push"), history];
   }
-  const merged = d.kind === "local" && d.target?.ahead === 0;
-  if (d.worktree) steps.push({ text: localize("Checked out in worktree {0}", worktreeName(d.worktree)), action: "openWorktree", label: localize("Open Worktree") });
-  else if (!d.current && !merged) steps.push({ text: d.kind === "remote" ? localize("Check it out as a local branch") : localize("Switch to it"), action: "switch", label: localize("Switch") });
   if (d.kind === "remote") {
-    steps.push({ text: localize("Fetch it from its remote"), action: "fetch", label: localize("Fetch") });
-    steps.push({ text: localize("Review it against the checked-out branch"), action: "review", label: localize("Review") });
+    return [step("Check it out as a local branch", "switch", "Switch", "arrow-swap"), step("Fetch it from its remote", "fetch", "Fetch", "cloud-download"),
+      step("Review it against the checked-out branch", "review", "Review", "diff"), history];
   }
-  if (d.ai && d.kind !== "remote") {
-    if (d.current && (d.upstream?.ahead ?? 0) > 0) steps.push({ text: localize("Explain the unpushed commits"), action: "explain", label: localize("Explain") });
-    else if (!d.current && !merged) steps.push({ text: localize("Explain what it changes"), action: "explain", label: localize("Explain") });
-  }
+  const steps: SheetStep[] = [];
+  const merged = d.target?.ahead === 0;
+  if (d.worktree) steps.push({ text: localize("Checked out in worktree {0}", worktreeName(d.worktree)), action: "openWorktree", label: localize("Open Worktree"), icon: "folder" });
+  else if (!d.current && !merged) steps.push(step("Switch to it", "switch", "Switch", "arrow-swap"));
+  if (d.ai && d.current && (d.upstream?.ahead ?? 0) > 0) steps.push(step("Explain the unpushed commits", "explain", "Explain", "sparkle"));
+  else if (d.ai && !d.current && !merged) steps.push(step("Explain what it changes", "explain", "Explain", "sparkle"));
+  steps.push(history, step("Compare it with another branch", "compareWith", "Compare…", "git-compare"));
+  if (d.current) steps.push(step("Create a branch from it", "createBranch", "Create Branch…", "git-branch"));
   return steps;
 }

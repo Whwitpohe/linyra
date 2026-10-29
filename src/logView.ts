@@ -55,6 +55,7 @@ const HIGHLIGHT_MINE_KEY = "linyra.highlightMine";
 const HIGHLIGHT_HEAD_KEY = "linyra.highlightHead";
 const HASH_COLUMN_KEY = "linyra.hashColumn";
 const CHANGES_COLUMN_KEY = "linyra.changesColumn";
+const COLUMNS_KEY = "linyra.logColumns";
 const DEFAULT_PANE_WIDTH = 190;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -316,6 +317,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!m || typeof m !== "object") return; // webview input is untrusted
     switch (m.type) {
       case "branchSidebar": await this.branchSidebar?.handle(m); return;
+      case "operation": {
+        // The Repo List's stopped-operation row: the same commands as its right-click menu.
+        const op = typeof m.repoId === "string" ? this.marks.get(m.repoId)?.operation : undefined;
+        if (!op) return;
+        const name = op === "cherry-pick" ? "CherryPick" : op === "am" ? "Am" : op[0].toUpperCase() + op.slice(1);
+        const command = m.action === "resolve" ? "linyra.resolveConflicts" : m.action === "continue" ? `linyra.continue${name}` : m.action === "abort" ? `linyra.abort${name}` : undefined;
+        if (command) await vscode.commands.executeCommand(command, { repoId: m.repoId });
+        return;
+      }
       case "branchSheet":
         if (m.action === "open") await this.branchSheet.open(m.repoId, m.ref);
         else if (m.action === "close") this.branchSheet.close();
@@ -429,6 +439,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (typeof m.highlightMine === "boolean") await this.context.globalState.update(HIGHLIGHT_MINE_KEY, m.highlightMine);
         if (typeof m.hashColumn === "boolean") await this.context.globalState.update(HASH_COLUMN_KEY, m.hashColumn);
         if (isChangesMode(m.changesColumn)) await this.context.globalState.update(CHANGES_COLUMN_KEY, m.changesColumn);
+        // The column header's own state: the webview applied it already, so nothing is sent back.
+        if (m.columns && typeof m.columns === "object" && !Array.isArray(m.columns)) await this.context.globalState.update(COLUMNS_KEY, m.columns);
         if (typeof m.highlightHead === "boolean") {
           await this.context.globalState.update(HIGHLIGHT_HEAD_KEY, m.highlightHead);
           if (m.highlightHead) void this.readOffHead(); else this.post({ type: "offHead", keys: [] });
@@ -532,6 +544,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       highlightHead: this.context.globalState.get<boolean>(HIGHLIGHT_HEAD_KEY, false),
       hashColumn: this.context.globalState.get<boolean>(HASH_COLUMN_KEY, false),
       changesColumn: ((v) => (isChangesMode(v) ? v : "bar"))(this.context.globalState.get<unknown>(CHANGES_COLUMN_KEY)),
+      columns: this.context.globalState.get<Layout["columns"]>(COLUMNS_KEY),
     };
   }
 

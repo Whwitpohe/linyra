@@ -20,8 +20,12 @@ const labels = (c: ReturnType<typeof upstreamCard>) => c?.buttons.map((b) => `${
   assert.deepStrictEqual(labels(up({ ahead: 2, behind: 1 }, false)), ["Force Push…", "Fetch"]);
   assert.deepStrictEqual([up({ gone: true })?.chip?.text, labels(up({ gone: true }))], ["Gone", ["Publish"]], "gone: Publish is not pressed on, it is usually merged");
   assert.deepStrictEqual(labels(up({ gone: true }, false)), ["Delete Branch…", "Publish"], "gone and not checked out: clean it up");
-  assert.deepStrictEqual([up({ name: null })?.status, up({ name: null })?.subject, labels(up({ name: null }))], ["Not published.", undefined, ["Publish*"]]);
+  assert.deepStrictEqual([up({ name: null })?.status, up({ name: null })?.subject, labels(up({ name: null }))], ["Not published.", undefined, ["Publish*", "Set Upstream…"]]);
   assert.strictEqual(upstreamCard({ ...base, kind: "remote" }), undefined, "a remote branch has no upstream card");
+  // The upstream's name links to its own sheet; the pencil changes it. Not published: Set Upstream… beside Publish.
+  const linked = upstreamCard({ ...base, upstream: { name: "origin/develop", ref: "refs/remotes/origin/develop", ahead: 0, behind: 0, gone: false } });
+  assert.deepStrictEqual([linked?.subjectRef, linked?.edit], ["refs/remotes/origin/develop", { action: "setUpstream", label: "Change Upstream…" }]);
+  assert.deepStrictEqual([up({ name: null })?.edit, labels(up({ name: null }))], [undefined, ["Publish*", "Set Upstream…"]]);
   console.log("ok - the upstream card: each state's chip, status and buttons, Pull only where it is checked out");
 }
 
@@ -38,19 +42,23 @@ const labels = (c: ReturnType<typeof upstreamCard>) => c?.buttons.map((b) => `${
   assert.deepStrictEqual(labels(t({ behind: 3 }, false)), ["Review"], "Merge and Rebase need it checked out");
   assert.deepStrictEqual([t({ ahead: 0 }, false)?.chip?.text, t({ ahead: 0 }, false)?.hint, labels(t({ ahead: 0 }, false))], ["Merged", "Safe to delete.", ["Delete Branch…"]]);
   assert.deepStrictEqual(labels(t({ ahead: 0 })), [], "the checked-out branch is not offered for deletion");
+  assert.strictEqual(t({})?.subjectRef, "refs/remotes/origin/main", "the target's name links to its sheet");
   console.log("ok - the merge target card: new commits, behind with the merge check, merged and safe to delete");
 }
 
 {
   const texts = (d: BranchSheetData) => nextSteps(d).map((s) => s.text);
-  assert.deepStrictEqual(texts(base), [], "checked out, AI off: nothing next");
-  assert.deepStrictEqual(texts({ ...base, ai: true }), [], "nothing to push: nothing to explain");
-  assert.deepStrictEqual(texts({ ...base, ai: true, upstream: { name: "origin/develop", ahead: 2, behind: 0, gone: false } }), ["Explain the unpushed commits"]);
-  assert.deepStrictEqual(texts({ ...base, current: false, ai: true }), ["Switch to it", "Explain what it changes"]);
-  assert.deepStrictEqual(texts({ ...base, current: false, ai: true, target: { name: "origin/main", ahead: 0, behind: 2 } }), [], "merged: switching to it or explaining it changes nothing");
-  assert.deepStrictEqual(texts({ ...base, current: false, worktree: "D:\\work\\acme-web-hotfix\\" }), ["Checked out in worktree acme-web-hotfix"]);
-  assert.deepStrictEqual(texts({ ...base, kind: "remote", name: "origin/x", current: false, ai: true }), ["Check it out as a local branch", "Fetch it from its remote", "Review it against the checked-out branch"]);
-  assert.deepStrictEqual(texts({ ...base, kind: "tag", name: "v1.4.0", current: false }), ["Check it out (detached HEAD)", "Create a branch from it", "Push it to a remote"]);
+  const always = ["Show only its history in the Log", "Compare it with another branch"];
+  assert.deepStrictEqual(texts(base), [...always, "Create a branch from it"], "checked out and up to date: never nothing next");
+  assert.deepStrictEqual(texts({ ...base, ai: true }), [...always, "Create a branch from it"], "nothing to push: nothing to explain");
+  assert.deepStrictEqual(texts({ ...base, ai: true, upstream: { name: "origin/develop", ahead: 2, behind: 0, gone: false } }), ["Explain the unpushed commits", ...always, "Create a branch from it"]);
+  assert.deepStrictEqual(texts({ ...base, current: false, ai: true }), ["Switch to it", "Explain what it changes", ...always]);
+  assert.deepStrictEqual(texts({ ...base, current: false, ai: true, target: { name: "origin/main", ahead: 0, behind: 2 } }), always, "merged: switching to it or explaining it changes nothing");
+  assert.deepStrictEqual(texts({ ...base, current: false, worktree: "D:\\work\\acme-web-hotfix\\" }), ["Checked out in worktree acme-web-hotfix", ...always]);
+  assert.deepStrictEqual(texts({ ...base, kind: "remote", name: "origin/x", current: false, ai: true }), ["Check it out as a local branch", "Fetch it from its remote", "Review it against the checked-out branch", always[0]]);
+  assert.deepStrictEqual(texts({ ...base, kind: "tag", name: "v1.4.0", current: false }), ["Check it out (detached HEAD)", "Create a branch from it", "Push it to a remote", always[0]]);
+  // Each step has its icon and runs one command.
+  assert.deepStrictEqual(nextSteps(base).map((s) => [s.icon, s.action, s.label]), [["history", "history", "Show History"], ["git-compare", "compareWith", "Compare…"], ["git-branch", "createBranch", "Create Branch…"]]);
   console.log("ok - the next steps: switch, the worktree that has it, review and explain; a tag's own");
 }
 
@@ -76,6 +84,7 @@ const labels = (c: ReturnType<typeof upstreamCard>) => c?.buttons.map((b) => `${
     const dev = read("refs/heads/develop");
     assert.deepStrictEqual(dev && { kind: dev.kind, name: dev.name, current: dev.current, upstream: dev.upstream, ahead: dev.ahead, behind: dev.behind, gone: dev.gone, subject: dev.subject, author: dev.author },
       { kind: "local", name: "develop", current: true, upstream: "origin/develop", ahead: 1, behind: 1, gone: false, subject: "feat: mine", author: "dana" });
+    assert.strictEqual(dev?.upstreamRef, "refs/remotes/origin/develop", "the upstream's full name, for its link");
     assert.strictEqual(dev?.sha, git(web, ["rev-parse", "HEAD"]));
     assert.ok(dev?.worktree && path.resolve(dev.worktree).toLowerCase() === path.resolve(web).toLowerCase(), "checked out here: its worktree is this folder");
     assert.strictEqual(read("refs/heads/main")?.current, false);

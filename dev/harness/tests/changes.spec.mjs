@@ -14,10 +14,19 @@ const open = async (page, { theme = "dark", width = 1900, height = 520, query = 
 const cell = (page, i) => page.locator(`#rows .row[data-index="${i}"] .changes-cell`);
 const messages = (page, type) => page.evaluate((t) => window.harnessMessages.filter((m) => m.type === t), type);
 const choose = async (page, name) => {
-  await page.click("#toolbar-more");
-  await page.getByRole("menuitemradio", { name }).click();
+  if (name === "No Changes Column") {
+    await page.locator(".column-header").click({ button: "right" });
+    await page.getByRole("menuitemcheckbox", { name: "Changes" }).click();
+    return;
+  }
+  await page.click(".column-header .column-changes button");
+  await page.getByRole("menuitemradio", { name: name.replace(/^Changes as (a )?/, ""), exact: true }).click();
 };
-const column = (page) => page.evaluate(() => document.getElementById("list").style.getPropertyValue("--changes-col"));
+/** The column's width, as the column header lays it out (the rows share its template). */
+const column = (page) => page.evaluate(() => {
+  const cell = document.querySelector(".column-header .column-changes");
+  return cell ? `${Math.round(cell.getBoundingClientRect().width)}px` : "";
+});
 
 test("the bar is the default; the rows on screen ask once they settle, and their cells fill in", async ({ page }) => {
   const errors = await open(page);
@@ -55,7 +64,7 @@ test("without an answer the cells stay empty and pending", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("the ⋯ menu picks the drawing, remembers it, and turns the column off", async ({ page }) => {
+test("the column header picks the drawing, remembers it, and Columns turns the column off", async ({ page }) => {
   await open(page);
   await expect(cell(page, 0).locator(".changes-bar")).toBeVisible();
   await choose(page, "Changes as Numbers");
@@ -65,8 +74,8 @@ test("the ⋯ menu picks the drawing, remembers it, and turns the column off", a
   await expect(cell(page, 0).locator(".changes-squares")).toBeVisible();
   await choose(page, "Changes as a Bipolar Bar");
   await expect(cell(page, 0).locator(".changes-bipolar")).toBeVisible();
-  await page.click("#toolbar-more");
-  await expect(page.getByRole("menuitemradio", { name: "Changes as a Bipolar Bar" })).toHaveAttribute("aria-checked", "true");
+  await page.click(".column-header .column-changes button");
+  await expect(page.getByRole("menuitemradio", { name: "Bipolar Bar" })).toHaveAttribute("aria-checked", "true");
   await page.keyboard.press("Escape");
   await choose(page, "No Changes Column");
   await expect(page.locator("#list")).not.toHaveClass(/with-changes/);

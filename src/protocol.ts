@@ -10,6 +10,7 @@ import type { HoverDetail, MergeTarget } from "./hoverModel";
 import type { KindCounts } from "./changeKinds";
 import type { BranchStatus } from "./workingTree";
 import type { RepoMark } from "./repoMarkModel";
+import type { ColumnPrefs } from "./webview/logColumns";
 import type { BranchSheetData, SheetAction } from "./branchSheetModel";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
@@ -24,8 +25,10 @@ export interface Layout {
   highlightMine?: boolean;
   highlightHead?: boolean;
   hashColumn?: boolean;
-  /** The Changes column's drawing (the ⋯ menu): off, numbers, squares, bar or bipolar. */
+  /** The Changes column's drawing (the column header): off, numbers, squares, bar or bipolar. */
   changesColumn?: ChangesMode;
+  /** The column header's widths, hidden columns and date format (read back through logColumns.columnPrefs). */
+  columns?: ColumnPrefs;
 }
 
 /** Someone who committed recently, across the workspace (Author box suggestions). */
@@ -139,7 +142,7 @@ export type WebviewMessage =
   /** Combined Changes: two or more commits selected (Ctrl/⌘ or Shift). */
   | { type: "selectMany"; items: CommitRef[]; focus: CommitRef }
   | { type: "openFirst"; repoId: string; sha: string }
-  | { type: "layout"; repoPaneWidth?: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout; highlightMine?: boolean; highlightHead?: boolean; hashColumn?: boolean; changesColumn?: ChangesMode }
+  | { type: "layout"; repoPaneWidth?: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout; highlightMine?: boolean; highlightHead?: boolean; hashColumn?: boolean; changesColumn?: ChangesMode; columns?: ColumnPrefs }
   | { type: "exitHistory" }
   /** File History's uncommitted row: open the file's diff, HEAD to the working tree. */
   | { type: "openHistoryWork" }
@@ -167,4 +170,6 @@ export type WebviewMessage =
   /** The ✨ toggle while Linyra AI is not available: set it up. */
   | { type: "aiConfigure" }
   /** The branch sheet: opened on a pill's click, closed, or one of its buttons. */
+  /** The Repo List's stopped-operation row: its buttons run the matching command (logView maps them). */
+  | { type: "operation"; action: "resolve" | "continue" | "abort"; repoId: string }
   | { type: "branchSheet"; action: "open" | "close" | "copy" | SheetAction; repoId: string; ref: string };

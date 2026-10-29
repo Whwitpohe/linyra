@@ -19,7 +19,7 @@ export function branchSheetReply(m: WebviewMessage, send: (m: HostMessage) => vo
     ai: params.get("ai") !== "off",
   };
   const local = (): BranchSheetData => {
-    const upstream = { name: "origin/" + name, ahead: 0, behind: 0, gone: false };
+    const upstream = { name: "origin/" + name, ref: `refs/remotes/origin/${name}`, ahead: 0, behind: 0, gone: false };
     const target = { name: "origin/main", ahead: 4, behind: 0, conflicts: undefined as number | null | undefined };
     switch (state) {
       case "diverged": Object.assign(upstream, { ahead: 2, behind: 1 }); Object.assign(target, { behind: 3, conflicts: 2 }); break;

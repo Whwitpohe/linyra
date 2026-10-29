@@ -143,7 +143,7 @@ describe("Branch sidebar", () => {
     const d = await sheetData();
     assert.ok((await spawned()) - before <= 4, "for-each-ref, the merge target's for-each-ref and rev-list, and a merge check at most");
     assert.deepStrictEqual([d?.kind, d?.current, d?.tip.sha], ["local", true, git(["rev-parse", "HEAD"])]);
-    assert.deepStrictEqual(d?.upstream, { name: "branch-test/release-1.4", ahead: 0, behind: 0, gone: false });
+    assert.deepStrictEqual(d?.upstream, { name: "branch-test/release-1.4", ref: "refs/remotes/branch-test/release-1.4", ahead: 0, behind: 0, gone: false });
     const [ahead, behind] = git(["rev-list", "--left-right", "--count", "HEAD...branch-test/main"]).split(/\s+/).map(Number);
     assert.deepStrictEqual(d?.target && { name: d.target.name, ahead: d.target.ahead, behind: d.target.behind }, { name: "branch-test/main", ahead, behind });
     if (ahead > 0 && behind > 0) assert.ok(d?.target?.conflicts === null || typeof d?.target?.conflicts === "number", "behind with commits of its own: checked");
@@ -155,6 +155,19 @@ describe("Branch sidebar", () => {
     // A branch that is gone from the repository: no data (the sheet says it no longer exists), and no error.
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action: "open", repoId, ref: "refs/heads/ui-no-such" });
     assert.strictEqual(await sheetData(), undefined);
+  });
+
+  it("Change Upstream… sets what a local branch tracks, picked from its remote branches; Stop Tracking clears it", async () => {
+    git(["fetch", "-q", "branch-test"]);
+    git(["update-ref", "refs/heads/track-me", beforeHead]);
+    const upstream = () => { try { return git(["rev-parse", "--abbrev-ref", "track-me@{upstream}"]); } catch { return ""; } };
+    await answer("branch-test/release-1.4");
+    await act("upstream", "track-me");
+    assert.strictEqual(upstream(), "branch-test/release-1.4");
+    await answer("Stop Tracking");
+    await act("upstream", "track-me");
+    assert.strictEqual(upstream(), "", "no upstream any more");
+    git(["branch", "-q", "-D", "track-me"]);
   });
 
   it("merge and rebase use the explicitly selected ref and refresh the current branch", async () => {

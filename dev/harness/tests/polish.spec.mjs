@@ -196,3 +196,26 @@ test("a changed file's line counts take the add and delete colors", async ({ pag
   expect(await stats.locator(".count-added").evaluate((el) => getComputedStyle(el).color)).toBe(await themeColor(page, "--vscode-gitDecoration-addedResourceForeground"));
   expect(await stats.locator(".count-deleted").evaluate((el) => getComputedStyle(el).color)).toBe(await themeColor(page, "--vscode-gitDecoration-deletedResourceForeground"));
 });
+
+test("Automatic layout: the changed files sit beside the Log while it keeps 520px for its subjects; below that they go under it", async ({ page }) => {
+  for (const [width, stacked] of [[1500, false], [1000, true], [800, true]]) {
+    await open(page, { width, height: 700 });
+    const workspace = page.locator(".workspace");
+    if (stacked) await expect(workspace).toHaveClass(/\bstacked\b/);
+    else await expect(workspace).not.toHaveClass(/\bstacked\b/);
+    const log = await page.locator("#list").evaluate((el) => el.clientWidth);
+    expect(log, `${width}px window`).toBeGreaterThanOrEqual(520);
+    // The subjects are there to read, not squeezed out.
+    expect(await page.locator("#rows .row .subject").first().evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(120);
+  }
+});
+
+test("Automatic layout follows the panel: narrowed, the changed files move under the Log; widened, back beside it", async ({ page }) => {
+  await open(page, { width: 1500, height: 700 });
+  const workspace = page.locator(".workspace");
+  await expect(workspace).not.toHaveClass(/\bstacked\b/);
+  await page.setViewportSize({ width: 900, height: 700 });
+  await expect(workspace).toHaveClass(/\bstacked\b/);
+  await page.setViewportSize({ width: 1500, height: 700 });
+  await expect(workspace).not.toHaveClass(/\bstacked\b/);
+});

@@ -7,10 +7,6 @@
 #changes-pane .changes.branch-open #commit-details[hidden] + #branch-sheet { display: none; }
 #branch-sheet:focus { outline: none; }
 #branch-sheet:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-/* The details heading says what the area shows. */
-#changes-pane .detail-heading-branch { display: none; }
-#changes-pane .changes.branch-open .detail-heading-commit { display: none; }
-#changes-pane .changes.branch-open .detail-heading-branch { display: inline; }
 .sheet-announce { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* The header: the name keeps its room; the repository goes to a line of its own when narrow. */
@@ -37,6 +33,12 @@
 #branch-sheet .sheet-card { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 4px; }
 #branch-sheet .card-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--vscode-descriptionForeground); }
 #branch-sheet .card-subject { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12px; font-family: var(--vscode-editor-font-family); color: var(--vscode-foreground); }
+/* A branch name that opens its own sheet: a link, as the tip's hash is. */
+#branch-sheet .card-subject.link { padding: 0; border: 0; background: none; color: var(--vscode-textLink-foreground); cursor: pointer; }
+#branch-sheet .card-subject.link:hover { color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground)); text-decoration: underline; }
+#branch-sheet .card-subject.link:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+/* Change Upstream…: a small pencil right after the name. */
+#branch-sheet .card-title .icon-button { width: 18px; height: 18px; margin-left: -3px; color: var(--vscode-descriptionForeground); }
 #branch-sheet .chip { text-transform: none; letter-spacing: 0; padding: 0 7px; border: 1px solid currentColor; border-radius: 9px; font-size: 11px; font-weight: 600; line-height: 16px; }
 #branch-sheet .chip.good { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
 #branch-sheet .chip.bad { color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red))); }
@@ -48,6 +50,7 @@
 /* Next steps: one line each (wrapping when long), its button at the end. */
 #branch-sheet .sheet-step { display: flex; align-items: center; gap: 8px; min-height: 26px; margin-top: 4px; font-size: 12px; }
 #branch-sheet .step-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+#branch-sheet .step-icon { flex: none; display: inline-flex; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
 
 /* VS Code's buttons, small: secondary, and the one thing to do next in the primary colors. */
 #branch-sheet .sheet-button { flex: none; min-height: 24px; padding: 2px 10px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;

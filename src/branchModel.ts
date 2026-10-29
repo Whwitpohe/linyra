@@ -82,4 +82,6 @@ export const branchCommands = {
   checkoutTag: (b: Branch) => ["checkout", "--detach", b.ref, "--"],
   deleteTag: (b: Branch) => ["tag", "-d", "--", b.name],
   worktree: (b: Branch, name: string, destination: string) => ["worktree", "add", "-b", name, "--", destination, b.ref],
+  setUpstream: (b: Branch, upstream: string) => ["branch", `--set-upstream-to=${upstream}`, "--", b.name],
+  unsetUpstream: (b: Branch) => ["branch", "--unset-upstream", "--", b.name],
 };

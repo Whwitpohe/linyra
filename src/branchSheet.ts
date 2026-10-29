@@ -81,7 +81,7 @@ export class BranchSheet implements vscode.Disposable {
       ...(r.worktree && !samePath(r.worktree, repo.root) ? { worktree: r.worktree } : {}),
     };
     if (r.kind !== "local") return data;
-    data.upstream = { name: r.upstream, ahead: r.ahead, behind: r.behind, gone: r.gone };
+    data.upstream = { name: r.upstream, ref: r.upstreamRef, ahead: r.ahead, behind: r.behind, gone: r.gone };
     // Where it merges: the upstream remote's default branch (the hover card's rule), unless it is that branch.
     const target = pickMergeTarget(await this.host.run(repo.root, remoteHeadArgs(r.name), signal), r.name);
     if (!target) return data;
@@ -106,6 +106,9 @@ export class BranchSheet implements vscode.Disposable {
       case "push": case "forcePush": case "publish": case "pushTag": await run("linyra.branch.push"); break;
       case "switch": await run("linyra.branch.checkout"); break;
       case "createBranch": await run("linyra.branch.create"); break;
+      case "setUpstream": await run("linyra.branch.upstream"); break;
+      case "history": await run("linyra.branch.view"); return;
+      case "compareWith": await run("linyra.compareWith", { name: d.name }); return;
       case "delete": await run("linyra.branch.delete"); break;
       // Bring the merge target into the checked-out branch: the Repo List's Merge and Rebase, asked first.
       case "merge": case "rebase": if (d.target) await run(`linyra.branch.${action as string}`, { repoId: d.repoId, ref: `refs/remotes/${d.target.name}` }); break;

@@ -22,7 +22,7 @@ import { droppedArgs, forcePushPrompt, isProtected, parseDropped } from "./multi
 const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
 export type StashAction = "show" | "apply" | "pop" | "drop";
-export type BranchAction = "view" | "copy" | "favorite" | "compare" | "worktreeDiff" | "checkout" | "create" | "rename" | "delete" | "fetch" | "pull" | "push" | "merge" | "rebase" | "worktree" | "pullMerge" | "pullRebase";
+export type BranchAction = "view" | "copy" | "favorite" | "compare" | "worktreeDiff" | "checkout" | "create" | "rename" | "delete" | "fetch" | "pull" | "push" | "merge" | "rebase" | "worktree" | "pullMerge" | "pullRebase" | "upstream";
 type SidebarPost = Extract<HostMessage, { type: "sidebarState" | "branchTree" }>;
 interface Deps {
   repos(): readonly Repo[];
@@ -174,6 +174,22 @@ export class BranchController implements vscode.Disposable {
         }
         case "compare": await this.deps.compare(repo.id, branchRevision(b, data), current); return;
         case "worktreeDiff": await this.diffWorkingTree(repo, b); return;
+        case "upstream": {
+          if (b.kind !== "local") return;
+          // The remote branches it can track (from the listing already read: no git), and Stop Tracking when it tracks one.
+          const remotes = data.branches.filter((x) => x.kind === "remote" && x.remoteBranch !== "HEAD");
+          const items: vscode.QuickPickItem[] = [
+            ...remotes.map((x) => ({ label: x.name, description: x.name === b.upstream ? localize("current upstream") : undefined })),
+            ...(b.upstream ? [{ label: localize("Stop Tracking"), description: localize("{0} pulls and pushes nowhere until it tracks a branch again", b.name) }] : []),
+          ];
+          if (items.length === 0) throw new Error(localize("{0} has no remote branches yet: fetch, or publish the branch.", repo.name));
+          const i = await this.deps.ask.pick(items, localize("The remote branch {0} pulls from and pushes to", b.name));
+          if (i === undefined || remotes[i]?.name === b.upstream) return;
+          if (i >= remotes.length) await run(branchCommands.unsetUpstream(b));
+          else if (native?.setBranchUpstream) await native.setBranchUpstream(b.name, remotes[i].ref);
+          else await run(branchCommands.setUpstream(b, remotes[i].ref));
+          break;
+        }
         case "checkout": {
           if (b.current) return;
           // Refused for local changes: offered as a Smart Checkout (stash, check out, put back).

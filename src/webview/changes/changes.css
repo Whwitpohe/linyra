@@ -100,3 +100,9 @@ body.vscode-high-contrast #changes-pane .tree-row.selected, body.vscode-high-con
 
 #changes-pane .files-mode { background: transparent; color: var(--vscode-descriptionForeground); border: 0; padding: 2px 4px; font: inherit; font-size: 11px; white-space: nowrap; }
 #changes-pane .files-mode:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+
+/* The details heading says what the area shows: the commit, or the branch sheet (webview/branchSheet.ts).
+   Here, not in branchSheet.css: the Changes view opened as an editor tab has no sheet and shows only the first. */
+#changes-pane .detail-heading-branch { display: none; }
+#changes-pane .changes.branch-open .detail-heading-commit { display: none; }
+#changes-pane .changes.branch-open .detail-heading-branch { display: inline; }

@@ -52,7 +52,7 @@ test("nothing in the Repositories pane spills into the Log, opened or closed", a
   await expect(page.locator("#repo-rows .branch-row")).toHaveCount(0);
 });
 
-test("the ⋯ menu stays on screen in a short panel and holds the view options", async ({ page }) => {
+test("the ⋯ menu stays on screen in a short panel; the columns' options are on the column header", async ({ page }) => {
   await open(page, { height: 320 });
   await page.click("#toolbar-more");
   const menu = page.locator("#toolbar-menu");
@@ -60,10 +60,16 @@ test("the ⋯ menu stays on screen in a short panel and holds the view options",
   const b = await menu.boundingBox();
   expect(b.y).toBeGreaterThanOrEqual(0);
   expect(b.y + b.height).toBeLessThanOrEqual(320);
-  await expect(menu.getByRole("menuitemcheckbox", { name: "Show Hash Column" })).toBeVisible();
-  // The order (3) and the Changes column (off and its four drawings).
-  await expect(menu.getByRole("menuitemradio")).toHaveCount(8);
-  await menu.getByRole("menuitemcheckbox", { name: "Show Hash Column" }).click();
+  // Where the changed files sit (3) and what the rows highlight (2): no column's option.
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(3);
+  await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(2);
+  await expect(menu.getByRole("menuitemcheckbox", { name: "Show Hash Column" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(page.locator("#toolbar-more")).toBeFocused();
+  // The hash column: Columns, on the column header.
+  await page.locator(".column-header").click({ button: "right" });
+  await page.getByRole("menuitemcheckbox", { name: "Hash" }).click();
   await expect(page.locator("#rows .row .hash").first()).toBeVisible();
 });
 

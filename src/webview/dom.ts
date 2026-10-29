@@ -26,6 +26,14 @@ export function chevron(): SVGElement {
   return codiconElement("chevron-down", "chevron");
 }
 
+/**
+ * Sets an element's text only when it changed: writing the same text still replaces its node, which
+ * lays the page out again (render() runs for every host message, many while the Log scrolls).
+ */
+export function setText(el: HTMLElement, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
 export function clear(el: Element): void {
   el.replaceChildren();
 }

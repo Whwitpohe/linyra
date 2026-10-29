@@ -133,8 +133,9 @@ describe("Repo List marks", () => {
     await vscode.commands.executeCommand("linyra.abortMerge", { repoId: web.id });
     assert.ok(fs.existsSync(path.join(web.root, ".git", "MERGE_HEAD")), "declined: nothing aborted");
 
+    // The Repo List's stopped-merge row: its Abort… button runs the same command, asked the same way.
     await answer("Abort Merge");
-    await vscode.commands.executeCommand("linyra.abortMerge", { repoId: web.id });
+    await send({ type: "operation", action: "abort", repoId: web.id });
     assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Abort the merge in acme-web?");
     assert.ok(!fs.existsSync(path.join(web.root, ".git", "MERGE_HEAD")));
     assert.strictEqual(git(web.root, ["rev-parse", "HEAD"]), before);

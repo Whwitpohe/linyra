@@ -1,4 +1,6 @@
 import { localize } from "../i18n";
+import { ColumnHeader, type HeaderState } from "./columnHeader";
+import { DEFAULT_COLUMNS, columnPrefs } from "./logColumns";
 import "./styles.css";
 import "./changes/changes.css";
 import { mountChanges, type SavedState } from "./changes/view";
@@ -6,11 +8,11 @@ import type { ChangesMessage } from "../changesProtocol";
 import type { ResolvedProfile } from "../profileModel";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
-import { DEFAULT_FILTER, sameFilter, type FilterState } from "../filterModel";
+import { DEFAULT_FILTER, hashQuery, sameFilter, type FilterState } from "../filterModel";
 import type { HistoryWork, HostMessage, WebviewMessage, WorkRow } from "../protocol";
 import { HistoryChip, HistoryWorkRow, type HistoryTarget } from "./history";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
-import { byId } from "./dom";
+import { byId, setText } from "./dom";
 import { EmptyView } from "./empty";
 import { FilterBar } from "./filters";
 import { CommitList, type Gesture } from "./list";
@@ -60,8 +62,11 @@ const searchEl = byId<HTMLInputElement>("search");
 const moreEl = byId<HTMLButtonElement>("more");
 const countEl = byId("count");
 const branchUseEl = byId("branch-use");
+/** Whether linear history can be folded or unfolded (the Graph column's menu). */
+let folds = { canCollapse: false, canExpand: false };
 const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), openFirstFile, (stats) => {
-  toolbar.setFolds({ canCollapse: stats.available !== stats.collapsed, canExpand: stats.collapsed > 0 });
+  folds = { canCollapse: stats.available !== stats.collapsed, canExpand: stats.collapsed > 0 };
+  refreshHeader();
   const count = byId("graph-fold-count");
   count.hidden = stats.hidden === 0;
   count.textContent = localize("{0} commits hidden", stats.hidden);
@@ -70,6 +75,41 @@ const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), o
   showAccents(next);
 });
 const avatars = new AvatarFeed(byId("rows"), (i) => state.rows[i], post, (changed) => list.redraw(changed));
+/**
+ * The column header (columnHeader.ts): each column's options run what the filter bar and the view
+ * options already run; its widths, hidden columns and date format are view options too.
+ */
+const header = new ColumnHeader({
+  sort: (order) => setFilter({ ...state.filter, sort: order === "topo" ? "topo" : undefined }),
+  fold: (fold) => (fold === "collapse" ? list.collapseAll() : list.expandAll()),
+  changes: (mode) => changeView({ changesColumn: mode }),
+  hash: (shown) => changeView({ hashColumn: shown }),
+  prefs: (columns) => changeView({ columns }),
+  preview: (id, px) => list.previewColumn(id, px),
+  focusSearch: () => searchEl.focus(),
+  authorFilter: () => byId("author").click(),
+  dateFilter: () => {
+    const date = byId<HTMLSelectElement>("date");
+    date.focus();
+    // Opens the range's list where the browser allows it from here (a click's gesture).
+    try { date.showPicker?.(); } catch { /* the focus is enough */ }
+  },
+});
+listEl.insertBefore(header.el, byId("rows"));
+function headerState(): HeaderState {
+  const f = state.filter;
+  return {
+    history: !!state.history, sort: f.sort === "topo" ? "topo" : "date", folds, changes: view.changesColumn, hash: view.hashColumn,
+    prefs: view.columns ?? DEFAULT_COLUMNS, authorFiltered: !!(f.mine || f.authors?.length || f.author), dateFiltered: (f.date ?? "all") !== "all",
+    hashLookup: !!hashQuery(f.text),
+  };
+}
+/** The header again with the same columns: a filter, the toolbar or the folds changed what it shows. */
+function refreshHeader(): void {
+  const layout = list.columns();
+  if (layout) header.render(layout, headerState());
+}
+list.onLayout = (layout) => header.render(layout, headerState());
 const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
@@ -168,7 +208,11 @@ let showChanges = true;
 let changesLayout: ChangesLayout = "auto";
 
 function applyChangesLayout(): void {
-  const stacked = changesLayout === "stacked" || (changesLayout === "auto" && workspace.clientWidth < 720) || workspace.clientWidth < 505;
+  // Automatic: side by side only while the Log keeps room for its subjects (520px beside the Repo
+  // List and the files); the space the Log would keep decides, not the whole panel's width.
+  const repoList = byId("repo-pane").offsetWidth;
+  const sideLog = workspace.clientWidth - Math.max(180, Math.min(changesWidth, workspace.clientWidth - 320)) - 5 - (repoList ? repoList + 5 : 0);
+  const stacked = changesLayout === "stacked" || (changesLayout === "auto" && showChanges && sideLog < 520) || workspace.clientWidth < 505;
   const size = stacked ? Math.max(96, Math.min(changesHeight, workspace.clientHeight - 160)) : Math.max(180, Math.min(changesWidth, workspace.clientWidth - 320));
   workspace.classList.toggle("stacked", stacked);
   workspace.classList.toggle("no-changes", !showChanges);
@@ -185,17 +229,19 @@ function applyChangesLayout(): void {
 }
 const saveChangesLayout = () => post({ type: "layout", repoPaneWidth: paneWidth.shown, changesPaneWidth: changesWidth, changesPaneHeight: changesHeight, showChanges, changesLayout });
 /** View options, each repository's user.email, and the listed commits HEAD does not reach. */
-let view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar" };
+let view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar", columns: DEFAULT_COLUMNS };
 let me: Readonly<Record<string, string>> = {};
 let offHead: ReadonlySet<string> = new Set();
-const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); }, (patch) => {
-  if (patch.fold) { if (patch.fold === "collapse") list.collapseAll(); else list.expandAll(); return; }
+const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); }, (patch) => changeView(patch));
+/** A view option changed (the ⋯ menu or the column header): saved by the host, the Log drawn again. */
+function changeView(patch: Partial<ViewOptions>): void {
   view = { ...view, ...patch };
   toolbar.updateView(view);
-  post({ type: "layout", highlightMine: patch.highlightMine, highlightHead: patch.highlightHead, hashColumn: patch.hashColumn, changesColumn: patch.changesColumn });
+  post({ type: "layout", highlightMine: patch.highlightMine, highlightHead: patch.highlightHead, hashColumn: patch.hashColumn, changesColumn: patch.changesColumn, columns: patch.columns });
   render();
   if (patch.changesColumn) applyChangesColumn();
-});
+  refreshHeader();
+}
 /** The Changes column asks for the stats of the rows on screen (changesColumn.ts); off, it asks nothing. */
 const changesFeed = new ChangesFeed(byId("rows"), (i) => state.rows[i], post, (keys) => list.statsArrived(keys));
 function applyChangesColumn(): void {
@@ -254,7 +300,7 @@ moreEl.addEventListener("click", () => {
 window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
   const m = e.data;
   switch (m.type) {
-    case "toolbar": toolbar.update(m.state); return;
+    case "toolbar": toolbar.update(m.state); refreshHeader(); return;
     case "focusChanges": byId("file-tree").focus(); return;
     case "changesView": changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })); return;
     case "sidebarState": repoPane.applyBranchState(m.state); return;
@@ -293,7 +339,8 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       changesLayout = m.layout.changesLayout ?? "auto";
       applyChangesLayout();
       me = m.me ?? {};
-      view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true, changesColumn: m.layout.changesColumn ?? "bar" };
+      view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true, changesColumn: m.layout.changesColumn ?? "bar",
+        columns: columnPrefs(m.layout.columns) };
       toolbar.updateView(view);
       applyChangesColumn();
       break;
@@ -481,6 +528,7 @@ function setFilter(f: FilterState, now = false): void {
   filters.update(f);
   repoPane.update(state.repos, f.repoIds, state.profiles);
   repoPane.setFilter(f);
+  refreshHeader();
   if (same) return;
   post({ type: "filter", filter: f, ...(now ? { now } : {}) });
   render();
@@ -509,11 +557,10 @@ let selectedKeys: ReadonlySet<string> = new Set();
 let keysOf: typeof state.selection.keys | undefined;
 
 function render(): void {
-  toolbar.setCommitsShown(mode !== "uncommitted");
   if (namesOf !== state.repos) { namesOf = state.repos; names = new Map(state.repos.map((r) => [r.id, r.name])); }
   if (keysOf !== state.selection.keys) { keysOf = state.selection.keys; selectedKeys = new Set(keysOf); }
   const count = switchCount(work.known, work.totals.files);
-  workCount.textContent = count;
+  setText(workCount, count);
   workCount.hidden = count === "";
   tabs.uncommitted.setAttribute("aria-label", count ? localize("Uncommitted, {0} {1}", count, localize(count === "1" ? "file" : "files")) : localize("Uncommitted"));
   renderWorkTotals(workTotals, mode === "uncommitted" ? work.rows : [], work.totals);
@@ -532,7 +579,7 @@ function render(): void {
   list.update({
     rows: state.rows, repoNames: names, accents, repoOrder, behind, upstream,
     me, highlightMine: view.highlightMine, offHead: view.highlightHead ? offHead : undefined, hashColumn: view.hashColumn,
-    changes: view.changesColumn === "off" ? undefined : view.changesColumn,
+    changes: view.changesColumn === "off" ? undefined : view.changesColumn, columns: view.columns,
     historyPath: state.history?.path,
     selected: state.selected, selectedKeys, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
@@ -542,8 +589,8 @@ function render(): void {
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;
-  countEl.textContent = state.rows.length > 0 ? countLabel(state.rows.length) : "";
-  limitEl.textContent = state.overLimit ? localize("Combined Changes shows up to {0} commits", SELECTION_LIMIT) : "";
+  setText(countEl, state.rows.length > 0 ? countLabel(state.rows.length) : "");
+  setText(limitEl, state.overLimit ? localize("Combined Changes shows up to {0} commits", SELECTION_LIMIT) : "");
 }
 
 document.addEventListener("keydown", (e) => {
@@ -582,5 +629,7 @@ mountChanges({
   setState: (changes) => vscode.setState({ ...((vscode.getState() ?? {}) as object), changes }),
 }, changesEvents);
 applyChangesLayout();
+// The automatic layout follows the panel's width (dragging VS Code's panel resizes this window).
+window.addEventListener("resize", () => { if (changesLayout === "auto") applyChangesLayout(); });
 render();
 post({ type: "ready" });
