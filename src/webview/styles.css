@@ -365,6 +365,8 @@ body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, tran
 .graph-fold-control:hover .graph-fold-box { stroke: var(--vscode-foreground); stroke-width: 2; }
 /* A commit's author disc (ui/authorDisc.css) answers the pointer as the dot did. */
 .graph-point:hover .author-disc-ring { stroke: var(--vscode-foreground); }
+/* High contrast draws rings, not tints: my commits too (only their ring is thicker). */
+body.vscode-high-contrast .commit-graph .author-disc.mine .author-disc-ring { fill: var(--vscode-editor-background); }
 /* Linear history that can fold: its ⊟ takes the node's place only while the pointer is on it. */
 .graph-fold-control[data-fold-collapse] .graph-fold-box { opacity: 0; }
 .graph-fold-control[data-fold-collapse]:hover .graph-fold-box { opacity: 1; }
