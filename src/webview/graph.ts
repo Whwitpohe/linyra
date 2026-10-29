@@ -123,9 +123,13 @@ export function renderGraph(row: GraphRow, commit: Commit, columns: number, widt
   const attributes = { role: "button", tabindex: "-1", "data-graph-node": commit.sha, "aria-label": label,
     ...(action ? { [expanding ? "data-fold-expand" : "data-fold-collapse"]: action.id, "aria-expanded": String(!expanding) } : {}) };
   for (const [key, value] of Object.entries(attributes)) point.setAttribute(key, value);
-  const title = svg("title", {});
-  title.textContent = action ? label : `${commit.sha.slice(0, 7)} · ${commit.subject}`;
-  point.prepend(title);
+  // A fold control says what a click does; a commit's own node has the hover card (hoverCard.ts),
+  // so it gets no tooltip that would sit on top of the card (and no element built to be removed).
+  if (action) {
+    const title = svg("title", {});
+    title.textContent = label;
+    point.prepend(title);
+  }
   if (!disc && !expanding) {
     // A dot is too small to aim at: a wider, invisible target.
     if (!action) point.append(svg("circle", { class: "graph-hit", cx, cy: middle, r: 7 }));

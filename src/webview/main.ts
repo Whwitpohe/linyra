@@ -67,7 +67,7 @@ const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), o
   accents = next;
   showAccents(next);
 });
-const avatars = new AvatarFeed(byId("rows"), (i) => state.rows[i], post, () => list.redraw());
+const avatars = new AvatarFeed(byId("rows"), (i) => state.rows[i], post, (changed) => list.redraw(changed));
 const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
