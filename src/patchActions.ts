@@ -2,7 +2,9 @@ import { localize } from "./i18n";
 import * as vscode from "vscode";
 import { readText } from "./clipboard";
 import type { RunGit } from "./logQuery";
-import { amArgs, applyArgs, isMailbox, looksLikePatch, mailboxCommits, patchFiles } from "./patchModel";
+import { promises as fsp } from "fs";
+import * as path from "path";
+import { amArgs, applyArgs, isMailbox, looksLikePatch, mailboxCommits, patchFiles, patchFit, patchSources } from "./patchModel";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
 import { readHead } from "./repoHead";
@@ -33,14 +35,20 @@ export class PatchActions {
 
   constructor(private readonly host: PatchHost) {}
 
+  /**
+   * The patch first (a file or the clipboard), then where it goes: the repository it came from
+   * (a right-click on one), else the one ticked repository that has every file the patch changes;
+   * asked only when none or several do.
+   */
   async apply(arg?: unknown): Promise<void> {
-    const repo = this.host.contextRepo(arg) ?? (await this.pickRepo());
-    if (!repo) return;
-    const source = await this.host.ask.pick([{ label: localize("From File…") }, { label: localize("From Clipboard") }], localize("Apply a patch to {0}", repo.name));
+    const fixed = this.host.contextRepo(arg);
+    const source = await this.host.ask.pick([{ label: localize("From File…") }, { label: localize("From Clipboard") }], fixed ? localize("Apply a patch to {0}", fixed.name) : localize("Apply a patch"));
     if (source === undefined) return;
-    const text = source === 0 ? await this.readFile(repo) : await readText();
+    const text = source === 0 ? await this.readFile(fixed) : await readText();
     if (text === undefined) return;
     if (!looksLikePatch(text)) return this.fail(localize("That is not a patch: no diff in it."));
+    const repo = fixed ?? (await this.repoFor(text));
+    if (!repo) return;
     const files = patchFiles(text);
     let asCommits = false;
     if (isMailbox(text)) {
@@ -60,16 +68,28 @@ export class PatchActions {
     }
   }
 
-  private async pickRepo(): Promise<Repo | undefined> {
+  /**
+   * The ticked repository the patch fits: the files it changes are there (`stat`, no git process).
+   * Exactly one: that one. None or several: asked, the best fits first.
+   */
+  private async repoFor(text: string): Promise<Repo | undefined> {
     const repos = this.host.repos();
-    if (repos.length === 1) return repos[0];
-    const i = await this.host.ask.pick(repos.map((r) => ({ label: r.name, description: r.root })), localize("Repository to apply the patch to"));
-    return i === undefined ? undefined : repos[i];
+    if (repos.length <= 1) return repos[0];
+    const expected = patchSources(text).slice(0, 50);
+    const exists = (root: string, file: string) => fsp.stat(path.join(root, ...file.split("/"))).then(() => 1, () => 0);
+    const found = new Map(await Promise.all(repos.map(async (r) => [r.id, (await Promise.all(expected.map((f) => exists(r.root, f)))).reduce<number>((n, x) => n + x, 0)] as const)));
+    const fit = patchFit(repos, expected.length, found);
+    if (fit.sure) return fit.sure;
+    const several = fit.offer.length < repos.length;
+    const i = await this.host.ask.pick(fit.offer.map((r) => ({ label: r.name, description: expected.length > 0 ? localize("{0} of the {1} files it changes", found.get(r.id) ?? 0, expected.length) : r.root })),
+      several ? localize("Several repositories have the files this patch changes: which one?") : expected.length > 0 ? localize("No ticked repository has every file this patch changes: which one?") : localize("Repository to apply the patch to"));
+    return i === undefined ? undefined : fit.offer[i];
   }
 
-  private async readFile(repo: Repo): Promise<string | undefined> {
+  private async readFile(repo: Repo | undefined): Promise<string | undefined> {
+    const home = repo?.root ?? this.host.repos()[0]?.root;
     const picked = process.env.LINYRA_ITEST === "1" && this.testFile ? [vscode.Uri.file(this.testFile)]
-      : await vscode.window.showOpenDialog({ defaultUri: vscode.Uri.file(repo.root), canSelectMany: false, filters: { [localize("Patch")]: ["patch", "diff"], [localize("All Files")]: ["*"] }, title: localize("Apply a patch to {0}", repo.name) });
+      : await vscode.window.showOpenDialog({ defaultUri: home ? vscode.Uri.file(home) : undefined, canSelectMany: false, filters: { [localize("Patch")]: ["patch", "diff"], [localize("All Files")]: ["*"] }, title: repo ? localize("Apply a patch to {0}", repo.name) : localize("Apply a patch") });
     if (!picked?.[0]) return undefined;
     return Buffer.from(await vscode.workspace.fs.readFile(picked[0])).toString("utf8");
   }
@@ -88,7 +108,7 @@ export class PatchActions {
     }
     try {
       await this.host.run(repo.root, applyArgs({ threeWay }), WRITE_SIGNAL, { input: text, env: ENV });
-      this.note(localize("Linyra: applied the patch to {0} ({1} files).", repo.name, files.length));
+      this.note(localize(files.length === 1 ? "Linyra: applied the patch to {0} (1 file)." : "Linyra: applied the patch to {0} ({1} files).", repo.name, files.length));
     } catch (e) {
       // A three-way apply that left conflicts exits non-zero; the files are there to resolve.
       this.fail(threeWay ? localize("The patch was applied to {0} with conflicts: {1}. Resolve them, then commit.", repo.name, gitMessage(e))

@@ -261,6 +261,18 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
     assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "The patch does not apply cleanly to acme-api.");
     assert.strictEqual(git(["status", "--porcelain"]), "");
+    // From the Command Palette, no repository given: the patch's files say which one (only acme-api has upload.go).
+    fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// patched\n");
+    const diff = git(["diff", "--", "upload.go"]) + "\n";
+    git(["checkout", "--", "upload.go"]);
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", diff);
+    const asked = await vscode.commands.executeCommand<number>("linyra._itest.asked");
+    await answer("From Clipboard");
+    await vscode.commands.executeCommand("linyra.applyPatch");
+    assert.strictEqual(await vscode.commands.executeCommand<number>("linyra._itest.asked"), asked + 1, "asked only where the patch comes from");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied the patch to acme-api (1 file).");
+    assert.match(fs.readFileSync(path.join(root, "upload.go"), "utf8"), /patched/);
+    git(["checkout", "--", "upload.go"]);
     await vscode.commands.executeCommand("linyra._itest.setClipboard", "not a patch");
     await answer("From Clipboard");
     await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
