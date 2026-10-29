@@ -190,7 +190,7 @@ export function pick(ids: readonly string[], s: Selection, id: string, mode: "on
 }
 
 /** The selection with only the rows still shown; the focus, if its row went, goes to its nearest shown parent. */
-export function keepShown(s: Selection, shown: ReadonlySet<string>, parentsOfFocus: readonly string[] = []): Selection {
+export function keepShown(s: Selection, shown: { has(id: string): boolean }, parentsOfFocus: readonly string[] = []): Selection {
   const selected = new Set([...s.selected].filter((id) => shown.has(id)));
   const focus = s.focus !== undefined && shown.has(s.focus) ? s.focus : parentsOfFocus.find((id) => shown.has(id));
   return { selected, focus, anchor: s.anchor !== undefined && shown.has(s.anchor) ? s.anchor : undefined };

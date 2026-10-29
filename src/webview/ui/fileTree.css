@@ -1,0 +1,60 @@
+/* One tree of changed files (ui/fileTree.ts), the same in the Changes view and Compare's sides,
+   drawn as VS Code's own trees are: hover, selection (active while the tree has the focus), the
+   focused row's outline, and in high contrast the dashed hover and dotted selection outlines.
+   Theme variables only. The tree is the scroll container; its rows sit absolutely in a sizer as
+   tall as all of them, so only the rows on screen exist; the tree and each row contain their own
+   layout and paint, so a row drawn again lays out and paints only itself. */
+.ftree { position: relative; overflow: auto; outline: none; user-select: none; container-type: inline-size; contain: strict; }
+.ftree-sizer { position: relative; }
+/* No outline around the whole tree: the focused row's outline says where the focus is. An empty
+   tree has no row to outline, so it shows the frame. */
+.ftree:focus-visible { outline: none; }
+.ftree.ftree-empty:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+.ftree-row { position: absolute; left: 0; right: 0; height: 25px; box-sizing: border-box; contain: layout paint style; display: flex; align-items: center; gap: 6px; min-width: 0; padding-right: 12px; white-space: nowrap; cursor: default; }
+.ftree-row:hover { background: var(--vscode-list-hoverBackground); }
+.ftree-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
+.ftree:focus .ftree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .ftree-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .ftree-row.selected { outline: 1px dotted var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
+.ftree:focus .ftree-row.focused { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
+
+/* The twisty: VS Code's chevron, turned down while the branch is open. */
+.ftree-twisty { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: inherit; }
+.ftree-twisty svg { width: 16px; height: 16px; }
+.ftree-row[aria-expanded="true"] .ftree-twisty svg { transform: rotate(90deg); }
+.ftree-icon { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); font-size: 10px; font-weight: 600; font-family: var(--vscode-editor-font-family); }
+.ftree-icon svg { width: 16px; height: 16px; }
+.ftree-type-js, .ftree-type-json { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
+.ftree-type-ts, .ftree-type-css { color: var(--vscode-terminal-ansiBlue, var(--vscode-charts-blue)); }
+.ftree-type-vue { color: var(--vscode-terminal-ansiGreen, var(--vscode-charts-green)); }
+.ftree-type-html { color: var(--vscode-terminal-ansiRed, var(--vscode-charts-red)); }
+
+/* The name, then a rename's old path (it takes only the room left: the name gives way last), then the muted end: note, + −, description. */
+.ftree-label { flex: 0 1 auto; min-width: 32px; overflow: hidden; text-overflow: ellipsis; }
+.ftree-link { color: var(--vscode-textLink-foreground); }
+.ftree-old-path { flex: 1 3 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.ftree-end { flex: 0 1 auto; min-width: 0; max-width: 65%; margin-left: auto; display: inline-flex; align-items: center; justify-content: flex-end; gap: 7px; overflow: hidden; font-size: 11px; font-variant-numeric: tabular-nums; }
+.ftree-note, .ftree-description { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); }
+/* Lines added and deleted, in Source Control's add and delete colors (ui/counts.css). */
+.ftree-end .line-counts { flex: none; gap: 7px; font-size: inherit; }
+/* The status letter: the shared one (ui/fileStatus.css), in its column at the row's end. */
+.ftree-row .ftree-status { flex: 0 0 14px; width: 14px; }
+
+/* A row's change colors its name, as Source Control's decorations do. */
+.ftree-row.status-A, .ftree-row.status-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+.ftree-row.status-M, .ftree-row.status-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
+.ftree-row.status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
+.ftree-row.status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
+/* Compare: already on both (the whole row dimmed, its counts and letter too), or a merge would conflict here. */
+.ftree-row.same { color: var(--vscode-disabledForeground); }
+.ftree-row.conflict { color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-list-warningForeground)); }
+.ftree-row.same :is(.line-counts > span, .file-status, .ftree-old-path, .ftree-note) { color: inherit; }
+/* A selected row's text is the selection's color, as a VS Code list draws it. */
+.ftree-row.selected :is(.ftree-label, .ftree-link, .ftree-old-path, .ftree-note, .ftree-description, .line-counts > span, .file-status) { color: inherit; }
+
+/* A narrow tree: less room between the parts. */
+@container (max-width: 320px) {
+  .ftree-row { gap: 4px; padding-right: 8px; }
+  .ftree-old-path { font-size: 11px; }
+}
