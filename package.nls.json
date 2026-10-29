@@ -149,5 +149,7 @@
   "command.linyra.ai.resolveConflicts.title": "Resolve Conflicts with AI…",
   "command.linyra.ai.explainConflicts.title": "Explain Conflicts with AI",
   "command.linyra.ai.ask.title": "Ask AI…",
-  "setting.linyra.ai.commitMessageInstructions.description": "Your own rules for AI commit messages (Generate Commit Message with AI), for example a language, a ticket prefix or Conventional Commits. They win over Linyra's defaults."
+  "setting.linyra.ai.commitMessageInstructions.description": "Your own rules for AI commit messages (Generate Commit Message with AI), for example a language, a ticket prefix or Conventional Commits. They win over Linyra's defaults.",
+  "command.linyra.folderHistory.title": "Folder History",
+  "command.linyra.historyBlame.title": "Blame at This Revision"
 }

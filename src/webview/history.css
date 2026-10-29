@@ -1,0 +1,91 @@
+/*
+ * File History (plan 3.D). Theme variables only (CLAUDE.md constraint 2): the chip in place of the
+ * Commits | Uncommitted switch, the file's repository marked in the Repo List, a strip-only
+ * repository column, each row's change to the file, and the dashed uncommitted row on top.
+ */
+
+/* ── Header: [⟲ src/client.ts · acme-web ×] where the switch is ─────────── */
+.history-chip {
+  order: 1; display: inline-flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; max-width: min(100%, 52ch);
+  box-sizing: border-box; height: 26px; padding: 0 2px 0 8px; border-radius: 4px;
+  border: 1px solid var(--vscode-inputOption-activeBorder, transparent);
+  background: var(--vscode-inputOption-activeBackground);
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
+.history-chip-icon { flex: none; }
+.history-path { display: inline-flex; min-width: 0; overflow: hidden; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
+.history-dir { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: 0.8; }
+.history-base { flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.history-sep { flex: none; opacity: 0.8; }
+.history-repo { display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-repo::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.history-close { flex: none; width: 22px; height: 22px; color: inherit; }
+/* In File History the chip replaces the switch; Group by Repository has nothing to group. */
+.app.history .log-header > :is(.switch, .work-totals) { display: none; }
+.app.history #toolbar-repos { display: none; }
+body.vscode-high-contrast .history-chip { background: transparent; border-color: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+body.vscode-high-contrast .history-repo::before { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* ── Repo List: inert, at full strength, the file's repository marked ───── */
+.app.history .repo-row.history-repo-row { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
+.app.history .repo-row.history-repo-row .repo-name { font-weight: 600; }
+body.vscode-high-contrast .app.history .repo-row.history-repo-row { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+
+/* ── Rows: one repository, so its column is only the strip; the file's change before the author ── */
+.app.history .row, .app.history .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 14ch minmax(48px, 10ch) 8ch; }
+.app.history .list.hash-column .row,
+.app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 14ch 8.5ch minmax(48px, 10ch) 8ch; }
+.app.history .list-pane:not(:has(> .list.hash-column)) > .history-work .hash { display: none; }
+.app.history .row .repo-band .repo-label, .app.history .history-work .repo-label { display: none; }
+/* Narrow: no author or hash, as the Log's own narrow rows (both the viewport and the Log's width);
+   narrower still, the letter alone, so the subject keeps its room. */
+@media (max-width: 720px) {
+  .app.history :is(.row, .history-work) :is(.author, .hash) { display: none; }
+  .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
+  .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 11ch 8ch; }
+}
+@container (max-width: 720px) {
+  .app.history :is(.row, .history-work) :is(.author, .hash) { display: none; }
+  .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
+  .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 11ch 8ch; }
+  .history-change { gap: 4px; }
+}
+@container (max-width: 440px) {
+  .app.history .row, .app.history .list.hash-column .row, .app.history .history-work,
+  .app.history .list-pane:has(> .list.hash-column) > .history-work { grid-template-columns: 4px var(--graph-width, 32px) minmax(0, 1fr) 2ch 8ch; }
+  .history-change :is(.line-counts, .history-binary), .history-work-tag { display: none; }
+}
+
+.history-change { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.history-status { flex: none; width: 1.4ch; text-align: center; font-weight: 600; font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
+.history-status.status-A, .history-status.status-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+.history-status.status-M, .history-status.status-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
+.history-status.status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
+.history-status.status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
+.history-binary { color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+.history-from { color: var(--vscode-descriptionForeground); }
+/* On a selected row the letter keeps the row's text color, as the line counts do (counts.css). */
+[aria-selected="true"] .history-status, [aria-selected="true"] .history-from { color: inherit; }
+
+/* ── The uncommitted row: above the commits, its node dashed ─────────────── */
+/* The list pane stacks the list, the Uncommitted side and the empty state in one cell; in File
+   History the uncommitted row takes a row of its own above them. */
+.app.history .list-pane { grid-template-rows: auto minmax(0, 1fr); }
+.app.history .list-pane > * { grid-area: 2 / 1; }
+.app.history .list-pane > .history-work { grid-area: 1 / 1; }
+/* Both reserve the scrollbar's gutter, so the uncommitted row's columns line up with the list's. */
+.app.history .list, .app.history .history-work { scrollbar-gutter: stable; }
+.history-work {
+  display: grid; align-items: center; column-gap: 10px; height: var(--row-height); padding: 0 var(--pad-x); overflow: hidden;
+  cursor: pointer; user-select: none; border-bottom: 1px dashed var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+.history-work:hover { background: var(--vscode-list-hoverBackground); }
+.history-work:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.history-work-graph { display: block; align-self: stretch; overflow: hidden; }
+.history-work-node { fill: var(--vscode-panel-background, var(--vscode-editor-background)); stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 2 1.6; }
+.history-work-edge { fill: none; stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 2 2; opacity: 0.8; }
+.history-work-subject { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.history-work-subject .subject { flex: 0 1 auto; min-width: 0; font-style: italic; }
+/* Short of room, the tag gives way before "Uncommitted changes" does. */
+.history-work-tag { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+body.vscode-high-contrast .history-work:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }

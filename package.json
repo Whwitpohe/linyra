@@ -797,6 +797,17 @@
         "title": "%command.linyra.ai.ask.title%",
         "category": "Linyra",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "linyra.folderHistory",
+        "title": "%command.linyra.folderHistory.title%",
+        "category": "Linyra",
+        "icon": "$(history)"
+      },
+      {
+        "command": "linyra.historyBlame",
+        "title": "%command.linyra.historyBlame.title%",
+        "category": "Linyra"
       }
     ],
     "menus": {
@@ -962,11 +973,6 @@
           "group": "2_sync@1"
         },
         {
-          "command": "linyra.fileHistory",
-          "when": "view == linyra.commit && viewItem == commitFile.changed",
-          "group": "3_history@1"
-        },
-        {
           "command": "linyra.repoOpenFolder",
           "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
           "group": "6_open@1"
@@ -1005,6 +1011,21 @@
           "command": "linyra.ai.explainCommit",
           "when": "view == linyra.changes && viewItem == commit",
           "group": "5_ai@1"
+        },
+        {
+          "command": "linyra.fileHistory",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\./",
+          "group": "3_history@1"
+        },
+        {
+          "command": "linyra.folderHistory",
+          "when": "view == linyra.changes && viewItem =~ /^folder/",
+          "group": "2_history@2"
+        },
+        {
+          "command": "linyra.folderHistory",
+          "when": "view == linyra.commit && viewItem =~ /^commitFolder/",
+          "group": "3_history@2"
         }
       ],
       "commandPalette": [
@@ -1430,6 +1451,14 @@
         },
         {
           "command": "linyra.ai.explainBranch",
+          "when": "false"
+        },
+        {
+          "command": "linyra.folderHistory",
+          "when": "false"
+        },
+        {
+          "command": "linyra.historyBlame",
           "when": "false"
         }
       ],
@@ -2143,6 +2172,16 @@
           "command": "linyra.ai.explainConflicts",
           "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile.*.conflict$/",
           "group": "0_open@4"
+        },
+        {
+          "command": "linyra.historyBlame",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'historyCommit' && !historyFileDeleted",
+          "group": "0_commit@7"
+        },
+        {
+          "command": "linyra.folderHistory",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder/",
+          "group": "2_history@2"
         }
       ]
     },

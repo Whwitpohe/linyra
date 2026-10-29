@@ -33,14 +33,57 @@ export function countRecords(stdout: string): number {
 }
 
 /**
- * File history: RS *starts* each record, because --name-status output follows
- * the format: RS <fields> NUL "\n" <STATUS> NUL <path> NUL [<new path> NUL].
+ * File history: RS *starts* each record, because the diff output follows the format:
+ * RS <fields> NUL "\n" then, with --raw --numstat -z, each change twice —
+ * ":<modes> <blobs> <STATUS>" NUL <path> NUL [<new path> NUL], then
+ * "<added>\t<deleted>\t<path>" NUL (a rename: "<added>\t<deleted>\t" NUL <old> NUL <new> NUL).
+ * The older --name-status shape ("<STATUS>" NUL <path> NUL …) parses too.
  */
 export const HISTORY_FORMAT = "--format=%x1e%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x00refs:%D";
 
 const HISTORY_STATUSES = new Set(["A", "M", "D", "R", "C", "T"]);
 
-/** One file's commits (git log --follow --name-status -z), each with that file's path at the time. */
+interface HistoryEntry { path: string; oldPath?: string; status: ChangeStatus }
+
+/**
+ * A record's changes (after its fields) and each path's line counts. undefined when the record
+ * was cut off inside its first change (a killed process).
+ */
+function historyChanges(t: readonly string[], from: number): { entries: HistoryEntry[]; lines: Map<string, { added: number | null; deleted: number | null }> } | undefined {
+  const entries: HistoryEntry[] = [];
+  const lines = new Map<string, { added: number | null; deleted: number | null }>();
+  const count = (s: string) => (s === "-" ? null : Number(s));
+  for (let i = from; i < t.length;) {
+    const token = t[i].replace(/^\n+/, "");
+    // --raw: ":100644 100644 <blob> <blob> R086"; --name-status: "R086".
+    const raw = token.startsWith(":") ? token.slice(token.lastIndexOf(" ") + 1) : /^[AMDRCT]\d*$/.test(token) ? token : undefined;
+    const letter = raw?.charAt(0);
+    if (letter && HISTORY_STATUSES.has(letter)) {
+      const status = letter as ChangeStatus;
+      const two = status === "R" || status === "C";
+      const path = t[i + (two ? 2 : 1)];
+      if (path === undefined || path === "") return entries.length ? { entries, lines } : undefined; // truncated
+      entries.push(two ? { path, oldPath: t[i + 1], status } : { path, status });
+      i += two ? 3 : 2;
+      continue;
+    }
+    const numstat = /^(-|\d+)\t(-|\d+)\t([\s\S]*)$/.exec(token);
+    if (numstat) {
+      // A rename names no path inline: its old and new names follow.
+      const path = numstat[3] === "" ? t[i + 2] : numstat[3];
+      if (path) lines.set(path, { added: count(numstat[1]), deleted: count(numstat[2]) });
+      i += numstat[3] === "" ? 3 : 1;
+      continue;
+    }
+    i++;
+  }
+  return { entries, lines };
+}
+
+/**
+ * One file's commits (git log --raw --numstat -z -M over every name it had), each with that
+ * file's path at the time, its status letter and its lines added and deleted (null: binary).
+ */
 export function parseHistory(stdout: string, repoId: string, currentPath: string): Commit[] {
   const commits: Commit[] = [];
   for (const record of stdout.split("\x1e").slice(1)) {
@@ -50,14 +93,14 @@ export function parseHistory(stdout: string, repoId: string, currentPath: string
     const time = Number(ct);
     if (!isSha(sha) || !Number.isInteger(time)) continue;
     const offset = t[6]?.startsWith("refs:") ? 7 : 6;
-    const letter = (t[offset] ?? "").replace(/^\n+/, "").charAt(0);
+    const changes = historyChanges(t, offset);
+    if (!changes) continue;
+    // A merge shows no diff: the file keeps the name the next older row will give it.
     let file: NonNullable<Commit["file"]> = { path: commits.at(-1)?.file?.oldPath ?? commits.at(-1)?.file?.path ?? currentPath };
-    if (HISTORY_STATUSES.has(letter)) {
-      const status = letter as ChangeStatus;
-      const twoPaths = status === "R" || status === "C";
-      const path = t[offset + (twoPaths ? 2 : 1)];
-      if (path === undefined || path === "") continue; // truncated
-      file = twoPaths ? { path, oldPath: t[offset + 1], status } : { path, status };
+    const first = changes.entries[0];
+    if (first) {
+      const lines = changes.lines.get(first.path);
+      file = { ...first, ...(lines ? lines : {}) };
     }
     commits.push({ repoId, sha, time, author, email, subject, parents: parents ? parents.split(" ") : [], file,
       ...(offset === 7 ? { refs: parseDecorations(t[6].slice(5)) } : {}) });

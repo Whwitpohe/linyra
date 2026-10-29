@@ -188,7 +188,12 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(h.body, "No commits to src/client.ts in the last 24 hours.");
   assert.strictEqual(h.action?.id, "allTime");
   assert.strictEqual(emptyState({ repoCount: 3, filter: { ...ALL, text: "zzz" }, history: "a.ts" }).body, "No commit to a.ts contains “zzz”.");
-  console.log("ok - file history has its own empty state");
+  assert.strictEqual(emptyState({ repoCount: 3, filter: { ...ALL, authors: ["rin"] }, history: "a.ts" }).action?.id, "clearAuthor");
+  const branches = emptyState({ repoCount: 3, filter: { ...ALL, branches: ["origin/release-1.4"] }, history: "a.ts" });
+  assert.deepStrictEqual([branches.body, branches.action?.id], ["No commit on the selected branches touches a.ts.", "allBranches"]);
+  const never = emptyState({ repoCount: 3, filter: ALL, history: "src/new.ts" });
+  assert.deepStrictEqual([never.title, never.body, never.action], ["Not committed yet", "Its history appears here once it is committed.", undefined], "nothing filtered and nothing found: never committed");
+  console.log("ok - file history has its own empty states, never committed among them");
 }
 {
   assert.strictEqual(branchUseLabel({ branches: ["origin/prod"], found: 52, missing: 16 }), "origin/prod in 52 repos · skipped 16 without selected branches");

@@ -149,5 +149,7 @@
   "command.linyra.ai.resolveConflicts.title": "用 AI 解决冲突…",
   "command.linyra.ai.explainConflicts.title": "用 AI 解释冲突",
   "command.linyra.ai.ask.title": "问 AI…",
-  "setting.linyra.ai.commitMessageInstructions.description": "AI 生成提交说明（用 AI 生成提交说明）时遵循的自定义要求，例如语言、工单前缀或 Conventional Commits。它们优先于 Linyra 的默认要求。"
+  "setting.linyra.ai.commitMessageInstructions.description": "AI 生成提交说明（用 AI 生成提交说明）时遵循的自定义要求，例如语言、工单前缀或 Conventional Commits。它们优先于 Linyra 的默认要求。",
+  "command.linyra.folderHistory.title": "文件夹历史",
+  "command.linyra.historyBlame.title": "在此版本查看 Blame"
 }

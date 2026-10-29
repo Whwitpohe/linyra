@@ -7,7 +7,8 @@ import type { ResolvedProfile } from "../profileModel";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
-import type { HostMessage, WebviewMessage, WorkRow } from "../protocol";
+import type { HistoryWork, HostMessage, WebviewMessage, WorkRow } from "../protocol";
+import { HistoryChip, HistoryWorkRow, type HistoryTarget } from "./history";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
 import { byId } from "./dom";
 import { EmptyView } from "./empty";
@@ -18,7 +19,7 @@ import { RepoPane } from "./repoPane";
 import { applyGesture, keepListed, SELECTION_LIMIT, type Selection } from "./selectionModel";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, type EmptyAction } from "./view";
+import { accentOf, assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, type EmptyAction } from "./view";
 import { renderWorkTotals, WorkList } from "./workList";
 import { AvatarFeed } from "./avatars";
 import { LogToolbar, type ViewOptions } from "./toolbar";
@@ -37,7 +38,7 @@ const state = {
   repos: [] as Repo[],
   profiles: [] as ResolvedProfile[],
   filter: DEFAULT_FILTER as FilterState,
-  history: null as { repoName: string; path: string } | null,
+  history: null as HistoryTarget | null,
   rows: [] as Commit[],
   failures: [] as RepoFailure[],
   dismissed: false,
@@ -122,12 +123,10 @@ for (const el of Object.values(tabs)) {
     setMode(mode === "commits" ? "uncommitted" : "commits", true);
   });
 }
-const modebar = byId("modebar");
-const historyPath = byId("history-path");
-const modeHistory = byId("mode-history");
-const exitHistory = () => post({ type: "exitHistory" });
-byId("mode-all").addEventListener("click", exitHistory);
-byId("history-close").addEventListener("click", exitHistory);
+// File History: its chip in place of the switch, and the file's uncommitted row above its commits.
+const historyChip = new HistoryChip(() => post({ type: "exitHistory" }));
+const historyWorkRow = new HistoryWorkRow(byId("history-work"), () => post({ type: "openHistoryWork" }));
+let historyWork: HistoryWork | null = null;
 const splitter = byId("splitter");
 const paneWidth = new PaneWidth();
 const workspace = byId("workspace");
@@ -246,12 +245,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       // Only when the host changed the switch: a late init must not undo the user's click.
       if (m.logMode !== undefined && m.logMode !== mode) setMode(m.logMode);
       state.history = m.history;
-      modebar.hidden = !m.history;
-      modeHistory.hidden = !m.history;
+      if (!m.history) historyWork = null;
       appEl.classList.toggle("history", !!m.history);
       // Locked during File History: out of the keyboard order too, not only the mouse's.
       byId("repo-pane").toggleAttribute("inert", !!m.history);
-      historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       changesWidth = m.layout.changesPaneWidth ?? changesWidth;
       changesHeight = m.layout.changesPaneHeight ?? changesHeight;
@@ -265,6 +262,9 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     }
     case "offHead":
       offHead = new Set(m.keys);
+      break;
+    case "historyWork":
+      historyWork = m.work;
       break;
     case "uncommitted":
       work = { known: m.known, totals: m.totals, rows: m.rows };
@@ -438,6 +438,7 @@ function runEmptyAction(action: EmptyAction): void {
     case "clearAuthor": setFilter({ ...f, author: "", mine: false, authors: undefined }); return;
     case "allTime": setFilter({ ...f, date: "all", from: undefined, to: undefined }); return;
     case "clearPath": setFilter({ ...f, path: undefined }); return;
+    case "allBranches": setFilter({ ...f, branch: "", branches: undefined }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }
@@ -461,6 +462,8 @@ function render(): void {
   workCount.hidden = count === "";
   tabs.uncommitted.setAttribute("aria-label", count ? localize("Uncommitted, {0} {1}", count, localize(count === "1" ? "file" : "files")) : localize("Uncommitted"));
   renderWorkTotals(workTotals, mode === "uncommitted" ? work.rows : [], work.totals);
+  const historyAccent = state.history ? accentOf(accents, state.history.repoId) : 0;
+  historyChip.update(state.history, historyAccent);
   if (mode === "uncommitted") {
     const next = separateAdjacentAccents(work.rows, accents, repoOrder);
     if (next !== accents) {
@@ -478,6 +481,7 @@ function render(): void {
     selected: state.selected, selectedKeys, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
+  historyWorkRow.update(state.history ? historyWork : null, historyAccent, listEl.style.getPropertyValue("--graph-width"));
   empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;

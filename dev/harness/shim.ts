@@ -13,6 +13,7 @@ import { mockWork } from "./mock/worktree";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
 import { answerAvatars } from "./mock/avatars";
 import { hoverReply, mockRefs } from "./mock/hover";
+import { historyRows, historyWork } from "./mock/history";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
@@ -34,10 +35,11 @@ const latency = scenario === "slow" ? 1500 : 25;
 const repos = mockRepos(scenario);
 const all = mockRefs(mockCommits(repos, scenario), scenario);
 // ?date=all: the whole history (dev/perf/scrollBench.mjs scrolls through it).
-let filter: FilterState = params.get("date") === "all" ? { ...DEFAULT_FILTER, date: "all" } : DEFAULT_FILTER;
+// File History (?history=) shows all time, as the host sets it.
+let filter: FilterState = params.get("date") === "all" || params.get("history") ? { ...DEFAULT_FILTER, date: "all" } : DEFAULT_FILTER;
 let layout: Layout = { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off", ...JSON.parse(sessionStorage.getItem("linyra-layout") ?? "{}") };
 const toolbarState: ToolbarState = { groupByRepo: layout.groupByRepo, compareShown: false, fetching: false, anyBehind: true };
-let history: { repoName: string; path: string } | null = params.get("history") ? { repoName: "acme-web", path: params.get("history")! } : null;
+let history: { repoId: string; repoName: string; path: string } | null = params.get("history") ? { repoId: "/work/acme-web", repoName: "acme-web", path: params.get("history")! } : null;
 let matched: Commit[] = [];
 let offset = 0;
 
@@ -77,7 +79,7 @@ function page(append: boolean): void {
 
 function reload(): void {
   send({ type: "loading" }, 0);
-  matched = matching(filter);
+  matched = history ? historyRows(all, history, filter) : matching(filter);
   offset = 0;
   page(false);
 }
@@ -137,9 +139,9 @@ function handle(m: WebviewMessage): void {
       if (m.action === "select" && m.repoId && m.ref) { filter = { ...filter, repoIds: [m.repoId], branch: m.ref.replace(/^refs\/(heads|remotes)\//, "") }; send({ type: "init", repos, filter, hasMe: true, layout, history: null, profiles: [] }, 0); reload(); }
       return;
     }
-    case "ready": send({ type: "init", repos, filter, hasMe: true, layout, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, layout, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); send({ type: "historyWork", work: historyWork(history, params) }, 0); reload(); return;
     case "logMode": logMode = m.mode; console.info(`[harness] ${m.type}`, m); return;
-    case "selectWork": console.info(`[harness] ${m.type}`, m); return;
+    case "selectWork": case "openHistoryWork": case "selectMany": console.info(`[harness] ${m.type}`, m); return;
     case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout, history, logMode, profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); reload(); return;
     case "layout": layout = { ...layout, ...m }; sessionStorage.setItem("linyra-layout", JSON.stringify(layout)); return;
     case "filter": filter = m.filter; reload(); return;

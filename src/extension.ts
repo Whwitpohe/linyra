@@ -200,6 +200,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.changes.removeView", () => log.showChanges(false)),
     vscode.window.registerFileDecorationProvider(changes),
     vscode.commands.registerCommand("linyra.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
+    // A folder of the Changes view or the Commit side bar: the Log's Path filter for it.
+    vscode.commands.registerCommand("linyra.folderHistory", (arg?: unknown) => log.folderHistory(fileRow(arg))),
+    // A File History row's right-click: the file at that commit, with the Log's blame.
+    vscode.commands.registerCommand("linyra.historyBlame", (arg?: unknown) => log.blameAt(arg)),
     vscode.commands.registerCommand("linyra.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
     vscode.commands.registerCommand("linyra.copyFilePath", async (arg?: unknown) => {
       const f = fileRow(arg);

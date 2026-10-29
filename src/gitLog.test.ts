@@ -95,6 +95,37 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
   console.log("ok - parseHistory reads each commit's path and status, following renames");
 }
 
+// ── File history with --raw --numstat: the status letter and this file's lines per commit ─
+// Byte shape from git 2.55: RS <fields> NUL "\n" ":<modes> <blobs> <STATUS>" NUL <path> NUL
+// [<new> NUL] "<added>\t<deleted>\t<path>" NUL; a rename's numstat is "<a>\t<d>\t" NUL <old> NUL <new> NUL.
+{
+  const head = (sha: string, ct: number, subject: string, parents = "") => "\x1e" + [sha, String(ct), "dana", "dana@example.com", subject, parents, "refs:"].join("\0") + "\0\n";
+  const raw = (status: string, ...paths: string[]) => `:100644 100644 1111111 2222222 ${status}\0${paths.join("\0")}\0`;
+  const out =
+    head(A, 400, "edit new") + raw("M", "src/new.ts") + "12\t3\tsrc/new.ts\0" +
+    head(B, 300, "rename") + raw("R086", "src/old.ts", "src/new.ts") + "2\t1\t\0src/old.ts\0src/new.ts\0" +
+    head(C, 250, "merge", `${A} ${B}`) +
+    head("d".repeat(40), 200, "logo", "") + raw("M", "src/old.ts") + "-\t-\tsrc/old.ts\0" +
+    head("e".repeat(40), 100, "add", "") + raw("A", "src/old.ts") + "40\t0\tsrc/old.ts\0";
+  assert.deepStrictEqual(parseHistory(out, REPO, "src/new.ts").map((c) => [c.subject, c.file]), [
+    ["edit new", { path: "src/new.ts", status: "M", added: 12, deleted: 3 }],
+    ["rename", { path: "src/new.ts", oldPath: "src/old.ts", status: "R", added: 2, deleted: 1 }],
+    ["merge", { path: "src/old.ts" }],
+    ["logo", { path: "src/old.ts", status: "M", added: null, deleted: null }],
+    ["add", { path: "src/old.ts", status: "A", added: 40, deleted: 0 }],
+  ]);
+  // Both names in one commit (deleted, then added again, not paired as a rename): the first change, its own counts.
+  const twice = head(A, 9, "split") + raw("D", "a.ts") + raw("A", "b.ts") + "0\t5\ta.ts\0" + "7\t0\tb.ts\0";
+  assert.deepStrictEqual(parseHistory(twice, REPO, "b.ts")[0].file, { path: "a.ts", status: "D", added: 0, deleted: 5 });
+  // A name made of digits and tabs is still a path, not a count.
+  const odd = head(A, 9, "odd") + raw("M", "1\t2\tx") + "3\t4\t1\t2\tx\0";
+  assert.deepStrictEqual(parseHistory(odd, REPO, "1\t2\tx")[0].file, { path: "1\t2\tx", status: "M", added: 3, deleted: 4 });
+  // Killed while writing the counts: the row keeps its status, without lines.
+  const cut = head(A, 9, "cut") + raw("M", "a.ts") + "1";
+  assert.deepStrictEqual(parseHistory(cut, REPO, "a.ts")[0].file, { path: "a.ts", status: "M" });
+  console.log("ok - parseHistory reads each commit's status letter and the file's lines added and deleted");
+}
+
 {
   const fields = [A, "1", "dana", "dana@example.com", "feat: branch tip", B, "refs:HEAD -> refs/heads/develop, refs/remotes/origin/develop, tag: refs/tags/v1"];
   const refs = [{ kind: "head", name: "HEAD" }, { kind: "local", name: "develop", current: true }, { kind: "remote", name: "origin/develop" }, { kind: "tag", name: "v1" }];

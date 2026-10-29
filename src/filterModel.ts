@@ -192,10 +192,15 @@ export function pathspecOf(path: string): string {
  * One file's history with the Log's filters: every name the file has had is a
  * pathspec (see historyPathsArgs). No --follow: it cannot page with --skip, and
  * it stops following when the rename commit itself is filtered out.
+ *
+ * --raw gives each row its status letter (and a rename's old name), --numstat its lines added
+ * and deleted, in the same process. The line counts cost git a diff of the file per commit:
+ * measured 2026-10-29 (Windows, git 2.55, a page of 200), +12–37 ms on real files with 60–140
+ * commits, +100 ms (46 → 146 ms) on a 1,500-line file with 5,000 commits.
  */
 export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[] }): string[] {
   // Literal: a route folder like app/[id]/ is a name, not a glob matching app/i/.
-  return buildArgs(HISTORY_FORMAT, f, o, ["--name-status", "-z", "-M"], o.paths.map((p) => `:(literal)${p}`));
+  return buildArgs(HISTORY_FORMAT, f, o, ["--raw", "--numstat", "-z", "-M"], o.paths.map((p) => `:(literal)${p}`));
 }
 
 /** Unfiltered, unpaged --follow walk that only collects the names a file has had. */

@@ -76,16 +76,8 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 @keyframes toolbar-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .header-actions .fetching svg { animation: none; } }
 
-/* ── Mode bar (file history) ─────────────────────────────────────────── */
-.modebar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
-.mode { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; }
-button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
-.mode.active { background: var(--vscode-inputOption-activeBackground); border-color: var(--vscode-inputOption-activeBorder, transparent); color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); min-width: 0; }
-.history-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
-.mode-close { width: 20px; height: 20px; margin-left: 2px; font-size: 14px; }
+/* File History: its chip, rows and uncommitted row are in history.css. */
 .was-path { color: var(--vscode-descriptionForeground); }
-/* A file lives in one repository: the pane is just context while viewing its history. */
-.app.history .repo-pane { opacity: 0.5; pointer-events: none; }
 
 /* ── Repositories pane ──────────────────────────────────────────────────── */
 /* minmax(0, 1fr): the column is the pane's width, never the search box's intrinsic size. */
