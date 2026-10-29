@@ -11,10 +11,13 @@ export function branchSheetReply(m: WebviewMessage, send: (m: HostMessage) => vo
   if (m.action === "across") {
     // Across repositories: acme-web has it checked out with 2 to push, acme-api 3 to pull, acme-libs not at all.
     const local = m.ref.startsWith("refs/heads/");
+    // ?across=fail: acme-libs could not be read; ?across=many: five more repositories without it.
+    const how = params.get("across");
     const rows = [
       { repoId: "/work/acme-web", repoName: "acme-web", has: true, current: local, upstream: local ? "origin/develop" : null, ahead: local ? 2 : 0, behind: 0, gone: false, time: NOW - 3600 },
       { repoId: "/work/acme-api", repoName: "acme-api", has: true, current: false, upstream: local ? "origin/develop" : null, ahead: 0, behind: local ? 3 : 0, gone: false, time: NOW - 7200 },
-      { repoId: "/work/acme-libs", repoName: "acme-libs", has: false },
+      how === "fail" ? { repoId: "/work/acme-libs", repoName: "acme-libs", has: false, unreadable: true } : { repoId: "/work/acme-libs", repoName: "acme-libs", has: false },
+      ...(how === "many" ? ["acme-docs", "acme-jobs", "acme-mobile", "acme-infra", "acme-tools"].map((name) => ({ repoId: `/work/${name}`, repoName: name, has: false })) : []),
     ];
     setTimeout(() => send({ type: "branchSheet", repoId: m.repoId, ref: m.ref, across: rows }), 60);
     return true;

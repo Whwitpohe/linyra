@@ -96,7 +96,7 @@ export function renderHtml(o: HtmlOptions): string {
     <main class="main">
       <section class="list-pane" aria-label="${escapeHtml(localize("Commits"))}">
         <div id="history-work" class="history-work" role="button" tabindex="0" hidden></div>
-        <div id="list" class="list" role="grid" aria-label="${escapeHtml(localize("Commits"))}" aria-rowcount="0" tabindex="0">
+        <div id="list" class="list" role="grid" aria-label="${escapeHtml(localize("Commits"))}" aria-rowcount="-1" tabindex="0">
           <div id="rows" class="rows" role="rowgroup"></div>
         </div>
         <div id="worklist" class="worklist" role="listbox" aria-label="${escapeHtml(localize("Repositories with uncommitted changes"))}" tabindex="0" hidden></div>

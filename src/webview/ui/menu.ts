@@ -18,7 +18,7 @@ export interface MenuOptions {
   id?: string;
 }
 
-let current: { el: HTMLElement; close: (focus: boolean) => void } | undefined;
+let current: { el: HTMLElement; close: (focus: boolean) => void; back: HTMLElement | undefined } | undefined;
 
 /** Whether a menu is open (and which). */
 export const openMenu = (): HTMLElement | undefined => current?.el;
@@ -28,10 +28,17 @@ export const closeMenu = (focus = false): void => current?.close(focus);
 
 /**
  * One popup menu at a time, as VS Code's own: ↑↓ Home End move, Enter or Space runs, Esc or a click
- * outside closes, and the focus goes back to the button that opened it. Under an element, or at a
- * point (a right-click). An item runs after the menu has closed, so it can move the focus itself.
+ * outside closes, and the focus goes back to the button that opened it (opened at a point: to what
+ * had it); Tab closes it and moves on from there. Under an element, or at a point (a right-click).
+ * An item runs after the menu has closed, so it can move the focus itself. The same menu (by `id`)
+ * shown again while open is built anew with the focus on the same item.
  */
 export function showMenu(at: HTMLElement | { x: number; y: number }, entries: readonly MenuEntry[], opts: MenuOptions): HTMLElement {
+  const again = opts.id !== undefined && current?.el.id === opts.id ? current : undefined;
+  const focused = again && again.el.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
+  const kept = focused ? { text: focused.textContent, index: [...again!.el.querySelectorAll("button")].indexOf(focused as HTMLButtonElement) } : undefined;
+  const active = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : undefined;
+  const back = again ? again.back : active;
   current?.close(false);
   const el = h("div", { class: "popup-menu", role: "menu", "aria-label": opts.label, ...(opts.id ? { id: opts.id } : {}) });
   const items: HTMLButtonElement[] = [];
@@ -56,7 +63,8 @@ export function showMenu(at: HTMLElement | { x: number; y: number }, entries: re
     const keys: Record<string, () => void> = {
       ArrowDown: () => move((_, i) => i + 1), ArrowUp: () => move((list, i) => (i < 0 ? list.length - 1 : i - 1)),
       Home: () => move(() => 0), End: () => move((list) => list.length - 1),
-      Escape: () => close(true), Tab: () => close(false),
+      // Tab moves on from the button that opened it, not from the start of the page.
+      Escape: () => close(true), Tab: () => close(true),
     };
     const key = keys[e.key];
     if (!key) return;
@@ -75,10 +83,10 @@ export function showMenu(at: HTMLElement | { x: number; y: number }, entries: re
     window.removeEventListener("resize", away);
     window.removeEventListener("blur", away);
     owner?.setAttribute("aria-expanded", "false");
-    if (focus) owner?.focus();
+    if (focus) (owner ?? back)?.focus();
   }
   document.body.append(el);
-  current = { el, close };
+  current = { el, close, back };
   // Placed once it has a size: under the anchor (or at the point), kept inside the window.
   const box = at instanceof HTMLElement ? at.getBoundingClientRect() : { left: at.x, right: at.x, bottom: at.y, top: at.y };
   const left = at instanceof HTMLElement && opts.align === "end" ? box.right - el.offsetWidth : box.left;
@@ -90,6 +98,12 @@ export function showMenu(at: HTMLElement | { x: number; y: number }, entries: re
   window.addEventListener("resize", away);
   window.addEventListener("blur", away);
   owner?.setAttribute("aria-expanded", "true");
-  (items.find((item) => item.getAttribute("aria-checked") === "true" && !item.disabled) ?? enabled()[0])?.focus();
+  // Built again: the item that had the focus (by its words, else its place). Else a menu that starts
+  // with a choice (Graph, Changes, Date) opens on what is chosen; any other (⋯) on its first item.
+  const list = enabled();
+  const same = kept && (list.find((item) => item.textContent === kept.text) ?? items[kept.index]);
+  const choices = list.findIndex((item) => item.getAttribute("role") !== "menuitemradio");
+  const chosen = list.slice(0, choices < 0 ? list.length : choices).find((item) => item.getAttribute("aria-checked") === "true");
+  ((same && !same.disabled ? same : undefined) ?? chosen ?? list[0])?.focus();
   return el;
 }

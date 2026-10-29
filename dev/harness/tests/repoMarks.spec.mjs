@@ -81,6 +81,9 @@ test("a stopped merge has its own row under the repository: what stopped, Resolv
   // Right under acme-libs, a level below it.
   const order = await page.locator("#repo-rows .repo-row").evaluateAll((rows) => rows.map((r) => r.querySelector(".repo-name")?.dataset.name ?? (r.classList.contains("op-row") ? "op" : "")));
   expect(order[order.indexOf("acme-libs") + 1]).toBe("op");
+  // Under the collapsed repository it is its neighbour (a collapsed item shows no children); opened, its child.
+  await expect(op).toHaveAttribute("aria-level", "1");
+  await page.locator("#repo-rows .repo-row", { has: page.locator('.repo-name[data-name="acme-libs"]') }).locator(".tree-twisty").click();
   await expect(op).toHaveAttribute("aria-level", "2");
   await expect(op).toHaveAttribute("aria-label", /Merge stopped · 2 files conflict\. Enter: Resolve Conflicts…/);
   expect(JSON.parse(await op.getAttribute("data-vscode-context"))).toMatchObject({ webviewSection: "repo", repoId: "/work/acme-libs", operation: "merge", conflicts: true });
@@ -88,8 +91,15 @@ test("a stopped merge has its own row under the repository: what stopped, Resolv
   const asked = () => page.evaluate(() => window.harnessMessages.filter((m) => m.type === "operation"));
   await op.locator(".op-action", { hasText: "Abort…" }).click();
   await expect.poll(async () => (await asked()).at(-1)).toEqual({ type: "operation", action: "abort", repoId: "/work/acme-libs" });
+  // A click on the row itself, or Space, only puts the cursor there: no step runs by accident.
+  await op.locator(".op-text").click();
+  await expect(op).toHaveClass(/active/);
+  await page.keyboard.press(" ");
+  await page.waitForTimeout(100);
+  expect((await asked()).length).toBe(1);
   // From the keyboard: the row is a tree item; Enter is its next step.
   await page.locator("#repo-rows").focus();
+  await page.keyboard.press("Home");
   const index = Number(await op.getAttribute("data-row"));
   for (let i = 0; i < index; i++) await page.keyboard.press("ArrowDown");
   await expect(op).toHaveClass(/active/);

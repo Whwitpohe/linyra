@@ -225,9 +225,13 @@ export interface AcrossRow {
   gone?: boolean;
   /** The tip's commit time (a remote branch's or a tag's only line). */
   time?: number;
+  /** Its read failed: whether it has the ref is not known (never shown as "Not in"). */
+  unreadable?: boolean;
 }
 
-export function acrossRow(repo: { id: string; name: string }, r: SheetRef | undefined): AcrossRow {
+/** A repository's row: `r` as read (undefined: it has no such ref), or `failed`: it could not be read. */
+export function acrossRow(repo: { id: string; name: string }, r: SheetRef | undefined, failed = false): AcrossRow {
+  if (failed) return { repoId: repo.id, repoName: repo.name, has: false, unreadable: true };
   if (!r) return { repoId: repo.id, repoName: repo.name, has: false };
   return { repoId: repo.id, repoName: repo.name, has: true, current: r.current, upstream: r.upstream, ahead: r.ahead, behind: r.behind, gone: r.gone, time: r.time };
 }
@@ -262,6 +266,12 @@ export function acrossText(kind: SheetKind, row: AcrossRow): string {
  * push · 1 diverged." (a remote branch or a tag: where it is, nothing more).
  */
 export function acrossSummary(kind: SheetKind, name: string, rows: readonly AcrossRow[]): string {
+  const failed = rows.filter((r) => r.unreadable).length;
+  const unread = failed === 0 ? "" : ` ${failed === 1 ? localize("1 repository could not be read.") : localize("{0} repositories could not be read.", failed)}`;
+  return summaryOf(kind, name, rows) + unread;
+}
+
+function summaryOf(kind: SheetKind, name: string, rows: readonly AcrossRow[]): string {
   const have = rows.filter((r) => r.has);
   if (have.length === 0) return localize("{0} is in no other ticked repository.", name);
   const where = localize("{0} is in {1} of {2} repositories", name, have.length, rows.length);

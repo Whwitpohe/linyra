@@ -117,13 +117,14 @@ export class Ask {
 
   /**
    * One input box with an on/off button in its title (Stash Changes…'s "Include new files"); the
-   * prompt line says the switch's state in words. `extra`: one more button (✨ AI), run with the box.
+   * prompt line says the switch's state in words. `extra`: one more button (✨ AI), run with the box
+   * and a signal that stops it when the box closes.
    * The text and the switch, or undefined when cancelled. Testing: the text, or "text|toggle" (flipped).
    */
   async inputWithToggle(o: {
     title: string; prompt: (on: boolean) => string; placeHolder: string; value: string;
     toggle: { on: boolean; tooltip: (on: boolean) => string; icon: (on: boolean) => string };
-    extra?: { icon: string; tooltip: string; run(box: vscode.InputBox, on: boolean): Promise<void> };
+    extra?: { icon: string; tooltip: string; run(box: vscode.InputBox, on: boolean, signal: AbortSignal): Promise<void> };
   }): Promise<{ value: string; on: boolean } | undefined> {
     this.asked++;
     if (this.testing && this.answers.length > 0) {
@@ -143,14 +144,15 @@ export class Ask {
     box.value = o.value;
     box.ignoreFocusOut = true;
     paint();
+    const closed = new AbortController();
     return new Promise((resolve) => {
       let answer: { value: string; on: boolean } | undefined;
       box.onDidAccept(() => { if (box.busy) return; answer = { value: box.value, on }; box.hide(); });
       box.onDidTriggerButton(async (b) => {
         if (b === toggleButton) { on = !on; paint(); return; }
-        if (b === extra && o.extra && !box.busy) await o.extra.run(box, on);
+        if (b === extra && o.extra && !box.busy) await o.extra.run(box, on, closed.signal);
       });
-      box.onDidHide(() => { box.dispose(); resolve(answer); });
+      box.onDidHide(() => { closed.abort(); box.dispose(); resolve(answer); });
       box.show();
     });
   }

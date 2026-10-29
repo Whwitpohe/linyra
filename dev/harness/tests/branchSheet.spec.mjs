@@ -3,13 +3,13 @@
 // and its look in every theme and in a narrow Changes view.
 import { expect, test } from "@playwright/test";
 
-const open = async (page, { theme = "dark", sheet = "", ai = "", width = 1500, height = 760, layout } = {}) => {
+const open = async (page, { theme = "dark", sheet = "", ai = "", across = "", width = 1500, height = 760, layout } = {}) => {
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.setViewportSize({ width, height });
   if (layout) await page.addInitScript((l) => sessionStorage.setItem("linyra-layout", JSON.stringify(l)), layout);
-  await page.goto(`/?theme=${theme}&avatars=off${sheet ? `&sheet=${sheet}` : ""}${ai ? `&ai=${ai}` : ""}`);
+  await page.goto(`/?theme=${theme}&avatars=off${sheet ? `&sheet=${sheet}` : ""}${ai ? `&ai=${ai}` : ""}${across ? `&across=${across}` : ""}`);
   await expect(page.locator("#rows .row").first()).toBeVisible();
   return errors;
 };
@@ -223,6 +223,44 @@ test("a narrow Changes view: buttons wrap, nothing spills out of the sheet", asy
   await expect(sheet(page)).toBeVisible();
   const spill = await sheet(page).evaluate((el) => [...el.querySelectorAll("*")].filter((c) => c.getBoundingClientRect().right > el.getBoundingClientRect().right + 1).map((c) => c.className));
   expect(spill).toEqual([]);
+});
+
+test("Across repositories: a repository not read says so, never 'Not in'; from the keyboard the focus lands on what was read", async ({ page }) => {
+  const errors = await open(page, { across: "fail" });
+  await pill(page, "refs/heads/develop").click();
+  const across = card(page, "Across repositories");
+  const read = across.locator(".sheet-button", { hasText: "Show in All Repositories" });
+  await read.focus();
+  await page.keyboard.press("Enter");
+  // While reading it says so and keeps the focus.
+  await expect(across.locator('.sheet-button[aria-disabled="true"]')).toHaveText("Reading the ticked repositories…");
+  await expect(across.locator(".card-status")).toHaveText("develop is in 2 of 3 repositories: 1 checked out · 1 with commits to push · 1 with commits to pull. 1 repository could not be read.");
+  await expect(across.locator(".card-hint")).toHaveText(["Could not read acme-libs."]);
+  await expect(across.locator(".card-status")).toBeFocused();
+  expect((await sent(page)).filter((m) => m.action === "across")).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test("Across repositories: more than four without the branch open onto their names; read again, the sheet keeps what it showed", async ({ page }) => {
+  const errors = await open(page, { across: "many" });
+  // The sheet's data as the host sends it, to send it again (a branch moved: the sheet is read again).
+  await page.evaluate(() => { window.sheetData = []; addEventListener("message", (e) => { if (e.data?.type === "branchSheet" && (e.data.data || e.data.across)) window.sheetData.push(e.data); }); });
+  await pill(page, "refs/heads/develop").click();
+  const across = card(page, "Across repositories");
+  await across.locator(".sheet-button", { hasText: "Show in All Repositories" }).click();
+  const more = across.locator("details.across-more");
+  await expect(more.locator("summary")).toHaveText("Not in 6 other repositories.");
+  await expect(more.locator("p")).toBeHidden();
+  await more.locator("summary").click();
+  await expect(more.locator("p")).toHaveText("acme-libs, acme-docs, acme-jobs, acme-mobile, acme-infra, acme-tools");
+  await page.evaluate(() => window.postMessage(window.sheetData.findLast((m) => m.data), "*"));
+  await expect(across.locator(".across-row .across-name")).toHaveText(["acme-web", "acme-api"]);
+  await expect(across.locator(".sheet-button", { hasText: "Show in All Repositories" })).toHaveCount(0);
+  // Its new read arrives while a row has the focus: that row keeps it.
+  await across.locator(".across-row", { hasText: "acme-api" }).focus();
+  await page.evaluate(() => window.postMessage(window.sheetData.findLast((m) => m.across), "*"));
+  await expect(across.locator(".across-row", { hasText: "acme-api" })).toBeFocused();
+  expect(errors).toEqual([]);
 });
 
 test("Across repositories: read only when asked; each repository's state, the rest in one line, its actions; a row opens that repository's sheet", async ({ page }) => {

@@ -31,7 +31,7 @@ test("the cursor moves without redrawing a row", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("opening a repository redraws its row alone and inserts its branches; the rows below renumber", async ({ page }) => {
+test("opening a repository redraws its row (and its stopped merge's, now its child) alone and inserts its branches; the rows below renumber", async ({ page }) => {
   const errors = await open(page);
   const total = await page.locator("#repo-rows .repo-row").count();
   await tag(page);
@@ -42,9 +42,12 @@ test("opening a repository redraws its row alone and inserts its branches; the r
   await expect(page.locator("#repo-rows .branch-row").first()).toBeVisible();
   await expect(libs).toHaveAttribute("aria-expanded", "true");
   await expect(libs).not.toHaveAttribute("data-kept", "1");
-  expect(await kept(page), "every other repository kept its element").toBe(total - 1);
+  // acme-libs has a stopped merge: that row becomes the repository's child, so it is drawn again too.
+  await expect(page.locator("#repo-rows .op-row")).toHaveAttribute("aria-level", "2");
+  expect(await kept(page), "every other repository kept its element").toBe(total - 2);
   const added = await page.locator("#repo-rows .repo-row:not([data-kept])").count();
-  expect(Number(await below.getAttribute("data-row"))).toBe(before + added - 1);
+  // New elements: its branches, plus its own row and its stopped merge's drawn again.
+  expect(Number(await below.getAttribute("data-row"))).toBe(before + added - 2);
   // A click lands on the row its index names.
   await below.click();
   await expect(below).toHaveClass(/active/);

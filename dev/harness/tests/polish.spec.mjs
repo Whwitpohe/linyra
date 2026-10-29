@@ -210,6 +210,16 @@ test("Automatic layout: the changed files sit beside the Log while it keeps 520p
   }
 });
 
+test("Automatic layout follows the Repo List's divider: widened, it leaves the Log too little room, and the files go under it", async ({ page }) => {
+  await open(page, { width: 1200, height: 700 });
+  const workspace = page.locator(".workspace");
+  await expect(workspace).not.toHaveClass(/\bstacked\b/);
+  await page.locator("#splitter").focus();
+  for (let i = 0; i < 14; i++) await page.keyboard.press("ArrowRight");
+  await expect(workspace).toHaveClass(/\bstacked\b/);
+  expect(await page.locator("#list").evaluate((el) => el.clientWidth)).toBeGreaterThanOrEqual(520);
+});
+
 test("Automatic layout follows the panel: narrowed, the changed files move under the Log; widened, back beside it", async ({ page }) => {
   await open(page, { width: 1500, height: 700 });
   const workspace = page.locator(".workspace");

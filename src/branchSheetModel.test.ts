@@ -116,5 +116,10 @@ const labels = (c: ReturnType<typeof upstreamCard>) => c?.buttons.map((b) => `${
   assert.deepStrictEqual(acrossActions("local", [r("acme-web", { current: true })]), [], "checked out everywhere, nothing to push or pull: nothing to do");
   assert.deepStrictEqual(acrossActions("tag", rows), []);
   assert.deepStrictEqual(acrossRow({ id: "/w/a", name: "a" }, undefined), { repoId: "/w/a", repoName: "a", has: false });
+  // A read that failed is not "Not in": the row and the summary say it could not be read.
+  const failed = acrossRow({ id: "/w/b", name: "b" }, undefined, true);
+  assert.deepStrictEqual(failed, { repoId: "/w/b", repoName: "b", has: false, unreadable: true });
+  assert.strictEqual(acrossSummary("local", "develop", [r("acme-web", {}), failed]), "develop is in 1 of 2 repositories, all up to date. 1 repository could not be read.");
+  assert.strictEqual(acrossSummary("tag", "v1.4.0", [failed, { ...failed, repoId: "/w/c" }]), "v1.4.0 is in no other ticked repository. 2 repositories could not be read.");
   console.log("ok - Across repositories: each repository's state, the one-line summary, and what it offers");
 }

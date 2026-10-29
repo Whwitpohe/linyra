@@ -489,6 +489,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
       vscode.commands.registerCommand("linyra._itest.branchSheet", () => log.branchSheet.last),
       vscode.commands.registerCommand("linyra._itest.branchSheetAcross", () => log.branchSheet.lastAcross),
+      vscode.commands.registerCommand("linyra._itest.branchSheetAcrossReads", () => log.branchSheet.acrossReads),
       vscode.commands.registerCommand("linyra._itest.patch", (file?: string) => { patches.testFile = file; const m = patches.lastMessage; patches.lastMessage = undefined; return m; }),
       vscode.commands.registerCommand("linyra._itest.asked", () => uncommittedActions.ask.asked),
       vscode.commands.registerCommand("linyra._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedActions.ask.beforeAnswer = f)),

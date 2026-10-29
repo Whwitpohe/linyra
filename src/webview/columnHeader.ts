@@ -27,8 +27,8 @@ export interface HeaderActions {
   changes(mode: ChangesMode): void;
   hash(shown: boolean): void;
   prefs(next: ColumnPrefs): void;
-  /** A sash being dragged: the columns at this width, drawn without saving (list.ts). */
-  preview(column: SizedColumn, px: number | undefined): void;
+  /** A sash being dragged: the columns at this width, drawn without saving (list.ts). Returns the column's width as drawn. */
+  preview(column: SizedColumn, px: number | undefined): number | undefined;
   focusSearch(): void;
   authorFilter(anchor: HTMLElement): void;
   dateFilter(anchor: HTMLElement): void;
@@ -38,6 +38,8 @@ const LABELS: Record<ColumnId, string> = { repo: "Repository", graph: "Graph", m
 const CHANGES: [Exclude<ChangesMode, "off">, string][] = [["numbers", "Numbers"], ["squares", "Squares"], ["bar", "Bar"], ["bipolar", "Bipolar Bar"]];
 /** Columns left of Message size from their right edge; the others from their left. */
 const LEFT_OF_MESSAGE = new Set<ColumnId>(["repo", "graph"]);
+/** Narrower than this, the Changes column's header is its icon, not its name. */
+const CHANGES_LABEL = 72;
 
 /**
  * The Log's column header, as GitLens's Commit Graph has one: a row of column headers inside the
@@ -67,7 +69,7 @@ export class ColumnHeader {
   render(layout: ColumnLayout, state: HeaderState): void {
     this.layout = layout;
     this.state = state;
-    const key = JSON.stringify([layout.columns.map((c) => c.id), layout.narrow, state]);
+    const key = JSON.stringify([layout.columns.map((c) => c.id), layout.narrow, (this.width("changes") ?? 0) < CHANGES_LABEL, state]);
     if (key === this.drawn) return;
     this.drawn = key;
     const focused = this.el.contains(document.activeElement) ? (document.activeElement as HTMLElement).closest<HTMLElement>("[data-key]")?.dataset.key : undefined;
@@ -101,7 +103,7 @@ export class ColumnHeader {
         tools.append(this.tool("author", s.authorFiltered ? "filter-filled" : "filter", localize(s.authorFiltered ? "Author filter is on: change it" : "Filter by Author"), (b) => this.actions.authorFilter(b), s.authorFiltered));
         break;
       case "changes": {
-        const narrow = (this.width(id) ?? 0) < 72;
+        const narrow = (this.width(id) ?? 0) < CHANGES_LABEL;
         const button = this.button("changes", `${label}: ${localize(CHANGES.find(([m]) => m === s.changes)?.[1] ?? "Bar")}`,
           [narrow ? codiconElement("diff") : h("span", { class: "column-label" }, [label]), codiconElement("chevron-down", "column-chevron")], (b) => this.changesMenu(b));
         button.setAttribute("aria-haspopup", "menu");
@@ -200,17 +202,20 @@ export class ColumnHeader {
       const next = hidden.has(id) ? s.prefs.hidden.filter((x) => x !== id) : [...s.prefs.hidden, id];
       this.actions.prefs({ ...s.prefs, hidden: next });
     };
+    // A narrow Log has no room for these whatever their boxes say: offered when it is wider.
+    const wide = this.layout?.narrow !== true;
     const entries: MenuEntry[] = [
       { heading: localize("Columns") },
-      ...(s.history ? [] : [{ label: localize("Repository Name"), role: "check", checked: !hidden.has("repo"), run: toggle("repo") } as const]),
-      { label: localize("Hash"), role: "check", checked: s.hash, run: () => this.actions.hash(!s.hash) },
-      { label: localize("Author"), role: "check", checked: !hidden.has("author"), run: toggle("author") },
+      ...(s.history ? [] : [{ label: localize("Repository Name"), role: "check", checked: !hidden.has("repo"), disabled: !wide, run: toggle("repo") } as const]),
+      { label: localize("Hash"), role: "check", checked: s.hash, disabled: !wide, run: () => this.actions.hash(!s.hash) },
+      { label: localize("Author"), role: "check", checked: !hidden.has("author"), disabled: !wide, run: toggle("author") },
       ...(s.history ? [] : [{ label: localize("Changes"), role: "check", checked: s.changes !== "off", run: () => this.actions.changes(s.changes === "off" ? "bar" : "off") } as const]),
       { label: localize("Date"), role: "check", checked: !hidden.has("date"), run: toggle("date") },
       { separator: true },
       { label: localize("Reset Column Widths"), disabled: Object.keys(s.prefs.widths).length === 0, run: () => this.actions.prefs({ ...s.prefs, widths: {} }) },
     ];
-    showMenu(at, entries, { label: localize("Columns"), owner: this.el.querySelector<HTMLElement>(".column-settings") ?? undefined, align: "end" });
+    // Its owner is the button it was opened from (the gear, or any by Shift+F10); a right-click has none.
+    showMenu(at, entries, { label: localize("Columns"), align: "end" });
   }
 
   /**
@@ -240,7 +245,9 @@ export class ColumnHeader {
         sash.classList.remove("dragging");
         const s = this.state!;
         if (width === start) { this.actions.preview(id, undefined); return; }
-        this.actions.prefs({ ...s.prefs, widths: { ...s.prefs.widths, [id]: width } });
+        // What was seen is what is kept: the pointer may have gone past the column's range.
+        const drawn = this.actions.preview(id, width) ?? width;
+        this.actions.prefs({ ...s.prefs, widths: { ...s.prefs.widths, [id]: drawn } });
       };
       sash.addEventListener("pointermove", move);
       sash.addEventListener("pointerup", up);

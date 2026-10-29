@@ -261,7 +261,8 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         accents = assignAccents(m.repos);
       }
       if (m.repos.length !== repoOrder.length || m.repos.some((repo, i) => repo.id !== repoOrder[i])) repoOrder = m.repos.map((repo) => repo.id);
-      state.repos = m.repos;
+      // The same repositories keep their list: the names the rows draw are worked out from it again only for a change.
+      if (JSON.stringify(m.repos) !== JSON.stringify(state.repos)) state.repos = m.repos;
       // +2: the chip's own padding, so a name that fits is never cut.
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
@@ -281,9 +282,13 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       // Locked during File History: out of the keyboard order too, not only the mouse's.
       byId("repo-pane").toggleAttribute("inert", !!m.history);
       panel.restore(m.layout);
-      me = m.me ?? {};
+      // The same identities and columns keep their objects: an init (a filter set by the host) does
+      // not repaint every row.
+      const nextMe = m.me ?? {};
+      if (JSON.stringify(nextMe) !== JSON.stringify(me)) me = nextMe;
+      const columns = columnPrefs(m.layout.columns);
       view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true, changesColumn: m.layout.changesColumn ?? "bar",
-        columns: columnPrefs(m.layout.columns) };
+        columns: JSON.stringify(columns) === JSON.stringify(view.columns) ? view.columns : columns };
       toolbar.updateView(view);
       applyChangesColumn();
       break;

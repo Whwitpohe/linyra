@@ -43,9 +43,16 @@ const REF = /^refs\/(heads|remotes|tags)\/[^\s\0~^:?*[\\]+$/;
 export class BranchSheet implements vscode.Disposable {
   private ctl = new AbortController();
   private shown: { repoId: string; ref: string } | undefined;
-  /** The last data sent, and the last Across repositories read (integration test seams). */
+  /**
+   * Across repositories, once asked for the shown ref: read again with the sheet. Its own controller:
+   * the sheet read again (a branch event) must not stop it unseen.
+   */
+  private acrossCtl = new AbortController();
+  private acrossKey: string | undefined;
+  /** The last data sent, the last Across repositories read and how many were sent (integration test seams). */
   last: BranchSheetData | undefined;
   lastAcross: AcrossRow[] | undefined;
+  acrossReads = 0;
   /** Branch events and the sheet's own actions come in bursts: one read again for all of them. */
   private readonly reopenSoon = debounce(() => { if (this.shown) void this.open(this.shown.repoId, this.shown.ref); }, 250);
 
@@ -58,11 +65,15 @@ export class BranchSheet implements vscode.Disposable {
     this.ctl.abort();
     const ctl = this.ctl = new AbortController();
     this.shown = { repoId: repo.id, ref };
+    const key = `${repo.id}\0${ref}`;
+    if (this.acrossKey !== key) this.stopAcross();
     try {
       const data = await this.read(repo, ref, ctl.signal);
       if (ctl.signal.aborted) return;
       this.last = data;
       this.host.post(data ? { type: "branchSheet", repoId: repo.id, ref, data } : { type: "branchSheet", repoId: repo.id, ref, missing: true });
+      // Across repositories was shown for this ref: it is read again with it.
+      if (data && this.acrossKey === key) void this.across(data);
     } catch (e) {
       if (!isAbortError(e) && !ctl.signal.aborted) this.host.post({ type: "branchSheet", repoId: repo.id, ref, error: e instanceof Error ? e.message : String(e) });
     }
@@ -70,8 +81,14 @@ export class BranchSheet implements vscode.Disposable {
 
   close(): void {
     this.ctl.abort();
+    this.stopAcross();
     this.reopenSoon.cancel();
     this.shown = undefined;
+  }
+
+  private stopAcross(): void {
+    this.acrossCtl.abort();
+    this.acrossKey = undefined;
   }
 
   /** Branches moved (an action of the sheet's, a fetch, a checkout): the open sheet is read again. */
@@ -105,14 +122,29 @@ export class BranchSheet implements vscode.Disposable {
    * time. Read when its button asks, never on its own: 68 repositories are 68 git processes.
    */
   private async across(d: BranchSheetData): Promise<void> {
-    const ctl = this.ctl;
+    this.acrossCtl.abort();
+    const ctl = this.acrossCtl = new AbortController();
+    this.acrossKey = `${d.repoId}\0${d.ref}`;
     const limiter = new Limiter(Math.max(1, Math.min(8, this.host.concurrency())));
-    const rows = await Promise.all(this.host.ticked().map((repo) => limiter.run(repo.id, async () =>
-      // A repository that cannot be read counts as not having it (its row says "Not in").
-      acrossRow(repo, parseSheetRef(await this.host.run(repo.root, sheetRefArgs(d.ref), ctl.signal).catch(() => ""), d.ref)))));
-    if (ctl.signal.aborted || this.shown?.repoId !== d.repoId || this.shown.ref !== d.ref) return;
-    this.lastAcross = rows;
-    this.host.post({ type: "branchSheet", repoId: d.repoId, ref: d.ref, across: rows });
+    try {
+      const rows = await Promise.all(this.host.ticked().map((repo) => limiter.run(repo.id, async () => {
+        // Stopped (the sheet closed or moved on): the repositories still waiting start no git.
+        ctl.signal.throwIfAborted();
+        try {
+          return acrossRow(repo, parseSheetRef(await this.host.run(repo.root, sheetRefArgs(d.ref), ctl.signal), d.ref));
+        } catch (e) {
+          if (ctl.signal.aborted) throw e;
+          // Not read is not "Not in": its row says it could not be read.
+          return acrossRow(repo, undefined, true);
+        }
+      })));
+      if (ctl.signal.aborted || this.shown?.repoId !== d.repoId || this.shown.ref !== d.ref) return;
+      this.lastAcross = rows;
+      this.acrossReads++;
+      this.host.post({ type: "branchSheet", repoId: d.repoId, ref: d.ref, across: rows });
+    } catch (e) {
+      if (!ctl.signal.aborted && !isAbortError(e)) throw e;
+    }
   }
 
   register(routes: MessageRoutes): void {
@@ -164,6 +196,7 @@ export class BranchSheet implements vscode.Disposable {
 
   dispose(): void {
     this.ctl.abort();
+    this.acrossCtl.abort();
     this.reopenSoon.cancel();
   }
 }

@@ -112,12 +112,13 @@ export function layoutColumns(input: ColumnInput): ColumnLayout {
     add("date", null, sized("date", auto, 6 * ch, 30 * ch));
   }
 
-  // Message keeps its minimum: the user's widths give way first (widest first), down to automatic.
+  // Message keeps its minimum: the user's widths give way first (widest first), down to automatic
+  // (one already narrower than that stays as it is: giving way never widens a column).
   const room = () => width - gap * (cols.length - 1) - cols.reduce((sum, c) => sum + (c.px ?? 0), 0);
   for (const c of [...cols].filter((c) => c.size?.user).sort((a, b) => (b.px ?? 0) - (a.px ?? 0))) {
     const short = MESSAGE_MIN - room();
     if (short <= 0) break;
-    c.px = Math.max(c.size!.auto, c.size!.lo, c.px! - short);
+    c.px = Math.max(Math.min(c.size!.auto, c.px!), c.size!.lo, c.px! - short);
   }
   const columns = cols.map(({ id, px }) => ({ id, px: px === null ? null : Math.round(px) }));
   const changes = columns.find((c) => c.id === "changes");

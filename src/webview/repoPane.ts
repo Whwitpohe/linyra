@@ -93,6 +93,9 @@ export class RepoPane {
       const i = Number(el.dataset.row);
       this.active = i;
       const row = this.rows[i];
+      // A stopped operation's next step runs from its buttons or Enter: a stray click on the row
+      // (or Space) must not continue a merge. It only moves the cursor there.
+      if (row.kind === "operation") { this.list.focus(); this.render(); return; }
       if (target.closest(".tree-twisty") && "expanded" in row && row.expanded !== undefined) { this.list.focus(); this.toggle(row); return; }
       if (target.closest(".branch-star") && row.kind === "branch") {
         this.post({ type: "branchSidebar", action: "favorite", repoId: row.repo.id, ref: row.branch.ref });
@@ -200,8 +203,11 @@ export class RepoPane {
       return;
     }
     if (row.kind === "group" || row.kind === "remote") { this.toggle(row); return; }
-    // Enter on a stopped operation: its next step.
-    if (row.kind === "operation") { this.post({ type: "operation", action: row.conflicts > 0 ? "resolve" : "continue", repoId: row.repoId }); return; }
+    // Enter on a stopped operation: its next step. Space (toggle) does nothing there.
+    if (row.kind === "operation") {
+      if (!toggle) this.post({ type: "operation", action: row.conflicts > 0 ? "resolve" : "continue", repoId: row.repoId });
+      return;
+    }
     // A worktree's actions are on its right-click (Open in New Window, Remove…).
     if (row.kind === "message" || row.kind === "worktree") return;
     const allIds = this.repos.map((r) => r.id);
@@ -368,7 +374,9 @@ export class RepoPane {
         const button = (action: "resolve" | "continue" | "abort", label: string, icon: Parameters<typeof codiconElement>[0]) =>
           h("button", { type: "button", class: "op-action", tabindex: "-1", "data-op-action": action, "data-repo": row.repoId, title: label, "aria-label": label }, [codiconElement(icon), h("span", { class: "op-action-label" }, [label])]);
         const next = row.conflicts > 0 ? localize("Resolve Conflicts…") : localize("Continue");
-        rowAt[i] = keep(row.key, sig(row.operation, row.conflicts), () => indent(h("div", { ...base(` op-row${row.conflicts > 0 ? " conflicted" : ""}`), "aria-selected": "false",
+        rowAt[i] = keep(row.key, sig(row.operation, row.conflicts, row.child), () => indent(h("div", { ...base(` op-row${row.conflicts > 0 ? " conflicted" : ""}`), "aria-selected": "false",
+          // Under a collapsed repository it is that repository's neighbour, not its child.
+          ...(row.child ? {} : { "aria-level": "1" }),
           "aria-label": `${text}. ${localize("Enter: {0}", next)}`,
           // Right-click: the repository's operation menu (Continue, Abort…, Resolve Conflicts…).
           "data-vscode-context": JSON.stringify({ webviewSection: "repo", repoId: row.repoId, operation: row.operation, ...(row.conflicts > 0 ? { conflicts: true } : {}), preventDefaultContextMenuItems: true }),

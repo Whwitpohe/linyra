@@ -59,6 +59,7 @@ const labels = (rows: ReturnType<typeof treeRows>) => rows.map((r) => `${"  ".re
   const kinds = rows.map((r) => (r.kind === "operation" ? `op:${r.operation}:${r.conflicts}` : r.kind === "repo" ? r.name : "label" in r ? r.label : r.kind));
   assert.deepStrictEqual(kinds, ["all", "acme-web", "op:merge:2", "Local", "main", "release-1.4", "Remote", "Tags", "acme-api", "acme-libs", "op:rebase:0"]);
   assert.strictEqual(parentIndex(rows, 2), 1, "its parent is its repository");
+  assert.deepStrictEqual(rows.flatMap((r) => (r.kind === "operation" ? [r.child] : [])), [true, false], "a collapsed repository's row is not its child (a collapsed item shows none)");
   assert.strictEqual(new Set(rows.map((r) => r.key)).size, rows.length, "keys stay unique");
   assert.deepStrictEqual(withOperations(rows.filter((r) => r.kind !== "operation"), new Map()).length, rows.length - 2, "nothing stopped: no row");
   console.log("ok - a stopped operation is a row right under its repository");

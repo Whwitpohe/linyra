@@ -50,6 +50,12 @@ const px = (i: ColumnInput, id: string) => layoutColumns(i).columns.find((c) => 
   const tight = layoutColumns(sized({ repo: 480, author: 360, date: 200 }, { width: 900 }));
   const room = 900 - tight.gap * (tight.columns.length - 1) - tight.columns.reduce((s, x) => s + (x.px ?? 0), 0);
   assert.ok(room >= MESSAGE_MIN - 1, `message keeps ${MESSAGE_MIN}px (has ${room})`);
+  // A width the user set below the automatic one is kept: giving way never widens it.
+  {
+    const base = { history: false, ch: 7, repoChars: 9, graphAuto: 60, hash: false, changes: "bar" as const };
+    const tight = layoutColumns({ ...base, width: 400, outer: 800, prefs: { ...DEFAULT_COLUMNS, widths: { author: 48 } } });
+    assert.strictEqual(tight.columns.find((c) => c.id === "author")?.px, 48, "the narrowed author stays 48px");
+  }
   console.log("ok - sized columns: clamped, the Changes stage from the column's own width, Message keeps its room");
 }
 

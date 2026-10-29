@@ -45,6 +45,12 @@
 #branch-sheet .chip.neutral { color: var(--vscode-descriptionForeground); }
 #branch-sheet .card-status { margin: 5px 0 0; font-size: 12px; line-height: 1.5; color: var(--vscode-foreground); }
 #branch-sheet .card-hint { margin: 1px 0 0; font-size: 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); }
+/* More than four repositories without the branch: their names one click (or Enter) away. */
+#branch-sheet .across-more summary { cursor: pointer; width: fit-content; }
+#branch-sheet .across-more summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+#branch-sheet .across-more p { margin: 2px 0 0; overflow-wrap: anywhere; }
+#branch-sheet .sheet-across .card-status:focus { outline: none; }
+#branch-sheet .sheet-across .card-status:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 #branch-sheet .card-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
 /* Next steps: one line each (wrapping when long), its button at the end. */

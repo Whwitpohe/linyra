@@ -27,6 +27,8 @@ export class BranchSheetView {
   private shown: { repoId: string; ref: string; focus: boolean } | undefined;
   /** The sheet's data, for the Across repositories card drawn when its read arrives. */
   private data: BranchSheetData | undefined;
+  /** The last Across repositories read, by repository and ref: kept while the sheet is read again. */
+  private across: { key: string; rows: readonly AcrossRow[] } | undefined;
 
   constructor(private readonly post: (m: WebviewMessage) => void, private readonly host: {
     /** The Repo List's place for the branch (the pill click's old meaning, now the sheet's first button). */
@@ -46,8 +48,10 @@ export class BranchSheetView {
       // Across repositories: a row is that repository's sheet of the same ref.
       const other = (e.target as Element).closest<HTMLButtonElement>("button[data-open-repo]");
       if (other && this.shown) { this.open(other.dataset.openRepo!, this.shown.ref, e.detail === 0); return; }
+      // Reading: the button says so and keeps the focus (a disabled one would drop it); asked once.
       const read = (e.target as Element).closest<HTMLButtonElement>('button[data-action="across"]');
-      if (read) { read.disabled = true; read.textContent = localize("Reading the ticked repositories…"); }
+      if (read?.getAttribute("aria-disabled") === "true") return;
+      if (read) { read.setAttribute("aria-disabled", "true"); read.textContent = localize("Reading the ticked repositories…"); }
       const button = (e.target as Element).closest<HTMLButtonElement>("button[data-action]");
       if (!button || !this.shown) return;
       const { repoId, ref } = this.shown;
@@ -97,7 +101,7 @@ export class BranchSheetView {
 
   receive(m: SheetMessage): void {
     if (!this.shown || this.shown.repoId !== m.repoId || this.shown.ref !== m.ref) return;
-    if (m.across) { this.showAcross(m.across); return; }
+    if (m.across) { this.across = { key: `${m.repoId}\0${m.ref}`, rows: m.across }; this.showAcross(m.across, true); return; }
     const head = { kind: kindOf(m.ref), name: nameOf(m.ref), repoId: m.repoId, current: m.data?.current ?? false, worktree: m.data?.worktree };
     const gone = localize("This branch no longer exists.");
     if (m.missing) { this.render(head, [h("p", { class: "sheet-note" }, [gone])]); this.say(gone); return; }
@@ -123,17 +127,26 @@ export class BranchSheetView {
         h("div", { class: "card-buttons" }, [this.button("across", localize("Show in All Repositories"))]),
       ], "sheet-across"),
     ]);
+    // Read again (a branch moved): what Across repositories showed stays until its new read arrives.
+    if (this.across?.key === `${m.repoId}\0${m.ref}`) this.showAcross(this.across.rows, false);
     // "Branch develop. Diverged, origin/develop. 2 files conflict, origin/main."
     this.say([`${kindLabel(d.kind)} ${d.name}`, ...shownCards.map((c) => [c.chip?.text ?? c.status, c.subject].filter(Boolean).join(", "))].join(". "));
     if (this.shown.focus) { this.shown.focus = false; this.root.focus(); }
   }
 
-  /** Across repositories, read: the summary, each repository that has the ref, the rest in one line, what to do. */
-  private showAcross(rows: readonly AcrossRow[]): void {
+  /**
+   * Across repositories, read: the summary, each repository that has the ref, the rest in one line,
+   * what to do. `arrived`: a new read, said aloud when it says something new. The focus, if it was in
+   * the card, stays on the same row or button, else (Show in All Repositories, gone) the summary.
+   */
+  private showAcross(rows: readonly AcrossRow[], arrived: boolean): void {
     const d = this.data, card = this.root.querySelector<HTMLElement>(".sheet-across");
     if (!d || !card) return;
-    const have = rows.filter((r) => r.has), missing = rows.filter((r) => !r.has);
+    const have = rows.filter((r) => r.has), missing = rows.filter((r) => !r.has && !r.unreadable), failed = rows.filter((r) => r.unreadable);
     const summary = acrossSummary(d.kind, d.name, rows);
+    const said = card.querySelector(".card-status")?.textContent;
+    const at = card.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
+    const same = at?.dataset.openRepo ? `[data-open-repo="${CSS.escape(at.dataset.openRepo)}"]` : at?.dataset.action ? `[data-action="${CSS.escape(at.dataset.action)}"]` : undefined;
     const list = h("ul", { class: "across-list" }, have.map((r) => h("li", {}, [
       h("button", { type: "button", class: `across-row${r.repoId === d.repoId ? " here" : ""}`, "data-open-repo": r.repoId,
         title: localize("Show {0} in {1}", d.name, r.repoName) }, [
@@ -143,16 +156,18 @@ export class BranchSheetView {
         h("span", { class: `across-state ${acrossState(d.kind, r)}` }, [acrossText(d.kind, r)]),
       ]),
     ])));
-    const names = missing.map((r) => r.repoName).join(", ");
     const actions = acrossActions(d.kind, rows);
+    const status = h("p", { class: "card-status", tabindex: "-1" }, [summary]);
     card.replaceChildren(...[
       card.querySelector(".card-title"),
-      h("p", { class: "card-status" }, [summary]),
+      status,
       have.length ? list : null,
-      missing.length ? h("p", { class: "card-hint", title: names }, [missing.length <= 4 ? localize("Not in {0}.", names) : localize("Not in {0} other repositories.", missing.length)]) : null,
+      names(missing, (n) => localize("Not in {0}.", n), (count) => localize("Not in {0} other repositories.", count)),
+      names(failed, (n) => localize("Could not read {0}.", n), (count) => localize("Could not read {0} repositories.", count)),
       actions.length ? h("div", { class: "card-buttons" }, actions.map((a) => this.button(a.action, a.label))) : null,
     ].filter((x): x is Element => !!x));
-    this.say(summary);
+    if (at) ((same ? card.querySelector<HTMLElement>(same) : null) ?? status).focus();
+    if (arrived && summary !== said) this.say(summary);
   }
 
   private say(text: string): void {
@@ -229,4 +244,12 @@ export class BranchSheetView {
   private icon(action: string, icon: "target" | "copy" | "close" | "edit", label: string): HTMLElement {
     return h("button", { type: "button", class: "icon-button", "data-action": action, title: label, "aria-label": label }, [codiconElement(icon)]);
   }
+}
+
+/** "Not in acme-libs, acme-api." — or, past four names, a line that opens onto all of them. */
+function names(rows: readonly AcrossRow[], few: (names: string) => string, many: (count: number) => string): HTMLElement | null {
+  if (rows.length === 0) return null;
+  const list = rows.map((r) => r.repoName).join(", ");
+  if (rows.length <= 4) return h("p", { class: "card-hint" }, [few(list)]);
+  return h("details", { class: "card-hint across-more" }, [h("summary", {}, [many(rows.length)]), h("p", {}, [list])]);
 }

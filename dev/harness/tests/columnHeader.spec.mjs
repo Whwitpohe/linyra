@@ -44,6 +44,12 @@ test("columns: Repository, Graph, Message, Author, Changes, Date; narrow: the re
   expect(await header(page).locator(".column-head").evaluateAll((els) => els.map((e) => e.dataset.column))).toEqual(["repo", "graph", "message", "author", "changes", "date"]);
   await expect(header(page)).toHaveAttribute("role", "row");
   await expect(header(page).locator('[role="columnheader"]')).toHaveCount(6);
+  // The header is the grid's first row; the commits are numbered after it, and counted with it.
+  await expect(header(page)).toHaveAttribute("aria-rowindex", "1");
+  await expect(page.locator('#rows .row[data-index="0"]')).toHaveAttribute("aria-rowindex", "2");
+  const shown = await page.evaluate(() => document.querySelectorAll("#rows .row[data-index]").length);
+  expect(shown).toBeGreaterThan(0);
+  expect(Number(await page.locator("#list").getAttribute("aria-rowcount"))).toBeGreaterThan(shown);
   await page.setViewportSize({ width: 700, height: 640 });
   await expect.poll(() => header(page).locator(".column-head").evaluateAll((els) => els.map((e) => e.dataset.column))).toEqual(["repo", "graph", "message", "changes", "date"]);
   expect(await width(head(page, "repo"))).toBeLessThanOrEqual(4);
@@ -108,6 +114,36 @@ test("the Changes and Date menus change their columns, and the choice is saved",
   await expect(page.locator("#date")).toBeFocused();
 });
 
+test("an init that changes nothing (the host sets a filter it already had) keeps the rows it drew", async ({ page }) => {
+  await page.addInitScript(() => { window.inits = []; addEventListener("message", (e) => { if (e.data?.type === "init") window.inits.push(e.data); }); });
+  await open(page);
+  const row = await page.locator('#rows .row[data-index="0"]').elementHandle();
+  await page.evaluate(() => window.postMessage(window.inits.at(-1), "*"));
+  await page.waitForTimeout(300);
+  expect(await row.evaluate((el) => el.isConnected)).toBe(true);
+});
+
+test("narrow: Columns offers only what the narrow Log can show; an open menu keeps its button shown", async ({ page }) => {
+  await open(page, { width: 700 });
+  await header(page).click({ button: "right" });
+  const columns = page.getByRole("menu", { name: "Columns" });
+  for (const name of ["Repository Name", "Hash", "Author"]) await expect(columns.getByRole("menuitemcheckbox", { name })).toBeDisabled();
+  for (const name of ["Changes", "Date"]) await expect(columns.getByRole("menuitemcheckbox", { name })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1500, height: 640 });
+  // The Changes menu open, the pointer in it: the Changes button and its chevron stay shown.
+  await head(page, "changes").locator("button").click();
+  await page.getByRole("menuitemradio", { name: "Numbers" }).hover();
+  const opacity = (sel) => head(page, "changes").locator(sel).first().evaluate((el) => Number(getComputedStyle(el).opacity));
+  expect(await opacity(".column-button")).toBe(1);
+  await expect.poll(() => opacity(".column-chevron")).toBe(1);
+  // So does the gear, a column tool.
+  await page.keyboard.press("Escape");
+  await head(page, "message").locator(".column-settings").click();
+  await page.getByRole("menuitemcheckbox", { name: "Hash" }).hover();
+  await expect.poll(() => head(page, "message").locator(".column-settings").evaluate((el) => Number(getComputedStyle(el).opacity))).toBe(1);
+});
+
 test("Columns: right-click, the gear or Shift+F10; hide and show a column; Graph and Message always show", async ({ page }) => {
   await open(page);
   await header(page).click({ button: "right" });
@@ -132,6 +168,34 @@ test("Columns: right-click, the gear or Shift+F10; hide and show a column; Graph
   const { heads, cells } = await edges(page);
   expect(heads.map(([id]) => id)).toEqual(["repo", "graph", "message", "hash", "changes", "date"]);
   expect(cells.length).toBe(heads.length);
+});
+
+test("letting go of a sash past its column's range saves the width it is drawn at", async ({ page }) => {
+  await open(page);
+  const author = head(page, "author");
+  const sash = author.locator(".column-sash");
+  await author.hover();
+  const box = await sash.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x - 900, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await sent(page, "layout")).at(-1)?.columns?.widths?.author).toBeTruthy();
+  const saved = (await sent(page, "layout")).at(-1).columns.widths.author;
+  expect(Math.abs(saved - (await width(author)))).toBeLessThanOrEqual(1);
+});
+
+test("the Changes header turns to its icon, and back to its name, as the window narrows and widens", async ({ page }) => {
+  await open(page);
+  for (const w of [1700, 1000, 780, 1700]) {
+    await page.setViewportSize({ width: w, height: 640 });
+    await expect.poll(async () => {
+      const px = await width(head(page, "changes"));
+      // Its name, or (narrower) only its icon.
+      const named = await head(page, "changes").locator(".column-label").count();
+      return (px < 72) === (named === 0);
+    }, { message: `at ${w}px` }).toBe(true);
+  }
 });
 
 test("a sash resizes its column, header and rows together; letting go saves it; a double-click resets it", async ({ page }) => {

@@ -6,6 +6,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, branchKey, parseBranches, type Branches, type BranchSidebarState } from "../branchModel";
 import type { LogSnapshot } from "../logView";
+import { sleep, waitFor } from "./helpers";
 
 describe("Branch sidebar", () => {
   let root: string, repoId: string, beforeHead: string, home: string, remote: string;
@@ -180,6 +181,19 @@ describe("Branch sidebar", () => {
     assert.deepStrictEqual(rows?.filter((r) => r.has).map((r) => r.repoId), [repoId], "ui-feature is acme-api's alone");
     const reads = (await spawns()).slice(opened).filter((x) => x.cmd === "for-each-ref");
     assert.strictEqual(reads.length, ticked.length, "one for-each-ref per repository");
+    // The sheet read again (a branch moved) reads Across repositories again with it; another
+    // branch's sheet does not, and coming back does not either until it is asked for.
+    const acrossReads = () => vscode.commands.executeCommand<number>("linyra._itest.branchSheetAcrossReads");
+    let before = await acrossReads();
+    await send("open");
+    await waitFor("Across repositories read again", async () => ((await acrossReads()) > before ? true : undefined));
+    const other = (action: string) => vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action, repoId, ref: "refs/heads/track-me-not" });
+    await other("open");
+    await send("open");
+    before = await acrossReads();
+    await send("open");
+    await sleep(500);
+    assert.strictEqual(await acrossReads(), before, "only the sheet's own read: Across repositories waits to be asked");
     // Check Out Everywhere: the usual question first; declined, nothing moves.
     const head = git(["rev-parse", "--abbrev-ref", "HEAD"]);
     await answer("Cancel");

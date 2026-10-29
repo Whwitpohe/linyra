@@ -19,7 +19,7 @@ export type TreeRow =
   | { kind: "stash"; key: string; depth: 2; repo: Repo; stash: Stash; label: string; parent: string }
   | { kind: "worktree"; key: string; depth: 2; repo: Repo; worktree: Worktree; label: string; parent: string }
   | { kind: "message"; key: string; depth: 1 | 2; repo: Repo; label: string }
-  | { kind: "operation"; key: string; depth: 1; repoId: string; operation: Operation; conflicts: number };
+  | { kind: "operation"; key: string; depth: 1; repoId: string; operation: Operation; conflicts: number; child: boolean };
 
 /** One repository's branch listing as the pane holds it. */
 export interface BranchTreeData { data?: Branches; loading?: boolean; error?: string }
@@ -125,10 +125,11 @@ export function collapseAll(state: BranchSidebarState): BranchSidebarState {
   return { ...state, expanded: [] };
 }
 
-/** The row a child belongs to (Left arrow): the nearest row above it at a smaller depth. */
 /**
  * A merge, rebase, cherry-pick, revert or patch series stopped in a repository: a row right under
  * it that says so, its next step one Enter away (Resolve while files conflict, else Continue).
+ * It shows under a collapsed repository too (what stopped stays in sight); there it is not the
+ * repository's child (`child`: a collapsed tree item shows none).
  */
 export function withOperations(rows: readonly TreeRow[], stopped: ReadonlyMap<string, { operation: Operation; conflicts: number }>): TreeRow[] {
   if (stopped.size === 0) return [...rows];
@@ -136,11 +137,12 @@ export function withOperations(rows: readonly TreeRow[], stopped: ReadonlyMap<st
   for (const row of rows) {
     out.push(row);
     const op = row.kind === "repo" ? stopped.get(row.id) : undefined;
-    if (row.kind === "repo" && op) out.push({ kind: "operation", key: `op\0${row.id}`, depth: 1, repoId: row.id, operation: op.operation, conflicts: op.conflicts });
+    if (row.kind === "repo" && op) out.push({ kind: "operation", key: `op\0${row.id}`, depth: 1, repoId: row.id, operation: op.operation, conflicts: op.conflicts, child: row.expanded === true });
   }
   return out;
 }
 
+/** The row a child belongs to (Left arrow): the nearest row above it at a smaller depth. */
 export function parentIndex(rows: readonly TreeRow[], index: number): number {
   const depth = rows[index]?.depth ?? 0;
   for (let i = index - 1; i >= 0; i--) if (rows[i].depth < depth) return i;

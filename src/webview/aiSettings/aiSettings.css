@@ -156,9 +156,8 @@
 
 /* Test Connection: each step's result, then what to do. */
 .ai-test { display: flex; flex-direction: column; gap: 8px; }
-.ai-result { max-width: 640px; padding: 8px 12px; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); border-left-width: 3px; border-radius: 3px; }
-.ai-result.ok { border-left-color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
-.ai-result.failed { border-left-color: var(--vscode-testing-iconFailed, var(--vscode-errorForeground)); }
+/* Its state is its title's icon (passed, failed): the box itself stays plain. */
+.ai-result { max-width: 640px; padding: 8px 12px; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); border-radius: 3px; }
 .ai-result-title { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: 600; }
 .ai-result.ok .ai-result-title svg, .ai-result-line.ok > svg { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
 .ai-result.failed .ai-result-title svg, .ai-result-line.failed > svg { color: var(--vscode-testing-iconFailed, var(--vscode-errorForeground)); }

@@ -113,8 +113,10 @@ export class CommitList {
    */
   private top = 0;
   private viewport = -1;
-  /** A scrollTop this list set, whose scroll event is still to come. */
+  /** A scrollTop this list set, whose scroll event is still to come (forgotten at the next frame if none comes). */
   private expected: number | undefined;
+  /** A position set while the list was hidden, so never written: placed when it shows (resized()). */
+  private unplaced = false;
   /** The scroll position the rows being built go by (renderRow: which row prints its repository's name). */
   private paintTop = 0;
 
@@ -140,14 +142,11 @@ export class CommitList {
     }, { passive: true });
     window.addEventListener("resize", () => {
       this.rowHeight = 0;
-      this.forgetLayout();
-      this.paint();
+      this.resized();
     });
-    // Dragging a divider narrows the Log without a window resize: re-fit the repo names.
-    new ResizeObserver(() => {
-      this.forgetLayout();
-      this.paint();
-    }).observe(root);
+    // Dragging a divider narrows the Log without a window resize: re-fit the repo names. Hiding
+    // and showing it (another view in its place) resizes it too.
+    new ResizeObserver(() => this.resized()).observe(root);
     // VS Code sets the theme's variables (the font, its size) on <html>: a change there resizes the text.
     new MutationObserver(() => {
       this.forgetLayout();
@@ -264,12 +263,47 @@ export class CommitList {
 
   /** Scrolls to `value` (kept within the list), remembering it: the scroll event will not read it back. */
   private setTop(value: number): void {
-    const max = Math.max(0, (this.headerHeight ?? 0) + this.display.rows.length * this.height() - this.clientHeight());
+    const room = this.clientHeight();
+    const max = Math.max(0, (this.headerHeight ?? 0) + this.display.rows.length * this.height() - room);
     const next = Math.max(0, Math.min(max, value));
-    if (next === this.top) return;
+    if (next === this.top && !this.unplaced) return;
     this.top = next;
+    // Hidden: nothing scrolls and no event comes. The position is placed when the list shows.
+    this.unplaced = room === 0;
+    if (this.unplaced) return;
+    // The rows' height first: the browser would hold the position to the shorter list it last laid out.
+    if (!this.props.skeleton) this.fitBody(this.display.rows.length * this.height());
     this.expected = next;
     this.root.scrollTop = next;
+    // A position the list already had sends no event: what was expected is not kept past this frame
+    // (the frame's scroll events come before its animation frames).
+    requestAnimationFrame(() => { this.expected = undefined; });
+  }
+
+  /** The rows' full height, which the list scrolls over: written only when it changes. */
+  private fitBody(px: number): void {
+    const height = `${px}px`;
+    if (this.body.style.height !== height) this.body.style.height = height;
+  }
+
+  /**
+   * The list was resized, hidden or shown: what was measured may no longer hold, and the position
+   * the list last set is placed again where the page does not have it (one set while hidden never
+   * reached the page; a hidden list shows again at the top).
+   */
+  private resized(): void {
+    this.forgetLayout();
+    const actual = this.root.scrollTop;
+    if (actual !== this.top || this.unplaced) {
+      const wanted = this.top;
+      this.top = actual;
+      this.expected = undefined;
+      this.unplaced = false;
+      // The header counts in how far the list scrolls (setTop's bottom), read before it is used.
+      this.headerHeight = this.root.querySelector<HTMLElement>(".column-header")?.offsetHeight ?? 0;
+      this.setTop(wanted);
+    }
+    this.paint();
   }
 
   private clientHeight(): number {
@@ -370,18 +404,20 @@ export class CommitList {
     }
     this.root.setAttribute("aria-busy", String(skeleton));
     if (skeleton) {
-      this.body.style.height = `${SKELETON_ROWS * rh}px`;
+      this.fitBody(SKELETON_ROWS * rh);
       for (let i = 0; i < SKELETON_ROWS; i++) {
         this.body.append(this.place(h("div", { class: "row skeleton", "aria-hidden": "true" }, [
           h("span", { class: "bar short" }), h("span"), h("span", { class: "bar" }), h("span", { class: "bar short" }), h("span", { class: "bar short" }),
         ]), i));
       }
-      this.root.setAttribute("aria-rowcount", "0");
+      // Loading: how many rows there will be is not known yet.
+      this.root.setAttribute("aria-rowcount", "-1");
       this.root.removeAttribute("aria-activedescendant");
       return;
     }
-    this.body.style.height = `${this.display.rows.length * rh}px`;
-    this.root.setAttribute("aria-rowcount", String(this.display.rows.length));
+    this.fitBody(this.display.rows.length * rh);
+    // The column header is the grid's first row: the commits are numbered after it.
+    this.root.setAttribute("aria-rowcount", String(this.display.rows.length + 1));
     const { start, end } = visibleRange(this.top, this.viewHeight(), rh, this.display.rows.length);
     const top = Math.floor(this.top / rh);
     this.paintTop = this.top;
@@ -458,14 +494,15 @@ export class CommitList {
    * row or saving it (letting go saves it, and the full paint that follows fits names and pills).
    * undefined: back to the saved widths.
    */
-  previewColumn(id: SizedColumn, px: number | undefined): void {
-    if (!this.layout) return;
+  previewColumn(id: SizedColumn, px: number | undefined): number | undefined {
+    if (!this.layout) return undefined;
     const prefs = this.props.columns ?? DEFAULT_COLUMNS;
     const layout = this.columnLayout(px === undefined ? prefs : { ...prefs, widths: { ...prefs.widths, [id]: px } });
     // The graph's rows keep the width they were drawn at until the drag ends.
     const pane = this.root.parentElement ?? this.root;
     pane.style.setProperty("--log-columns", layout.template);
     this.layout = { ...this.layout, columns: layout.columns, template: layout.template };
+    return layout.columns.find((c) => c.id === id)?.px ?? undefined;
   }
 
   /**
@@ -571,7 +608,7 @@ export class CommitList {
       class: `row${focus ? " focus" : ""}${mine ? " mine" : ""}${offHead ? " off-head" : ""}`,
       role: "row",
       id: `row-${i}`,
-      "aria-rowindex": String(displayIndex + 1),
+      "aria-rowindex": String(displayIndex + 2),
       "aria-selected": String(this.props.selectedKeys.has(commitKey(c))),
       "data-index": String(i),
       // Right-click: the commit's and its repository's menu (package.json webview/context), not
@@ -632,7 +669,7 @@ export class CommitList {
     const c = this.display.rows[index].commit, name = this.props.repoNames.get(c.repoId) ?? c.repoId;
     const start = this.display.rows[index - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[index + 1]?.commit.repoId !== c.repoId;
-    return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 1), "aria-selected": "false",
+    return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 2), "aria-selected": "false",
       "data-vscode-context": JSON.stringify({ webviewSection: "graphFold", preventDefaultContextMenuItems: true }) }, [
       h("span", { class: `repo-band accent-${accentOf(this.accents, c.repoId)}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", "aria-label": name, title: name },
         start && this.layout?.repoName != null ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),

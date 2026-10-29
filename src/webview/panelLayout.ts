@@ -38,7 +38,8 @@ export class PanelLayout {
     // The panel's width (a drag of VS Code's panel resizes this window too) decides Automatic.
     new ResizeObserver(() => this.apply()).observe(this.workspace);
     // Drag (or ←/→) the Repo List's divider; the width is saved by the host when the gesture ends.
-    attachSplitter(this.splitter, { get: () => this.paneWidth.shown, set: (w) => this.setPaneWidth(w), commit: () => this.host.post({ type: "layout", repoPaneWidth: this.paneWidth.shown }) });
+    // A wider Repo List leaves the Log less room: Automatic decides again.
+    attachSplitter(this.splitter, { get: () => this.paneWidth.shown, set: (w) => { this.setPaneWidth(w); this.apply(); }, commit: () => this.host.post({ type: "layout", repoPaneWidth: this.paneWidth.shown }) });
     window.addEventListener("resize", () => this.showPaneWidth(this.paneWidth.fit(window.innerWidth)));
   }
 

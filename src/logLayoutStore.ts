@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { isChangesMode } from "./changeStats";
+import { columnPrefs } from "./webview/logColumns";
 import type { MessageRoutes } from "./messageRoutes";
 import type { Layout, WebviewMessage } from "./protocol";
 import type { ChangesLayout } from "./toolbarModel";
@@ -51,15 +52,6 @@ export class LogLayoutStore {
     };
   }
 
-  /** The Repo List shown or hidden (its toolbar toggle, Show Repositories). */
-  async setReposHidden(hidden: boolean): Promise<void> {
-    await this.state.update(HIDE_REPOS_KEY, hidden);
-  }
-
-  reposHidden(): boolean {
-    return this.state.get<boolean>(HIDE_REPOS_KEY, false);
-  }
-
   private async save(m: Extract<WebviewMessage, { type: "layout" }>): Promise<void> {
     const s = this.state;
     if (finite(m.repoPaneWidth)) await s.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
@@ -71,7 +63,7 @@ export class LogLayoutStore {
     if (typeof m.hashColumn === "boolean") await s.update(HASH_COLUMN_KEY, m.hashColumn);
     if (isChangesMode(m.changesColumn)) await s.update(CHANGES_COLUMN_KEY, m.changesColumn);
     // The column header's own state: the webview applied it already, so nothing is sent back.
-    if (m.columns && typeof m.columns === "object" && !Array.isArray(m.columns)) await s.update(COLUMNS_KEY, m.columns);
+    if (m.columns && typeof m.columns === "object" && !Array.isArray(m.columns)) await s.update(COLUMNS_KEY, columnPrefs(m.columns));
     if (typeof m.highlightHead === "boolean") {
       await s.update(HIGHLIGHT_HEAD_KEY, m.highlightHead);
       this.hooks.highlightHead(m.highlightHead);

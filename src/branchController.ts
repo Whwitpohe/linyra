@@ -491,15 +491,15 @@ export class BranchController implements vscode.Disposable {
       placeHolder: localize("Stash message"), value: "WIP",
       toggle: { on: this.context.globalState.get<boolean>(STASH_UNTRACKED, false), icon: (on) => (on ? "files" : "file"),
         tooltip: (on) => localize(on ? "Include new files: on (click to leave them out)" : "Include new files: off (click to include them)") },
-      extra: writer ? { icon: "sparkle", tooltip: localize("Write the stash message with AI"), run: async (box, on) => {
-        const ctl = new AbortController();
+      // ✨ stops when the box closes (Esc while it writes): no request runs on for a box nobody sees.
+      extra: writer ? { icon: "sparkle", tooltip: localize("Write the stash message with AI"), run: async (box, on, closed) => {
         const before = box.value;
         box.busy = true;
         box.validationMessage = undefined;
-        try { box.value = (await writer.write(repo, on, ctl.signal, (text) => { box.value = text; })) ?? before; }
+        try { box.value = (await writer.write(repo, on, closed, (text) => { if (!closed.aborted) box.value = text; })) ?? before; }
         // The writer's errors already say "Linyra AI: …" in the user's words.
-        catch (e) { box.value = before; box.validationMessage = e instanceof Error ? e.message : String(e); }
-        finally { box.busy = false; }
+        catch (e) { if (!closed.aborted) { box.value = before; box.validationMessage = e instanceof Error ? e.message : String(e); } }
+        finally { if (!closed.aborted) box.busy = false; }
       } } : undefined,
     });
     return r ? { message: r.value, untracked: r.on } : undefined;
