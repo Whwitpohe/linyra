@@ -80,7 +80,7 @@ export function graphWidthFor(columns: number, room: number): number {
  *
  * A commit is its author's disc (the ring in the lane's color, thicker for `mine`); a merge keeps
  * the small hollow dot. A run of linear history that can fold shows its ⊟ only while the pointer
- * is on the node (CSS); a folded run's ⊞ always shows. A disc row is about eight elements.
+ * is on the node (CSS); a folded run's ⊞ always shows. A row is five elements and a path per color.
  */
 export function renderGraph(row: GraphRow, commit: Commit, columns: number, width: number, height: number, folds: GraphFoldOptions = {}, mine = false): SVGSVGElement {
   const step = Math.min(LANE_WIDTH, (width - 2 * GRAPH_INSET) / Math.max(1, columns - 1));
@@ -112,30 +112,34 @@ export function renderGraph(row: GraphRow, commit: Commit, columns: number, widt
   const action = folds.folded ?? folds.node;
   const expanding = folds.folded !== undefined || folds.node?.expand === true;
   const label = action ? localize(expanding ? "Expand {0} hidden commits" : "Collapse {0} linear commits", action.count) : localize("Select commit {0}", commit.sha.slice(0, 7));
-  const point = svg("g", { class: `graph-point${action ? " graph-fold-control" : ""}`, role: "button", tabindex: "-1", "data-graph-node": commit.sha,
-    ...(action ? { [expanding ? "data-fold-expand" : "data-fold-collapse"]: action.id, "aria-expanded": String(!expanding) } : {}), "aria-label": label });
-  const title = svg("title", {});
-  title.textContent = action ? label : `${commit.sha.slice(0, 7)} · ${commit.subject}`;
-  point.append(title);
   const cx = x(row.node.column), accent = row.node.accent;
   const merge = commit.parents.length > 1;
-  const disc = !merge && (columns <= 1 || step >= DISC_LANE);
   // The commit itself, unless this node only stands for a folded run (its ⊞ is all it shows).
-  if (!expanding) {
-    // The disc is its own hit target; a dot is too small to aim at.
-    if (disc) point.append(authorDiscSvg({ name: commit.author, email: commit.email, accent, mine }, cx, middle));
-    else {
-      if (!action) point.append(svg("circle", { class: "graph-hit", cx, cy: middle, r: 7 }));
-      const marked = merge || commit.refs?.some((ref) => ref.kind === "head" || ref.kind === "local" || ref.kind === "remote");
-      point.append(svg("circle", { class: `graph-node accent-${accent}${marked ? " graph-merge" : ""}`, cx, cy: middle, r: marked ? 4.5 : 3.2 }));
-      if (merge) point.append(svg("circle", { class: `graph-node accent-${accent}`, cx, cy: middle, r: 1.6 }));
-    }
+  const disc = !expanding && !merge && (columns <= 1 || step >= DISC_LANE);
+  // A disc's own group is the node (and its own hit target): one element fewer on every row.
+  const point = disc ? authorDiscSvg({ name: commit.author, email: commit.email, accent, mine }, cx, middle) : svg("g", {});
+  point.classList.add("graph-point");
+  if (action) point.classList.add("graph-fold-control");
+  const attributes = { role: "button", tabindex: "-1", "data-graph-node": commit.sha, "aria-label": label,
+    ...(action ? { [expanding ? "data-fold-expand" : "data-fold-collapse"]: action.id, "aria-expanded": String(!expanding) } : {}) };
+  for (const [key, value] of Object.entries(attributes)) point.setAttribute(key, value);
+  const title = svg("title", {});
+  title.textContent = action ? label : `${commit.sha.slice(0, 7)} · ${commit.subject}`;
+  point.prepend(title);
+  if (!disc && !expanding) {
+    // A dot is too small to aim at: a wider, invisible target.
+    if (!action) point.append(svg("circle", { class: "graph-hit", cx, cy: middle, r: 7 }));
+    const marked = merge || commit.refs?.some((ref) => ref.kind === "head" || ref.kind === "local" || ref.kind === "remote");
+    point.append(svg("circle", { class: `graph-node accent-${accent}${marked ? " graph-merge" : ""}`, cx, cy: middle, r: marked ? 4.5 : 3.2 }));
+    if (merge) point.append(svg("circle", { class: `graph-node accent-${accent}`, cx, cy: middle, r: 1.6 }));
   }
   if (action) {
-    if (expanding || !disc) point.append(svg("rect", { class: "graph-hit", x: cx - 8, y: middle - 8, width: 16, height: 16 }));
-    point.append(svg("rect", { class: `graph-fold-box accent-${accent}`, x: cx - 5.5, y: middle - 5.5, width: 11, height: 11, rx: 1.5 }));
-    point.append(svg("path", { class: `graph-fold-sign accent-${accent}`,
-      d: `M ${cx - 3} ${middle} H ${cx + 3}${expanding ? ` M ${cx} ${middle - 3} V ${middle + 3}` : ""}` }));
+    if (!disc) point.append(svg("rect", { class: "graph-hit", x: cx - 8, y: middle - 8, width: 16, height: 16 }));
+    // ⊟ or ⊞ as one path: the filled box (it covers the rails) and its sign.
+    const l = cx - 5.5, t = middle - 5.5, r = cx + 5.5, b = middle + 5.5, c = 1.5;
+    point.append(svg("path", { class: `graph-fold-box accent-${accent}`,
+      d: `M ${l + c} ${t} H ${r - c} Q ${r} ${t} ${r} ${t + c} V ${b - c} Q ${r} ${b} ${r - c} ${b} H ${l + c} Q ${l} ${b} ${l} ${b - c} V ${t + c} Q ${l} ${t} ${l + c} ${t} Z`
+        + ` M ${cx - 3} ${middle} H ${cx + 3}${expanding ? ` M ${cx} ${middle - 3} V ${middle + 3}` : ""}` }));
   }
   root.append(point);
   return root;

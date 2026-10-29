@@ -356,15 +356,15 @@ body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, tran
 .graph-point:hover .graph-node { stroke: var(--vscode-foreground); stroke-width: 2; }
 .commit-graph.rail-hover { cursor: pointer; }
 .graph-edge-hover { fill: none; stroke: var(--vscode-foreground); stroke-width: 2; pointer-events: none; }
-.graph-fold-box { fill: var(--vscode-panel-background, var(--vscode-editor-background)); stroke: var(--accent); stroke-width: 1.5; }
-.graph-fold-sign { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
-.graph-fold-control:hover .graph-fold-box, .graph-fold-control:hover .graph-fold-sign { stroke: var(--vscode-foreground); stroke-width: 2; }
+/* ⊟ / ⊞: one path, the box filled to cover the rails, and its sign. */
+.graph-fold-box { fill: var(--vscode-panel-background, var(--vscode-editor-background)); stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; }
+.graph-fold-control:hover .graph-fold-box { stroke: var(--vscode-foreground); stroke-width: 2; }
 /* A commit's author disc (ui/authorDisc.css) answers the pointer as the dot did. */
 .graph-point:hover .author-disc-ring { stroke: var(--vscode-foreground); }
 /* Linear history that can fold: its ⊟ takes the node's place only while the pointer is on it. */
-.graph-fold-control[data-fold-collapse] :is(.graph-fold-box, .graph-fold-sign) { opacity: 0; }
-.graph-fold-control[data-fold-collapse]:hover :is(.graph-fold-box, .graph-fold-sign) { opacity: 1; }
-.graph-fold-control[data-fold-collapse]:hover :is(.author-disc, .graph-node) { opacity: 0; }
+.graph-fold-control[data-fold-collapse] .graph-fold-box { opacity: 0; }
+.graph-fold-control[data-fold-collapse]:hover .graph-fold-box { opacity: 1; }
+.graph-fold-control[data-fold-collapse]:hover :is(.author-disc-ring, .author-disc-initial, .author-disc-image, .graph-node) { opacity: 0; }
 .fold-summary { min-width: 0; overflow: hidden; }
 .fold-expand { max-width: 100%; height: auto; padding: 1px 3px; border: 0; background: transparent; color: var(--vscode-textLink-foreground); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fold-expand:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
