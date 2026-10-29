@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { branchLine, branchText, checkedLabel, commitFiles, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
+import { branchLine, branchText, checkedLabel, checkOnly, commitFiles, commitPartly, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
 import type { FileChange } from "./types";
 import type { RepoWork } from "./uncommittedModel";
 
@@ -182,4 +182,17 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   assert.strictEqual(countsLine({ added: 143, modified: 3, deleted: 0, renamed: 0 }), "$(edit) 3&nbsp;&nbsp;$(diff-added) 143");
   assert.strictEqual(countsLine({ added: 0, modified: 0, deleted: 0, renamed: 0 }), "");
   console.log("ok - branch text and tooltip lines: unpublished, gone, uncounted, detached; Markdown escaped");
+}
+
+{
+  // Commit… on acme-web: its tracked files checked (its new file not, as the side bar's default), acme-api's unchecked.
+  const only = checkOnly([web, api], web.repoId);
+  assert.deepStrictEqual(commitPlan([web, api], only).map((p) => [p.name, p.paths.sort()]), [["acme-web", ["notes.md", "old.css", "src/app.ts", "src/b.ts", "src/b2.ts"]]]);
+  // A repository with only new files: those are checked, or Commit… would check nothing.
+  const fresh: RepoWork = { ...api, repoId: "/ws/acme-new", name: "acme-new", changes: [f("a.md", "A", { untracked: true })] };
+  assert.deepStrictEqual(commitPlan([web, fresh], checkOnly([web, fresh], fresh.repoId)).map((p) => [p.name, p.add]), [["acme-new", ["a.md"]]]);
+  assert.strictEqual(commitPartly(["acme-web"], [{ name: "acme-api", why: "acme hook says no" }]),
+    "Committed in acme-web. Not committed in acme-api (acme hook says no). The message is kept: Commit again takes the files still checked there.");
+  assert.strictEqual(commitPartly([], [{ name: "acme-api", why: "acme hook says no" }]), "Linyra could not commit: acme-api (acme hook says no). The message is kept: fix that, then Commit again.");
+  console.log("ok - Commit… checks one repository's files; a partial commit names who committed, who did not, and that Commit retries");
 }

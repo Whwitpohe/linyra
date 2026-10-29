@@ -445,10 +445,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (node.kind === "folder") item.contextValue = this.state?.commit.sha === UNCOMMITTED && this.state.discardable ? `folder.discardable${this.workFlags(node.path)}` : "folder";
     // A deleted file has no working-tree copy to open: "fileDeleted" drops Open File from its menu.
     if (node.kind === "file") {
-      // Uncommitted: .staged when part of it is staged (Unstage), .changed when part is not (Stage).
+      // Uncommitted: .new for a new file (Delete…, not Discard), .staged when part of it is staged (Unstage), .changed when part is not (Stage).
       const s = this.state;
       const work = s?.discardable && !node.unchanged
-        ? `.discardable${s.stagedPaths?.includes(node.path) ? ".staged" : ""}${node.file.staged ? "" : ".changed"}`
+        ? `.discardable${node.file.untracked ? ".new" : ""}${s.stagedPaths?.includes(node.path) ? ".staged" : ""}${node.file.staged ? "" : ".changed"}`
         : "";
       item.contextValue = `${node.file.status === "D" ? "fileDeleted" : "file"}${work}`;
     }

@@ -2,10 +2,11 @@ import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { whyOf } from "./actionErrors";
 import { decorationFor } from "./changesModel";
 import { splitTemplate } from "./commitMessageModel";
 import { gitDirOf, readHead } from "./repoHead";
-import { checkedLabel, commitFiles, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
+import { checkedLabel, checkOnly, commitFiles, commitPartly, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
 import type { CommitHostMessage, CommitWebviewMessage } from "./commitProtocol";
 import type { RunOptions } from "./git";
 import { localize } from "./i18n";
@@ -243,6 +244,19 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     return item;
   }
 
+  /**
+   * Commit… on a repository (the Uncommitted side, the Changes view): the side bar, that repository's
+   * files checked and the others unchecked, the message box focused. No prompt: the side bar is the
+   * one place a commit is written.
+   */
+  async openFor(repoId: unknown): Promise<void> {
+    if (typeof repoId !== "string" || !this.deps.store.get(repoId)) return;
+    this.choices = checkOnly(this.deps.store.works(), repoId);
+    this.render();
+    await vscode.commands.executeCommand(`${CommitPanel.treeId}.focus`);
+    await vscode.commands.executeCommand(`${CommitPanel.messageId}.focus`);
+  }
+
   /** A checkbox clicked: its files, or (several rows selected) all of theirs. */
   check(rows: readonly { id: string }[], on: boolean): void {
     this.choices = setChecked(this.deps.store.works(), this.choices, rows.flatMap((r) => this.rows.get(r.id) ?? []), on);
@@ -405,19 +419,19 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   }
 
   /**
-   * Rollback…: the rows (or the selection), else every checked file, after one prompt: tracked files
-   * go back to the last commit, an added file only leaves version control. Unversioned files are
-   * not touched: Delete… removes them.
+   * Discard Changes…: the rows (or the selection), else every checked file, after one prompt: tracked
+   * files go back to the last commit, an added file only leaves version control. Unversioned files
+   * are not touched: Delete… removes them.
    */
-  async rollback(arg?: unknown, many?: unknown): Promise<void> {
+  async discard(arg?: unknown, many?: unknown): Promise<void> {
     let rows = this.targets(arg, many);
     if (rows.length === 0) rows = [...this.rows.values()].filter((r) => r.kind === "file" && r.check === "on");
     const files = filesUnder(rows).filter((f) => !this.unversioned(f));
     if (files.length === 0) {
-      vscode.window.setStatusBarMessage(localize("Unversioned files have nothing to roll back: Delete… removes them."), 5000);
+      vscode.window.setStatusBarMessage(localize("New files have no changes to discard: Delete… removes them from disk."), 5000);
       return;
     }
-    await this.deps.actions.rollback(files[0], files);
+    await this.deps.actions.discard(files[0], files);
   }
 
   /** Remove from VCS: added files leave the index (git reset), kept on disk, back under Unversioned Files. No prompt: Add to VCS undoes it. */
@@ -513,14 +527,14 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     this.busy = true;
     this.postState();
     const done: CommitPlan[] = [];
-    const failed: string[] = [];
+    const failed: { name: string; why: string }[] = [];
     try {
       await vscode.window.withProgress({ location: { viewId: CommitPanel.treeId } }, () => runPool(plan, WRITE_CONCURRENCY, async (p) => {
         try {
           await this.commitOne(p, message, options);
           done.push(p);
         } catch (e) {
-          failed.push(localize("{0}: {1}", p.name, gitMessage(e)));
+          failed.push({ name: p.name, why: whyOf(e) });
         }
       }, NEVER));
     } finally {
@@ -534,8 +548,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     }
     if (failed.length > 0) {
       // The message stays for another try; the repositories that did commit lost their checked files.
-      this.lastError = failed.join("; ");
-      void vscode.window.showErrorMessage(localize("Linyra could not commit. {0}.", this.lastError.replace(/[.\s]+$/, "")));
+      this.lastError = commitPartly(done.map((p) => p.name), failed);
+      void vscode.window.showErrorMessage(this.lastError);
     } else {
       // The author was for that commit; Sign-off stays as the user left it.
       this.author = undefined;

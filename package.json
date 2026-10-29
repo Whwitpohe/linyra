@@ -347,6 +347,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "linyra.deleteNew",
+        "title": "%command.linyra.deleteNew.title%",
+        "category": "Linyra",
+        "icon": "$(trash)"
+      },
+      {
         "command": "linyra.commitPanel.ignore",
         "title": "%command.linyra.commitPanel.ignore.title%",
         "category": "Linyra",
@@ -944,8 +950,13 @@
         },
         {
           "command": "linyra.discard",
-          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable(?!\\.new)/",
           "group": "3_modification@3"
+        },
+        {
+          "command": "linyra.deleteNew",
+          "when": "view == linyra.changes && viewItem =~ /^file\\.discardable\\.new/",
+          "group": "3_modification@4"
         },
         {
           "command": "linyra.stage",
@@ -1245,6 +1256,10 @@
         },
         {
           "command": "linyra.discardAll",
+          "when": "false"
+        },
+        {
+          "command": "linyra.deleteNew",
           "when": "false"
         },
         {
@@ -2017,8 +2032,13 @@
         },
         {
           "command": "linyra.discard",
-          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable(?!\\.new)/",
           "group": "3_modification@3"
+        },
+        {
+          "command": "linyra.deleteNew",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file\\.discardable\\.new/",
+          "group": "3_modification@4"
         },
         {
           "command": "linyra.stage",

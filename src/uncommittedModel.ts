@@ -100,24 +100,14 @@ export function discardPlan(files: readonly FileChange[], staged: readonly FileC
   };
 }
 
-export function discardPrompt(repoName: string, files: readonly FileChange[], one: boolean, staged: readonly FileChange[] = []): { message: string; detail: string; button: string } {
-  // A file staged and changed again is listed in both groups: count it once.
-  const n = new Set(files.map((f) => f.path)).size;
-  const news = discardPlan(files, staged).remove.length;
-  const message = one ? localize("Discard changes in \"{0}\"?", files[0].path) : localize("Discard changes in {0} in {1}?", plural(n, "file"), repoName);
-  let extra = "";
-  if (staged.length > 0) extra += localize(" Staged changes are discarded too.");
-  if (news > 0) extra += one || news === n ? (news === 1 ? localize(" This deletes the new file.") : localize(" This deletes the new files.")) : localize(" {0} will be deleted.", plural(news, "new file"));
-  return { message, detail: localize("This can't be undone.{0}", extra), button: one ? localize("Discard File") : localize("Discard All") };
-}
 
 /** Files staged as new (git add) and never committed. A staged rename or copy is not one: Rollback moves it back. */
 export const addedPaths = (staged: readonly FileChange[]): Set<string> => new Set(staged.filter((f) => f.status === "A" && !f.untracked).map((f) => f.path));
 
 /**
- * The Commit side bar's Rollback, as the JetBrains IDEs': tracked files go back to the last
- * commit, and an added file only leaves version control (`unadd`: unstaged, kept on disk).
- * Unversioned files are not changes to roll back: Delete… removes them.
+ * Discard Changes, as the JetBrains IDEs' Rollback: tracked files go back to the last commit, and
+ * an added file only leaves version control (`unadd`: unstaged, kept on disk). New files are not
+ * changes to discard: Delete… removes them.
  */
 export function rollbackPlan(files: readonly FileChange[], staged: readonly FileChange[]): { paths: string[]; unstage: string[]; remove: string[]; unadd: string[] } {
   const added = addedPaths(staged);
@@ -125,17 +115,26 @@ export function rollbackPlan(files: readonly FileChange[], staged: readonly File
   return { ...discardPlan(rest(files), rest(staged)), unadd: [...added] };
 }
 
-/** Rollback's prompt. Its one button says Rollback: Delete and Remove from VCS are other commands, with their own words. */
-export function rollbackPrompt(repoName: string, files: readonly FileChange[], one: boolean, staged: readonly FileChange[] = []): { message: string; detail: string; button: string } {
+/**
+ * Discard Changes' prompt, one verb wherever uncommitted work is listed (the Uncommitted side, the
+ * Changes view, the Commit side bar). It does what the JetBrains Rollback does: tracked files go
+ * back to the last commit, an added file only leaves version control (kept on disk), and a new
+ * file is never deleted by it (Delete… is the command that deletes files). The prompt says each.
+ */
+export function discardPrompt(repoName: string, files: readonly FileChange[], one: boolean, staged: readonly FileChange[] = []): { message: string; detail: string; button: string } {
   const added = addedPaths(staged);
   const tracked = files.filter((f) => !f.untracked);
   const others = tracked.filter((f) => !added.has(f.path));
-  const message = one ? localize("Roll back \"{0}\"?", tracked[0].path) : localize("Roll back {0} in {1}?", plural(new Set(tracked.map((f) => f.path)).size, "file"), repoName);
+  // A file staged and changed again is listed in both groups: count it once.
+  const n = new Set(tracked.map((f) => f.path)).size;
+  const kept = new Set(files.filter((f) => f.untracked).map((f) => f.path)).size;
+  const message = one ? localize("Discard changes in \"{0}\"?", (tracked[0] ?? files[0]).path) : localize("Discard changes in {0} in {1}?", plural(n, "file"), repoName);
   const detail: string[] = [];
   if (others.length > 0) detail.push(localize("This can't be undone.{0}", staged.some((f) => !added.has(f.path)) ? localize(" Staged changes are discarded too.") : ""));
-  if (added.size === 1) detail.push(localize("The added file leaves version control and stays on disk, under Unversioned Files."));
-  if (added.size > 1) detail.push(localize("The {0} added files leave version control and stay on disk, under Unversioned Files.", added.size));
-  return { message, detail: detail.join(" "), button: localize("Rollback") };
+  if (added.size === 1) detail.push(localize("The added file leaves version control and stays on disk as a new file."));
+  if (added.size > 1) detail.push(localize("The {0} added files leave version control and stay on disk as new files.", added.size));
+  if (kept > 0) detail.push(localize(kept === 1 ? "The new file stays: Delete… removes it." : "The {0} new files stay: Delete… removes them.", kept));
+  return { message, detail: detail.join(" "), button: one ? localize("Discard File") : localize("Discard Changes") };
 }
 
 const byPath = (a: FileChange, b: FileChange) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
@@ -171,19 +170,6 @@ export function deletePrompt(repoName: string, paths: readonly string[], one: bo
   };
 }
 
-/** Files a commit-all takes, as git.smartCommitChanges says: every change, or tracked files only. */
-export function commitCount(w: RepoWork, changes: "all" | "tracked"): number {
-  return new Set(w.changes.filter((f) => changes === "all" || !f.untracked).map((f) => f.path)).size;
-}
-
-export type CommitStep = "message" | "commitAll" | "askStageAll" | "nothing";
-
-/** What Commit… does first, as VS Code's own commit: staged files, else git.enableSmartCommit or ask. */
-export function commitStep(staged: number, changes: number, smartCommit: boolean): CommitStep {
-  if (staged > 0) return "message";
-  if (changes === 0) return "nothing";
-  return smartCommit ? "commitAll" : "askStageAll";
-}
 
 export interface UNode {
   kind: "repo" | "group" | "folder" | "file";

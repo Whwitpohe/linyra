@@ -1,6 +1,6 @@
 // The Commit side bar: checks, Group By, one message for several repositories, a commit of the checked
 // files only (git commit --only), Commit Message History, Amend with Author and Sign-off, and the
-// three commands that are never one another: Rollback, Remove from VCS and Delete…; Add to VCS and
+// three commands that are never one another: Discard Changes, Remove from VCS and Delete…; Add to VCS and
 // Add to .gitignore. Works in acme-web and acme-api and puts both back
 // (it runs after the ordered suites, see index.ts).
 import * as assert from "assert";
@@ -59,10 +59,10 @@ describe("Commit side bar", () => {
     for (const command of ["linyra.commitPanel.diff", "linyra.commitPanel.rollback", "linyra.commitPanel.removeFromVcs", "linyra.commitPanel.delete", "linyra.commitPanel.ignore"]) {
       assert.strictEqual(palette.find((m) => m.command === command)?.when, "false", command);
     }
-    // Rollback, Remove from VCS and Delete… are never one another: own names, own icons, own rows.
+    // Discard Changes, Remove from VCS and Delete… are never one another: own names, own icons, own rows.
     const commands = pkg.commands as { command: string; title: string; icon?: string }[];
     const look = (id: string) => { const c = commands.find((x) => x.command === `linyra.commitPanel.${id}`)!; return [c.title, c.icon]; };
-    assert.deepStrictEqual(["rollback", "removeFromVcs", "delete"].map(look), [["Rollback…", "$(discard)"], ["Remove from VCS", "$(remove)"], ["Delete…", "$(trash)"]]);
+    assert.deepStrictEqual(["rollback", "removeFromVcs", "delete"].map(look), [["Discard Changes…", "$(discard)"], ["Remove from VCS", "$(remove)"], ["Delete…", "$(trash)"]]);
     const offers = (command: string, group: string, contextValue: string) => menus.some((m) => {
       if (m.command !== command || !m.when.includes("view == linyra.commit") || !(m as { group?: string }).group?.startsWith(group)) return false;
       const re = /viewItem =~ \/(.+)\/$/.exec(m.when)?.[1], is = /viewItem == (\S+)$/.exec(m.when)?.[1];
@@ -70,7 +70,7 @@ describe("Commit side bar", () => {
     });
     const rows = ["commitFile.changed", "commitFile.deleted", "commitFile.added", "commitFile.untracked", "commitFolder.added", "commitRepo.behind.added", "commitList", "commitFolder.unversioned", "commitList.unversioned"];
     const menu = (command: string, group: string) => rows.filter((r) => offers(`linyra.commitPanel.${command}`, group, r));
-    assert.deepStrictEqual(menu("rollback", "1_"), ["commitFile.changed", "commitFile.deleted", "commitFolder.added", "commitRepo.behind.added", "commitList"], "Rollback: Changes only, not an added file's own row");
+    assert.deepStrictEqual(menu("rollback", "1_"), ["commitFile.changed", "commitFile.deleted", "commitFolder.added", "commitRepo.behind.added", "commitList"], "Discard Changes: Changes only, not an added file's own row");
     assert.deepStrictEqual(menu("removeFromVcs", "1_"), ["commitFile.added", "commitFolder.added", "commitRepo.behind.added"], "Remove from VCS: where an added file is");
     assert.deepStrictEqual(menu("delete", "1_"), ["commitFile.added", "commitFile.untracked", "commitFolder.unversioned", "commitList.unversioned"], "Delete…: new files only");
     assert.deepStrictEqual(menu("ignore", "1_"), ["commitFile.untracked", "commitFolder.unversioned"]);
@@ -165,14 +165,14 @@ describe("Commit side bar", () => {
     await shows("it is unversioned again", (x) => x.items.includes("[ ] Unversioned Files | 1 file") && x.items.some((i) => i.trim() === "[ ] ci-new.md"));
   });
 
-  it("Rollback: tracked files back to the last commit, an added file out of version control; unversioned files untouched", async () => {
+  it("Discard Changes: tracked files back to the last commit, an added file out of version control; unversioned files untouched", async () => {
     fs.appendFileSync(file("web", repos.web.tracked), "rolled back\n");
     await refresh();
     await shows("three files listed", (x) => x.items.some((i) => i.trim() === "[ ] ci-staged.ts") && x.items.some((i) => i.trim() === "[ ] ci-new.md") && x.checked === "1 file checked");
     const selected = [{ id: row("changes", "web", repos.web.tracked) }, { id: row("changes", "web", "ci-staged.ts") }, { id: row("unversioned", "web", "ci-new.md") }];
-    await answer("Rollback");
+    await answer("Discard Changes");
     await vscode.commands.executeCommand("linyra.commitPanel.rollback", selected[0], selected);
-    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Roll back 2 files in acme-web?", "the unversioned file is not Rollback's");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Discard changes in 2 files in acme-web?", "the unversioned file is not Discard's");
     assert.strictEqual(git(repos.web.root, "status", "--porcelain", "--", repos.web.tracked), "", "back to the last commit");
     assert.strictEqual(git(repos.web.root, "diff", "--cached", "--name-only"), "", "the added file left the index");
     assert.ok(fs.existsSync(file("web", "ci-staged.ts")) && fs.existsSync(file("web", "ci-new.md")), "no file deleted");

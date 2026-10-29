@@ -18,6 +18,7 @@ const server = createServer((req, res) => {
   res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
   createReadStream(file).pipe(res);
 }).listen(0, "127.0.0.1");
+await new Promise((resolve) => server.once("listening", resolve));
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const cdp = await page.context().newCDPSession(page);

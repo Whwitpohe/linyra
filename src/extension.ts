@@ -123,7 +123,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return t ? { ...t, group } : arg;
   };
   const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (changes.commandArgument(arg) as { repoId?: unknown } | undefined)?.repoId;
-  const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, run: log.countedRun, committed: () => log.commitsChanged(), ask });
+  const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, run: log.countedRun, ask });
   // The Commit side bar: Commit and Push… pushes through Push… (multiRepo, made below; used only once Linyra runs).
   const commitPanel = new CommitPanel({ context, store: uncommitted, actions: uncommittedActions, run: log.countedRun, ask,
     accents: () => log.accents(), behind: (id) => log.upstream.isBehind(id), shown: () => void log.uncommittedViewShown(),
@@ -332,7 +332,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),
     vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
     vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
-    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.rollback(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.discard(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.add", (arg?: unknown, many?: unknown) => commitPanel.addToVcs(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.removeFromVcs", (arg?: unknown, many?: unknown) => commitPanel.removeFromVcs(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.delete", (arg?: unknown, many?: unknown) => commitPanel.deleteFiles(arg, many)),
@@ -351,7 +351,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.discardAll", (arg?: unknown) => uncommittedActions.discard({ repoId: repoOf(arg) })),
     vscode.commands.registerCommand("linyra.stageAll", (arg?: unknown) => uncommittedActions.stage({ repoId: repoOf(arg), group: "changes" })),
     vscode.commands.registerCommand("linyra.unstageAll", (arg?: unknown) => uncommittedActions.unstage({ repoId: repoOf(arg), group: "staged" })),
-    vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => uncommittedActions.commit(changesTarget(arg) ?? arg)),
+    // Commit… on the Uncommitted side or in the Changes view: the Commit side bar, that repository's files checked.
+    vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => commitPanel.openFor(((changesTarget(arg) ?? arg) as { repoId?: unknown } | undefined)?.repoId ?? repoOf(arg))),
+    vscode.commands.registerCommand("linyra.deleteNew", (arg?: unknown, many?: unknown[]) => uncommittedActions.deleteNew(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
     vscode.commands.registerCommand("linyra.openUncommittedDiff", (arg?: unknown) => uncommittedActions.openDiff(arg)),
     vscode.commands.registerCommand("linyra.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).

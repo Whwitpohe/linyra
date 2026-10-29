@@ -9,7 +9,7 @@ import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { addedPaths, commitCount, commitStep, deletePrompt, describeUncommitted, diffFor, discardPlan, discardPrompt, rollbackPlan, rollbackPrompt, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
@@ -187,15 +187,13 @@ export interface UncommittedActionsDeps {
   store: UncommittedStore;
   discovery: RepoDiscovery;
   run(cwd: string, args: string[], signal?: AbortSignal, opts?: RunOptions): Promise<string>;
-  /** A commit landed: the Log reads its first page again. */
-  committed(): void;
   /** VS Code's prompts, shared with the Log (one queue for the integration suite). */
   ask: Ask;
 }
 
 /**
- * Stage, Unstage, Discard and Commit for the Log's Uncommitted side, the Changes view and the
- * Commit side bar (CommitPanel, which commits through git itself).
+ * Stage, Unstage, Discard Changes and Delete for the Log's Uncommitted side, the Changes view and
+ * the Commit side bar (CommitPanel, which commits through git itself; Commit… opens it).
  */
 export class UncommittedActions {
   readonly ask: Ask;
@@ -283,33 +281,24 @@ export class UncommittedActions {
     return this.act(this.picks(arg, many), "unstage", (r, paths) => this.deps.discovery.unstage(r.work.root, paths));
   }
 
-  /** A file, a folder, a group, a repository row (all of its work), or several selected rows. Always asks, once. */
+  /**
+   * Discard Changes, one verb wherever uncommitted work is listed: a file, a folder, a group, a
+   * repository row (all of its work), or several selected rows, after one prompt. Tracked files go
+   * back to the last commit, an added file only leaves version control (unstaged, kept on disk).
+   * New files are left alone: Delete… is the command that removes files.
+   */
   async discard(arg: unknown, many?: unknown): Promise<void> {
-    const picks = this.picks(arg, many);
-    if (picks.length === 0) return;
+    const all = this.picks(arg, many);
+    const picks = all.filter((r) => r.files.some((f) => !f.untracked));
+    if (picks.length === 0) {
+      if (all.length > 0) vscode.window.setStatusBarMessage(localize("New files have no changes to discard: Delete… removes them from disk."), 5000);
+      return;
+    }
     const p = picks.length === 1
-      ? discardPrompt(picks[0].work.name, picks[0].files, picks[0].one, picks[0].staged)
+      ? discardPrompt(picks[0].work.name, picks[0].files, picks[0].one && !picks[0].files[0].untracked, picks[0].staged)
       : discardPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
-    await this.act(picks, "discard", (r) => {
-      const plan = discardPlan(r.files, r.staged);
-      return this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
-    });
-  }
-
-  /**
-   * The Commit side bar's Rollback, as the JetBrains IDEs': tracked files back to the last commit,
-   * an added file only out of version control (unstaged, kept on disk). Unversioned files are
-   * left alone: Delete… is the command that removes files.
-   */
-  async rollback(arg: unknown, many?: unknown): Promise<void> {
-    const picks = this.picks(arg, many).filter((r) => r.files.some((f) => !f.untracked));
-    if (picks.length === 0) return;
-    const p = picks.length === 1
-      ? rollbackPrompt(picks[0].work.name, picks[0].files, picks[0].one, picks[0].staged)
-      : rollbackPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
-    if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
-    await this.act(picks, "roll back", async (r) => {
+    await this.act(picks, "discard", async (r) => {
       const plan = rollbackPlan(r.files, r.staged);
       if (plan.unadd.length > 0) await this.unadd(r.work, plan.unadd);
       if (plan.paths.length > 0) await this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
@@ -357,47 +346,6 @@ export class UncommittedActions {
   private async unadd(work: RepoWork, paths: readonly string[]): Promise<void> {
     await gitWithPaths(this.deps.run, work.root, paths, ["reset", "-q"]);
     this.deps.store.applied(work.repoId, (w) => withUnadded(w, new Set(paths)));
-  }
-
-  /** ✓ on a repository: its staged files, or (nothing staged) as VS Code's own commit does. */
-  async commit(arg: unknown): Promise<void> {
-    const r = this.resolve(arg && typeof arg === "object" ? { repoId: (arg as Target).repoId } : arg);
-    if (!r || !r.work.canStage) return;
-    const { work } = r;
-    // vscode.git's settings are per folder (resource scope): this repository's folder decides.
-    const git = vscode.workspace.getConfiguration("git", vscode.Uri.file(work.root));
-    const smart = git.get<boolean>("enableSmartCommit", false) === true;
-    const step = commitStep(work.staged.length, work.changes.length, smart);
-    if (step === "nothing") return;
-    if (step === "askStageAll" && !(await this.ask.warning(localize("There are no staged changes in {0}.", work.name), localize("Stage all changes and commit them?"), localize("Stage All and Commit")))) return;
-    // Commit all, as VS Code's own smart commit: git.smartCommitChanges "tracked" leaves new files out.
-    const scope = git.get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
-    const all: boolean | "tracked" = step === "message" ? false : scope === "tracked" ? "tracked" : true;
-    const n = all ? commitCount(work, scope) : work.staged.length;
-    if (n === 0) {
-      // Smart commit of tracked files only, and only new files changed: git would say "nothing to commit".
-      void vscode.window.showInformationMessage(localize("Nothing to commit in {0}: only new files changed, and git.smartCommitChanges is \"tracked\".", work.name));
-      return;
-    }
-    // The Path box hides part of the repository; a commit takes all of it. Say so, with the true numbers.
-    if (this.deps.store.filtered) {
-      const w = await this.deps.store.whole(work.repoId);
-      const real = !w ? n : !all ? w.staged : scope === "tracked" ? w.tracked : w.changes;
-      if (real > n && !(await this.ask.warning(localize("The commit takes {0} in {1}, not {2}.", plural(real, "file"), work.name, n),
-        localize("The Path box shows only part of the repository; {0} outside it would be committed too.", plural(real - n, "file")), localize("Commit {0}", plural(real, "File"))))) return;
-    }
-    const message = await this.ask.input(localize("Commit message for {0}", work.name), localize("Message ({0} {1})", plural(n, "file"), all ? localize("to commit") : localize("staged")));
-    if (!message || message.trim() === "") return;
-    let ok = true;
-    try {
-      await this.deps.discovery.commit(work.root, message, all);
-    } catch (e) {
-      ok = false;
-      this.showError(localize("Linyra could not commit {0}: {1}.", work.name, gitMessage(e)));
-    }
-    await this.deps.store.readRepo(work.repoId);
-    // Only a commit that landed changes the Log.
-    if (ok) this.deps.committed();
   }
 
   /** The diff a row opens, as Source Control: Staged is HEAD ↔ index; Changes is index (or HEAD) ↔ file. */
