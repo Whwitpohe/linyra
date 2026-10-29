@@ -1,0 +1,62 @@
+/*
+ * The Log's Uncommitted side: one row per repository with uncommitted work, as GitLens draws its
+ * WIP row. Repository | files by kind over a meter | their names | staged and branch | edited.
+ * The columns line up across rows (subgrid); without subgrid (VS Code 1.85) each row sizes its
+ * own. Theme variables only.
+ */
+.worklist { overflow-y: auto; height: 100%; outline: none; }
+.work-row {
+  display: grid; grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) max-content minmax(0, 1fr) minmax(0, max-content) max-content;
+  align-items: center; column-gap: 12px; padding: 6px var(--pad-x) 7px; cursor: default; user-select: none;
+  border-bottom: 1px solid var(--vscode-widget-border, transparent);
+}
+@supports (grid-template-columns: subgrid) {
+  /* The row's padding sits on its edge columns: they are that much wider here. */
+  .worklist {
+    display: grid; align-content: start; column-gap: 12px;
+    grid-template-columns: minmax(calc(72px + var(--pad-x)), calc(min(var(--repo-col, 15ch), 25%) + var(--pad-x))) max-content minmax(0, 1fr) minmax(0, max-content) max-content;
+  }
+  .work-row { grid-column: 1 / -1; grid-template-columns: subgrid; }
+}
+/* Each cell in its own column, so one hidden on a narrow panel moves nothing. */
+.work-row > .chip { grid-column: 1; }
+.work-row > .work-counts { grid-column: 2; }
+.work-row > .work-preview { grid-column: 3; }
+.work-row > .work-badges { grid-column: 4; }
+.work-row > .work-edited { grid-column: 5; }
+.work-row:hover { background: var(--vscode-list-hoverBackground); }
+.work-row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
+.worklist:focus .work-row[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
+
+/* The counts on the row's text line; the meter hangs under them, as wide as the widest counts. */
+.work-counts { position: relative; display: flex; min-width: 0; }
+.work-counts .meter { position: absolute; left: 0; right: 0; top: calc(100% + 2px); }
+.meter { display: flex; gap: 1px; height: 3px; border-radius: 2px; overflow: hidden; background: var(--vscode-widget-border, var(--vscode-input-border, transparent)); }
+.meter .added { background: var(--vscode-gitDecoration-addedResourceForeground); }
+.meter .modified { background: var(--vscode-gitDecoration-modifiedResourceForeground); }
+.meter .renamed { background: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
+.meter .deleted { background: var(--vscode-gitDecoration-deletedResourceForeground); }
+
+.work-preview { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* What is staged, then the branch: right-aligned, so each row's pill ends beside its time. */
+.work-badges { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.work-tag { flex: none; padding: 0 7px; border: 1px solid currentColor; border-radius: 9px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 16px; white-space: nowrap; }
+.work-tag.staged { border-color: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-gitDecoration-addedResourceForeground); }
+.work-pill { max-width: 28ch; }
+/* In step with its upstream: the cloud alone, no label. */
+.work-pill .pill-label:empty { display: none; }
+.work-edited { color: var(--vscode-descriptionForeground); text-align: right; white-space: nowrap; font-size: 12px; }
+.work-row[aria-selected="true"] :is(.work-tag:not(.staged), .work-edited, .pill-part) { color: inherit; }
+
+/* Narrow: the names give way first (their column is the flexible one), then the time and the
+   staged tag go; the branch pill shrinks to its ellipsis last. */
+@container (max-width: 760px) {
+  .work-edited { display: none; }
+}
+@container (max-width: 480px) {
+  .work-tag { display: none; }
+}
+
+/* High contrast leaves the list backgrounds unset: the Uncommitted side's rows get outlines, like commit rows. */
+body.vscode-high-contrast .work-row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .work-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }

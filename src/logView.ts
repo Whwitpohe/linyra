@@ -13,7 +13,7 @@ import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExce
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
-import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
+import { distinctPaths, editedLabel, previewLabel, tags, totals, workKinds } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 import { readAvatarSettings, readSettings } from "./settings";
@@ -81,7 +81,7 @@ export interface LogSnapshot {
   uncommittedReads: { root: string; why: string }[];
   /** The Log's switch. */
   logMode: "commits" | "uncommitted";
-  /** The Uncommitted side's rows as "name | preview | tags" (test seam). */
+  /** The Uncommitted side's rows as "name | preview | tags | branch" (test seam). */
   workRows: string[];
   workTotals: { files: number; repos: number; added: number; deleted: number };
   workKnown: boolean;
@@ -997,7 +997,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       uncommittedChanges: this.deps.uncommitted.changes,
       uncommittedReads: [...this.deps.uncommitted.reads],
       logMode: this.logMode,
-      workRows: this.workRows().map((r) => [this.repos.find((x) => x.id === r.repoId)?.name ?? r.repoId, r.preview, r.tags.join(", ")].join(" | ")),
+      workRows: this.workRows().map((r) => [this.repos.find((x) => x.id === r.repoId)?.name ?? r.repoId, r.preview, r.tags.join(", "), r.branch?.name ?? ""].join(" | ")),
       workTotals: totals(this.deps.uncommitted.works()),
       workKnown: this.deps.uncommitted.known,
       sync: Object.fromEntries(this.upstream.byRepo()),
@@ -1342,7 +1342,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return this.deps.uncommitted.works()
       .filter((w) => distinctPaths(w).length > 0)
       .sort((a, b) => (b.editedAt ?? -Infinity) - (a.editedAt ?? -Infinity))
-      .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), meter: meter(w), tags: tags(w), edited: editedLabel(now, w.editedAt), canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
+      .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), counts: workKinds(w), ...(w.branch ? { branch: w.branch } : {}), head: w.head, tags: tags(w),
+        edited: editedLabel(now, w.editedAt), canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
   }
 
   private postUncommitted(): void {

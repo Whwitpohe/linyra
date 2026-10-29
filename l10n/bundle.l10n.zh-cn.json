@@ -724,5 +724,13 @@
   "Could not read the commit: {0}": "无法读取提交：{0}",
   "Reading the commit…": "正在读取提交…",
   "Copy Hash": "复制哈希",
-  "Explain": "解释"
+  "Explain": "解释",
+  "HEAD detached at {0}": "分离 HEAD 位于 {0}",
+  "{0} · no upstream": "{0} · 没有上游",
+  "{0} · its upstream {1} is gone": "{0} · 上游 {1} 已不存在",
+  "{0} · differs from {1}": "{0} · 与 {1} 不一致",
+  "up to date with {0}": "已与 {0} 同步",
+  "gone": "已不存在",
+  "differs": "不一致",
+  "and {0} more": "还有 {0} 个"
 }

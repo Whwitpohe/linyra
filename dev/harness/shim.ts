@@ -9,6 +9,7 @@ import type { ToolbarState } from "../../src/toolbarModel";
 import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
 import { mockCommits, mockRepos, mockTopoWalk, NOW } from "./mock";
+import { mockWork } from "./mock/worktree";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
 import { answerAvatars } from "./mock/avatars";
 import { hoverReply, mockRefs } from "./mock/hover";
@@ -81,15 +82,8 @@ function reload(): void {
   page(false);
 }
 
-/** The Log's Uncommitted side: sample work in three repositories. */
-const WORK = {
-  type: "uncommitted" as const, known: true, totals: { files: 5, repos: 3, added: 24, deleted: 5 },
-  rows: [
-    { repoId: "/work/acme-web", preview: "3 files · notes.md, src/app.ts, src/new.ts", meter: { added: 1, modified: 2, deleted: 0 }, tags: ["1 staged", "1 new"], edited: "edited 2m ago", canStage: true, hasStaged: false, hasChanges: true },
-    { repoId: "/work/acme-api", preview: "1 file · upload/upload.go", meter: { added: 0, modified: 1, deleted: 0 }, tags: [], edited: "edited 1h ago", canStage: true, hasStaged: false, hasChanges: true },
-    { repoId: "/work/acme-libs", preview: "1 file · ui/Button.tsx", meter: { added: 0, modified: 0, deleted: 1 }, tags: ["all staged"], edited: "edited 3h ago", canStage: true, hasStaged: false, hasChanges: true },
-  ],
-};
+/** The Log's Uncommitted side: sample work, built by the host's own model. */
+const WORK = mockWork(repos, NOW);
 
 let logMode: "commits" | "uncommitted" = "commits";
 let selectedCommit = all[0];

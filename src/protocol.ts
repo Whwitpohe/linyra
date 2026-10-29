@@ -6,6 +6,8 @@ import type { Commit, Repo, RepoFailure } from "./types";
 import type { ChangesMessage, ChangesPage } from "./changesProtocol";
 import type { ChangesLayout, ToolbarAction, ToolbarState } from "./toolbarModel";
 import type { HoverDetail, MergeTarget } from "./hoverModel";
+import type { KindCounts } from "./changeKinds";
+import type { BranchStatus } from "./workingTree";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
 export interface Layout {
@@ -37,10 +39,15 @@ export interface BranchName {
 /** One repository on the Log's Uncommitted side. */
 export interface WorkRow {
   repoId: string;
-  /** "3 files · src/app.ts, src/new.ts, notes.md" */
+  /** "notes.md, src/app.ts, src/new.ts": the paths (how many: counts) */
   preview: string;
-  meter: { added: number; modified: number; deleted: number };
-  /** "1 staged" / "all staged", "2 new" */
+  /** Distinct files by kind (+3 ✎2 −1); the meter is drawn from it. */
+  counts: KindCounts;
+  /** The checked-out branch and its upstream, from the same git status. */
+  branch?: BranchStatus;
+  /** The last commit (a detached HEAD's pill names it); null before the first. */
+  head: string | null;
+  /** "1 staged" / "all staged", or nothing */
   tags: string[];
   /** "edited 2m ago", or "" */
   edited: string;

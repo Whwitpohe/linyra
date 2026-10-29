@@ -6,7 +6,7 @@ import type { RunGit } from "./logQuery";
 import { runPool } from "./pool";
 import type { FileChange, Repo } from "./types";
 import type { RepoWork } from "./uncommittedModel";
-import { headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
+import { branchOf, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
 
 /** What the store reads: the ticked repositories (Repo List order) under the Path box. */
 export interface Scope {
@@ -51,7 +51,7 @@ async function newestMtime(root: string, paths: readonly string[]): Promise<numb
 /** Whether a new read shows the same work as the last one (then nobody is told). */
 function sameWork(a: RepoWork | undefined, b: RepoWork): boolean {
   if (a === undefined) return b.staged.length + b.changes.length === 0;
-  return a.head === b.head && a.editedAt === b.editedAt
+  return a.head === b.head && a.editedAt === b.editedAt && JSON.stringify(a.branch) === JSON.stringify(b.branch)
     && JSON.stringify(a.staged) === JSON.stringify(b.staged) && JSON.stringify(a.changes) === JSON.stringify(b.changes);
 }
 
@@ -322,9 +322,10 @@ export class UncommittedStore implements vscode.Disposable {
   }
 
   private async readWithGit(r: Repo, specs: readonly string[], signal: AbortSignal): Promise<RepoWork> {
-    // One call for a clean repository: --branch carries the last commit's id too.
+    // One call for a clean repository: --branch carries the last commit's id, the branch and its upstream too.
     const out = await this.deps.run(r.root, statusArgs(specs), signal);
     const head = headOf(out);
+    const branch = branchOf(out);
     const split = splitStatus(out);
     let staged: FileChange[] = [];
     let changes: FileChange[] = [];
@@ -340,7 +341,7 @@ export class UncommittedStore implements vscode.Disposable {
       editedAt = await newestMtime(r.root, present);
     }
     if (staged.length + changes.length > 0) this.dirty.add(r.id); else this.dirty.delete(r.id);
-    return { repoId: r.id, root: r.root, name: r.name, head, staged, changes, editedAt, canStage: this.deps.canStage(r.root) };
+    return { repoId: r.id, root: r.root, name: r.name, head, ...(branch ? { branch } : {}), staged, changes, editedAt, canStage: this.deps.canStage(r.root) };
   }
 
   private changedSoon(): void {

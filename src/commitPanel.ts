@@ -28,6 +28,9 @@ const TREE_SCHEME = "linyra-commit";
 const WRITE_CONCURRENCY = 4;
 const NEVER = new AbortController().signal;
 
+/** A list's or repository's tooltip: Markdown the model escaped, with theme icons ($(git-branch)). */
+const markdownTip = (text: string): vscode.MarkdownString => new vscode.MarkdownString(text, true);
+
 export interface CommitPanelDeps {
   context: vscode.ExtensionContext;
   store: UncommittedStore;
@@ -190,13 +193,15 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     const item = new vscode.TreeItem(row.label, state);
     item.id = row.id;
     item.description = row.description;
-    item.tooltip = row.tooltip;
+    item.tooltip = row.markdown ? markdownTip(row.tooltip) : row.tooltip;
     item.contextValue = row.contextValue;
     item.checkboxState = {
       state: row.check === "on" ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked,
       tooltip: row.check === "mixed" ? localize("Some files checked") : undefined,
     };
-    if (row.kind === "repo") {
+    if (row.kind === "list" && row.icon) {
+      item.iconPath = new vscode.ThemeIcon(row.icon.id, new vscode.ThemeColor(row.icon.color));
+    } else if (row.kind === "repo") {
       item.iconPath = new vscode.ThemeIcon("repo", new vscode.ThemeColor(ACCENT_COLORS[(row.accent ?? 0) % ACCENT_COLORS.length]));
     } else if (row.kind === "folder") {
       item.resourceUri = this.uriFor(row);

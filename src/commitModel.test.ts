@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { checkedLabel, commitFiles, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
+import { branchLine, branchText, checkedLabel, commitFiles, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
 import type { FileChange } from "./types";
 import type { RepoWork } from "./uncommittedModel";
 
@@ -136,4 +136,50 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   assert.strictEqual(checkedLabel({ files: 1, repos: 1 }), "1 file checked");
   assert.strictEqual(checkedLabel({ files: 3, repos: 2 }), "3 files checked in 2 repositories");
   console.log("ok - the line under the Commit button says what it takes");
+}
+
+{
+  // The branch from the same git status: on the repository row, in its tooltip, and in the list's.
+  const develop = { ...web, branch: { name: "develop", upstream: "origin/develop", ahead: 1, behind: 0 } };
+  const main = { ...api, branch: { name: "main", upstream: "origin/main", ahead: 0, behind: 0 } };
+  const d = describeCommit([develop, main], new Map());
+  const byId = rowsById(d.roots);
+  assert.deepStrictEqual(outline(d.roots).filter((l) => /acme-/.test(l)).map((l) => l.trim()), [
+    "[x] acme-web | develop ↑1 · 4 files", "[x] acme-api | main · 1 file", "[ ] acme-web | develop ↑1 · 1 file",
+  ], "the repository row: its branch, how far from its upstream, then the files");
+  const repo = byId.get("changes:/ws/acme-web")!;
+  assert.strictEqual(repo.markdown, true);
+  assert.strictEqual(repo.tooltip, "/ws/acme\\-web\n\n$(git-branch) develop · $(cloud) origin/develop · ↑1\n\n$(edit) 2&nbsp;&nbsp;$(diff-removed) 1&nbsp;&nbsp;$(diff-renamed) 1",
+    "where it is, the branch and its upstream, the files by kind: theme icons, names escaped");
+  assert.strictEqual(byId.get("changes:/ws/acme-api")!.tooltip.split("\n\n")[1], "$(git-branch) main · $(cloud) origin/main", "in step: no arrows");
+  assert.strictEqual(byId.get("unversioned:/ws/acme-web")!.tooltip.split("\n\n")[2], "$(diff-added) 1", "new files are added files");
+  const changes = byId.get("changes")!;
+  assert.deepStrictEqual(changes.icon, { id: "diff-modified", color: "gitDecoration.modifiedResourceForeground" });
+  assert.deepStrictEqual(byId.get("unversioned")!.icon, { id: "diff-added", color: "gitDecoration.untrackedResourceForeground" }, "the lists in Source Control's colors");
+  assert.strictEqual(changes.tooltip, "Changes\n\n**acme\\-web** · $(git-branch) develop · $(cloud) origin/develop · ↑1\n\n**acme\\-api** · $(git-branch) main · $(cloud) origin/main\n\n$(edit) 3&nbsp;&nbsp;$(diff-removed) 1&nbsp;&nbsp;$(diff-renamed) 1",
+    "a list: each repository's branch, then its files by kind, summed");
+  assert.ok(byId.get("unversioned")!.tooltip.startsWith("New files: check them to add them with the commit, or Add to VCS \\(Ctrl\\+Alt\\+A\\) to add them now."));
+  assert.strictEqual(byId.get("changes:/ws/acme-web:f:notes.md")!.markdown, undefined, "file rows keep plain tooltips");
+  // Without repository rows, the list still names each repository's branch.
+  assert.ok(rowsById(describeCommit([develop, main], new Map(), new Map(), () => false, { repo: false, dir: true }).roots).get("changes")!.tooltip.includes("**acme\\-api** · $(git-branch) main"));
+  const many = Array.from({ length: 12 }, (_, i) => ({ ...main, repoId: `/ws/acme-svc-${i}`, root: `/ws/acme-svc-${i}`, name: `acme-svc-${i}` }));
+  assert.match(rowsById(describeCommit(many, new Map()).roots).get("changes")!.tooltip, /\*\*acme\\-svc\\-9\*\* · [^\n]+\n\nand 2 more\n\n\$\(edit\) 12$/, "ten repositories at most, then how many more");
+  console.log("ok - the Commit side bar shows each repository's branch: its row, its tooltip and its list's, with Source Control's icons");
+}
+
+{
+  const w = (branch: RepoWork["branch"], head: string | null = "4f2a9c1e".padEnd(40, "0")): RepoWork => ({ ...web, head, branch });
+  assert.strictEqual(branchText(w(undefined)), "", "not read by git (a clean repository): nothing");
+  assert.strictEqual(branchText(w({ name: "develop", upstream: "origin/develop", ahead: 1, behind: 2 })), "develop ↑1 ↓2");
+  assert.strictEqual(branchText(w({ name: "develop", upstream: null, ahead: 0, behind: 0 })), "develop");
+  assert.strictEqual(branchText(w({ name: null, upstream: null, ahead: 0, behind: 0 })), "HEAD detached at 4f2a9c1");
+  assert.strictEqual(branchLine(w({ name: "feature/x", upstream: null, ahead: 0, behind: 0 })), "$(git-branch) feature/x · $(cloud-upload) unpublished");
+  assert.strictEqual(branchLine(w({ name: "release-1.4", upstream: "origin/release-1.4", ahead: 0, behind: 0, gone: true })), "$(git-branch) release\\-1.4 · $(cloud) origin/release\\-1.4 · gone");
+  assert.strictEqual(branchLine(w({ name: "main", upstream: "origin/main", ahead: 0, behind: 0, uncounted: true })), "$(git-branch) main · $(cloud) origin/main · differs");
+  assert.strictEqual(branchLine(w({ name: null, upstream: null, ahead: 0, behind: 0 }, null)), "$(git-commit) HEAD detached at HEAD");
+  assert.strictEqual(branchLine(w({ name: "x_$(alert)*", upstream: null, ahead: 0, behind: 0 })).split(" · ")[0], "$(git-branch) x\\_\\$\\(alert\\)\\*", "a name never becomes an icon or emphasis");
+  assert.strictEqual(mdText("a [b](c) <d> #e"), "a \\[b\\]\\(c\\) \\<d\\> \\#e");
+  assert.strictEqual(countsLine({ added: 143, modified: 3, deleted: 0, renamed: 0 }), "$(edit) 3&nbsp;&nbsp;$(diff-added) 143");
+  assert.strictEqual(countsLine({ added: 0, modified: 0, deleted: 0, renamed: 0 }), "");
+  console.log("ok - branch text and tooltip lines: unpublished, gone, uncounted, detached; Markdown escaped");
 }
