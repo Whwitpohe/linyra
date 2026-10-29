@@ -284,7 +284,7 @@ describe("Insights", () => {
     await ask("Turn Off");
     await tell({ type: "health", action: "config", repoIds: [web.id], key: "core.untrackedCache", value: false });
     assert.strictEqual(git(web.root, ["config", "--local", "--get", "core.untrackedCache"]), "false");
-    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Set core.untrackedCache to false in acme-web?");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Turn off the untracked cache in acme-web?");
     // Not one of Health's keys: refused before anything is asked.
     await mark();
     await tell({ type: "health", action: "config", repoIds: [web.id], key: "core.hooksPath", value: true });

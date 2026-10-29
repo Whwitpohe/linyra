@@ -73,7 +73,7 @@ const repo = { id: "/work/acme-web", name: "acme-web" };
   assert.deepStrictEqual(check(on, "untrackedCache").action, { kind: "config", key: "core.untrackedCache", value: false, label: "Turn Off", recommended: false }, "on: the button turns it off");
   assert.strictEqual(check(on, "maintenance").action, undefined);
   const implied = assess(repo, facts({ tracked: T.manyFiles, config: parseConfig("feature.manyfiles true") }), o);
-  assert.deepStrictEqual([check(implied, "untrackedCache").value, check(implied, "untrackedCache").action], ["On (feature.manyFiles)", undefined], "implied by feature.manyFiles: turn that off instead");
+  assert.deepStrictEqual([check(implied, "untrackedCache").value, check(implied, "untrackedCache").action], ["On (with Many files)", undefined], "implied by feature.manyFiles: turn that off instead");
 
   const failed = assess(repo, { root: "/r", commitGraph: undefined, objects: undefined, tracked: undefined, config: undefined }, o);
   assert.ok(failed.checks.every((c) => c.status === "unknown" && c.value === "—"));
@@ -96,7 +96,9 @@ const repo = { id: "/work/acme-web", name: "acme-web" };
   assert.strictEqual(one.button, "Write Commit-Graph");
   assert.ok(one.detail.includes("acme-web:\n  git commit-graph write --reachable  (writes .git/objects/info/commit-graph)"), one.detail);
   const config = confirmText([{ name: "acme-api", plans: [writePlan({ kind: "config", key: "core.untrackedCache", value: true })!] }]);
-  assert.deepStrictEqual([config.message, config.button], ["Set core.untrackedCache to true in acme-api?", "Turn On"]);
+  assert.deepStrictEqual([config.message, config.button], ["Turn on the untracked cache in acme-api?", "Turn On"], "named as the row names it; the command below shows the key");
+  assert.ok(config.detail.includes("git config --local core.untrackedCache true"));
+  assert.strictEqual(confirmText([{ name: "acme-api", plans: [writePlan({ kind: "config", key: "feature.manyFiles", value: false })!] }]).message, "Turn off many-files mode in acme-api?");
   const many = confirmText([{ name: "acme-web", plans: [writePlan({ kind: "commitGraph" })!, writePlan({ kind: "config", key: "feature.manyFiles", value: true })!] }, { name: "acme-libs", plans: [] },
     { name: "acme-api", plans: [writePlan({ kind: "maintenance", tasks: ["loose-objects"] })!] }]);
   assert.deepStrictEqual([many.message, many.button], ["Optimize 2 repositories?", "Optimize"], "a repository with nothing to run is not counted");

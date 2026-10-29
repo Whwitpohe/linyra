@@ -36,13 +36,13 @@ export const isTask = (v: unknown): v is MaintenanceTask => typeof v === "string
 /** Each column's name and what it means, in plain words. */
 export function checkInfo(id: HealthCheckId): { label: string; explain: string } {
   switch (id) {
-    case "commitGraph": return { label: localize("Commit-graph"), explain: localize("A file listing every commit and its parents, so git log, the graph, topological order and ahead/behind counts need not open each commit.") };
-    case "objects": return { label: localize("Objects"), explain: localize("Loose objects are one file each; packs hold many. Thousands of loose objects or dozens of packs slow every read.") };
+    case "commitGraph": return { label: localize("Commit-graph"), explain: localize("Makes history fast: a file listing every commit and its parents, so the Log, its graph, branch-structure order and ahead/behind counts need not open each commit.") };
+    case "objects": return { label: localize("Objects"), explain: localize("How git stores the repository's content: a loose object is one file, a pack holds many. Thousands of loose objects or dozens of packs slow every read.") };
     case "tracked": return { label: localize("Tracked files"), explain: localize("The files in the index. The three settings beside it pay off when there are many.") };
-    case "untrackedCache": return { label: localize("Untracked cache"), explain: localize("git status remembers which folders had no new files and skips those that did not change.") };
-    case "fsmonitor": return { label: localize("File system monitor"), explain: localize("A git process watches the working tree, so git status asks it what changed instead of looking at every file.") };
-    case "manyFiles": return { label: localize("Many files"), explain: localize("feature.manyFiles: a newer index format and the untracked cache, for repositories with very many files.") };
-    case "maintenance": return { label: localize("Maintenance"), explain: localize("git maintenance start registers the repository and lets the system's scheduler repack it and refresh its commit-graph in the background.") };
+    case "untrackedCache": return { label: localize("Untracked cache"), explain: localize("Makes git status faster: it remembers which folders had no new files and skips the ones that did not change.") };
+    case "fsmonitor": return { label: localize("File system monitor"), explain: localize("Makes git status faster: a git process watches your files, so git status asks it what changed instead of checking every file.") };
+    case "manyFiles": return { label: localize("Many files"), explain: localize("Makes git status and checkouts faster in a repository with very many files: a newer index format, and the untracked cache (git's feature.manyFiles).") };
+    case "maintenance": return { label: localize("Maintenance"), explain: localize("Keeps the repository fast on its own: the system's scheduler repacks it and refreshes its commit-graph in the background (git maintenance start sets this up).") };
   }
 }
 
@@ -153,7 +153,7 @@ export function assess(repo: { id: string; name: string }, f: HealthFacts, o: Fo
   else {
     const needed = objects === undefined || objects >= T.commitGraphObjects;
     checks.push({ id: "commitGraph", value: localize("Missing"), status: needed ? "suggest" : "ok",
-      advice: needed ? localize("Write one: topological order and the graph walk the whole history without it.") : localize("Not needed yet: fewer than {0} objects.", o.number(T.commitGraphObjects)),
+      advice: needed ? localize("Write one: without it, branch-structure order and the graph read the whole history.") : localize("Not needed yet: fewer than {0} objects.", o.number(T.commitGraphObjects)),
       action: { kind: "commitGraph", label: localize("Write Commit-Graph"), recommended: needed } });
   }
 
@@ -179,7 +179,7 @@ export function assess(repo: { id: string; name: string }, f: HealthFacts, o: Fo
   else {
     const uc = cfg.untrackedCache;
     const ucWanted = many(T.untrackedCache) && !uc.on;
-    checks.push({ id: "untrackedCache", value: uc.on ? (uc.source === "manyFiles" ? localize("On (feature.manyFiles)") : localize("On")) : localize("Off"),
+    checks.push({ id: "untrackedCache", value: uc.on ? (uc.source === "manyFiles" ? localize("On (with Many files)") : localize("On")) : localize("Off"),
       status: ucWanted ? "suggest" : "ok",
       advice: ucWanted ? localize("Over {0} tracked files: turn it on.", o.number(T.untrackedCache)) : uc.on ? localize("On: git status skips folders that did not change.") : localize("Not needed under {0} tracked files.", o.number(T.untrackedCache)),
       action: uc.source === "manyFiles" ? undefined : { kind: "config", key: "core.untrackedCache", value: !uc.on, label: uc.on ? localize("Turn Off") : localize("Turn On"), recommended: ucWanted } });
@@ -198,7 +198,7 @@ export function assess(repo: { id: string; name: string }, f: HealthFacts, o: Fo
     const mfWanted = many(T.manyFiles) && !cfg.manyFiles;
     checks.push({ id: "manyFiles", value: cfg.manyFiles ? localize("On") : localize("Off"), status: mfWanted ? "suggest" : "ok",
       advice: mfWanted ? localize("Over {0} tracked files: turn it on. Older tools (libgit2, JGit) may not read the index it writes.", o.number(T.manyFiles))
-        : cfg.manyFiles ? localize("On: index version 4, index.skipHash and the untracked cache.") : localize("Not needed under {0} tracked files.", o.number(T.manyFiles)),
+        : cfg.manyFiles ? localize("On: git uses a faster index format and the untracked cache.") : localize("Not needed under {0} tracked files.", o.number(T.manyFiles)),
       action: { kind: "config", key: "feature.manyFiles", value: !cfg.manyFiles, label: cfg.manyFiles ? localize("Turn Off") : localize("Turn On"), recommended: mfWanted } });
   }
 
@@ -228,6 +228,16 @@ function stripAction(a: HealthAction & { label?: string; recommended?: boolean }
 
 /** One git command a write runs, and what it changes. */
 export interface WritePlan { args: string[]; writes: string }
+
+/** A setting as a sentence names it ("Turn on the untracked cache"), not by its key. */
+export function settingName(key: string): string {
+  switch (key) {
+    case "core.untrackedCache": return localize("the untracked cache");
+    case "core.fsmonitor": return localize("the file system monitor");
+    case "feature.manyFiles": return localize("many-files mode");
+    default: return key;
+  }
+}
 
 /** What an action runs, exactly. A copy runs nothing. */
 export function writePlan(action: HealthAction): WritePlan | undefined {
@@ -259,6 +269,11 @@ export function confirmText(plans: readonly { name: string; plans: readonly Writ
   const only = repos.length === 1 && repos[0].plans.length === 1 ? repos[0].plans[0] : undefined;
   if (only?.args[0] === "commit-graph") return { message: localize("Write the commit-graph in {0}?", repos[0].name), detail, button: localize("Write Commit-Graph") };
   if (only?.args[0] === "maintenance") return { message: localize("Run git maintenance in {0}?", repos[0].name), detail, button: localize("Run Maintenance") };
-  if (only?.args[0] === "config") return { message: localize("Set {0} to {1} in {2}?", only.args[2], only.args[3], repos[0].name), detail, button: only.args[3] === "true" ? localize("Turn On") : localize("Turn Off") };
+  if (only?.args[0] === "config") {
+    const name = settingName(only.args[2]);
+    return only.args[3] === "true"
+      ? { message: localize("Turn on {0} in {1}?", name, repos[0].name), detail, button: localize("Turn On") }
+      : { message: localize("Turn off {0} in {1}?", name, repos[0].name), detail, button: localize("Turn Off") };
+  }
   return { message: repos.length === 1 ? localize("Optimize {0}?", repos[0].name) : localize("Optimize {0} repositories?", repos.length), detail, button: localize("Optimize") };
 }
