@@ -21,10 +21,11 @@ test("an empty box lists every operator with what it does and its aliases", asyn
   const errors = await open(page);
   await page.click("#search");
   await expect(list(page)).toBeVisible();
-  await expect(rows(page)).toHaveCount(12);
-  await expect(rows(page).first().locator(".suggest-label")).toHaveText("message:");
-  await expect(rows(page).first().locator(".suggest-description")).toContainText("quoted phrase");
-  await expect(rows(page).filter({ hasText: "author:" }).first().locator(".suggest-detail")).toHaveText("@:");
+  // ✨ first (Linyra AI is set up in the harness), then the twelve operators.
+  await expect(rows(page)).toHaveCount(13);
+  await expect(rows(page).nth(1).locator(".suggest-label")).toHaveText("message:");
+  await expect(rows(page).nth(1).locator(".suggest-description")).toContainText("commit messages");
+  await expect(rows(page).filter({ hasText: "author:" }).first().locator(".suggest-aside")).toHaveText("@:");
   await expect(page.locator("#search")).toHaveAttribute("aria-expanded", "true");
   await page.keyboard.press("Escape");
   await expect(list(page)).toBeHidden();
@@ -63,12 +64,13 @@ test("value suggestions for repo:, type: and ref: (branches and tags)", async ({
   await page.keyboard.press("Tab");
   await expect(page.locator("#search")).toHaveValue("repo:acme-libs ");
   await page.keyboard.type("type:");
-  await expect(rows(page).locator(".suggest-label")).toHaveText(["merge", "tip", "wip"]);
+  await expect(rows(page).locator(".suggest-label")).toHaveText(["tip", "merge", "wip"]);
   await page.keyboard.press("Escape");
   await page.fill("#search", "ref:v1");
   await page.keyboard.press("End");
   await expect(rows(page).filter({ hasText: "v1.4.0" })).toHaveCount(1);
-  await expect(rows(page).filter({ hasText: "v1.4.0" }).locator(".suggest-description")).toHaveText("tag");
+  await expect(rows(page).filter({ hasText: "v1.4.0" }).locator(".suggest-aside")).toHaveText("tag");
+  await expect(rows(page).filter({ hasText: "v1.4.0" }).locator(".suggest-description")).toHaveText("2 repositories");
 });
 
 test("an operator without its value is not searched; Enter says what it waits for", async ({ page }) => {

@@ -3,33 +3,92 @@
 // searching, JavaScript only merges what it returns). Pure: no vscode, no DOM.
 import { authorPatterns, escapeRegex, isValidRef, normalizePath, regexProblem, type FilterState } from "./filterModel";
 import { localize } from "./i18n";
+import type { Codicon } from "./webview/codicons";
 
 export type SearchOperator =
   | "message:" | "-message:" | "author:" | "committer:" | "commit:" | "file:" | "change:"
   | "type:" | "after:" | "before:" | "ref:" | "repo:";
 
+/** A line of help with examples: `text` has {0}, {1}… where each of `code` goes, drawn as code. */
+export interface SearchExample {
+  text: string;
+  code: readonly string[];
+}
+
 export interface OperatorInfo {
   operator: SearchOperator;
   /** Other spellings, as GitLens has them (and sha:, Linyra's own before this language). */
   aliases: readonly string[];
-  /** One line for the suggestions list. */
+  /** The suggestions list's second line: what the operator gets you, as GitLens has it. */
   description: () => string;
+  /** The suggestions list's help line while the caret is in this operator's value. */
+  example: () => SearchExample;
+  /** The suggestions list's icon, GitLens's for the same operator. */
+  icon: Codicon;
 }
 
-/** In the order the suggestions list shows them. */
+/** In the order the suggestions list shows them: GitLens's, then repo:, Linyra's own. */
 export const OPERATORS: readonly OperatorInfo[] = [
-  { operator: "message:", aliases: ["=:"], description: () => localize("Commit messages with a word or a quoted phrase") },
-  { operator: "-message:", aliases: [], description: () => localize("Leave out commits whose message has this word") },
-  { operator: "author:", aliases: ["@:"], description: () => localize("Commits by a name or email; @me for yours") },
-  { operator: "committer:", aliases: [], description: () => localize("Commits applied by a name or email; @me for yours") },
-  { operator: "commit:", aliases: ["#:", "sha:"], description: () => localize("A commit by its hash, in every selected repository") },
-  { operator: "file:", aliases: ["?:"], description: () => localize("Commits touching a file, a folder or a glob such as src/**/*.ts") },
-  { operator: "change:", aliases: ["~:"], description: () => localize("Commits that added or removed this text in a file") },
-  { operator: "type:", aliases: ["is:"], description: () => localize("merge commits, tip of a branch or tag, or wip (uncommitted work)") },
-  { operator: "after:", aliases: ["since:", ">:"], description: () => localize("Commits from a date on: 2026-10-01, 1.week.ago or yesterday") },
-  { operator: "before:", aliases: ["until:", "<:"], description: () => localize("Commits before a date: 2026-10-01, 1.week.ago or yesterday") },
-  { operator: "ref:", aliases: ["^:"], description: () => localize("A branch, tag or range such as main..feature, where a repository has it") },
-  { operator: "repo:", aliases: [], description: () => localize("Only these repositories, among the ticked ones") },
+  {
+    operator: "message:", aliases: ["=:"], icon: "comment",
+    description: () => localize("Search commit messages to quickly find specific changes or features"),
+    example: () => ({ text: localize("Use quotes to search for phrases, e.g. {0} or {1}"), code: ['message:"add retry"', '=:"bug fix"'] }),
+  },
+  {
+    operator: "-message:", aliases: [], icon: "comment",
+    description: () => localize("Exclude commits whose message contains a term"),
+    example: () => ({ text: localize("Use to filter out noisy commits, e.g. {0}. Cannot be combined with {1} in the same search"), code: ["-message:wip", "message:"] }),
+  },
+  {
+    operator: "author:", aliases: ["@:"], icon: "person",
+    description: () => localize("Filter by author to see contributions from specific team members"),
+    example: () => ({ text: localize("Use a name or email, e.g. {0}, {1}, or {2} for your own commits"), code: ["author:dana", "@:rin", "@me"] }),
+  },
+  {
+    operator: "committer:", aliases: [], icon: "person",
+    description: () => localize("Filter by committer to see who applied specific changes"),
+    example: () => ({ text: localize("Use a name or email, e.g. {0}, or {1} for commits you committed"), code: ["committer:dana", "@me"] }),
+  },
+  {
+    operator: "commit:", aliases: ["#:", "sha:"], icon: "git-commit",
+    description: () => localize("Jump to a specific commit using its SHA"),
+    example: () => ({ text: localize("Use a full or short commit SHA, e.g. {0} or {1}"), code: ["commit:4ce3a", "#:4ce3a"] }),
+  },
+  {
+    operator: "ref:", aliases: ["^:"], icon: "git-branch",
+    description: () => localize("Filter to a specific branch or tag (solo), or compare ranges to see unique commits, in the repositories that have it"),
+    example: () => ({ text: localize("Use a branch or tag, e.g. {0} or {1}, or a range to compare, e.g. {2} (commits in {3} but not in {4})"), code: ["ref:main", "^:v1.4.0", "ref:main..feature", "feature", "main"] }),
+  },
+  {
+    operator: "type:", aliases: ["is:"], icon: "symbol-misc",
+    description: () => localize("Filter by commit type — branch & tag tips, merges, or working tree changes"),
+    example: () => ({ text: localize("Use {0} for branch and tag tips, {1} for merge commits, or {2} for uncommitted changes"), code: ["type:tip", "type:merge", "is:wip"] }),
+  },
+  {
+    operator: "file:", aliases: ["?:"], icon: "file",
+    description: () => localize("Track file changes across history (supports glob patterns)"),
+    example: () => ({ text: localize("Use a path or file name, e.g. {0}, or a glob, e.g. {1}"), code: ["file:package.json", "?:src/**/*.ts"] }),
+  },
+  {
+    operator: "change:", aliases: ["~:"], icon: "diff",
+    description: () => localize("Search code changes to find when specific functions or patterns were modified"),
+    example: () => ({ text: localize("Use a code snippet, e.g. {0}, or with Use Regular Expression on, a pattern such as {1}"), code: ['change:"function upload"', '~:"import.*React"'] }),
+  },
+  {
+    operator: "after:", aliases: ["since:", ">:"], icon: "calendar",
+    description: () => localize("Filter by date range using absolute dates or relative times"),
+    example: () => ({ text: localize("Use a date, e.g. {0}, or a relative date, e.g. {1} or {2}"), code: ["after:2026-10-01", "since:3.weeks.ago", ">:1.month.ago"] }),
+  },
+  {
+    operator: "before:", aliases: ["until:", "<:"], icon: "calendar",
+    description: () => localize("Filter by date range using absolute dates or relative times"),
+    example: () => ({ text: localize("Use a date, e.g. {0}, or a relative date, e.g. {1} or {2}"), code: ["before:2026-10-01", "until:3.weeks.ago", "<:1.month.ago"] }),
+  },
+  {
+    operator: "repo:", aliases: [], icon: "repo",
+    description: () => localize("Only these repositories (within the ticked ones)"),
+    example: () => ({ text: localize("Use a repository name, with * for any characters, e.g. {0} or {1}"), code: ["repo:acme-web", "repo:acme-*"] }),
+  },
 ];
 
 /** Every spelling, longest first, so no spelling hides a longer one. Case-sensitive, as in GitLens. */
