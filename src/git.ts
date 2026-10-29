@@ -4,7 +4,8 @@ import { promises as fs } from "fs";
 import { abortError } from "./pool";
 
 export class GitError extends Error {
-  constructor(message: string, readonly exitCode: number | null) {
+  /** stdout: what git printed before failing (merge-tree lists conflicts and exits 1). */
+  constructor(message: string, readonly exitCode: number | null, readonly stdout = "") {
     super(message);
     this.name = "GitError";
   }
@@ -92,7 +93,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
       if (signal?.aborted) return reject(abortError());
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
-      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || localize("git exited with code {0}", String(code)), code));
+      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || localize("git exited with code {0}", String(code)), code, Buffer.concat(out).toString("utf8")));
     });
   });
 }

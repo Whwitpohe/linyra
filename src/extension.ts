@@ -6,11 +6,11 @@ import { migratePrivateState } from "./stateMigration";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
 import { ChangesPanel } from "./changesPanel";
 import type { CombinedOpen } from "./changesModel";
-import { UNCOMMITTED } from "./types";
+import { UNCOMMITTED, type Repo } from "./types";
 import { validPair } from "./compareModel";
 import type { ReposWebview } from "./compareProtocol";
 import { CompareRepos } from "./compareRepos";
-import { CompareSelection, CompareSide, HIDE_SAME, hideSameOf, SHOWN as COMPARE_SHOWN, type CompareMode } from "./compareView";
+import { CompareSelection, CompareSide, HIDE_SAME, hideSameOf, MergePreviewDocs, SHOWN as COMPARE_SHOWN, type CompareMode } from "./compareView";
 import { CompareStore, rowLabel } from "./compareStore";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
@@ -107,13 +107,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     accents: () => log.accents(), behind: (id) => log.upstream.isBehind(id), shown: () => void log.uncommittedViewShown(),
     committed: () => log.commitsChanged(), push: (ids) => multiRepo.push(ids) });
   const compare = new CompareStore({
-    run: (root, args, signal) => log.countedRun(root, args, signal),
+    run: (root, args, signal, opts) => log.countedRun(root, args, signal, opts),
     concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("linyra").get<number>("maxConcurrency", 16))),
     repos: () => log.tickedRepos(),
   });
   const selection = new CompareSelection();
-  const compareDeps = { context, store: compare, log, selection };
+  const mergeDocs = new MergePreviewDocs();
+  const compareDeps = { context, store: compare, log, selection, mergeDocs, ask,
+    mergeEach: (title: string, plans: { repo: Repo; ref: string }[], skipped: { name: string; reason: string }[]) => multiRepo.mergeEach(title, plans, skipped) };
   const compareRepos = new CompareRepos(compareDeps);
+  context.subscriptions.push(mergeDocs, vscode.workspace.registerTextDocumentContentProvider(MergePreviewDocs.scheme, mergeDocs));
   const branchSidebar = new BranchController(context, {
     repos: () => log.repoList, run: (root, args, signal, opts) => log.countedRun(root, args, signal, opts), discovery, ask,
     post: (message) => log.postBranchMessage(message), view: (repoId, branch) => log.selectBranch(repoId, branch),
@@ -239,6 +242,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return side ? sides[side].openSinceSplit(value) : undefined;
     }),
     vscode.commands.registerCommand("linyra.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
+    vscode.commands.registerCommand("linyra.compareMergePreview", (arg?: { side?: unknown }) => {
+      const value = compareNode(arg) as typeof arg;
+      return value?.side === "left" || value?.side === "right" ? sides[value.side].previewMerge(value) : undefined;
+    }),
+    vscode.commands.registerCommand("linyra.compareCherryPick", (arg?: { compareSide?: unknown }) => {
+      const side = arg?.compareSide === "left" || arg?.compareSide === "right" ? sides[arg.compareSide] : undefined;
+      const t = side?.cherryPickTargets(arg);
+      return t ? commitActions.cherryPickCommits(t.repo, t.commits) : undefined;
+    }),
+    vscode.commands.registerCommand("linyra.compareMerge", (arg?: { repoId?: unknown }) => compareRepos.mergeIntoRight(typeof arg?.repoId === "string" ? arg.repoId : undefined)),
+    vscode.commands.registerCommand("linyra.compareReleaseNotes", () => compareRepos.copyReleaseNotes()),
+    vscode.commands.registerCommand("linyra.compareOnlyConflicts", () => compareRepos.setOnlyConflicts(true)),
+    vscode.commands.registerCommand("linyra.compareAllConflicts", () => compareRepos.setOnlyConflicts(false)),
     ...(["left", "right"] as const).flatMap((side) => [
       vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
       vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),

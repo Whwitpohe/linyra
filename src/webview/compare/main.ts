@@ -1,6 +1,6 @@
 import { localize } from "../../i18n";
 import "./compare.css";
-import { setRemoteNames, type Duplicate, type Pair, type PickerItem, type Side } from "../../compareModel";
+import { ALL_REPOS, candidates, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type PickerItem, type Side } from "../../compareModel";
 import type { CompareMode, CompareLayout, CRepoRow, ReposHost, ReposWebview } from "../../compareProtocol";
 import { byId, clear, h } from "../dom";
 import { codicon, codiconElement } from "../codicons";
@@ -14,7 +14,7 @@ const post = (m: ReposWebview) => vscodeApi.postMessage(m);
 const sideTrees = { left: new CompareTree("left", post), right: new CompareTree("right", post) };
 const workspace = byId("compare-workspace"), sidesElement = byId("compare-sides");
 let layout: CompareLayout = { repositoriesWidth: 240, leftWidth: 480, leftHeight: 180, sidesHeight: 280, orientation: "auto" };
-let showLeft = true, showRight = true, hideSame = true;
+let showLeft = true, showRight = true, hideSame = true, onlyConflicts = false;
 const repoSash = byId("compare-repo-splitter"), repoVerticalSash = byId("compare-repo-splitter-vertical");
 const sideSash = byId("compare-side-splitter"), sideVerticalSash = byId("compare-side-splitter-vertical");
 
@@ -68,18 +68,30 @@ let pairKey = "";
 const open = new Map<string, Duplicate[] | undefined>();
 
 const list = byId("repo-list");
-const picker = new BranchPicker(byId("picker"), byId<HTMLInputElement>("picker-search"), byId("picker-items"), choose, (name) => post({ type: "favorite", name }));
+const picker = new BranchPicker(byId("picker"), byId<HTMLInputElement>("picker-search"), byId("picker-items"), choose, (name) => post({ type: "favorite", name }),
+  (name) => setSide(pickingSide, [...sideNames(pickingSide), name], false), (index) => setSide(pickingSide, sideNames(pickingSide).filter((_, i) => i !== index), false));
+
+const sideNames = (side: Side) => candidates(pair?.[side] ?? "");
 
 function choose(it: PickerItem): void {
   if (it.kind === "pair") return post({ type: "pick", pair: it.pair });
-  const other = pickingSide === "left" ? pair?.right : pair?.left;
-  const next = pickingSide === "left" ? { left: it.name, right: other ?? "" } : { left: other ?? "", right: it.name };
-  if (next.left && next.right) post({ type: "pick", pair: next });
+  if (it.kind === "name") setSide(pickingSide, [it.name], true);
+}
+
+/** A side's names, in order. `next`: with the other side still empty, its picker opens. */
+function setSide(side: Side, names: string[], next: boolean): void {
+  if (names.length === 0) return;
+  const value = sideOf(names);
+  const other = side === "left" ? pair?.right : pair?.left;
+  const p = side === "left" ? { left: value, right: other ?? "" } : { left: other ?? "", right: value };
+  picker.setCurrent(candidates(value));
+  if (p.left && p.right) post({ type: "pick", pair: p });
   else {
     // The other side is still empty: the host keeps the half pair (and its guidance); ask for the other side.
-    pair = next;
-    post({ type: "pending", pair: next });
-    openPicker(pickingSide === "left" ? "right" : "left");
+    pair = p;
+    renderState();
+    post({ type: "pending", pair: p });
+    if (next) openPicker(side === "left" ? "right" : "left");
   }
 }
 
@@ -92,7 +104,7 @@ function openPicker(side: Side): void {
     namesWanted = true;
     post({ type: "wantBranches" });
   }
-  picker.open(byId(side === "left" ? "branch-left" : "branch-right"));
+  picker.open(byId(side === "left" ? "branch-left" : "branch-right"), sideNames(side));
 }
 
 byId("branch-left").addEventListener("click", () => openPicker("left"));
@@ -105,6 +117,9 @@ byId("refresh").addEventListener("click", () => {
 byId("mode-files").addEventListener("click", () => post({ type: "mode", mode: "files" }));
 byId("mode-commits").addEventListener("click", () => post({ type: "mode", mode: "commits" }));
 byId("compare-hide-same").addEventListener("click", () => post({ type: "hideSame", hide: !hideSame }));
+byId("compare-only-conflicts").addEventListener("click", () => post({ type: "onlyConflicts", on: !onlyConflicts }));
+byId("compare-merge").addEventListener("click", () => post({ type: "merge" }));
+byId("compare-release-notes").addEventListener("click", () => post({ type: "releaseNotes" }));
 byId("compare-layout-horizontal").addEventListener("click", () => { layout.orientation = "sideBySide"; applyLayout(); saveLayout(); });
 byId("compare-layout-stacked").addEventListener("click", () => { layout.orientation = "stacked"; applyLayout(); saveLayout(); });
 for (const side of ["left", "right"] as const) {
@@ -141,10 +156,11 @@ list.addEventListener("keydown", (e) => {
   }
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
   e.preventDefault();
-  const i = rows.findIndex((r) => r.repoId === selected);
-  const to = e.key === "Home" ? 0 : e.key === "End" ? rows.length - 1 : i + (e.key === "ArrowDown" ? 1 : -1);
-  const r = rows[Math.max(0, Math.min(rows.length - 1, to))];
-  if (r) select(r.repoId);
+  const ids = entries();
+  const i = ids.indexOf(selected ?? "");
+  const to = e.key === "Home" ? 0 : e.key === "End" ? ids.length - 1 : i + (e.key === "ArrowDown" ? 1 : -1);
+  const id = ids[Math.max(0, Math.min(ids.length - 1, to))];
+  if (id) select(id);
 });
 
 /** Selections sent and not yet echoed back by the host: an older echo must not undo a newer pick. */
@@ -155,7 +171,7 @@ function select(repoId: string): void {
   selected = repoId;
   pendingSelects++;
   renderRows();
-  byId(`crepo-${rows.findIndex((r) => r.repoId === repoId)}`).scrollIntoView({ block: "nearest" });
+  byId(`crepo-${entries().indexOf(repoId)}`)?.scrollIntoView({ block: "nearest" });
   post({ type: "select", repoId });
 }
 
@@ -170,6 +186,7 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
       recent = m.recent;
       favorites = m.favorites;
       hideSame = m.hideSame ?? true;
+      onlyConflicts = m.onlyConflicts ?? false;
       showLeft = m.showLeft ?? true;
       showRight = m.showRight ?? true;
       layout = m.layout ?? layout;
@@ -180,12 +197,12 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
     case "branches":
       setRemoteNames(m.remotes);
       names = m.names;
-      picker.update(names, favorites, recent, true);
+      picker.update(names, favorites, recent, true, m.defaults ?? []);
       return;
     case "repos":
       rows = m.rows;
       // Our own picks come back one echo each; until the last one does, the page's choice stands.
-      if (pendingSelects > 0 && m.selected !== undefined && rows.some((r) => r.repoId === selected)) pendingSelects--;
+      if (pendingSelects > 0 && m.selected !== undefined && entries().includes(selected ?? "")) pendingSelects--;
       else selected = m.selected;
       empty = m.empty;
       // Unfolded duplicates belong to one pair and orientation: a new pair or a swap folds them.
@@ -212,10 +229,11 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
 });
 
 function renderState(message?: string): void {
-  byId("name-left").textContent = pair?.left || localize("Pick a branch");
-  byId("name-right").textContent = pair?.right || localize("Pick a branch");
-  byId("branch-left").title = `${localize("The branch to merge from")}${pair?.left ? `\n${pair.left}` : ""}`;
-  byId("branch-right").title = `${localize("The branch it goes into")}${pair?.right ? `\n${pair.right}` : ""}`;
+  byId("name-left").textContent = pair?.left ? sideLabel(pair.left) : localize("Pick a branch");
+  byId("name-right").textContent = pair?.right ? sideLabel(pair.right) : localize("Pick a branch");
+  const several = (side: string) => (candidates(side).length > 1 ? `\n${localize("Each repository uses the first of these it has")}` : "");
+  byId("branch-left").title = `${localize("The branch to merge from")}${pair?.left ? `\n${sideLabel(pair.left)}${several(pair.left)}` : ""}`;
+  byId("branch-right").title = `${localize("The branch it goes into")}${pair?.right ? `\n${sideLabel(pair.right)}${several(pair.right)}` : ""}`;
   byId("mode-files").setAttribute("aria-pressed", String(mode === "files"));
   byId("mode-commits").setAttribute("aria-pressed", String(mode === "commits"));
   // One control per setting: Files | Commits and Hide Files Already on Both apply to both sides,
@@ -226,6 +244,11 @@ function renderState(message?: string): void {
   hideButton.setAttribute("aria-label", hideButton.title);
   hideButton.setAttribute("aria-pressed", String(hideSame));
   hideButton.innerHTML = codicon(hideSame ? "filter-filled" : "filter");
+  const conflictsButton = byId<HTMLButtonElement>("compare-only-conflicts");
+  conflictsButton.disabled = mode !== "files";
+  conflictsButton.title = localize(onlyConflicts ? "Show All Files" : "Show Only Conflicts");
+  conflictsButton.setAttribute("aria-label", conflictsButton.title);
+  conflictsButton.setAttribute("aria-pressed", String(onlyConflicts));
   const msg = byId("message");
   msg.hidden = message === undefined;
   msg.textContent = message ?? "";
@@ -248,10 +271,39 @@ byId("missing-toggle").addEventListener("click", () => {
   toggle.textContent = list.hidden ? "▸" : "▾";
 });
 
+/** The rows a selection can land on, in order: All repositories (two or more differ), then each repository. */
+function entries(): string[] {
+  const all = rows.filter((r) => r.status === "differs").length >= 2;
+  return [...(all ? [ALL_REPOS] : []), ...rows.map((r) => r.repoId)];
+}
+
+/** A row's merge note: how many files would conflict, a check when it merges cleanly, nothing when git cannot tell. */
+function mergeNote(conflicts: number | null): HTMLElement | null {
+  if (conflicts === null) return null;
+  return conflicts === 0
+    ? h("span", { class: "row-note clean", title: localize("Merges cleanly") }, [codiconElement("check")])
+    : h("span", { class: "row-note conflict", title: localize("A merge would leave {0} conflicted", localize("{0} {1}", conflicts, localize(conflicts === 1 ? "file" : "files"))) }, [codiconElement("warning"), String(conflicts)]);
+}
+
 function renderRows(): void {
   clear(list);
   if (rows.length === 0 && empty) list.append(h("div", { class: "cempty", role: "presentation" }, [empty]));
-  rows.forEach((r, i) => {
+  const ids = entries();
+  if (ids[0] === ALL_REPOS) {
+    const on = selected === ALL_REPOS;
+    const differ = rows.filter((r) => r.status === "differs");
+    const conflicted = differ.filter((r) => (r.conflicts ?? 0) > 0).length;
+    list.append(h("div", { class: on ? "crepo all selected" : "crepo all", role: "option", id: "crepo-0", "aria-selected": String(on), "data-repo": ALL_REPOS,
+      title: localize("Every repository whose files differ, in one tree") }, [
+      h("span", { class: "twisty", "aria-hidden": "true" }), codiconElement("repo"),
+      h("span", { class: "repo-name" }, [localize("All repositories")]),
+      h("span", { class: "row-note" }, [String(differ.length)]),
+      conflicted > 0 ? h("span", { class: "row-note conflict", title: localize("{0} with conflicts", conflicted) }, [codiconElement("warning"), String(conflicted)]) : null,
+    ]));
+  }
+  const offset = ids[0] === ALL_REPOS ? 1 : 0;
+  rows.forEach((r, n) => {
+    const i = n + offset;
     const on = r.repoId === selected;
     const dups = r.status === "differs" && r.same > 0;
     const unfolded = open.has(r.repoId);
@@ -262,9 +314,10 @@ function renderRows(): void {
     }, [
       dups ? h("button", { class: "twisty", type: "button", tabindex: "-1", "data-twisty": r.repoId, "aria-expanded": String(unfolded), "aria-label": localize(unfolded ? "Collapse {0}" : "Expand {0}", r.name) }, [codiconElement(unfolded ? "chevron-down" : "chevron-right")]) : h("span", { class: "twisty", "aria-hidden": "true" }),
       h("span", { class: `repo-dot accent-${r.accent}`, "aria-hidden": "true" }),
-      h("span", { class: "repo-name" }, [r.name]),
-      // Names only: commit counts mislead when the same change travels by cherry-pick (they are in the tooltip).
-      r.status === "differs" ? null : h("span", { class: r.status === "error" ? "row-note error" : "row-note" }, [r.status === "nobase" ? localize("no common history") : localize("git error")]),
+      // A side with several names: which ones this repository uses, under its name.
+      r.names ? h("span", { class: "repo-name two-line" }, [r.name, h("span", { class: "repo-names" }, [r.names])]) : h("span", { class: "repo-name" }, [r.name]),
+      // Names only: commit counts mislead when the same change travels by cherry-pick (they are in the tooltip). The merge note says what matters.
+      r.status === "differs" ? mergeNote(r.conflicts) : h("span", { class: r.status === "error" ? "row-note error" : "row-note" }, [r.status === "nobase" ? localize("no common history") : localize("git error")]),
     ]));
     if (unfolded) {
       const items = open.get(r.repoId);
@@ -277,7 +330,7 @@ function renderRows(): void {
       ]));
     }
   });
-  const i = rows.findIndex((r) => r.repoId === selected);
+  const i = ids.indexOf(selected ?? "");
   if (i >= 0) list.setAttribute("aria-activedescendant", `crepo-${i}`);
   else list.removeAttribute("aria-activedescendant");
 }

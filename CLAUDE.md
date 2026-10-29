@@ -40,7 +40,10 @@ band names its repository, as the root column does in the JetBrains Log.
   per file, one message, Amend, Commit / Commit and Push… of the checked files in every
   repository (`git commit --only`), Rollback, Remove from VCS, Delete, Add to .gitignore; stage, unstage,
   discard, commit.
-- **Sync:** Fetch All, Pull, Pull All Behind, ahead/behind badges; Compare Branches.
+- **Sync:** Fetch All, Pull, Pull All Behind, ahead/behind badges; Compare Branches — several
+  names per side (each repository uses the first it has), conflicts predicted in memory
+  (`git merge-tree` with a scratch object directory: the repository is not written), All
+  repositories in one tree, Cherry-Pick, Merge ◀ into ▶, Copy as Release Notes.
 
 **Non-goals:** a background index or cache (constraint 1); interactive rebase, hunk staging,
 a merge or conflict editor, or anything else VS Code's own Source Control and merge editor

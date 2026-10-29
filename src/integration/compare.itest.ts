@@ -72,7 +72,8 @@ describe("Compare Branches", () => {
       const x = await store();
       return !x.reading && x.rows.length === 3 ? x : undefined;
     });
-    assert.ok(s.rows.includes("acme-api ◀1 ▶1 =1"), s.rows.join(" | "));
+    // limit.go is new on both sides with different content: merging them would conflict there.
+    assert.ok(s.rows.includes("acme-api ◀1 ▶1 =1 ⚠1"), s.rows.join(" | "));
     assert.ok(s.rows.includes("acme-web ◀1 ▶0 =0"));
     assert.ok(s.rows.includes("acme-libs identical"));
     // A branch one repository lacks.
@@ -130,7 +131,7 @@ describe("Compare Branches", () => {
     });
     assert.ok(!s.rows.some((r) => r.startsWith("acme-api")), s.rows.join(" | "));
     await send({ type: "filter", filter: ALL });
-    await waitFor("acme-api back", async () => ((await store()).rows.includes("acme-api ◀1 ▶1 =1") ? true : undefined));
+    await waitFor("acme-api back", async () => ((await store()).rows.includes("acme-api ◀1 ▶1 =1 ⚠1") ? true : undefined));
   });
 
   it("a name that is not a branch never reaches git", async () => {
@@ -138,11 +139,11 @@ describe("Compare Branches", () => {
     await pick({ left: "-x", right: "prod" });
     await pick({ left: "a..b", right: "prod" });
     const after = await snapshot();
-    assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse"), "no rev-parse for a bad name");
+    assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse" || x.cmd === "cat-file"), "nothing resolved for a bad name");
   });
 
-  type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; accents: number[] };
-  type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[]; dimmed: string[] };
+  type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; accents: number[]; notes: string[] };
+  type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[]; dimmed: string[]; conflicts: string[] };
   const repos = () => vscode.commands.executeCommand<Repos>("linyra._itest.compare");
   const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("linyra._itest.compareSide", s);
   const viewPick = (p: Pair) => vscode.commands.executeCommand("linyra._itest.compareView", p);
@@ -237,16 +238,17 @@ describe("Compare Branches", () => {
     assert.strictEqual(left.title, "release-1.4 only");
     // retry.go, cherry-picked to both: the same at both tips now, so hidden by default; limit.go still differs.
     assert.strictEqual(left.description, "acme-api · 1 file · 1 already on both (hidden)");
-    assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · both"]);
+    assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · conflict"]);
+    assert.deepStrictEqual(left.conflicts, ["limit.go"], "a merge of the two would leave limit.go conflicted");
     const right = await until2("right side", () => sideOf("right"), (x) => x.tree.length > 0);
     assert.strictEqual(right.title, "prod only");
-    assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "timeout.go | +1 −0"]);
+    assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · conflict", "timeout.go | +1 −0"]);
     // Show Files Already on Both: listed again, dimmed; Hide puts it back.
     await vscode.commands.executeCommand("linyra.compareShowSame");
     try {
       const shown = await until2("left with retry.go", () => sideOf("left"), (x) => x.tree.length === 2);
       assert.strictEqual(shown.description, "acme-api · 2 files");
-      assert.deepStrictEqual(shown.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · already on both"]);
+      assert.deepStrictEqual(shown.tree, ["limit.go | +1 −0 · conflict", "retry.go | +1 −0 · already on both"]);
       assert.deepStrictEqual(shown.dimmed, ["retry.go"]);
       const rshown = await until2("right with retry.go", () => sideOf("right"), (x) => x.tree.length === 3);
       assert.deepStrictEqual(rshown.dimmed, ["retry.go"]);
@@ -379,7 +381,7 @@ describe("Compare Branches", () => {
     await sleep(300);
     const log = (await snapshot()).spawnLog.slice(before);
     const ticked = (await snapshot()).repos.length;
-    assert.strictEqual(log.filter((x) => x.cmd === "rev-parse").length, ticked, "one rev-parse per repository");
+    assert.strictEqual(log.filter((x) => x.cmd === "cat-file").length, ticked, "every name of the pair resolved in one git process per repository");
     // While the list was being read, the selection moved on its own: the sides read once, for the final one.
     assert.ok(log.filter((x) => x.cmd === "diff").length <= 3, `side reads wait for the list (${log.filter((x) => x.cmd === "diff").length} diffs)`);
     // A half pair from the page: the host keeps it and its guidance.
@@ -655,5 +657,107 @@ describe("Compare Branches", () => {
     assert.ok(s.rows.includes("acme-web ◀0 ▶1 =0"), s.rows.join(" | "));
   });
 
+  it("a side may list several names: each repository uses the first it has, and its row says which", async () => {
+    const api = roots["acme-api"];
+    // Only acme-api has release-1.5 (release-1.4's tip): the others fall back to release-1.4.
+    git(api, ["update-ref", "refs/heads/release-1.5", "refs/heads/release-1.4"]);
+    try {
+      await pick({ left: "release-1.5 release-1.4", right: "nope prod" });
+      const s = await waitFor("all read", async () => {
+        const x = await store();
+        return !x.reading && x.rows.length === 3 ? x : undefined;
+      });
+      assert.deepStrictEqual([...s.rows].sort(), ["acme-api ◀1 ▶1 =1 ⚠1", "acme-libs identical", "acme-web ◀1 ▶0 =0"], "the same answers as release-1.4 ↔ prod");
+      await viewPick({ left: "release-1.5 release-1.4", right: "nope prod" });
+      await vscode.commands.executeCommand("linyra.compareShow");
+      const r = await until2("rows with their names", repos, (x) => x.notes.length === 2);
+      assert.deepStrictEqual(r.notes, ["acme-api | release-1.5 → prod | 1 conflicted file", "acme-web | release-1.4 → prod | merges cleanly"]);
+      assert.strictEqual(r.description, "release-1.5, release-1.4 ↔ nope, prod");
+      await select(roots["acme-web"]);
+      const left = await until2("acme-web's own name", () => sideOf("left"), (x) => x.tree.length > 0);
+      assert.strictEqual(left.title, "release-1.4 only", "the side says the name this repository uses");
+    } finally {
+      git(api, ["update-ref", "-d", "refs/heads/release-1.5"]);
+    }
+  });
 
+  it("the merge check writes nothing to the repository; Only Conflicts and Preview Merge Result show the conflict", async () => {
+    const api = roots["acme-api"];
+    const objects = () => git(api, ["count-objects", "-v"]).split("\n").filter((l) => /^(count|size|in-pack|packs):/.test(l)).join(", ");
+    const before = objects();
+    await pick({ left: "release-1.4", right: "prod" });
+    await waitFor("read", async () => ((await store()).rows.includes("acme-api ◀1 ▶1 =1 ⚠1") ? true : undefined));
+    assert.strictEqual(objects(), before, "merge-tree's objects went to a scratch directory, not the repository");
+    await viewPick({ left: "release-1.4", right: "prod" });
+    await vscode.commands.executeCommand("linyra.compareShow");
+    await until2("listed", repos, (x) => x.roots.length === 2);
+    await select(api);
+    await until2("right side", () => sideOf("right"), (x) => x.tree.length === 2);
+    await until2("left side", () => sideOf("left"), (x) => x.tree.length === 1);
+    await vscode.commands.executeCommand("linyra.compareOnlyConflicts");
+    try {
+      const only = await until2("only the conflict", () => sideOf("right"), (x) => x.tree.length === 1);
+      assert.deepStrictEqual(only.tree, ["limit.go | +1 −0 · conflict"]);
+    } finally {
+      await vscode.commands.executeCommand("linyra.compareAllConflicts");
+    }
+    await until2("every file again", () => sideOf("right"), (x) => x.tree.length === 2);
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await vscode.commands.executeCommand("linyra.compareMergePreview", { side: "left", repoId: api, path: "limit.go" });
+    const preview = await waitFor("the merge preview", () => {
+      const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+      return t?.input instanceof vscode.TabInputTextDiff ? t : undefined;
+    });
+    const input = preview.input as vscode.TabInputTextDiff;
+    assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "package limit // prod\n", "▶ as it is now");
+    assert.match((await vscode.workspace.openTextDocument(input.modified)).getText(), /^<<<<<<< [^\n]*\n[\s\S]*=======\n[\s\S]*>>>>>>> /m, "the merged file, with its conflict markers");
+    assert.match(preview.label, /^limit\.go \(prod ↔ merged with release-1\.4\) — acme-api$/);
+    assert.strictEqual(objects(), before, "nor does the preview");
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+  });
+
+  it("All repositories: one tree; Copy as Release Notes; Cherry-Pick from a side; Merge ◀ into ▶ only where it is clean and ▶ is checked out", async () => {
+    const api = roots["acme-api"], web = roots["acme-web"];
+    const heads = { api: git(api, ["rev-parse", "HEAD"]), web: git(web, ["rev-parse", "HEAD"]) };
+    try {
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("linyra.compareShow");
+      await until2("listed", repos, (x) => x.roots.length === 2);
+      await select("*");
+      await until2("All repositories", repos, (x) => x.selected === "*");
+      const all = await until2("every repository's files", () => sideOf("left"), (x) => x.tree.length === 4);
+      assert.deepStrictEqual(all.tree, ["acme-api | 1", "  limit.go | +1 −0 · conflict", "acme-web | 1", "  billing.ts | +1 −0"]);
+      assert.strictEqual(all.description, "2 repositories · 2 files · 1 already on both (hidden)");
+      // Release notes: each repository's commits only on ◀ (the cherry-picked one is on both: left out).
+      const notes = await vscode.commands.executeCommand<string>("linyra.compareReleaseNotes");
+      assert.strictEqual(notes, "## acme-api (release-1.4 → prod)\n\n- feat: rate limit per client (" + git(api, ["rev-parse", "--short=7", "release-1.4~1"]) + ", dana)\n\n"
+        + "## acme-web (release-1.4 → prod)\n\n- feat: billing page (" + git(web, ["rev-parse", "--short=7", "release-1.4"]) + ", dana)\n");
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.clipboard"), notes, "copied");
+      // Cherry-Pick from Commits: acme-web's billing page onto its checked-out branch.
+      await select(web);
+      await vscode.commands.executeCommand("linyra._itest.compareMode", "commits");
+      const billing = git(web, ["rev-parse", "release-1.4"]);
+      await until2("acme-web's commit", () => sideOf("left"), (x) => x.tree.some((l) => l.startsWith("feat: billing page")));
+      await vscode.commands.executeCommand("linyra.compareCherryPick", { compareSide: "left", compareNodeId: `${web}/left/c:${billing}` });
+      assert.strictEqual(git(web, ["log", "-1", "--format=%s"]), "feat: billing page");
+      assert.strictEqual(git(web, ["rev-parse", "HEAD~1"]), heads.web, "on the checked-out branch");
+      git(web, ["reset", "-q", "--hard", heads.web]);
+      await vscode.commands.executeCommand("linyra._itest.compareMode", "files");
+      // Merge ◀ into ▶: prod is checked out nowhere (main is), and acme-api would conflict: nothing merged.
+      await vscode.commands.executeCommand("linyra.compareMerge");
+      assert.deepStrictEqual([git(api, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "HEAD"])], [heads.api, heads.web]);
+      // release-1.4 into main, which is checked out in both and merges cleanly there: one prompt, both merged.
+      await viewPick({ left: "release-1.4", right: "main" });
+      await until2("release-1.4 ↔ main", repos, (x) => x.description === "release-1.4 ↔ main" && x.roots.length === 2);
+      await vscode.commands.executeCommand("linyra._itest.answer", "Merge");
+      await vscode.commands.executeCommand("linyra.compareMerge");
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Merge release-1.4 into main in 2 repositories?");
+      assert.deepStrictEqual([git(api, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "HEAD"])], [git(api, ["rev-parse", "release-1.4"]), git(web, ["rev-parse", "release-1.4"])]);
+    } finally {
+      git(api, ["reset", "-q", "--hard", heads.api]);
+      git(web, ["reset", "-q", "--hard", heads.web]);
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
+      await vscode.commands.executeCommand("linyra._itest.compareMode", "files");
+    }
+  });
 });

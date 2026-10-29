@@ -187,6 +187,18 @@ export class MultiRepo {
     return this.host.run(repo.root, args, WRITE_SIGNAL, { env: WRITE_ENV });
   }
 
+  /**
+   * Compare's Merge ◀ into ▶…: each plan's ref merged into its repository's checked-out branch, with
+   * the same progress, refresh and report as Branches Across Repositories; `skipped` joins the report.
+   */
+  mergeEach(title: string, plans: readonly { repo: Repo; ref: string }[], skipped: readonly { name: string; reason: string }[]): Promise<MultiResult | undefined> {
+    return this.exclusive(async () => {
+      const result = await this.each(title, plans.map((p) => p.repo), (repo) => this.git(repo, multiCommands.merge(plans.find((p) => p.repo.id === repo.id)!.ref)));
+      result.skipped.push(...skipped);
+      return this.report(title, result);
+    });
+  }
+
   /** Each ticked repository's branches and remotes (undefined when they could not be read). */
   private async read(only?: ReadonlySet<string>): Promise<{ repo: Repo; data: Branches | undefined }[]> {
     const repos = this.host.repos().filter((r) => !only || only.has(r.id));

@@ -85,8 +85,8 @@ export class CommitActions {
    * Several commits, repository by repository: cherry-picks oldest first (each lands on the one
    * before it), reverts newest first. A repository stops at its first conflict; the others go on.
    */
-  private async runMany(action: "cherryPick" | "revert", selected: readonly { repo: Repo; commit: Commit }[]): Promise<void> {
-    const byRepo = new Map<string, { repo: Repo; commits: Commit[] }>();
+  private async runMany(action: "cherryPick" | "revert", selected: readonly { repo: Repo; commit: Pick<Commit, "sha" | "parents"> }[]): Promise<void> {
+    const byRepo = new Map<string, { repo: Repo; commits: Pick<Commit, "sha" | "parents">[] }>();
     for (const { repo, commit } of selected) (byRepo.get(repo.id) ?? byRepo.set(repo.id, { repo, commits: [] }).get(repo.id)!).commits.push(commit);
     const done: string[] = [], stopped: string[] = [];
     for (const { repo, commits } of byRepo.values()) {
@@ -116,6 +116,11 @@ export class CommitActions {
     const what = localize(action === "cherryPick" ? "Cherry-picked {0} commits" : "Reverted {0} commits", selected.length);
     if (stopped.length) void vscode.window.showWarningMessage(`${what}: ${[...done, ...stopped].join(", ")}`);
     else vscode.window.setStatusBarMessage(`${what}: ${done.join(", ")}`, 8000);
+  }
+
+  /** Compare's Cherry-Pick: commits of one repository (newest first, as listed) onto its checked-out branch, oldest first. */
+  cherryPickCommits(repo: Repo, commits: readonly Pick<Commit, "sha" | "parents">[]): Promise<void> {
+    return this.runMany("cherryPick", commits.map((commit) => ({ repo, commit })));
   }
 
   /** The status-bar line for what was done, or undefined when the user cancelled. */

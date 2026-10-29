@@ -584,6 +584,41 @@
         "category": "Linyra"
       },
       {
+        "command": "linyra.compareMergePreview",
+        "title": "%command.linyra.compareMergePreview.title%",
+        "category": "Linyra",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "linyra.compareCherryPick",
+        "title": "%command.linyra.compareCherryPick.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.compareMerge",
+        "title": "%command.linyra.compareMerge.title%",
+        "category": "Linyra",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "linyra.compareReleaseNotes",
+        "title": "%command.linyra.compareReleaseNotes.title%",
+        "category": "Linyra",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "linyra.compareOnlyConflicts",
+        "title": "%command.linyra.compareOnlyConflicts.title%",
+        "category": "Linyra",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "linyra.compareAllConflicts",
+        "title": "%command.linyra.compareAllConflicts.title%",
+        "category": "Linyra",
+        "icon": "$(warning)"
+      },
+      {
         "command": "linyra.branch.view",
         "title": "%command.linyra.branch.view.title%",
         "category": "Linyra"
@@ -759,7 +794,7 @@
         },
         {
           "command": "linyra.openWorkingFile",
-          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File$/",
+          "when": "(view == linyra.compareLeft || view == linyra.compareRight) && viewItem =~ /^compare(Commit)?File(\\.conflict)?$/",
           "group": "1_open@2"
         },
         {
@@ -1280,6 +1315,30 @@
         {
           "command": "linyra.commitPushUpTo",
           "when": "false"
+        },
+        {
+          "command": "linyra.compareMergePreview",
+          "when": "false"
+        },
+        {
+          "command": "linyra.compareCherryPick",
+          "when": "false"
+        },
+        {
+          "command": "linyra.compareMerge",
+          "when": "false"
+        },
+        {
+          "command": "linyra.compareReleaseNotes",
+          "when": "false"
+        },
+        {
+          "command": "linyra.compareOnlyConflicts",
+          "when": "false"
+        },
+        {
+          "command": "linyra.compareAllConflicts",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -1534,6 +1593,11 @@
           "group": "4_exclude@1"
         },
         {
+          "command": "linyra.compareMerge",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
+          "group": "0_merge@1"
+        },
+        {
           "command": "linyra.repoPull",
           "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo' && behind",
           "group": "0_sync@1"
@@ -1785,7 +1849,7 @@
         },
         {
           "command": "linyra.openWorkingFile",
-          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File$/",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compare(Commit)?File(\\.conflict)?$/",
           "group": "1_open@1"
         },
         {
@@ -1807,6 +1871,16 @@
           "command": "linyra.compareOpenSinceSplit",
           "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile/",
           "group": "1_open@2"
+        },
+        {
+          "command": "linyra.compareMergePreview",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile.*\\.conflict$/",
+          "group": "0_open@3"
+        },
+        {
+          "command": "linyra.compareCherryPick",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem == compareCommit",
+          "group": "1_change@1"
         },
         {
           "command": "linyra.stash.show",

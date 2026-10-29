@@ -26,7 +26,8 @@ button, input { font: inherit; }
 .compare-tree-row { display: flex; align-items: center; gap: 6px; height: 25px; min-width: 0; padding-right: 10px; cursor: default; user-select: none; }
 .compare-tree-row:hover { background: var(--vscode-list-hoverBackground); }
 .compare-tree-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
-.compare-tree:focus .compare-tree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
+.compare-tree:focus .compare-tree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.compare-tree:focus .compare-tree-row.focus { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
 .compare-twisty { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 18px; width: 18px; height: 21px; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
 .compare-file-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 16px; width: 16px; height: 16px; font-size: 9px; font-weight: 600; font-family: var(--vscode-editor-font-family); color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
 .compare-file-icon svg { width: 16px; height: 16px; }
@@ -37,6 +38,7 @@ button, input { font: inherit; }
 .compare-tree-row.status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
 .compare-tree-row.status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
 .compare-tree-row.same-file { color: var(--vscode-disabledForeground); }
+.compare-tree-row.conflict-file { color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-list-warningForeground)); }
 .compare-file-icon.filetype-js, .compare-file-icon.filetype-jsx, .compare-file-icon.filetype-json { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
 .compare-file-icon.filetype-ts, .compare-file-icon.filetype-tsx, .compare-file-icon.filetype-css { color: var(--vscode-terminal-ansiBlue, var(--vscode-charts-blue)); }
 .compare-file-icon.filetype-vue { color: var(--vscode-terminal-ansiGreen, var(--vscode-charts-green)); }
@@ -80,6 +82,21 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 .repo-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .repo-name { overflow: hidden; text-overflow: ellipsis; }
 .row-note { text-align: right; color: var(--vscode-descriptionForeground); }
+/* The merge note: a check when it merges cleanly, the conflict color and a count when it would not. */
+.row-note.clean, .row-note.conflict { display: inline-flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.row-note.clean { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+.row-note.conflict { color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-list-warningForeground)); }
+.row-note svg, .crepo.all > svg { width: 14px; height: 14px; }
+.crepo.selected .row-note { color: inherit; }
+/* All repositories: an icon where a repository has its color dot, and a second note. */
+.crepo.all { grid-template-columns: 14px 16px minmax(0, 1fr) auto auto; }
+/* A side with several names: which ones this repository uses, under its name. */
+.repo-name.two-line { display: flex; flex-direction: column; line-height: 16px; padding: 2px 0; }
+.repo-names { overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.crepo.selected .repo-names { color: inherit; }
+.compare-filter { width: 110px; min-width: 0; height: 20px; padding: 1px 4px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; font-size: 11px; }
+.compare-filter::placeholder { color: var(--vscode-input-placeholderForeground); }
+.compare-filter:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .dup { display: flex; gap: 8px; padding: 0 8px 0 36px; line-height: 20px; white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .dup-subject { overflow: hidden; text-overflow: ellipsis; color: var(--vscode-foreground); }
 .missing { color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }
@@ -98,6 +115,12 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 .picker-row[aria-selected="true"] mark { color: inherit; text-decoration: underline; }
 .star { background: transparent; border: 0; padding: 0; cursor: pointer; color: var(--vscode-descriptionForeground); }
 .star.on { color: var(--vscode-charts-yellow); }
+/* This side's names, in order, and the + that adds a name after them. */
+.picker-order { min-width: 1.5em; color: var(--vscode-descriptionForeground); }
+.picker-add, .picker-remove { flex: 0 0 auto; padding: 0 4px; border: 0; background: transparent; color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer; }
+.picker-remove { margin-left: auto; }
+.picker-add:hover, .picker-remove:hover { color: var(--vscode-foreground); }
+.picker-row[aria-selected="true"] .picker-add, .picker-row[aria-selected="true"] .picker-remove, .picker-row[aria-selected="true"] .picker-order { color: inherit; }
 .picker-empty { padding: 16px 12px; color: var(--vscode-descriptionForeground); }
 
 /* A narrow view: the two Branch boxes get the full line; Files | Commits and Refresh go below. */

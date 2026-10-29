@@ -1,11 +1,22 @@
 import { localize } from "./i18n";
 import { randomBytes } from "crypto";
 import * as vscode from "vscode";
-import { COMMIT_PAGE, pairDuplicates, pushRecent, repoCounts, summaryLabel, tabTitle, validPair, type Pair } from "./compareModel";
+import { copyText } from "./clipboard";
+import { candidates, COMMIT_PAGE, conflictNote, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type Pair } from "./compareModel";
 import type { CRepoRow, CompareLayout, ReposHost, ReposWebview } from "./compareProtocol";
-import { FAVORITES, MODE, modeOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, type CompareMode, type Deps, type CompareSide } from "./compareView";
+import type { CompareStore } from "./compareStore";
+import { ALL_REPOS, differing, FAVORITES, MODE, modeOf, ONLY_CONFLICTS as ONLY_CONFLICTS_KEY, onlyConflictsOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, short, shortSide, type CompareMode, type Deps, type CompareSide } from "./compareView";
 import { outputLog } from "./outputLog";
-import { isAbortError } from "./pool";
+import { isAbortError, runPool } from "./pool";
+import type { Repo } from "./types";
+import type { Ask } from "./uncommittedActions";
+
+/** What Compare needs beyond the side views' deps: the merge across repositories (Branches Across Repositories' machinery). */
+export interface ReposDeps extends Deps {
+  ask: Ask;
+  /** Merges each plan's ref into its repository's checked-out branch, with progress and one report; `skipped` joins the report. */
+  mergeEach(title: string, plans: { repo: Repo; ref: string }[], skipped: { name: string; reason: string }[]): Promise<unknown>;
+}
 import { renderReposHtml } from "./webview/compare/html";
 import { accentOf } from "./webview/view";
 
@@ -28,7 +39,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   private sides: { left: CompareSide; right: CompareSide } | undefined;
 
-  constructor(private readonly deps: Deps) {
+  constructor(private readonly deps: ReposDeps) {
     this.disposables.push(
       deps.store.onDidChange(() => this.changed()),
       deps.log.onDidChangeRefs((id) => this.refsMoved(id)),
@@ -227,9 +238,9 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.deps.selection.touch();
   }
 
-  /** Selects a repository (a click on its row, or the test seam). */
+  /** Selects a repository (a click on its row, or the test seam); All repositories when two or more differ. */
   select(repoId: string): void {
-    if (!resultOf(this.deps.store, repoId)) return;
+    if (repoId === ALL_REPOS ? differing(this.deps.store).length < 2 : !resultOf(this.deps.store, repoId)) return;
     this.chosen = true;
     this.deps.selection.set(repoId);
     this.changed();
@@ -261,8 +272,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   private message(): string | undefined {
     const pair = this.pairShown();
     if (!pair || !pair.left) return localize("Pick the branch to merge from (◀) and the branch it goes into (▶).");
-    if (!pair.right) return localize("Pick the branch {0} goes into (▶).", pair.left);
-    if (pair.left === pair.right) return localize("Pick two different branches. Both sides are {0}.", pair.left);
+    if (!pair.right) return localize("Pick the branch {0} goes into (▶).", sideLabel(pair.left));
+    if (pair.left === pair.right) return localize("Pick two different branches. Both sides are {0}.", sideLabel(pair.left));
     if (this.deps.log.tickedRepos().length === 0) return localize("No repositories are ticked in the Repo List.");
     return undefined;
   }
@@ -271,7 +282,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const pair = this.pairShown();
     if (this.view) this.view.description = tabTitle(pair);
     this.post({ type: "state", pair, mode: this.mode, recent: this.state.get<Pair[]>(RECENT, []), favorites: this.state.get<string[]>(FAVORITES, []), message: this.message(),
-      hideSame: hideSameOf(this.deps.context), showLeft: this.sideShown("left"), showRight: this.sideShown("right"), layout: this.layout() });
+      hideSame: hideSameOf(this.deps.context), onlyConflicts: onlyConflictsOf(this.deps.context), showLeft: this.sideShown("left"), showRight: this.sideShown("right"), layout: this.layout() });
     void this.setContext();
   }
 
@@ -290,10 +301,15 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const listed = this.listed();
     // The Log's colors: hues assigned over only the listed repositories would differ from it.
     const accents = this.deps.log.accents();
+    // A side with several names: each row says which ones this repository uses.
+    const pair = this.deps.store.pair;
+    const several = !!pair && (candidates(pair.left).length > 1 || candidates(pair.right).length > 1);
     return listed.map(({ repo, result }): CRepoRow => ({
       repoId: repo.id, name: repo.name, accent: accentOf(accents, repo.id), status: result.kind === "differs" ? "differs" : result.kind === "nobase" ? "nobase" : "error",
       left: result.kind === "differs" ? result.left : 0, right: result.kind === "differs" ? result.right : 0, same: result.kind === "differs" ? result.sameLeft : 0,
       reason: result.kind === "error" ? result.reason : undefined, behind: this.deps.log.upstream.isBehind(repo.id),
+      conflicts: result.kind === "differs" && result.conflicts ? result.conflicts.length : null,
+      ...(several && result.kind === "differs" ? { names: `${short(result.leftName)} → ${short(result.rightName)}` } : {}),
     }));
   }
 
@@ -309,8 +325,10 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       this.remembered = undefined;
     }
     const sel = this.deps.selection.repoId;
-    if (pair && pair.left !== pair.right && (!this.chosen || !sel || !listed.some((x) => x.repo.id === sel))) {
-      if (sel && !listed.some((x) => x.repo.id === sel)) this.chosen = false;
+    // All repositories stays chosen while two or more differ.
+    const valid = (id: string) => (id === ALL_REPOS ? differing(this.deps.store).length >= 2 : listed.some((x) => x.repo.id === id));
+    if (pair && pair.left !== pair.right && (!this.chosen || !sel || !valid(sel))) {
+      if (sel && !valid(sel)) this.chosen = false;
       this.deps.selection.set(listed[0]?.repo.id, true);
     }
     if (this.view) this.view.description = tabTitle(this.pairShown());
@@ -321,8 +339,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const done = pair !== null && shown !== null && pair.left === shown.left && pair.right === shown.right && !this.deps.store.reading;
     const empty = rows.length > 0 ? undefined
       : !done ? (pair ? localize("Reading…") : undefined)
-      : results.some((x) => x.result.kind === "identical") ? localize("{0} and {1} have the same files in every repository.", pair.left, pair.right)
-      : results.length > 0 ? localize("None of the ticked repositories has both {0} and {1}.", pair.left, pair.right) : undefined;
+      : results.some((x) => x.result.kind === "identical") ? localize("{0} and {1} have the same files in every repository.", sideLabel(pair.left), sideLabel(pair.right))
+      : results.length > 0 ? localize("None of the ticked repositories has both {0} and {1}.", sideLabel(pair.left), sideLabel(pair.right)) : undefined;
     this.post({
       type: "repos", reading: this.deps.store.reading, summary: pair && pair.left !== pair.right ? this.summary() : "", rows,
       missing: results.filter((x) => x.result.kind === "missing").map((x) => x.repo.name), selected: this.deps.selection.repoId,
@@ -352,6 +370,18 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
           return;
         case "hideSame":
           if (typeof m.hide === "boolean") await vscode.commands.executeCommand(m.hide ? "linyra.compareHideSame" : "linyra.compareShowSame");
+          return;
+        case "onlyConflicts":
+          if (typeof m.on === "boolean") await this.setOnlyConflicts(m.on);
+          return;
+        case "sideSelect":
+          if ((m.side === "left" || m.side === "right") && Array.isArray(m.ids)) this.sides?.[m.side].select(m.ids);
+          return;
+        case "merge":
+          await this.mergeIntoRight();
+          return;
+        case "releaseNotes":
+          await this.copyReleaseNotes();
           return;
         case "layout": {
           const layout = m.layout;
@@ -398,7 +428,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         case "wantBranches": {
           this.wantPicker = undefined;
           const names = await this.deps.store.readBranches();
-          this.post({ type: "branches", names, remotes: this.deps.store.remoteNames });
+          this.post({ type: "branches", names, remotes: this.deps.store.remoteNames, defaults: this.deps.store.defaultBranches });
           return;
         }
         case "wantDups": {
@@ -426,7 +456,64 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     }
   }
 
-  async snapshot(): Promise<{ open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: CompareMode; roots: string[]; selected: string | undefined; accents: number[] }> {
+  /** Only Conflicts: Files mode lists only the files a merge would leave conflicted. */
+  async setOnlyConflicts(on: boolean): Promise<void> {
+    await this.deps.context.globalState.update(ONLY_CONFLICTS_KEY, on);
+    this.postState();
+    this.sides?.left.hideSameChanged();
+    this.sides?.right.hideSameChanged();
+  }
+
+  /**
+   * Merge ◀ into ▶…: in each listed repository (or the one right-clicked) that merges cleanly and
+   * has ▶ checked out (or ▶ is its remote branch and the checked-out branch is at the same commit),
+   * after one prompt that names each merge and why the others are left out.
+   */
+  async mergeIntoRight(only?: string): Promise<void> {
+    const pair = this.deps.store.pair;
+    if (!pair) return;
+    const targets = differing(this.deps.store).filter((x) => !only || only === ALL_REPOS || x.repo.id === only);
+    if (targets.length === 0) return;
+    const plans: { repo: Repo; ref: string; into: string }[] = [];
+    const skipped: { name: string; reason: string }[] = [];
+    await runPool(targets, 8, async ({ repo, result }) => {
+      if (result.conflicts && result.conflicts.length > 0) { skipped.push({ name: repo.name, reason: localize("it would conflict in {0}", plural(result.conflicts.length, "file")) }); return; }
+      const [sha = "", branch = ""] = (await this.deps.log.countedRun(repo.root, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"], new AbortController().signal).catch(() => "")).split("\n").map((l) => l.trim());
+      const into = result.rightName;
+      const checkedOut = branch !== "" && branch !== "HEAD" && (into === branch || (into.endsWith(`/${branch}`) && sha === result.rightSha));
+      if (!checkedOut) { skipped.push({ name: repo.name, reason: localize("{0} is not the checked-out branch ({1})", short(into), branch && branch !== "HEAD" ? branch : localize("detached HEAD")) }); return; }
+      plans.push({ repo, ref: result.leftName, into: branch });
+    }, new AbortController().signal);
+    plans.sort((a, b) => targets.findIndex((x) => x.repo.id === a.repo.id) - targets.findIndex((x) => x.repo.id === b.repo.id));
+    const title = localize("Merge {0} into {1}", shortSide(pair.left), shortSide(pair.right));
+    if (plans.length === 0) {
+      void vscode.window.showInformationMessage(localize("Nothing to merge: {0}.", skipped.map((s) => `${s.name} (${s.reason})`).join(", ")));
+      return;
+    }
+    const detail = [...plans.map((p) => `${p.repo.name}: ${short(p.ref)} → ${p.into}`),
+      ...(skipped.length > 0 ? ["", localize("Left as they are:"), ...skipped.map((s) => `${s.name}: ${s.reason}`)] : [])].join("\n");
+    if (!(await this.deps.ask.warning(localize("Merge {0} into {1} in {2}?", shortSide(pair.left), shortSide(pair.right), plural(plans.length, "repository", "repositories")), detail, localize("Merge")))) return;
+    await this.deps.mergeEach(title, plans, skipped);
+  }
+
+  /** Copy as Release Notes: every listed repository's commits only on ◀ (the same change on both left out), as Markdown. */
+  async copyReleaseNotes(): Promise<string | undefined> {
+    const targets = differing(this.deps.store).filter((x) => x.result.left > 0);
+    if (targets.length === 0) {
+      void vscode.window.showInformationMessage(localize("No commit is only on {0}.", this.deps.store.pair ? shortSide(this.deps.store.pair.left) : "◀"));
+      return undefined;
+    }
+    const settled = await runPool(targets, 8, ({ repo, result }) => this.deps.store.readCommits(repo.id, "left", result.left + result.sameLeft + 1), new AbortController().signal);
+    const sections = targets.map(({ repo, result }, i) => ({ repo: repo.name, from: short(result.leftName), into: short(result.rightName),
+      commits: settled[i].status === "fulfilled" ? (settled[i] as PromiseFulfilledResult<Awaited<ReturnType<CompareStore["readCommits"]>>>).value.filter((c) => c.mark === "+") : [] }));
+    const text = releaseNotes(sections);
+    await copyText(text);
+    const n = sections.reduce((sum, s) => sum + s.commits.length, 0);
+    vscode.window.setStatusBarMessage(localize("Copied release notes: {0} in {1}.", plural(n, "commit"), plural(sections.filter((s) => s.commits.length > 0).length, "repository", "repositories")), 8000);
+    return text;
+  }
+
+  async snapshot(): Promise<{ open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: CompareMode; roots: string[]; selected: string | undefined; accents: number[]; notes: string[] }> {
     const rows = this.rows();
     const results = new Map(this.deps.store.results().map((x) => [x.repo.id, x.result]));
     const pair = this.deps.store.pair;
@@ -435,6 +522,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       message: this.message() ?? (pair && pair.left !== pair.right ? this.summary() : undefined), pair, mode: this.mode,
       // What a row shows: its name, or why it cannot be compared.
       roots: rows.map((r) => (r.status === "differs" ? r.name : `${r.name} | ${repoCounts(results.get(r.repoId)!)}`)), selected: this.deps.selection.repoId, accents: rows.map((r) => r.accent),
+      notes: rows.map((r) => [r.name, r.names, conflictNote(results.get(r.repoId)!)].filter(Boolean).join(" | ")),
     };
   }
 

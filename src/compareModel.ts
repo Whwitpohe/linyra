@@ -4,6 +4,10 @@ import { parseShow } from "./commitDetail";
 import { isValidRef } from "./filterModel";
 import type { FileChange } from "./types";
 
+/**
+ * The two sides. Each is one branch name, or several in order ("develop develop-k"): a repository
+ * uses the first it has, so repositories that name the same branch differently compare together.
+ */
 export interface Pair {
   left: string;
   right: string;
@@ -16,7 +20,12 @@ export type RepoCompare =
   | { kind: "identical" }
   | { kind: "nobase" }
   | { kind: "error"; reason: string }
-  | { kind: "differs"; leftSha: string; rightSha: string; base: string; left: number; right: number; sameLeft: number; sameRight: number };
+  /**
+   * leftName/rightName: the candidate this repository has. base: the split point, read when a side
+   * needs it (null until then). conflicts: the files a merge of the two would leave conflicted
+   * ([] merges cleanly), or null when this git cannot tell (before 2.38).
+   */
+  | { kind: "differs"; leftName: string; rightName: string; leftSha: string; rightSha: string; base: string | null; left: number; right: number; sameLeft: number; sameRight: number; conflicts: string[] | null };
 
 export interface SideCommit {
   /** "+": only on this side; "=": the same change is on the other side too. */
@@ -32,36 +41,110 @@ export interface Duplicate {
   left?: string;
   right?: string;
 }
-export type PickerItem = { kind: "pair"; pair: Pair } | { kind: "name"; name: string; count: number; favorite: boolean };
+export type PickerItem =
+  | { kind: "pair"; pair: Pair }
+  | { kind: "name"; name: string; count: number; favorite: boolean; added: boolean }
+  /** One of this side's names, in the order a repository tries them. */
+  | { kind: "candidate"; name: string; index: number };
 export interface PickerGroup {
   title: string;
   items: PickerItem[];
 }
+
+/** The Repositories row that shows every repository whose files differ, at once. */
+export const ALL_REPOS = "*";
 
 /** Commits shown per side before "Show 500 more". */
 export const COMMIT_PAGE = 500;
 
 const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
+/** A side holds at most this many names. */
+export const MAX_CANDIDATES = 5;
+
+/** A side's names, in order. Branch names never contain a space, so one separates them. */
+export function candidates(side: string): string[] {
+  return side.split(" ").filter(Boolean);
+}
+
+export function sideOf(names: readonly string[]): string {
+  return [...new Set(names)].join(" ");
+}
+
+/** How a side reads: "develop, develop-k". */
+export function sideLabel(side: string): string {
+  return candidates(side).join(", ");
+}
+
 /** Names cross the webview boundary: only what git accepts as a branch name reaches git. */
 export function validPair(p: unknown): p is Pair {
   const o = p as Partial<Pair> | null;
-  return typeof o?.left === "string" && typeof o.right === "string" && isValidRef(o.left) && isValidRef(o.right);
+  const ok = (side: unknown) => {
+    if (typeof side !== "string") return false;
+    const names = candidates(side);
+    return names.length > 0 && names.length <= MAX_CANDIDATES && side === sideOf(names) && names.every(isValidRef);
+  };
+  return ok(o?.left) && ok(o?.right);
 }
 
-/** Both tips and their trees in one spawn: the same tree means the same files, whatever the commits. */
-export function revParseArgs(p: Pair): string[] {
-  return ["rev-parse", `${p.left}^{commit}`, `${p.right}^{commit}`, `${p.left}^{tree}`, `${p.right}^{tree}`];
+/**
+ * Every name of both sides, its commit and its tree, in one spawn (git cat-file --batch-check):
+ * a repository uses the first name of each side it has, and the same tree means the same files.
+ */
+export function resolveInput(p: Pair): string {
+  return [...candidates(p.left), ...candidates(p.right)].flatMap((name) => [`${name}^{commit}`, `${name}^{tree}`]).join("\n") + "\n";
 }
 
-export function parseRevParse(out: string): { left: string; right: string; sameFiles: boolean } | null {
-  const ids = out.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (ids.length !== 4 || !ids.every((id) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id))) return null;
-  return { left: ids[0], right: ids[1], sameFiles: ids[2] === ids[3] };
+export interface Resolved { name: string; sha: string; tree: string }
+
+export function parseResolve(p: Pair, out: string): { left?: Resolved; right?: Resolved } {
+  const lines = out.split("\n");
+  const id = (i: number, type: string) => new RegExp(`^([0-9a-f]{40}(?:[0-9a-f]{24})?) ${type} `).exec(lines[i] ?? "")?.[1];
+  const first = (names: readonly string[], from: number): Resolved | undefined => {
+    for (const [k, name] of names.entries()) {
+      const sha = id(from + 2 * k, "commit"), tree = id(from + 2 * k + 1, "tree");
+      if (sha && tree) return { name, sha, tree };
+    }
+    return undefined;
+  };
+  const left = candidates(p.left);
+  return { left: first(left, 0), right: first(candidates(p.right), 2 * left.length) };
 }
 
 export function mergeBaseArgs(l: string, r: string): string[] {
   return ["merge-base", l, r];
+}
+
+/**
+ * The merge of the two, done in memory (git 2.38+): exit 0 merges cleanly, exit 1 lists the
+ * conflicted files. Its objects go to a scratch object directory, so the repository is not written.
+ */
+export function mergeTreeArgs(l: string, r: string): string[] {
+  return ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", l, r];
+}
+
+/** merge-tree -z --name-only: the merged tree's id, then each conflicted file once. */
+export function parseMergeTree(out: string): { tree: string; conflicts: string[] } {
+  const [tree = "", ...paths] = out.split("\0").filter(Boolean);
+  return { tree, conflicts: [...new Set(paths)] };
+}
+
+/** Why merge-tree did not answer: no shared history, a git too old for it, or another failure. */
+export function mergeTreeFailure(message: string): "nobase" | "unsupported" | "error" {
+  if (/unrelated histories/i.test(message)) return "nobase";
+  if (/unknown option|usage: git merge-tree/i.test(message)) return "unsupported";
+  return "error";
+}
+
+/** A conflict as merge-tree names it: the file, or (renamed) its other name. */
+export function isConflict(conflicts: readonly string[] | null | undefined, f: { path: string; oldPath?: string }): boolean {
+  return !!conflicts && (conflicts.includes(f.path) || (f.oldPath !== undefined && conflicts.includes(f.oldPath)));
+}
+
+/** A Repositories row's merge note: "2 conflicts", "merges cleanly", or nothing when git cannot tell. */
+export function conflictNote(c: RepoCompare): string {
+  if (c.kind !== "differs" || c.conflicts === null) return "";
+  return c.conflicts.length === 0 ? localize("merges cleanly") : plural(c.conflicts.length, "conflicted file");
 }
 
 /** A side's commits the other lacks, and (counted apart) its commits whose change the other has too. */
@@ -140,18 +223,24 @@ export function pairDuplicates(left: readonly SideCommit[], right: readonly Side
 
 export function mirror(c: RepoCompare): RepoCompare {
   if (c.kind !== "differs") return c;
-  return { kind: "differs", leftSha: c.rightSha, rightSha: c.leftSha, base: c.base, left: c.right, right: c.left, sameLeft: c.sameRight, sameRight: c.sameLeft };
+  // A merge's conflicts are the same whichever side goes into which.
+  return { kind: "differs", leftName: c.rightName, rightName: c.leftName, leftSha: c.rightSha, rightSha: c.leftSha, base: c.base, left: c.right, right: c.left,
+    sameLeft: c.sameRight, sameRight: c.sameLeft, conflicts: c.conflicts };
 }
 
 /** The list's summary. No commit numbers: they mislead when the same change travels by cherry-pick. */
 export function summaryLabel(results: readonly RepoCompare[], ticked: number): string {
-  let differ = 0, identical = 0, missing = 0;
+  let differ = 0, identical = 0, missing = 0, conflicted = 0;
   for (const c of results) {
     if (c.kind === "identical") identical++;
     else if (c.kind === "missing") missing++;
-    else differ++;
+    else {
+      differ++;
+      if (c.kind === "differs" && c.conflicts && c.conflicts.length > 0) conflicted++;
+    }
   }
   const parts = [localize("{0} {1}", differ, localize(differ === 1 ? "repository differs" : "repositories differ"))];
+  if (conflicted > 0) parts.push(localize("{0} with conflicts", conflicted));
   if (identical > 0) parts.push(localize("{0} identical", identical));
   if (missing > 0) parts.push(localize("{0} missing a branch", missing));
   parts.push(localize("in {0}", plural(ticked, "repository", "repositories")));
@@ -161,7 +250,7 @@ export function summaryLabel(results: readonly RepoCompare[], ticked: number): s
 /** The Compare view's description, next to its title: the pair, without "origin/". */
 export function tabTitle(p: Pair | null): string {
   if (!p || !p.left || !p.right) return "";
-  const short = (n: string) => n.replace(/^refs\/(heads|remotes)\//, "").replace(/^origin\//, "");
+  const short = (side: string) => candidates(side).map((n) => n.replace(/^refs\/(heads|remotes)\//, "").replace(/^origin\//, "")).join(", ");
   return `${short(p.left)} ↔ ${short(p.right)}`;
 }
 
@@ -169,16 +258,23 @@ export function pushRecent(recent: readonly Pair[], p: Pair, cap = 5): Pair[] {
   return [p, ...recent.filter((x) => x.left !== p.left || x.right !== p.right)].slice(0, cap);
 }
 
-/** Recent pairs (not while searching), Favorites, Local, Remote; a name may be in Favorites and its own group. */
-export function pickerGroups(names: readonly { name: string; count: number }[], favorites: readonly string[], recent: readonly Pair[], query: string): PickerGroup[] {
+/**
+ * This side's names (not while searching), Recent pairs, Default branch (each repository's
+ * origin/HEAD), Favorites, Local, Remote; a name may be in Favorites and its own group.
+ */
+export function pickerGroups(names: readonly { name: string; count: number }[], favorites: readonly string[], recent: readonly Pair[], query: string,
+  current: readonly string[] = [], defaults: readonly { name: string; count: number }[] = []): PickerGroup[] {
   const q = query.trim().toLowerCase();
   const match = (n: string) => q === "" || n.toLowerCase().includes(q);
   const fav = new Set(favorites);
-  const item = (n: { name: string; count: number }): PickerItem => ({ kind: "name", name: n.name, count: n.count, favorite: fav.has(n.name) });
+  const item = (n: { name: string; count: number }): PickerItem => ({ kind: "name", name: n.name, count: n.count, favorite: fav.has(n.name), added: current.includes(n.name) });
   const sorted = [...names].filter((n) => match(n.name)).sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const remote = (n: string) => isRemoteName(n);
   const groups: PickerGroup[] = [];
+  if (q === "" && current.length > 1) groups.push({ title: localize("This side: each repository uses the first it has"), items: current.map((name, index) => ({ kind: "candidate", name, index })) });
   if (q === "" && recent.length > 0) groups.push({ title: localize("Recent pairs"), items: recent.map((pair) => ({ kind: "pair", pair })) });
+  const heads = defaults.filter((n) => match(n.name));
+  if (heads.length > 0) groups.push({ title: localize("Default branch"), items: heads.map(item) });
   const favs = sorted.filter((n) => fav.has(n.name));
   if (favs.length > 0) groups.push({ title: localize("Favorites"), items: favs.map(item) });
   const local = sorted.filter((n) => !remote(n.name));
@@ -212,6 +308,13 @@ export function repoDescription(c: RepoCompare): string {
 export function repoCounts(c: RepoCompare): string {
   if (c.kind !== "differs") return repoDescription(c);
   return [c.left > 0 ? `${c.left} ◀` : "", c.right > 0 ? `${c.right} ▶` : "", c.sameLeft > 0 ? `=${c.sameLeft}` : ""].filter(Boolean).join(" · ");
+}
+
+/** Copy as Release Notes: each repository's commits only on the left, as Markdown. */
+export function releaseNotes(sections: readonly { repo: string; from: string; into: string; commits: readonly SideCommit[] }[]): string {
+  return sections.filter((s) => s.commits.length > 0)
+    .map((s) => [`## ${s.repo} (${s.from} → ${s.into})`, "", ...s.commits.map((c) => `- ${c.subject} (${c.sha.slice(0, 7)}, ${c.author})`)].join("\n"))
+    .join("\n\n") + "\n";
 }
 
 /** A side's page of commits (git returned up to limit + 1, duplicates included): its own rows, and whether more exist. */

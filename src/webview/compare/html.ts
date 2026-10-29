@@ -25,6 +25,9 @@ export function renderReposHtml(o: HtmlOptions): string {
       <span class="seg" role="group" aria-label="${escapeHtml(localize("Show"))}"><button id="mode-files" aria-pressed="true">${escapeHtml(localize("Files"))}</button><button id="mode-commits" aria-pressed="false">${escapeHtml(localize("Commits"))}</button></span>
       <button id="refresh" class="icon-button" title="${escapeHtml(localize("Refresh"))}" aria-label="${escapeHtml(localize("Refresh"))}">${codicon("refresh")}</button>
       <button id="compare-hide-same" class="icon-button" title="${escapeHtml(localize("Hide Files Already on Both"))}" aria-label="${escapeHtml(localize("Hide Files Already on Both"))}" aria-pressed="true">${codicon("filter")}</button>
+      <button id="compare-only-conflicts" class="icon-button" title="${escapeHtml(localize("Show Only Conflicts"))}" aria-label="${escapeHtml(localize("Show Only Conflicts"))}" aria-pressed="false">${codicon("warning")}</button>
+      <button id="compare-merge" class="icon-button" title="${escapeHtml(localize("Merge ◀ into ▶…"))}" aria-label="${escapeHtml(localize("Merge ◀ into ▶…"))}">${codicon("git-merge")}</button>
+      <button id="compare-release-notes" class="icon-button" title="${escapeHtml(localize("Copy ◀ Commits as Release Notes"))}" aria-label="${escapeHtml(localize("Copy ◀ Commits as Release Notes"))}">${codicon("copy")}</button>
       <button id="compare-layout-horizontal" class="icon-button" title="${escapeHtml(localize("Side-by-side Layout"))}" aria-label="${escapeHtml(localize("Side-by-side Layout"))}">${codicon("split-horizontal")}</button>
       <button id="compare-layout-stacked" class="icon-button" title="${escapeHtml(localize("Stacked Layout"))}" aria-label="${escapeHtml(localize("Stacked Layout"))}">${codicon("split-vertical")}</button>
       <button id="compare-toggle-left" class="icon-button" title="${escapeHtml(localize("Show or hide left side"))}" aria-label="${escapeHtml(localize("Show or hide left side"))}" aria-pressed="true">${codicon("layout-sidebar-left")}</button>
@@ -63,6 +66,7 @@ function renderSide(side: "left" | "right"): string {
   const label = localize(side === "left" ? "Left" : "Right");
   return `<section id="compare-${side}" class="compare-side" aria-label="${escapeHtml(label)}">
     <div class="compare-pane-heading"><span id="compare-${side}-description">${escapeHtml(label)}</span><span class="compare-pane-actions">
+      <input id="compare-${side}-filter" class="compare-filter" type="search" placeholder="${escapeHtml(localize("Filter"))}" aria-label="${escapeHtml(localize("Filter {0}", label))}" autocomplete="off" spellcheck="false">
       <button id="compare-${side}-tree-toggle" class="icon-button" type="button" aria-controls="compare-${side}-tree" aria-label="${escapeHtml(localize("Collapse All"))}" disabled></button>
     </span></div>
     <div id="compare-${side}-message" class="cmessage" role="status" hidden></div>

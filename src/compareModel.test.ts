@@ -1,8 +1,8 @@
 import * as assert from "assert";
 import {
-  bothPaths, COMMIT_PAGE, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
-  parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, sidePage, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
-  type RepoCompare,
+  bothPaths, candidates, COMMIT_PAGE, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure,
+  mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, pushRecent, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
+  sidePage, repoDescription, sideCountArgs, summaryLabel, tabTitle, validPair, type RepoCompare,
 } from "./compareModel";
 
 const A = "a".repeat(40);
@@ -11,21 +11,38 @@ const C = "c".repeat(40);
 
 // Branch names from the webview: only refs git would accept as a branch name.
 assert.ok(validPair({ left: "origin/release-1.4", right: "main" }));
-for (const bad of ["-x", "a..b", "HEAD~3", "", "x y", "re^{commit}"]) assert.ok(!validPair({ left: bad, right: "main" }), bad);
+for (const bad of ["-x", "a..b", "HEAD~3", "", "x  y", " x", "x y x", "re^{commit}", "a b c d e f"]) assert.ok(!validPair({ left: bad, right: "main" }), bad);
 assert.ok(!validPair({ left: "main" }));
 assert.ok(!validPair(null));
-console.log("ok - a pair is two names git accepts as branches");
+// A side may list several names, in order: a repository uses the first it has.
+assert.ok(validPair({ left: "develop develop-k", right: "master main origin/HEAD" }));
+assert.deepStrictEqual(candidates("develop develop-k"), ["develop", "develop-k"]);
+assert.strictEqual(sideOf(["develop", "develop-k", "develop"]), "develop develop-k");
+assert.strictEqual(sideLabel("develop develop-k"), "develop, develop-k");
+console.log("ok - a pair is names git accepts as branches; a side may list several, in order");
 
 const T1 = "1".repeat(40);
 const T2 = "2".repeat(40);
-assert.deepStrictEqual(revParseArgs({ left: "origin/release-1.4", right: "main" }), ["rev-parse", "origin/release-1.4^{commit}", "main^{commit}", "origin/release-1.4^{tree}", "main^{tree}"]);
-assert.deepStrictEqual(parseRevParse(`${A}\n${B}\n${T1}\n${T2}\n`), { left: A, right: B, sameFiles: false });
-assert.deepStrictEqual(parseRevParse(`${A}\n${B}\n${T1}\n${T1}\n`), { left: A, right: B, sameFiles: true });
-assert.strictEqual(parseRevParse(`${A}\n${B}\n`), null);
-assert.strictEqual(parseRevParse("nope\nzz\nyy\nxx\n"), null);
-console.log("ok - both branches resolve to commits and trees: the same files means identical");
+const p0 = { left: "develop develop-k", right: "master main" };
+assert.strictEqual(resolveInput(p0), "develop^{commit}\ndevelop^{tree}\ndevelop-k^{commit}\ndevelop-k^{tree}\nmaster^{commit}\nmaster^{tree}\nmain^{commit}\nmain^{tree}\n");
+// cat-file --batch-check answers one line per name: the first each side has wins.
+const answer = (lines: string[]) => lines.join("\n") + "\n";
+assert.deepStrictEqual(parseResolve(p0, answer(["develop^{commit} missing", "develop^{tree} missing", `${A} commit 200`, `${T1} tree 90`, "master^{commit} missing", "master^{tree} missing", `${B} commit 210`, `${T2} tree 95`])),
+  { left: { name: "develop-k", sha: A, tree: T1 }, right: { name: "main", sha: B, tree: T2 } });
+assert.deepStrictEqual(parseResolve(p0, answer([`${A} commit 200`, `${T1} tree 90`, `${C} commit 1`, `${T2} tree 1`, `${B} commit 210`, `${T1} tree 90`, "main^{commit} missing", "main^{tree} missing"])),
+  { left: { name: "develop", sha: A, tree: T1 }, right: { name: "master", sha: B, tree: T1 } }, "the first one wins even when a later one exists too");
+assert.deepStrictEqual(parseResolve(p0, answer(["develop^{commit} missing", "develop^{tree} missing", "develop-k^{commit} ambiguous", "develop-k^{tree} ambiguous", `${B} commit 1`, `${T1} tree 1`, "", ""])).left, undefined, "none of a side's names: missing");
+console.log("ok - each repository uses the first name of each side it has, all resolved in one git process");
 
 assert.deepStrictEqual(mergeBaseArgs(A, B), ["merge-base", A, B]);
+assert.deepStrictEqual(mergeTreeArgs(A, B), ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", A, B]);
+assert.deepStrictEqual(parseMergeTree(`${T1}\0`), { tree: T1, conflicts: [] }, "merges cleanly");
+assert.deepStrictEqual(parseMergeTree(`${T1}\0src/a.ts\0src/b.ts\0src/a.ts\0`), { tree: T1, conflicts: ["src/a.ts", "src/b.ts"] }, "each conflicted file once");
+assert.strictEqual(mergeTreeFailure("refusing to merge unrelated histories"), "nobase");
+assert.strictEqual(mergeTreeFailure("unknown option `write-tree'"), "unsupported", "git before 2.38");
+assert.strictEqual(mergeTreeFailure("bad object"), "error");
+assert.ok(isConflict(["src/a.ts"], { path: "src/a.ts" }) && isConflict(["old.ts"], { path: "new.ts", oldPath: "old.ts" }) && !isConflict(null, { path: "src/a.ts" }));
+console.log("ok - the merge check: merge-tree in memory, its conflicted files, and why it could not tell");
 assert.deepStrictEqual(sideCountArgs("left", A, B), ["rev-list", "--left-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(sideCountArgs("right", A, B), ["rev-list", "--right-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(parseSideCount("2\t1\n"), { only: 2, same: 1 });
@@ -93,13 +110,14 @@ assert.deepStrictEqual(pairDuplicates(dl, dr), [
 ]);
 console.log("ok - duplicates pair up by subject, the rest stay on their side");
 
-const differs: RepoCompare = { kind: "differs", leftSha: A, rightSha: B, base: C, left: 2, right: 1, sameLeft: 1, sameRight: 1 };
-assert.deepStrictEqual(mirror(differs), { kind: "differs", leftSha: B, rightSha: A, base: C, left: 1, right: 2, sameLeft: 1, sameRight: 1 });
+const differs: RepoCompare = { kind: "differs", leftName: "develop", rightName: "main", leftSha: A, rightSha: B, base: C, left: 2, right: 1, sameLeft: 1, sameRight: 1, conflicts: ["a.ts"] };
+assert.deepStrictEqual(mirror(differs), { kind: "differs", leftName: "main", rightName: "develop", leftSha: B, rightSha: A, base: C, left: 1, right: 2, sameLeft: 1, sameRight: 1, conflicts: ["a.ts"] }, "conflicts are the same either way round");
 assert.deepStrictEqual(mirror({ kind: "missing" }), { kind: "missing" });
 console.log("ok - swap mirrors a result without reading git");
 
-const results: RepoCompare[] = [differs, { ...differs, left: 5, right: 0, sameLeft: 0, sameRight: 0 }, { kind: "identical" }, { kind: "missing" }, { kind: "missing" }, { kind: "nobase" }];
-assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · 1 identical · 2 missing a branch · in 6 repositories", "no commit numbers");
+const results: RepoCompare[] = [differs, { ...differs, left: 5, right: 0, sameLeft: 0, sameRight: 0, conflicts: [] }, { kind: "identical" }, { kind: "missing" }, { kind: "missing" }, { kind: "nobase" }];
+assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · 1 with conflicts · 1 identical · 2 missing a branch · in 6 repositories", "no commit numbers");
+assert.deepStrictEqual([conflictNote(differs), conflictNote(results[1]), conflictNote({ ...differs, conflicts: null }), conflictNote({ kind: "nobase" })], ["1 conflicted file", "merges cleanly", "", ""]);
 assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · 1 identical · in 1 repository");
 assert.strictEqual(summaryLabel([{ ...results[1] }], 1), "1 repository differs · in 1 repository", "no =0, no 0 identical");
 console.log("ok - the summary counts what differs, what is identical and what is missing");
@@ -107,6 +125,7 @@ console.log("ok - the summary counts what differs, what is identical and what is
 assert.strictEqual(tabTitle({ left: "origin/release-1.4", right: "origin/main" }), "release-1.4 ↔ main");
 assert.strictEqual(tabTitle(null), "");
 assert.strictEqual(tabTitle({ left: "main", right: "" }), "");
+assert.strictEqual(tabTitle({ left: "origin/develop develop-k", right: "master main" }), "develop, develop-k ↔ master, main");
 console.log("ok - the view's description is the pair");
 
 const p1 = { left: "origin/release-1.4", right: "origin/main" };
@@ -122,13 +141,18 @@ console.log("ok - recent pairs: newest first, once each, at most five");
 const names = [{ name: "origin/main", count: 68 }, { name: "main", count: 68 }, { name: "origin/release-1.4", count: 56 }, { name: "feat/billing", count: 3 }];
 const groups = pickerGroups(names, ["origin/main"], [p1], "");
 assert.deepStrictEqual(groups.map((g) => [g.title, g.items.length]), [["Recent pairs", 1], ["Favorites", 1], ["Local", 2], ["Remote", 2]]);
+// This side's names first (when it has several), each repository's default branch, and which names it already has.
+const withSide = pickerGroups(names, [], [], "", ["main", "origin/main"], [{ name: "origin/HEAD", count: 60 }]);
+assert.deepStrictEqual(withSide.map((g) => g.title), ["This side: each repository uses the first it has", "Default branch", "Local", "Remote"]);
+assert.deepStrictEqual(withSide[0].items, [{ kind: "candidate", name: "main", index: 0 }, { kind: "candidate", name: "origin/main", index: 1 }]);
+assert.deepStrictEqual(withSide[2].items.map((i) => i.kind === "name" && [i.name, i.added]), [["main", true], ["feat/billing", false]]);
 const searched = pickerGroups(names, ["origin/main"], [p1], "REL");
 assert.deepStrictEqual(searched.map((g) => g.title), ["Remote"]);
 assert.deepStrictEqual(pickerGroups(names, [], [], "zzz"), []);
 console.log("ok - the Branch picker groups names and filters them as you type");
 
 // A repository row says only = (when there is one), or why it cannot be compared.
-const row = { kind: "differs" as const, leftSha: A, rightSha: B, base: C, left: 3, right: 1, sameLeft: 2, sameRight: 2 };
+const row = { kind: "differs" as const, leftName: "develop", rightName: "main", leftSha: A, rightSha: B, base: C, left: 3, right: 1, sameLeft: 2, sameRight: 2, conflicts: null };
 assert.strictEqual(repoDescription(row), "=2");
 assert.strictEqual(repoDescription({ ...row, sameLeft: 0, sameRight: 0 }), "");
 assert.strictEqual(repoDescription({ kind: "nobase" }), "no common history");
@@ -136,7 +160,7 @@ assert.strictEqual(repoDescription({ kind: "error", reason: "bad object" }), "gi
 console.log("ok - a repository row shows = only when there is one, or why it cannot be compared");
 
 // A Repositories row: where the work is, without expanding (merges are not counted).
-const rc = { kind: "differs" as const, leftSha: A, rightSha: B, base: C, left: 3, right: 1, sameLeft: 1, sameRight: 1 };
+const rc = { kind: "differs" as const, leftName: "develop", rightName: "main", leftSha: A, rightSha: B, base: C, left: 3, right: 1, sameLeft: 1, sameRight: 1, conflicts: null };
 assert.strictEqual(repoCounts(rc), "3 ◀ · 1 ▶ · =1");
 assert.strictEqual(repoCounts({ ...rc, right: 0, sameLeft: 0, sameRight: 0 }), "3 ◀");
 assert.strictEqual(repoCounts({ ...rc, left: 0, sameLeft: 0, sameRight: 0, right: 2 }), "2 ▶");
@@ -149,3 +173,10 @@ const sc = (sha: string, mark: "+" | "=") => ({ mark, sha, parents: [], time: 0,
 assert.deepStrictEqual(sidePage([sc("a", "+"), sc("b", "="), sc("c", "+")], 2), { rows: [sc("a", "+")], more: true }, "a duplicate in the page still leaves more to show");
 assert.deepStrictEqual(sidePage([sc("a", "+"), sc("c", "+")], 2), { rows: [sc("a", "+"), sc("c", "+")], more: false });
 console.log("ok - a side's commit page offers more whenever git returned more than the page");
+
+// Copy as Release Notes: each repository's own commits, a repository with none left out.
+assert.strictEqual(releaseNotes([
+  { repo: "acme-api", from: "develop-k", into: "main", commits: [{ ...sc(A, "+"), subject: "fix: retry on 503" }, { ...sc(B, "+"), subject: "feat: rate limit", author: "rin" }] },
+  { repo: "acme-web", from: "develop", into: "main", commits: [] },
+]), "## acme-api (develop-k → main)\n\n- fix: retry on 503 (aaaaaaa, dana)\n- feat: rate limit (bbbbbbb, rin)\n");
+console.log("ok - release notes: Markdown, one section per repository with commits");
