@@ -31,6 +31,7 @@
   --vs-menu: #ffffff;
   --vs-add: #388a34;
   --vs-mod: #895503;
+  --vs-btn: #005fb8; --vs-btn-fg: #ffffff;
   --c-web: #1a85ff; --c-api: #9b59d0; --c-libs: #2a9d4b; --c-docs: #0ea5b7;
   --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -42,6 +43,7 @@
   --vs-bg: #1f1f1f; --vs-panel: #181818; --vs-border: #2b2b2b; --vs-fg: #cccccc; --vs-dim: #9d9d9d;
   --vs-input: #313131; --vs-input-border: #3c3c3c; --vs-sel: #04395e; --vs-hover: #2a2d2e; --vs-menu: #252526;
   --vs-add: #81b88b; --vs-mod: #e2c08d;
+  --vs-btn: #0078d4; --vs-btn-fg: #ffffff;
   color-scheme: dark;
 } }
 :root[data-theme="dark"] {
@@ -50,6 +52,7 @@
   --vs-bg: #1f1f1f; --vs-panel: #181818; --vs-border: #2b2b2b; --vs-fg: #cccccc; --vs-dim: #9d9d9d;
   --vs-input: #313131; --vs-input-border: #3c3c3c; --vs-sel: #04395e; --vs-hover: #2a2d2e; --vs-menu: #252526;
   --vs-add: #81b88b; --vs-mod: #e2c08d;
+  --vs-btn: #0078d4; --vs-btn-fg: #ffffff;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -194,6 +197,20 @@ section { display: grid; gap: 16px; }
 .ux-pane { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; position: relative; }
 .ux-menu { margin-top: 6px; padding: 4px 8px; background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 4px; position: relative; }
 .del { color: #c74e39; }
+/* The branch sheet: the Changes view's details area while a branch pill's sheet is open. */
+.bs { display: grid; gap: 8px; padding: 10px; font-size: 12px; align-content: start; }
+.bs-head { display: flex; align-items: center; gap: 6px; position: relative; }
+.bs-tag { font-size: 11px; border: 1px solid var(--vs-dim); color: var(--vs-dim); border-radius: 9px; padding: 0 6px; }
+.bs-card { display: grid; gap: 5px; padding: 8px 10px; border: 1px solid var(--vs-border); border-radius: 4px; position: relative; }
+.bs-title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--vs-dim); }
+.bs-title code { text-transform: none; color: var(--vs-fg); font-weight: 600; }
+.bs-chip { font-size: 11px; font-weight: 600; border: 1px solid currentColor; border-radius: 9px; padding: 0 6px; margin-left: 4px; text-transform: none; letter-spacing: 0; }
+.bs-chip.bad { color: #c74e39; }
+.bs-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.bs-btn { padding: 1px 9px; border: 1px solid var(--vs-input-border); border-radius: 2px; }
+.bs-btn.primary { background: var(--vs-btn); color: var(--vs-btn-fg); border-color: var(--vs-btn); }
+.bs-step { display: flex; align-items: center; gap: 8px; }
+.bs-step .bs-btn { margin-left: auto; }
 </style>
 
 </head>
@@ -280,7 +297,7 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">6a</i><b>Profile row</b><span>A saved group of repositories (linyra.profiles). Click: tick exactly them; highlighted while the ticks are that profile. ⚠ when some are not in this workspace. Right-click: Show, Update to Current Selection, Rename…, Delete. ⋯ → Switch Profile… does the same with the Repo List hidden.</span></div>
     <div class="g"><i class="num">6b</i><b>Save as profile row</b><span>"＋ Save as profile…": shown while the ticked repositories are neither All nor a profile. Click to name them. Right-click a repository for Profiles… (which profiles it is in).</span></div>
     <div class="g"><i class="num">7</i><b>Sync badge</b><span>↓ commits to pull, ↑ commits not pushed, as of the last fetch.</span></div>
-    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: ▸, checkbox, color dot (same color as its band in the Commit list), name, then its branch with VS Code's * + ! for uncommitted work (a narrow list names only a branch the other ticked repositories are not on, as an icon), and a stopped merge, rebase, cherry-pick or revert as "⚠ merging · 2" (right-click: Resolve Conflicts…, Continue, Abort…, Abort in All Repositories…, Apply Patch…). Right-click for the Repo menu. Opened: its Local, Remote and Tags groups; a branch row filters the Log to it (never checks it out), ☆ marks a favorite, right-click holds the branch actions (tags: check out detached, push, delete); a checkout refused for local changes offers Smart Checkout. A Worktrees group lists the repository's linked worktrees: Open in New Window, Reveal, Copy Path, Remove Worktree….</span></div>
+    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: ▸, checkbox, color dot (same color as its band in the Commit list), name, then its branch with VS Code's * + ! for uncommitted work (a narrow list names only a branch the other ticked repositories are not on, as an icon), and a stopped merge, rebase, cherry-pick or revert as the merge icon, "merging" and "2 conflicts" (a narrow list keeps the icon and the count; right-click: Resolve Conflicts…, Continue, Abort…, Abort in All Repositories…, Apply Patch…). Right-click for the Repo menu. Opened: its Local, Remote and Tags groups; a branch row filters the Log to it (never checks it out), ☆ marks a favorite, right-click holds the branch actions (tags: check out detached, push, delete); a checkout refused for local changes offers Smart Checkout. A Worktrees group lists the repository's linked worktrees: Open in New Window, Reveal, Copy Path, Remove Worktree….</span></div>
     <div class="g"><i class="num">9</i><b>Filter bar</b><span>The boxes above the commits. Every filter runs inside git.</span></div>
     <div class="g"><i class="num">10</i><b>Search box</b><span>GitLens's search syntax, pushed into git log: plain words and message: (=:), -message:, author: (@:, @me), committer:, commit: (#:), file: (?:), change: (~:), type: (is:), after: (since:, &gt;:), before: (until:, &lt;:), ref: (^:) and Linyra's repo:. The Operator popup (55) lists them; ↑/↓ recall recent searches; Enter runs at once. Its toggles: Match Case, Whole Word, Regex, Match All (56) and ✨ (57). Hashes still jump straight to their commits.</span></div>
     <div class="g"><i class="num">11</i><b>Author box</b><span>Searchable multi-select checklist, with the Me toggle and each repository's own identity.</span></div>
@@ -293,7 +310,7 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">18</i><b>Load more</b><span>The next page of commits.</span></div>
     <div class="g"><i class="num">19</i><b>Log footer</b><span>The selected date/topology order, branch-scope coverage, folded count and commit count.</span></div>
     <div class="g"><i class="num">20</i><b>Changes view</b><span>Integrated changed-file region with its own toolbar, file search and independent scrolling. It can also open as a movable editor tab.</span></div>
-    <div class="g"><i class="num">21</i><b>Commit details</b><span>Under its pane header (66): the title, the message body as written, then the facts in the secondary color — repository, hash, author, date (never broken mid-line), Parent links (66) and the branch pills. Drag its divider to resize; a click on the header folds it.</span></div>
+    <div class="g"><i class="num">21</i><b>Commit details</b><span>Under its pane header (66): the title, the message body as written, then the facts in the secondary color — repository, hash, author, date (never broken mid-line), Parent links (66) and the branch pills. Drag its divider to resize; a click on the header folds it. A branch pill's click shows the Branch sheet (70) here instead.</span></div>
     <div class="g"><i class="num">22</i><b>Folder row</b><span>A folder, with how many changed files it holds.</span></div>
     <div class="g"><i class="num">23</i><b>File row</b><span>A changed file, drawn the same in the Changes view, Compare's sides and File History: its name in the status color (struck through when deleted), a rename's old name and any note muted, + lines in the add color and − in the delete color whatever the status, then its letter in one column (A, M, D, R, C, T, U untracked). The Commit side bar draws the same letter and color as VS Code's file decoration. Click opens the diff.</span></div>
   </div>
@@ -526,7 +543,7 @@ section { display: grid; gap: 16px; }
   <div class="gloss">
     <div class="g"><i class="num">51</i><b>Repository strip</b><span>The Repository column: a 3px strip in the repository's color, one unbroken strip for a run of its commits, with the name beside it in the row's text color. Narrow, and in File History, only the strip.</span></div>
     <div class="g"><i class="num">52</i><b>Author disc</b><span>A commit's node: the author's initial (a CJK name: its last character) ringed in the repository's color; a thicker ring is your commit. An avatar covers the initial when the repository's own host has one (linyra.avatars). Merges keep the small hollow dot; hovering a disc of a linear run shows its fold box.</span></div>
-    <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Click: the branch in the Repo List. Right-click: the Repo List's branch menu (and the AI items while AI is on).</span></div>
+    <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Click: its Branch sheet (70) in the Changes view, the pill outlined while the sheet is open. Right-click: the Repo List's branch menu (and the AI items while AI is on).</span></div>
     <div class="g"><i class="num">54</i><b>Commit hover card</b><span>Opens when the pointer rests on a row for half a second: author (you, for your commits), relative and absolute time, hash, repository and pills at once; then one git show adds the message and the file and line counts. On the HEAD row: its merge target and Compare. Leaving the row kills the read.</span></div>
     <div class="g"><i class="num">55</i><b>Operator popup</b><span>Under the Search box while it is empty or an operator is being typed (GitLens's search popup): every operator with an icon, what it does and its aliases; typing a value suggests authors, branches and tags, repositories or types. ↓/↑ move, Enter or Tab picks, Esc closes.</span></div>
     <div class="g"><i class="num">69</i><b>Search help line</b><span>The Operator popup's first line: how to combine filters, or, inside an operator's value, that operator's examples. It stays put while the rows scroll.</span></div>
@@ -546,6 +563,46 @@ section { display: grid; gap: 16px; }
   </div>
 </section>
 </div>
+
+<section aria-labelledby="s-sheet">
+  <div class="sec-head"><h2 id="s-sheet">The branch sheet</h2><span class="pill now">Exists</span></div>
+  <p class="how">A branch pill's click (53), or Show Branch Sheet on its right-click, shows the branch in the Changes view where the Commit details (21) were; Esc, × or another row brings them back. Plan <code>docs/superpowers/plans/2026-10-29-branch-sheet.md</code>.</p>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 360px">
+        <div class="view">
+          <div class="vhead">▾ Branch</div>
+          <div class="vbody bs t"><i class="n tl">70</i>
+            <div class="bs-head"><b>⎇ develop</b><span class="bs-tag">checked out</span><span class="desc" style="margin-left:auto">⊙ ⧉ ×</span></div>
+            <div class="desc"><span class="dot bg-web" style="display:inline-block"></span> acme-web · <code>a42a50e</code> feat(web): keyboard shortcuts · dana · 1mo ago</div>
+            <div class="bs-card t"><i class="n tl">71</i>
+              <div class="bs-title">Upstream <code>origin/develop</code><span class="bs-chip bad">Diverged</span></div>
+              <div>2 commits to push · 1 to pull.</div>
+              <div class="desc">Pushed commits were rewritten, or both sides have new commits.</div>
+              <div class="bs-btns"><span class="bs-btn primary">Pull</span><span class="bs-btn">Force Push…</span><span class="bs-btn">Fetch</span></div>
+            </div>
+            <div class="bs-card t"><i class="n tl">72</i>
+              <div class="bs-title">Merges into <code>origin/main</code><span class="bs-chip bad">2 files conflict</span></div>
+              <div>4 commits not on origin/main · 3 behind.</div>
+              <div class="desc">Merging it in stops on them to resolve.</div>
+              <div class="bs-btns"><span class="bs-btn">Merge</span><span class="bs-btn">Rebase</span><span class="bs-btn">Review</span></div>
+            </div>
+            <div class="bs-card t"><i class="n tl">73</i>
+              <div class="bs-title">Next steps</div>
+              <div class="bs-step">Explain the unpushed commits <span class="bs-btn">Explain</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">70</i><b>Branch sheet</b><span>One branch, tag or remote branch: its name and whether it is checked out (or in which worktree), its repository, its tip commit (a click selects it), then the cards below. Read with at most four git processes; it follows ref changes. One primary button on the whole sheet; ⊙ Reveal in Repo List, ⧉ Copy name, × close.</span></div>
+    <div class="g"><i class="num">71</i><b>Upstream card</b><span>A local branch against its upstream as of the last fetch: up to date, to push, to pull, diverged (Pull or Force Push…), gone on the remote (Delete Branch… or Publish), or not published.</span></div>
+    <div class="g"><i class="num">72</i><b>Merges into card</b><span>Its commits not on the merge target and how far behind it is; whether merging it in conflicts, predicted with git merge-tree without writing to the repository (Git 2.38+; otherwise "Conflicts unknown"); merged: safe to delete.</span></div>
+    <div class="g"><i class="num">73</i><b>Next steps</b><span>Only the steps that fit its state: Switch, the worktree that has it, Explain (AI on); a remote branch's Check out, Fetch, Review; a tag's Check out (detached), Create Branch…, Push….</span></div>
+  </div>
+</section>
 
 <section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branches in the Repo List</b><span>Each repository's Local/Remote/Tags groups, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out. Branches Across Repositories… checks out, creates or merges one name in every ticked repository.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
 
