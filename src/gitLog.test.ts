@@ -97,7 +97,7 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
 
 {
   const fields = [A, "1", "dana", "dana@example.com", "feat: branch tip", B, "refs:HEAD -> refs/heads/develop, refs/remotes/origin/develop, tag: refs/tags/v1"];
-  const refs = [{ kind: "head", name: "HEAD" }, { kind: "local", name: "develop" }, { kind: "remote", name: "origin/develop" }, { kind: "tag", name: "v1" }];
+  const refs = [{ kind: "head", name: "HEAD" }, { kind: "local", name: "develop", current: true }, { kind: "remote", name: "origin/develop" }, { kind: "tag", name: "v1" }];
   assert.deepStrictEqual(parseLog(fields.join("\0") + "\x1e", REPO)[0].refs, refs);
   const history = parseHistory("\x1e" + fields.join("\0") + "\0\nR100\0src/old.ts\0src/new.ts\0", REPO, "src/new.ts")[0];
   assert.deepStrictEqual(history.refs, refs);

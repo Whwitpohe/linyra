@@ -10,6 +10,7 @@ import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
 import { mockCommits, mockRepos, mockTopoWalk, NOW } from "./mock";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
+import { hoverReply, mockRefs } from "./mock/hover";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
@@ -29,7 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
 const PAGE = 200;
 const latency = scenario === "slow" ? 1500 : 25;
 const repos = mockRepos(scenario);
-const all = mockCommits(repos, scenario);
+const all = mockRefs(mockCommits(repos, scenario), scenario);
 // ?date=all: the whole history (dev/perf/scrollBench.mjs scrolls through it).
 let filter: FilterState = params.get("date") === "all" ? { ...DEFAULT_FILTER, date: "all" } : DEFAULT_FILTER;
 let layout: Layout = { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off", ...JSON.parse(sessionStorage.getItem("linyra-layout") ?? "{}") };
@@ -112,6 +113,7 @@ let branchState: BranchSidebarState = sidebarState(JSON.parse(sessionStorage.get
 
 function handle(m: WebviewMessage): void {
   harnessWindow.harnessMessages.push(m);
+  if (hoverReply(m, all)) return;
   if (m.type === "ready") send({ type: "toolbar", state: toolbarState }, 0);
   if (m.type === "ready") send({ type: "sidebarState", state: branchState }, 0);
   switch (m.type) {

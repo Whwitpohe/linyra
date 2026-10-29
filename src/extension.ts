@@ -117,6 +117,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]) => multiRepo.mergeEach(title, plans, skipped),
     mergeRef: (repo: Repo, ref: string) => multiRepo.mergeRef(repo, ref) };
   const compareRepos = new CompareRepos(compareDeps);
+  // The hover card's Compare: the HEAD row's branch against its merge target, in Compare Branches.
+  log.hover.compare = (repoId, left, right) => compareRepos.comparePair({ left, right }, repoId);
   context.subscriptions.push(mergeDocs, vscode.workspace.registerTextDocumentContentProvider(MergePreviewDocs.scheme, mergeDocs));
   const branchSidebar = new BranchController(context, {
     repos: () => log.repoList, run: (root, args, signal, opts) => log.countedRun(root, args, signal, opts), discovery, ask,

@@ -1906,6 +1906,41 @@
           "command": "linyra.stash.create",
           "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|uncommitted)$/",
           "group": "1_stash@1"
+        },
+        {
+          "command": "linyra.branch.compare",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current",
+          "group": "0_view@2"
+        },
+        {
+          "command": "linyra.branch.checkout",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current",
+          "group": "1_branch@1"
+        },
+        {
+          "command": "linyra.branch.pull",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && current",
+          "group": "2_sync@2"
+        },
+        {
+          "command": "linyra.branch.push",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && kind =~ /^(local|tag)$/",
+          "group": "2_sync@3"
+        },
+        {
+          "command": "linyra.branch.merge",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current",
+          "group": "3_integrate@1"
+        },
+        {
+          "command": "linyra.branch.rebase",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current",
+          "group": "3_integrate@2"
+        },
+        {
+          "command": "linyra.branch.copy",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill'",
+          "group": "5_tools@2"
         }
       ]
     },

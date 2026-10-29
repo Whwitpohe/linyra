@@ -300,18 +300,7 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .commit-message { display: flex; align-items: center; min-width: 0; gap: 8px; }
 .commit-message .subject { flex: 1 1 auto; min-width: 0; }
 .row-refs { flex: 0 1 auto; min-width: 0; max-width: 55%; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; font-size: 11px; }
-.row-ref { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; min-width: 0; max-width: 100%; }
-.row-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .row-ref-more { flex: 0 0 auto; color: var(--vscode-descriptionForeground); }
-.row-ref-icon, .row-ref-icon svg { display: inline-block; width: 13px; height: 13px; }
-.row-ref-icons { display: inline-flex; flex: 0 0 auto; padding-right: 2px; }
-.row-ref-icons .row-ref-icon + .row-ref-icon { margin-left: -6px; }
-.row-ref-icon.ref-local { color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
-.row-ref-icon.ref-head, .row-ref-icon.ref-tag { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
-.row-ref-icon.ref-remote { color: var(--vscode-descriptionForeground); }
-.row-ref.ref-local { color: var(--vscode-terminal-ansiCyan, var(--vscode-textLink-foreground)); }
-.row-ref.ref-head, .row-ref.ref-tag { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
-.row-ref.ref-remote { color: var(--vscode-descriptionForeground); }
 .author, .date { color: var(--vscode-descriptionForeground); }
 /* View options: a hash column, bold for my commits, the theme's disabled color for commits off HEAD. */
 .list.hash-column .row { grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) var(--graph-width, 32px) minmax(0, 1fr) 8.5ch minmax(48px, 10ch) 8ch; }

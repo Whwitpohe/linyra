@@ -708,5 +708,17 @@
   "{0} deleted": "{0} 个删除",
   "{0} renamed": "{0} 个重命名",
   "{0} lines added, {1} deleted": "新增 {0} 行，删除 {1} 行",
-  "unpublished": "未发布"
+  "unpublished": "未发布",
+  "HEAD is detached": "HEAD 处于分离状态",
+  "You": "你",
+  "1 file changed": "1 个文件已更改",
+  "{0} files changed": "{0} 个文件已更改",
+  "Merge target {0}": "合并目标 {0}",
+  "{0} ahead": "领先 {0} 个提交",
+  "{0} behind": "落后 {0} 个提交",
+  "up to date": "已是最新",
+  "Could not read the commit: {0}": "无法读取提交：{0}",
+  "Reading the commit…": "正在读取提交…",
+  "Copy Hash": "复制哈希",
+  "Explain": "解释"
 }

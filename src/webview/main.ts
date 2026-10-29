@@ -22,6 +22,8 @@ import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars
 import { WorkList } from "./workList";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import type { ChangesLayout } from "../toolbarModel";
+import { HoverCard } from "./hoverCard";
+import { revealTarget, type Upstream } from "./refPills";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -72,6 +74,18 @@ const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }), post);
 const appEl = byId("app");
+/** The commit hover card; a branch pill (in a row or the card) shows its branch in the Repo List. */
+const hoverCard = new HoverCard(listEl, byId("rows"), { commit: (i) => list.commitAt(i), row: (i) => list.hoverRow(i) }, post);
+const revealBranch = (repoId: string, ref: string) => {
+  if (state.history) return; // the Repo List is locked during File History
+  if (appEl.classList.contains("no-repos")) post({ type: "toolbarAction", action: "toggleRepos" });
+  const { key, expand } = revealTarget(repoId, ref);
+  repoPane.reveal(key, expand);
+};
+list.onRevealBranch = revealBranch;
+hoverCard.onReveal = revealBranch;
+/** Each repository's distance from its upstream: the checked-out branch's pill shows it. */
+let upstream: Upstream = {};
 /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
 let mode: "commits" | "uncommitted" = "commits";
 let work = { known: false, totals: { files: 0, repos: 0, added: 0, deleted: 0 }, rows: [] as WorkRow[] };
@@ -252,8 +266,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "uncommitted":
       work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
+    case "hoverDetail": hoverCard.receive(m); return;
     case "sync":
       repoPane.setSync(m.byRepo);
+      upstream = m.byRepo;
       behind = new Set(Object.entries(m.byRepo).filter(([, ab]) => ab.behind > 0).map(([id]) => id));
       break;
     case "suggestions":
@@ -453,7 +469,7 @@ function render(): void {
     return;
   }
   list.update({
-    rows: state.rows, repoNames: names, accents, repoOrder, behind,
+    rows: state.rows, repoNames: names, accents, repoOrder, behind, upstream,
     me, highlightMine: view.highlightMine, offHead: view.highlightHead ? offHead : undefined, hashColumn: view.hashColumn,
     historyPath: state.history?.path,
     selected: state.selected, selectedKeys, now: state.now,

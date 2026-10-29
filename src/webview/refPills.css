@@ -1,0 +1,7 @@
+/* Branch pills in a Log row (ui/pill.css draws the pill): whole pills side by side, "+N" for the rest. */
+.commit-message .row-refs { gap: 4px; }
+.row-refs .pill { flex: 0 0 auto; }
+.row-refs .pill[data-ref] { cursor: pointer; }
+.row-ref-more { font-variant-numeric: tabular-nums; }
+/* On the focused selection, the parts' text follows the selection's foreground, as the row's own text does. */
+.list:focus .row.focus[aria-selected="true"] .pill-part { color: inherit; }

@@ -5,6 +5,7 @@ import type { BranchUse } from "./logQuery";
 import type { Commit, Repo, RepoFailure } from "./types";
 import type { ChangesMessage, ChangesPage } from "./changesProtocol";
 import type { ChangesLayout, ToolbarAction, ToolbarState } from "./toolbarModel";
+import type { HoverDetail, MergeTarget } from "./hoverModel";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
 export interface Layout {
@@ -69,7 +70,9 @@ export type HostMessage =
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
   | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] }
   /** Combined Changes: the host changed the Commit list's selection (Clear Selection). */
-  | { type: "setSelection"; items: CommitRef[]; focus: CommitRef };
+  | { type: "setSelection"; items: CommitRef[]; focus: CommitRef }
+  /** The hover card's commit: its git show (or why it failed), whether Explain exists, and on the HEAD row its merge target. */
+  | { type: "hoverDetail"; repoId: string; sha: string; detail?: HoverDetail; error?: string; explain?: boolean; target?: MergeTarget };
 
 /** One commit of the Commit list. */
 export interface CommitRef {
@@ -102,4 +105,10 @@ export type WebviewMessage =
   | { type: "wantSuggestions"; kind: "authors" | "branches" }
   | { type: "openSettings" }
   /** The Repo List's ＋ Save as profile… row. */
-  | { type: "profileSave" };
+  | { type: "profileSave" }
+  /** The hover card was shown on a listed commit (the pointer rested on its row): read its detail. */
+  | { type: "hover"; repoId: string; sha: string }
+  /** The hover card closed: kill its read. */
+  | { type: "hoverEnd" }
+  /** A link in the hover card's footer. */
+  | { type: "hoverAction"; action: "copySha" | "openOnRemote" | "compare" | "explain"; repoId: string; sha: string };

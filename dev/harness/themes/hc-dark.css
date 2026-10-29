@@ -10,6 +10,10 @@
   --vscode-errorForeground: #f48771;
   --vscode-focusBorder: #f38518;
   --vscode-contrastBorder: #6fc3df;
+  --vscode-editorHoverWidget-background: #0c141f;
+  --vscode-editorHoverWidget-foreground: #ffffff;
+  --vscode-editorHoverWidget-border: #6fc3df;
+  --vscode-editorHoverWidget-statusBarBackground: #0c141f;
   --vscode-contrastActiveBorder: #f38518;
   --vscode-icon-foreground: #ffffff;
   --vscode-list-activeSelectionForeground: #ffffff;

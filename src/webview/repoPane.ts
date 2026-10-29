@@ -137,6 +137,14 @@ export class RepoPane {
     if (this.rows.some((r) => r.kind === "branch")) this.render(false);
   }
 
+  /** A branch pill in the Log was clicked: open these rows, then put the cursor on row `key` once it is listed. */
+  reveal(key: string, expand: readonly string[]): void {
+    this.revealing = key;
+    this.list.focus();
+    this.saveState({ ...this.state, expanded: [...new Set([...this.state.expanded, ...expand])] });
+  }
+  private revealing: string | undefined;
+
   /** Opened rows and favorites, as the host saved them. */
   applyBranchState(state: BranchSidebarState): void {
     this.state = sidebarState(state);
@@ -271,6 +279,8 @@ export class RepoPane {
       this.post({ type: "branchSidebar", action: "load", repoId: repo.id });
     }
     this.rows = treeRows(this.repos, query, this.profiles, this.repoIds, this.data, this.state);
+    const revealed = this.revealing === undefined ? -1 : this.rows.findIndex((r) => r.key === this.revealing);
+    if (revealed >= 0) { this.active = revealed; this.revealing = undefined; reveal = true; }
     this.active = Math.min(this.active, this.rows.length - 1);
     const count = this.repoIds === null ? String(this.repos.length) : `${this.repoIds.length}/${this.repos.length}`;
     const shown = this.filter ? selectedBranches(this.filter) : [];

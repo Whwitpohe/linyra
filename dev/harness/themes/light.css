@@ -35,6 +35,10 @@
   --vscode-textLink-activeForeground: #005fb8;
   --vscode-panel-border: #e5e5e5;
   --vscode-widget-shadow: #00000029;
+  --vscode-editorHoverWidget-background: #f8f8f8;
+  --vscode-editorHoverWidget-foreground: #3b3b3b;
+  --vscode-editorHoverWidget-border: #c8c8c8;
+  --vscode-editorHoverWidget-statusBarBackground: #ececec;
   --vscode-inputValidation-warningBackground: #f6f5d2;
   --vscode-inputValidation-warningBorder: #bf8803;
   --vscode-gitDecoration-addedResourceForeground: #587c0c;
