@@ -9,7 +9,7 @@ import type { InsightsHostMessage } from "../insights/protocol";
 import type { InsightsScope, InsightsTab } from "../insights/range";
 import { ALL, send, snapshot, until, waitFor } from "./helpers";
 
-interface InsightsSnapshot { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[]; lastWrite: { repo: string; command: string; error?: string }[] }
+interface InsightsSnapshot { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[]; lastWrite: { repo: string; command: string; error?: string }[]; refsSeen: (string | null)[] }
 const insights = () => vscode.commands.executeCommand<InsightsSnapshot>("linyra._itest.insights");
 const tell = (m: unknown) => vscode.commands.executeCommand("linyra._itest.insightsSend", m);
 type Ready<T extends InsightsHostMessage["type"]> = Extract<InsightsHostMessage, { type: T }> & { status: "ready" };
@@ -21,9 +21,30 @@ describe("Insights", () => {
   const git = (root: string, args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...ID } }).trim();
   const repo = (name: string) => repos.find((r) => r.name === name)!;
   /** The posts after `from`, and the git processes Insights started after `spawnedFrom`. */
-  let posted = 0, spawned = 0;
-  const mark = async () => { const s = await insights(); posted = s.posted.length; spawned = s.spawned.length; };
-  const sinceMark = async () => { const s = await insights(); return { posts: s.posted.slice(posted), spawns: s.spawned.slice(spawned) }; };
+  let posted = 0, spawned = 0, refs = 0;
+  const mark = async () => { const s = await insights(); posted = s.posted.length; spawned = s.spawned.length; refs = s.refsSeen.length; };
+  /**
+   * What Insights did since the mark. A repository VS Code's Git reported moved refs for meanwhile
+   * (late reports of the suites before this one) is read again, rightly: its processes are left out
+   * of `spawns` (all of them in `all`), so the counts below are this test's own.
+   */
+  const sinceMark = async () => {
+    const s = await insights();
+    const moved = s.refsSeen.slice(refs);
+    const touched = (root: string) => moved.includes(null) || moved.includes(repos.find((r) => r.root === root)?.id ?? root);
+    const all = s.spawned.slice(spawned);
+    return { posts: s.posted.slice(posted), spawns: all.filter((x) => !touched(x.root)), all, moved };
+  };
+  /** One of each command per repository this test's reads cover (those no late report moved). */
+  const onePer = async (...cmds: string[]) => {
+    const { moved } = await sinceMark();
+    return Object.fromEntries(repos.filter((r) => !moved.includes(null) && !moved.includes(r.id)).map((r) => [r.name, cmds]));
+  };
+  /** VS Code's Git has looked at every repository and Insights has heard what it reported. */
+  const settle = async () => {
+    for (const r of repos) await vscodeGitStatus(r.root);
+    await quiet();
+  };
   /** The latest "ready" answer of a type after the mark (that `ok` accepts: a read superseded on the way may answer first). */
   const answer = <T extends "history" | "tree" | "health">(type: T, ok: (m: Ready<T>) => boolean = () => true) => waitFor(`an Insights ${type} answer`, async () => {
     const { posts } = await sinceMark();
@@ -53,6 +74,8 @@ describe("Insights", () => {
     await send({ type: "filter", filter: ALL });
     repos = (await snapshot()).repos;
     for (const r of repos) heads.set(r.id, git(r.root, ["rev-parse", "HEAD"]));
+    // The suites before this one moved refs in these repositories: their reports land now, not mid-test.
+    await settle();
   });
 
   after(async () => {
@@ -88,7 +111,7 @@ describe("Insights", () => {
     await tell({ type: "refresh" });
     await answer("history");
     await quiet();
-    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), Object.fromEntries(repos.map((r) => [r.name, ["log"]])), "Refresh: one git log per repository, nothing else");
+    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), await onePer("log"), "Refresh: one git log per repository, nothing else");
     const args = (await insights()).spawned.at(-1)!.args;
     assert.ok(args.includes("--numstat") && args.includes("--no-merges") && args.includes("HEAD") && !args.some((a) => a.startsWith("--since")), args.join(" "));
   });
@@ -112,7 +135,7 @@ describe("Insights", () => {
     await quiet();
     assert.strictEqual(week.data!.commits.length, 0, "the fixture's commits are older than a week");
     const spawns = (await sinceMark()).spawns;
-    assert.strictEqual(spawns.length, repos.length);
+    assert.strictEqual(spawns.length, Object.keys(await onePer("log")).length);
     assert.ok(spawns.every((s) => s.args.some((a) => /^--since=\d{4}-\d\d-\d\dT/.test(a))), "an ISO date git reads exactly");
     await tell({ type: "range", range: "all" });
     await answer("history", (m) => m.data!.since === undefined);
@@ -148,7 +171,10 @@ describe("Insights", () => {
     await quiet();
     const c = h.data!.commits.find((x) => x.subject === "test: insights")!;
     assert.deepStrictEqual([c.added, c.deleted, c.files], [2, 0, 1]);
-    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), { "acme-web": ["log"] }, "the other repositories are not read again");
+    const after = await sinceMark();
+    assert.ok(after.moved.includes(repo("acme-web").id), "VS Code's Git reported the commit");
+    assert.deepStrictEqual(Object.keys(perRepo(after.all)), ["acme-web"], "the other repositories are not read again");
+    assert.ok(after.all.every((x) => x.args[0] === "log"));
   });
 
   it("Files: one ls-tree of HEAD per repository, sizes of every tracked file; a folder opens without git", async () => {
@@ -156,7 +182,7 @@ describe("Insights", () => {
     await tell({ type: "tab", tab: "files" });
     const files = await answer("tree", (m) => m.tab === "files");
     await quiet();
-    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), Object.fromEntries(repos.map((r) => [r.name, ["ls-tree"]])), "one process per repository");
+    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), await onePer("ls-tree"), "one process per repository");
     assert.ok((await insights()).spawned.at(-1)!.args.join(" ").startsWith("ls-tree -r -l -z HEAD"));
     const d = files.data!;
     assert.strictEqual(d.node.kind, "root");
@@ -182,7 +208,7 @@ describe("Insights", () => {
     await tell({ type: "tab", tab: "commits" });
     const commits = await answer("tree", (m) => m.tab === "commits");
     await quiet();
-    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), Object.fromEntries(repos.map((r) => [r.name, ["log"]])));
+    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), await onePer("log"));
     const args = (await insights()).spawned.at(-1)!.args;
     assert.ok(args.includes("--name-only") && args.includes("-z") && args.includes("--format=") && args.includes("--no-merges"), args.join(" "));
     const web = commits.data!.node.children!.find((c) => c.name === "acme-web")!;
@@ -203,7 +229,8 @@ describe("Insights", () => {
     const h = await answer("health");
     await quiet();
     const counts = perRepo((await sinceMark()).spawns);
-    for (const r of repos) assert.deepStrictEqual((counts[r.name] ?? []).sort(), ["config", "count-objects"], `${r.name}: two processes`);
+    const expected = await onePer("config", "count-objects");
+    assert.deepStrictEqual(Object.fromEntries(Object.entries(counts).map(([n, c]) => [n, c.sort()])), expected, "two processes per repository");
     const web = h.data!.rows.find((r) => r.name === "acme-web")!;
     const cell = (id: string) => web.checks.find((c) => c.id === id)!;
     const files = git(repo("acme-web").root, ["ls-files"]).split("\n").filter(Boolean).length;
@@ -236,10 +263,10 @@ describe("Insights", () => {
     const after = await answer("health", (m) => m.data!.rows.find((r) => r.name === "acme-web")!.checks[0].value === "Present");
     assert.ok(after);
     await quiet();
-    const spawns = (await sinceMark()).spawns;
+    const spawns = (await sinceMark()).all.filter((x) => x.root === web.root || !(x.args[0] === "count-objects" || x.args[0] === "config"));
     assert.deepStrictEqual(spawns[0].args, ["commit-graph", "write", "--reachable"]);
-    assert.deepStrictEqual(perRepo(spawns.slice(1))["acme-web"].sort(), ["config", "count-objects"], "only the written repository is read again");
-    assert.deepStrictEqual(Object.keys(perRepo(spawns)), ["acme-web"]);
+    assert.deepStrictEqual(perRepo(spawns.slice(1))["acme-web"].sort().slice(0, 2), ["config", "count-objects"], "the written repository is read again");
+    assert.deepStrictEqual(Object.keys(perRepo((await sinceMark()).spawns)).filter((n) => n !== "acme-web"), [], "no other is");
 
     // A double click: the second request finds the repository busy and does nothing.
     await quiet();

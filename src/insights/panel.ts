@@ -93,6 +93,8 @@ export class InsightsPanel implements vscode.Disposable {
   readonly posted: InsightsHostMessage[] = [];
   /** Test seam: every git process Insights started (the Log's spawn log counts them too). */
   readonly spawned: { root: string; args: string[] }[] = [];
+  /** Test seam: each refs change heard (a repository's id; null: every repository). */
+  readonly refsSeen: (string | null)[] = [];
   private readonly run: RunGit;
 
   constructor(private readonly deps: InsightsDeps) {
@@ -219,6 +221,7 @@ export class InsightsPanel implements vscode.Disposable {
 
   /** A repository's refs moved (a commit, a checkout, a pull): what was read of it is out of date. */
   private refsChanged(id: string | undefined): void {
+    if (process.env.LINYRA_ITEST === "1") this.refsSeen.push(id ?? null);
     for (const t of TABS) this.readsOf(t).stale(id);
     if (this.panel?.visible) this.showSoon();
   }
@@ -545,9 +548,9 @@ export class InsightsPanel implements vscode.Disposable {
   }
 
   /** Test seam: the tab's state as the integration suite checks it. */
-  snapshot(): { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; range: InsightsRange; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[]; lastWrite: { repo: string; command: string; error?: string }[] } {
+  snapshot(): { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; range: InsightsRange; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[]; lastWrite: { repo: string; command: string; error?: string }[]; refsSeen: (string | null)[] } {
     return { open: !!this.panel, visible: !!this.panel?.visible, tab: this.tab, scope: this.scope, range: this.range,
-      reading: TABS.filter((t) => this.readsOf(t).reading), posted: this.posted, spawned: this.spawned, lastWrite: this.lastWrite };
+      reading: TABS.filter((t) => this.readsOf(t).reading), posted: this.posted, spawned: this.spawned, lastWrite: this.lastWrite, refsSeen: this.refsSeen };
   }
 
   dispose(): void {
