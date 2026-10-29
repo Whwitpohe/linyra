@@ -9,6 +9,65 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-29
+
+The JetBrains Commit window comes to Linyra's side bar, and Compare Branches learns to tell a
+conflict before the merge and to act on what it shows.
+
+### Added
+
+- **The Commit side bar, as the JetBrains Commit window.** The Linyra icon in the Activity Bar
+  lists every ticked repository's Changes and Unversioned Files in a native tree (with your file
+  icon theme), a checkbox on each row, then one message with Amend, Sign-off, Author… and Commit
+  Message History (Ctrl+M), and Commit (Ctrl+Enter) or Commit and Push… (Ctrl+Alt+K). Each
+  repository with checked files gets one commit of exactly those files (`git commit --only`);
+  whatever else is staged stays staged.
+- **Rollback, Remove from VCS and Delete, never one another.** Rollback… (Ctrl+Alt+Z) takes
+  tracked files back to the last commit and only takes an added file out of the index; Remove
+  from VCS unstages an added file and keeps it; Delete… (Delete) removes new files from the disk.
+  Add to VCS (Ctrl+Alt+A) and Add to .gitignore for new files, Ctrl+D for a diff, and Group by
+  Repository and by Directory.
+- **Compare tells a conflict before the merge.** Each repository is merged in memory (`git
+  merge-tree`, git 2.38 or later) with a scratch object directory, so nothing is written to the
+  repository. Its row shows a check or how many files would conflict, those files are marked,
+  Show Only Conflicts lists just them, and Preview Merge Result opens the merged file with its
+  conflict markers.
+- **Several branch names per side.** Tick several in the branch picker; their numbers are the
+  order (`develop, develop-k` against `master, main`, or each repository's Default branch). Each
+  repository uses the first it has, and its row says which (`develop-k → main`).
+- **Act from Compare.** Merge ◀ into ▶… goes into the right-hand branch as the boxes say: `git
+  merge` where it is checked out, and without a checkout, the working tree untouched, where it
+  is not; from a checklist of the repositories that merge cleanly. Cherry-Pick the selected
+  commits of a side, and Copy ◀ Commits as Release Notes (Markdown, by repository). All
+  repositories, or the ones ticked, share one tree; each side has a filter box, and commits show
+  their date.
+- **More on a commit row:** Compare with Working Tree…, Create Patch… (to a file or the
+  clipboard) and Push All up to Here… (the commits after it stay local).
+
+### Changed
+
+- **Compare's Repositories look like the Repo List:** a box on each repository, and the ticked
+  ones are what the sides show.
+- **The Repo List colors ↓ (to pull) blue and ↑ (to push) green**, as the JetBrains branch
+  widget colors incoming and outgoing.
+- **Toolbar toggles look pressed while on**, and Show Only Conflicts says how many files would
+  conflict.
+
+### Fixed
+
+- **Shift-click selects commits in the Log, not their text.**
+- **A change git just read is never erased by VS Code's Git's later "clean".** A repository
+  ticked again, or read while VS Code's Git reported, could lose its uncommitted changes.
+
+### Performance
+
+- **Smoother scrolling in many-repository workspaces:** at a 4× slower CPU on 2,000 rows of 68
+  repositories, the median frame while the extension reports changes went from 150 to 33 ms.
+- **Fewer git processes:** none where VS Code's Git already knows the answer; Expand All on 68
+  repositories starts 68 instead of 204 (about 3.4 → 1.2 s).
+- **Add to VCS and Remove from VCS show at once:** 382 → 117 ms and 968 → 100 ms.
+- **Compare shows its list before the merge check, and reads a side's files in one round.**
+
 ## [1.5.0] — 2026-10-28
 
 Linyra becomes a multi-repository Git client in the style of the Git tool window's Log in
