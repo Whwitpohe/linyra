@@ -325,10 +325,34 @@
   - `ref:` 通过 `--ignore-missing --end-of-options` 放进每个仓库那唯一一次 `git log`，没有额外进程。
   - `change:`（pickaxe）不限日期时很慢：15 个仓库、3188 个提交，全量需要 32s。所以选"全部时间"时搜索框会提示缩短日期范围。
 - **F AI 核心**：
-  - Anthropic 用官方 SDK `@anthropic-ai/sdk`（Apache-2.0，已写进 ThirdPartyNotices），按需动态加载。`out/extension.js` 从 328KB 增加到 779KB。
+  - Anthropic 用官方 SDK `@anthropic-ai/sdk`（Apache-2.0，已写进 ThirdPartyNotices）。SDK 单独打成 `out/anthropic.js`（压缩后 405KB），第一次用 Anthropic 时才加载。
+  - 压缩后的 `out/extension.js` 从 304KB 增加到 481KB，其中 `src/ai` 占 105KB。加载时间（`dev/perf/loadBench.mjs`）从 18ms 增加到 29ms，大致和体积成正比。
   - `linyra.ai.enabled`、`profiles`、`activeProfile` 只接受用户级设置；密钥按 origin 存在 SecretStorage 里。
 - **集成时补的接线**：
   - AI 菜单项和悬停卡片里的"解释"，只在 `linyra.ai.enabled` 打开时显示。
   - Log 头部的 ✨"问 AI"按钮（`linyra.ai.ask`）。
   - 头像到达后只重绘一次。
   - 文件历史的泳道起点改为复用 `GRAPH_INSET`。
+
+## 8. 第二轮：Changes 列、搜索弹窗、性能（2026-10-29）
+
+试用后补做的三件事，都照 GitLens Commit Graph 的设计。
+
+- **Changes 列**（`changeStats.ts`、`changeStatsReader.ts`、`webview/changeViz.ts`、`webview/changesColumn.ts`）：
+  - 位置在作者和日期之间。⋯ 菜单里可选数字、方格、条形（默认）、双向条，或者关掉；选择会记住。
+  - 比例是绝对的：按 √行数计，1600 行算满格。同一个提交滚到哪里都画得一样。删除段带一道缺口，不靠颜色也能和新增分开。
+  - 列随 Log 宽度分四档：文件图标加计数，只剩图形，最后是 16px 的圆环。数字模式每档有自己的宽度，计数不会被截断。
+  - 宿主端：屏幕上的行停稳 150ms 后才问。每个仓库一个 `git log --no-walk=unsorted --stdin --first-parent -m --shortstat` 进程；本次会话读过的提交直接从内存回答；新请求会杀掉旧请求。关掉时什么都不问。文件历史仍用它自己的列。
+- **搜索弹窗**（`webview/suggest.ts`、`suggestModel.ts`、`searchBox.ts`）：
+  - 顶部一行帮助：怎么组合筛选；光标在某个操作符的值里时，换成这个操作符的例子。
+  - 每个操作符两行：图标加操作符和别名，下一行是说明。
+  - 只有 AI 可用时，第一行才是"用自然语言搜索"。
+  - 键盘高亮用 suggest widget 的颜色，鼠标只做悬停。
+  - 占位文字是"Search commits (↑↓ for history)"。Log 是边输入边搜索的，所以不写"按 Enter 搜索"。
+- **性能**：
+  - 筛选没有变化时（比如已经全选时再点 All repositories），webview 不重绘 Log，宿主也不重读。以前每次都要等 250ms，再对每个仓库跑一遍 `git log`。Enter（`now`）仍会有意重跑。
+  - fitReferences 的那次布局读取是这一帧本来就要做的布局，只是提前了，不是重复布局。对照试验去掉它后，布局总时间不变，所以保留。
+  - 现在 webview 里最贵的两件事都在 Repo List（`repoPane.ts`）：
+    - 每次渲染都重建所有行，每个仓库的 `<vscode-checkbox>` 都要重新经过 lit 渲染，约占展开一次的 40%。
+    - `fitNames` 对每个名字读 `scrollWidth`/`clientWidth`，约占 35%。
+  - 新增基准：`dev/perf/interactionBench.mjs` 测输入到出帧的时间；`dev/perf/workBench.mjs` 用 Chrome 的计数器统计每次交互的脚本、样式、布局时间，比墙钟时间稳定，适合比较两个构建。

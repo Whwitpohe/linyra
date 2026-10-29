@@ -48,15 +48,17 @@ const cases = {
   "open the branch picker": `document.getElementById("branch").click();`,
   "switch to Uncommitted": `document.getElementById("mode-work").click();`,
   "switch back to Commits": `document.getElementById("mode-commits").click();`,
-  "expand a repository (Repo List)": `document.querySelector("#repo-rows .repo-row .tree-twisty")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));`,
+  "expand a repository (Repo List)": `document.querySelector("#repo-rows .repo-row[aria-expanded]:not(.tree-group) .tree-twisty")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));`,
   "open the ⋯ menu": `document.getElementById("toolbar-more").click();`,
   "close the ⋯ menu": `document.getElementById("toolbar-more").click();`,
 };
 // --profile "<case>": that case only, 30 tries under the sampling profiler; prints time by function.
 const profiled = flag("profile", "");
+// Profiled only: the reload it starts is timed below, to the frame with the new rows.
+const profileOnly = { "tick a repository": `document.querySelector("#repo-rows .repo-row[aria-expanded]:not(.tree-group) .repo-check")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));` };
 if (profiled) {
-  const act = cases[profiled];
-  if (!act) throw new Error(`no case "${profiled}"; cases: ${Object.keys(cases).join(", ")}`);
+  const act = cases[profiled] ?? profileOnly[profiled];
+  if (!act) throw new Error(`no case "${profiled}"; cases: ${[...Object.keys(cases), ...Object.keys(profileOnly)].join(", ")}`);
   await cdp.send("Profiler.enable");
   await cdp.send("Profiler.setSamplingInterval", { interval: 100 });
   await cdp.send("Profiler.start");
@@ -93,7 +95,7 @@ for (const [name, act] of Object.entries(cases)) {
   for (let i = 0; i < Math.min(REPS, 6); i++) {
     xs.push(await page.evaluate(async () => {
       const rows = document.getElementById("rows");
-      const box = document.querySelector("#repo-rows .repo-row[data-key] .repo-check, #repo-rows .repo-row .repo-check");
+      const box = document.querySelector("#repo-rows .repo-row[aria-expanded]:not(.tree-group) .repo-check");
       const t = performance.now();
       const changed = new Promise((r) => new MutationObserver((_, o) => { o.disconnect(); r(); }).observe(rows, { childList: true }));
       box?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
