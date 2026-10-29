@@ -9,7 +9,7 @@ const open = async (page, { theme = "dark", width = 1500, height = 520, query = 
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.setViewportSize({ width, height });
-  await page.goto(`/${locale ? `index.${locale}.html` : ""}?theme=${theme}&state=default${query}`);
+  await page.goto(`/${locale ? `index.${locale}.html` : ""}?theme=${theme}&state=default&avatars=off${query}`);
   await expect(page.locator("#rows .row").first()).toBeVisible();
   return errors;
 };

@@ -23,6 +23,8 @@ function picture(letter: string): string {
 }
 
 export function answerAvatars(m: Extract<WebviewMessage, { type: "visibleAuthors" }>, send: (m: HostMessage, delay?: number) => void): void {
+  // ?avatars=off: every disc keeps its initial (specs that check the letter).
+  if (new URLSearchParams(location.search).get("avatars") === "off") return;
   const byEmail: Record<string, string> = {};
   for (const { email } of m.authors) {
     const e = email.trim().toLowerCase();
