@@ -19,6 +19,8 @@ export interface CompareTreeRow {
   oldPath?: string;
   note?: string;
   untracked?: boolean;
+  /** A file's or folder's path in its repository: what the side's filter reads. */
+  path?: string;
   children?: CompareTreeRow[];
   loaded?: boolean;
 }
