@@ -1,11 +1,12 @@
 import { localize } from "./i18n";
+import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { errorLine } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { commitCount, commitStep, describeUncommitted, diffFor, discardPlan, discardPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { addedPaths, commitCount, commitStep, deletePrompt, describeUncommitted, diffFor, discardPlan, discardPrompt, rollbackPlan, rollbackPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
@@ -201,6 +202,48 @@ export class UncommittedActions {
     });
   }
 
+  /**
+   * The Commit side bar's Rollback, as the JetBrains IDEs': tracked files back to the last commit,
+   * an added file only out of version control (unstaged, kept on disk). Unversioned files are
+   * left alone: Delete… is the command that removes files.
+   */
+  async rollback(arg: unknown, many?: unknown): Promise<void> {
+    const picks = this.picks(arg, many).filter((r) => r.files.some((f) => !f.untracked));
+    if (picks.length === 0) return;
+    const p = picks.length === 1
+      ? rollbackPrompt(picks[0].work.name, picks[0].files, picks[0].one, picks[0].staged)
+      : rollbackPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
+    if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
+    await this.act(picks, "roll back", async (r) => {
+      const plan = rollbackPlan(r.files, r.staged);
+      if (plan.unadd.length > 0) await this.deps.discovery.unstage(r.work.root, plan.unadd);
+      if (plan.paths.length > 0) await this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
+    });
+  }
+
+  /**
+   * Delete… in the Commit side bar: new files only (unversioned, or added and never committed),
+   * from the disk, after one prompt. An added file is unstaged first. Folders left empty go too.
+   */
+  async deleteNew(arg: unknown, many?: unknown): Promise<void> {
+    const picks = this.picks(arg, many).flatMap((r): Pick[] => {
+      const added = addedPaths(r.staged);
+      const files = r.files.filter((f) => f.untracked || added.has(f.path));
+      const paths = new Set(files.map((f) => f.path));
+      return files.length === 0 ? [] : [{ work: r.work, files, staged: r.staged.filter((f) => added.has(f.path)), one: paths.size === 1 }];
+    });
+    if (picks.length === 0) return;
+    const paths = (r: Pick) => [...new Set(r.files.map((f) => f.path))];
+    const p = picks.length === 1
+      ? deletePrompt(picks[0].work.name, paths(picks[0]), picks[0].one)
+      : deletePrompt(plural(picks.length, "repository", "repositories"), picks.flatMap(paths), false);
+    if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
+    await this.act(picks, "delete", async (r) => {
+      if (r.staged.length > 0) await this.deps.discovery.unstage(r.work.root, r.staged.map((f) => f.path));
+      for (const file of paths(r)) await removeFile(r.work.root, file);
+    });
+  }
+
   /** ✓ on a repository: its staged files, or (nothing staged) as VS Code's own commit does. */
   async commit(arg: unknown): Promise<void> {
     const r = this.resolve(arg && typeof arg === "object" ? { repoId: (arg as Target).repoId } : arg);
@@ -253,6 +296,19 @@ export class UncommittedActions {
     await openWorkDiff(work, group, file, preserveFocus);
   }
 
+}
+
+/** A new file goes from the disk, and the folders it leaves empty with it (never the repository's root). */
+async function removeFile(root: string, file: string): Promise<void> {
+  const parts = file.split("/");
+  await fs.rm(path.join(root, ...parts), { force: true });
+  for (let n = parts.length - 1; n > 0; n--) {
+    try {
+      await fs.rmdir(path.join(root, ...parts.slice(0, n)));
+    } catch {
+      return; // not empty: the rest of the way up is not either
+    }
+  }
 }
 
 const revisionUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRevision(r) });

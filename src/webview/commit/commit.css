@@ -7,8 +7,17 @@
 #commit-pane button:focus-visible, #commit-pane [tabindex]:focus-visible, #commit-pane textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
 #commit-pane .commit-form { height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 6px 10px 8px; }
-#commit-pane .commit-options { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
-#commit-pane .check-option { display: inline-flex; align-items: center; gap: 6px; padding: 1px 4px 1px 0; border-radius: 3px; cursor: pointer; user-select: none; }
+/* One row however narrow the view: the labels give way (their titles say it all), the buttons never do. */
+#commit-pane .commit-options { flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 10px; }
+#commit-pane .commit-tools { flex: 0 0 auto; margin-left: auto; display: inline-flex; gap: 2px; }
+#commit-pane .icon-button { flex: 0 0 auto; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+#commit-pane .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+#commit-pane .icon-button svg { width: 16px; height: 16px; }
+#commit-pane .commit-author { flex: 0 0 auto; min-width: 0; display: flex; align-items: center; gap: 2px; }
+#commit-pane .link-button { min-width: 0; padding: 0; border: 0; background: transparent; color: var(--vscode-textLink-foreground); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+#commit-pane .link-button:hover { color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground)); text-decoration: underline; }
+#commit-pane .check-option { min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 1px 4px 1px 0; border-radius: 3px; cursor: pointer; user-select: none; }
+#commit-pane .check-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* VS Code's checkbox: the theme's box and check. */
 #commit-pane .check { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--vscode-foreground))); border-radius: 3px; background: var(--vscode-checkbox-background, var(--vscode-input-background)); color: var(--vscode-checkbox-foreground, var(--vscode-foreground)); }
 #commit-pane .check svg { width: 14px; height: 14px; }

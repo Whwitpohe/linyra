@@ -25,7 +25,8 @@ band names its repository, as the root column does in the JetBrains Log.
   tags check out detached, push and delete; a Stashes group (Apply, Pop, Drop, Show Changes) and
   Stash Changes… on a repository.
 - **Commit rows:** cherry-pick and revert (several selected commits at once), reset current branch to here, checkout revision,
-  new branch or tag from a commit; on HEAD, Undo Commit and Edit Commit Message (subject).
+  new branch or tag from a commit, Compare with Working Tree, Create Patch, Push All up to Here; on HEAD, Undo
+  Commit and Edit Commit Message (subject).
   Each runs in the commit's own repository, through VS Code's Git where its API has the
   operation, and asks before moving a branch or HEAD (and warns when the commit is pushed).
 - **Across repositories:** Branches Across Repositories… (check out, create or merge one name
@@ -37,7 +38,8 @@ band names its repository, as the root column does in the JetBrains Log.
 - **Working tree:** uncommitted work per repository on the Log's Uncommitted side — its one
   view in the panel — and the Commit side bar on the left, the JetBrains Commit window: a checkbox
   per file, one message, Amend, Commit / Commit and Push… of the checked files in every
-  repository (`git commit --only`), Rollback; stage, unstage, discard, commit.
+  repository (`git commit --only`), Rollback, Remove from VCS, Delete, Add to .gitignore; stage, unstage,
+  discard, commit.
 - **Sync:** Fetch All, Pull, Pull All Behind, ahead/behind badges; Compare Branches.
 
 **Non-goals:** a background index or cache (constraint 1); interactive rebase, hunk staging,

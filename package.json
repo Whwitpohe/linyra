@@ -335,6 +335,50 @@
         "icon": "$(add)"
       },
       {
+        "command": "linyra.commitPanel.removeFromVcs",
+        "title": "%command.linyra.commitPanel.removeFromVcs.title%",
+        "category": "Linyra",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "linyra.commitPanel.delete",
+        "title": "%command.linyra.commitPanel.delete.title%",
+        "category": "Linyra",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "linyra.commitPanel.ignore",
+        "title": "%command.linyra.commitPanel.ignore.title%",
+        "category": "Linyra",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "linyra.commitPanel.history",
+        "title": "%command.linyra.commitPanel.history.title%",
+        "category": "Linyra",
+        "icon": "$(history)"
+      },
+      {
+        "command": "linyra.commitPanel.groupRepoOn",
+        "title": "%command.linyra.commitPanel.groupRepoOn.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitPanel.groupRepoOff",
+        "title": "%command.linyra.commitPanel.groupRepoOff.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitPanel.groupDirOn",
+        "title": "%command.linyra.commitPanel.groupDirOn.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitPanel.groupDirOff",
+        "title": "%command.linyra.commitPanel.groupDirOff.title%",
+        "category": "Linyra"
+      },
+      {
         "command": "linyra.stage",
         "title": "%command.linyra.stage.title%",
         "category": "Linyra",
@@ -447,6 +491,21 @@
       {
         "command": "linyra.commitReword",
         "title": "%command.linyra.commitReword.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitCompareLocal",
+        "title": "%command.linyra.commitCompareLocal.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitCreatePatch",
+        "title": "%command.linyra.commitCreatePatch.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.commitPushUpTo",
+        "title": "%command.linyra.commitPushUpTo.title%",
         "category": "Linyra"
       },
       {
@@ -734,19 +793,29 @@
           "group": "3_modification@3"
         },
         {
-          "command": "linyra.openWorkingFile",
-          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(changed|untracked)$/",
-          "group": "inline@1"
-        },
-        {
           "command": "linyra.commitPanel.add",
           "when": "view == linyra.commit && viewItem =~ /unversioned|untracked/",
           "group": "inline@1"
         },
         {
-          "command": "linyra.commitPanel.rollback",
-          "when": "view == linyra.commit",
+          "command": "linyra.openWorkingFile",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(changed|untracked|added)$/",
           "group": "inline@2"
+        },
+        {
+          "command": "linyra.commitPanel.rollback",
+          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.(changed|deleted)|Folder(\\.added)?|Repo(\\.behind)?(\\.added)?|List(\\.added)?)$/",
+          "group": "inline@3"
+        },
+        {
+          "command": "linyra.commitPanel.removeFromVcs",
+          "when": "view == linyra.commit && viewItem == commitFile.added",
+          "group": "inline@3"
+        },
+        {
+          "command": "linyra.commitPanel.delete",
+          "when": "view == linyra.commit && viewItem == commitFile.untracked",
+          "group": "inline@3"
         },
         {
           "command": "linyra.commitPanel.diff",
@@ -755,23 +824,38 @@
         },
         {
           "command": "linyra.openWorkingFile",
-          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(changed|untracked)$/",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(changed|untracked|added)$/",
           "group": "0_diff@2"
         },
         {
           "command": "linyra.commitPanel.add",
           "when": "view == linyra.commit && viewItem =~ /unversioned|untracked/",
-          "group": "1_modification@0"
+          "group": "1_modification@1"
+        },
+        {
+          "command": "linyra.commitPanel.ignore",
+          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.untracked|Folder\\.unversioned)/",
+          "group": "1_modification@2"
         },
         {
           "command": "linyra.commitPanel.rollback",
-          "when": "view == linyra.commit",
-          "group": "1_modification@1"
+          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.(changed|deleted)|Folder(\\.added)?|Repo(\\.behind)?(\\.added)?|List(\\.added)?)$/",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "linyra.commitPanel.removeFromVcs",
+          "when": "view == linyra.commit && viewItem =~ /added$/",
+          "group": "1_modification@4"
+        },
+        {
+          "command": "linyra.commitPanel.delete",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(untracked|added)$|unversioned/",
+          "group": "1_modification@5"
         },
         {
           "command": "linyra.stash.create",
           "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
-          "group": "1_modification@2"
+          "group": "1_modification@6"
         },
         {
           "command": "linyra.repoPull",
@@ -1152,6 +1236,50 @@
         {
           "command": "linyra.commitPanel.add",
           "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.removeFromVcs",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.delete",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.ignore",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.history",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.groupRepoOn",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.groupRepoOff",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.groupDirOn",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPanel.groupDirOff",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitCompareLocal",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitCreatePatch",
+          "when": "false"
+        },
+        {
+          "command": "linyra.commitPushUpTo",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -1164,6 +1292,31 @@
           "command": "linyra.commitPanel.rollback",
           "when": "view == linyra.commit",
           "group": "navigation@2"
+        },
+        {
+          "command": "linyra.commitPanel.groupRepoOff",
+          "when": "view == linyra.commit && linyra.commitGroupRepo",
+          "group": "1_group@1"
+        },
+        {
+          "command": "linyra.commitPanel.groupRepoOn",
+          "when": "view == linyra.commit && !linyra.commitGroupRepo",
+          "group": "1_group@1"
+        },
+        {
+          "command": "linyra.commitPanel.groupDirOff",
+          "when": "view == linyra.commit && linyra.commitGroupDir",
+          "group": "1_group@2"
+        },
+        {
+          "command": "linyra.commitPanel.groupDirOn",
+          "when": "view == linyra.commit && !linyra.commitGroupDir",
+          "group": "1_group@2"
+        },
+        {
+          "command": "linyra.commitPanel.history",
+          "when": "view == linyra.commit",
+          "group": "2_message@1"
         },
         {
           "command": "linyra.clearSelection",
@@ -1261,6 +1414,16 @@
           "group": "0_commit@4"
         },
         {
+          "command": "linyra.commitCompareLocal",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "0_commit@5"
+        },
+        {
+          "command": "linyra.commitCreatePatch",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "group": "0_commit@6"
+        },
+        {
           "command": "linyra.commitCherryPick",
           "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
           "group": "1_change@1"
@@ -1299,6 +1462,11 @@
           "command": "linyra.commitUndo",
           "when": "webviewId == 'linyra.log' && webviewSection == 'commit' && head",
           "group": "3_head@2"
+        },
+        {
+          "command": "linyra.commitPushUpTo",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'commit'",
+          "group": "4_push@1"
         },
         {
           "command": "linyra.repoPull",
@@ -1748,6 +1916,24 @@
         "key": "ctrl+alt+a",
         "mac": "cmd+alt+a",
         "when": "focusedView == linyra.commit"
+      },
+      {
+        "command": "linyra.commitPanel.diff",
+        "key": "ctrl+d",
+        "mac": "cmd+d",
+        "when": "focusedView == linyra.commit"
+      },
+      {
+        "command": "linyra.commitPanel.delete",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == linyra.commit"
+      },
+      {
+        "command": "linyra.commitPanel.history",
+        "key": "ctrl+m",
+        "mac": "cmd+m",
+        "when": "focusedView == linyra.commit || focusedView == linyra.commitMessage"
       }
     ]
   },

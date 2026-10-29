@@ -114,6 +114,42 @@ export function discardPrompt(repoName: string, files: readonly FileChange[], on
   return { message, detail: localize("This can't be undone.{0}", extra), button: one ? localize("Discard File") : localize("Discard All") };
 }
 
+/** Files staged as new (git add) and never committed. A staged rename or copy is not one: Rollback moves it back. */
+export const addedPaths = (staged: readonly FileChange[]): Set<string> => new Set(staged.filter((f) => f.status === "A" && !f.untracked).map((f) => f.path));
+
+/**
+ * The Commit side bar's Rollback, as the JetBrains IDEs': tracked files go back to the last
+ * commit, and an added file only leaves version control (`unadd`: unstaged, kept on disk).
+ * Unversioned files are not changes to roll back: Delete… removes them.
+ */
+export function rollbackPlan(files: readonly FileChange[], staged: readonly FileChange[]): { paths: string[]; unstage: string[]; remove: string[]; unadd: string[] } {
+  const added = addedPaths(staged);
+  const rest = (list: readonly FileChange[]) => list.filter((f) => !added.has(f.path) && !f.untracked);
+  return { ...discardPlan(rest(files), rest(staged)), unadd: [...added] };
+}
+
+/** Rollback's prompt. Its one button says Rollback: Delete and Remove from VCS are other commands, with their own words. */
+export function rollbackPrompt(repoName: string, files: readonly FileChange[], one: boolean, staged: readonly FileChange[] = []): { message: string; detail: string; button: string } {
+  const added = addedPaths(staged);
+  const tracked = files.filter((f) => !f.untracked);
+  const others = tracked.filter((f) => !added.has(f.path));
+  const message = one ? localize("Roll back \"{0}\"?", tracked[0].path) : localize("Roll back {0} in {1}?", plural(new Set(tracked.map((f) => f.path)).size, "file"), repoName);
+  const detail: string[] = [];
+  if (others.length > 0) detail.push(localize("This can't be undone.{0}", staged.some((f) => !added.has(f.path)) ? localize(" Staged changes are discarded too.") : ""));
+  if (added.size === 1) detail.push(localize("The added file leaves version control and stays on disk, under Unversioned Files."));
+  if (added.size > 1) detail.push(localize("The {0} added files leave version control and stay on disk, under Unversioned Files.", added.size));
+  return { message, detail: detail.join(" "), button: localize("Rollback") };
+}
+
+/** Delete…'s prompt: new files (unversioned, or added and never committed) go from the disk. */
+export function deletePrompt(repoName: string, paths: readonly string[], one: boolean): { message: string; detail: string; button: string } {
+  return {
+    message: one ? localize("Delete \"{0}\"?", paths[0]) : localize("Delete {0} in {1}?", plural(paths.length, "file"), repoName),
+    detail: paths.length === 1 ? localize("The file is deleted from disk. This can't be undone.") : localize("The files are deleted from disk. This can't be undone."),
+    button: localize("Delete"),
+  };
+}
+
 /** Files a commit-all takes, as git.smartCommitChanges says: every change, or tracked files only. */
 export function commitCount(w: RepoWork, changes: "all" | "tracked"): number {
   return new Set(w.changes.filter((f) => changes === "all" || !f.untracked).map((f) => f.path)).size;

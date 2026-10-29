@@ -16,7 +16,9 @@ host.commitMessages = [];
 host.acquireVsCodeApi = () => ({
   postMessage(m: CommitWebviewMessage) {
     host.commitMessages.push(m);
-    if (m.type === "ready") setTimeout(() => { send({ type: "draft", text: params.get("message") ?? "", amend: false }); post(); }, 0);
+    if (m.type === "ready") setTimeout(() => { send({ type: "draft", text: params.get("message") ?? "", amend: false, signOff: false, author: "" }); post(); }, 0);
+    if (m.type === "history") send({ type: "message", text: "fix(api): retry the upload once\n\nThe second try reuses the token." });
+    if (m.type === "author") send({ type: "author", author: m.clear ? "" : "rin <rin@example.com>" });
     if (m.type === "amend" && m.on && !m.text.trim()) send({ type: "amendMessage", text: "fix(web): keep the login callback on preview builds" });
     if (m.type === "commit") {
       busy = true;

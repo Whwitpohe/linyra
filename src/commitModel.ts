@@ -90,34 +90,53 @@ const partly = (c: { files: number; checked: number; check: Check }, all: string
 
 const statusName: Partial<Record<ChangeStatus, string>> = { A: "added", M: "modified", D: "deleted", R: "renamed", C: "copied", T: "type changed" };
 
-function describeFiles(nodes: readonly TreeNode[], files: ReadonlyMap<string, CommitFile>, parent: string, base: string, w: RepoWork, choices: Choices): CommitRow[] {
+/** Added (git add, never committed): Remove from VCS takes it out again, the file kept. */
+export const isAdded = (f: CommitFile): boolean => !f.untracked && f.staged && f.status === "A";
+
+/** How the side bar groups files, as the JetBrains Commit window's Group By: by repository, by directory, both or neither. */
+export interface CommitGrouping {
+  repo: boolean;
+  dir: boolean;
+}
+
+/** A row's menus know what is under it: ".added" when some file there can leave version control. */
+const addedUnder = (rows: readonly CommitRow[]) => (rows.some((r) => r.contextValue === "commitFile.added" || r.contextValue.endsWith(".added")) ? ".added" : "");
+
+function describeFiles(nodes: readonly TreeNode[], files: ReadonlyMap<string, CommitFile>, parent: string, base: string, w: RepoWork, choices: Choices, flat: boolean): CommitRow[] {
   return nodes.map((n): CommitRow => {
     if (n.kind === "folder") {
       const path = parent ? `${parent}/${n.name}` : n.name;
-      const children = describeFiles(n.children, files, path, base, w, choices);
+      const children = describeFiles(n.children, files, path, base, w, choices, flat);
       const c = counts(children);
       return { id: `${base}:d:${path}`, kind: "folder", label: n.name, description: c.check === "mixed" ? `${c.checked}/${c.files}` : String(c.files), tooltip: path,
-        repoId: w.repoId, path, children, contextValue: `commitFolder${base.startsWith("unversioned:") ? ".unversioned" : ""}`, ...c };
+        repoId: w.repoId, path, children, contextValue: `commitFolder${base.startsWith("unversioned:") ? ".unversioned" : ""}${addedUnder(children)}`, ...c };
     }
     const f = files.get(n.file.path)!;
     const state = f.untracked ? localize("new") : localize(statusName[f.status ?? "M"] ?? "modified");
     const on = isChecked(choices, w.repoId, f);
+    // A flat list names each file's folder beside it, as Source Control's list view does.
+    const dir = flat && f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
     return {
-      id: `${base}:f:${f.path}`, kind: "file", label: n.name, description: f.oldPath ? `← ${f.oldPath}` : "", check: on ? "on" : "off", files: 1, checked: on ? 1 : 0,
+      id: `${base}:f:${f.path}`, kind: "file", label: n.name, description: [dir, f.oldPath ? `← ${f.oldPath}` : ""].filter(Boolean).join(" · "),
+      check: on ? "on" : "off", files: 1, checked: on ? 1 : 0,
       tooltip: `${f.oldPath ? `${f.oldPath} → ` : ""}${f.path} · ${state}${f.staged && f.changed ? ` · ${localize("partly staged")}` : ""}`,
       repoId: w.repoId, path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.untracked ? "A" : f.status, untracked: f.untracked,
       // Open File and File History want the half that has the working tree's file.
       group: f.changed ? "changes" : "staged",
-      contextValue: `commitFile.${f.untracked ? "untracked" : f.status === "D" ? "deleted" : "changed"}`,
+      contextValue: `commitFile.${f.untracked ? "untracked" : f.status === "D" ? "deleted" : isAdded(f) ? "added" : "changed"}`,
     };
   });
 }
 
+const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
 /**
  * Everything the Commit side bar shows: Changes, then Unversioned Files, each by repository (in
- * Repo List order) and folder. A list, repository or folder is checked when all its files are.
+ * Repo List order) and folder, or as `group` says. A list, repository or folder is checked when
+ * all its files are. Without repository rows, each repository's top rows name it.
  */
-export function describeCommit(works: readonly RepoWork[], choices: Choices, accents: ReadonlyMap<string, number> = new Map(), behind: (repoId: string) => boolean = () => false): {
+export function describeCommit(works: readonly RepoWork[], choices: Choices, accents: ReadonlyMap<string, number> = new Map(), behind: (repoId: string) => boolean = () => false,
+  group: CommitGrouping = { repo: true, dir: true }): {
   roots: CommitRow[]; message: string | undefined; checked: { files: number; repos: number }; total: number;
 } {
   const lists: CommitRow[] = [];
@@ -130,12 +149,19 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
       total += files.length;
       const byPath = new Map(files.map((f) => [f.path, f]));
       const base = `${list}:${w.repoId}`;
-      const children = describeFiles(fileTree(files.map((f): FileChange => ({ path: f.path, added: null, deleted: null }))), byPath, "", base, w, choices);
+      const nodes: TreeNode[] = group.dir
+        ? fileTree(files.map((f): FileChange => ({ path: f.path, added: null, deleted: null })))
+        : files.map((f) => ({ kind: "file", name: basename(f.path), file: { path: f.path, added: null, deleted: null } }));
+      const children = describeFiles(nodes, byPath, "", base, w, choices, !group.dir);
+      if (!group.repo) {
+        repos.push(...children.map((r) => ({ ...r, description: [w.name, r.description].filter(Boolean).join(" · "), tooltip: `${w.name}: ${r.tooltip}` })));
+        continue;
+      }
       const c = counts(children);
       repos.push({
         id: base, kind: "repo", label: w.name, description: partly(c, plural(c.files, "file")), repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c,
         tooltip: w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name),
-        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}`,
+        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}${addedUnder(children)}`,
       });
     }
     if (repos.length === 0) continue;
@@ -143,7 +169,7 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
     lists.push({ id: list, kind: "list", label, description: partly(c, plural(c.files, "file")), children: repos, ...c,
       // New files enter version control either way, as in the JetBrains IDEs: checked, with the commit; or now, by Add to VCS.
       tooltip: untracked ? localize("New files: check them to add them with the commit, or Add to VCS (Ctrl+Alt+A) to add them now.") : label,
-      contextValue: untracked ? "commitList.unversioned" : "commitList" });
+      contextValue: `commitList${untracked ? ".unversioned" : ""}${addedUnder(repos)}` });
   }
   const plan = commitPlan(works, choices);
   return {
@@ -223,4 +249,22 @@ export function checkedLabel(checked: { files: number; repos: number }): string 
   return checked.repos === 1
     ? localize("{0} checked", plural(checked.files, "file"))
     : localize("{0} checked in {1}", plural(checked.files, "file"), plural(checked.repos, "repository", "repositories"));
+}
+
+/**
+ * Add to .gitignore: one line for a new file or folder of the repository, anchored at its root
+ * ("/build/out.log", "/build/"), git's wildcards and a file's trailing spaces escaped.
+ */
+export function ignoreLine(path: string, folder: boolean): string {
+  const escaped = path.replace(/[\\*?[]/g, "\\$&");
+  return folder ? `/${escaped}/` : `/${escaped.replace(/ +$/, (spaces) => spaces.replace(/ /g, "\\ "))}`;
+}
+
+/** The .gitignore with the lines it does not have yet appended, in its own line ending; undefined when it has them all. */
+export function withIgnored(existing: string, lines: readonly string[]): string | undefined {
+  const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+  const have = new Set(existing.split(/\r?\n/));
+  const add = [...new Set(lines)].filter((line) => !have.has(line));
+  if (add.length === 0) return undefined;
+  return `${existing}${existing === "" || existing.endsWith("\n") ? "" : eol}${add.join(eol)}${eol}`;
 }

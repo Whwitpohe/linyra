@@ -4,6 +4,7 @@ import * as assert from "assert";
 import * as vscode from "vscode";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { ALL, send, snapshot, until } from "./helpers";
 
@@ -26,6 +27,7 @@ describe("Commit actions", () => {
     return sha;
   };
   const head = () => git(["rev-parse", "HEAD"]);
+  const tryGit = (args: string[]) => { try { return git(args); } catch { return ""; } };
   const listed = (sha: string) => until(`commit ${sha.slice(0, 7)} listed`, (s) => s.rows.some((r) => r.repoId === repoId && r.sha === sha));
 
   before(async () => {
@@ -54,11 +56,11 @@ describe("Commit actions", () => {
 
   it("offers the actions on commit rows only, and keeps them out of the Command Palette", () => {
     const menus = vscode.extensions.getExtension("whwitpohe.linyra")!.packageJSON.contributes.menus;
-    const commands = ["commitCherryPick", "commitRevert", "commitReset", "commitCheckout", "commitNewBranch", "commitNewTag"].map((c) => `linyra.${c}`);
+    const commands = ["commitCherryPick", "commitRevert", "commitReset", "commitCheckout", "commitNewBranch", "commitNewTag", "commitCompareLocal", "commitCreatePatch", "commitPushUpTo"].map((c) => `linyra.${c}`);
     for (const command of commands) {
       const items = (menus["webview/context"] as { command: string; when: string }[]).filter((m) => m.command === command);
       assert.strictEqual(items.length, 1, command);
-      assert.ok(items[0].when.includes("webviewSection =~ /^(commit|historyCommit)$/"), command);
+      assert.ok(items[0].when.includes(command === "linyra.commitPushUpTo" ? "webviewSection == 'commit'" : "webviewSection =~ /^(commit|historyCommit)$/"), command);
       assert.ok((menus.commandPalette as { command: string; when: string }[]).some((m) => m.command === command && m.when === "false"), command);
     }
   });
@@ -193,6 +195,70 @@ describe("Commit actions", () => {
     await answer("Drop");
     await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
     assert.strictEqual((await stashes()).length, 0);
+  });
+
+  it("Create Patch…: one commit, or the selected ones oldest first, as git format-patch writes them", async () => {
+    const first = child(start, "patch-one.txt", "1\n", "feat: patch one");
+    const second = child(first, "patch-two.txt", "2\n", "feat: patch two");
+    git(["update-ref", "refs/heads/ci-side", second]);
+    await send({ type: "refresh" });
+    await listed(second);
+    await answer("Copy to Clipboard");
+    await act("commitCreatePatch", first);
+    const one = await vscode.commands.executeCommand<string>("linyra._itest.clipboard");
+    assert.strictEqual(one.trimEnd(), git(["format-patch", "--stdout", "-1", first]), "one commit's patch");
+    await send({ type: "selectMany", items: [{ repoId, sha: second }, { repoId, sha: first }], focus: { repoId, sha: second } });
+    await until("both selected", (s) => s.changes.presentation?.details.length === 2);
+    await answer("Copy to Clipboard");
+    await act("commitCreatePatch", second);
+    const both = await vscode.commands.executeCommand<string>("linyra._itest.clipboard");
+    assert.ok(both.indexOf("Subject: [PATCH] feat: patch one") < both.indexOf("Subject: [PATCH] feat: patch two") && both.includes("patch two"), "oldest first");
+    git(["apply", "--check"], {}, both); // applies to the working tree as it is
+    await vscode.commands.executeCommand("linyra.clearSelection");
+  });
+
+  it("Compare with Working Tree…: the files that differ from the commit, the one picked as a diff", async () => {
+    fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// compared\n");
+    await answer("upload.go");
+    await act("commitCompareLocal", start);
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    assert.ok(tab?.input instanceof vscode.TabInputTextDiff, "a diff opened");
+    assert.match(tab.label, /^upload\.go \(.{7} ↔ Working Tree\) — acme-api$/);
+    assert.strictEqual((tab.input as vscode.TabInputTextDiff).modified.fsPath, path.join(root, "upload.go"));
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    git(["checkout", "--", "upload.go"]);
+  });
+
+  it("Push All up to Here…: the branch up to that commit, the commits after it stay local", async () => {
+    // Under the suite's isolated HOME, which the runner removes after VS Code exits.
+    const remote = fs.mkdtempSync(path.join(process.env.HOME ?? os.tmpdir(), "linyra-push-up-to-"));
+    const before = { remote: tryGit(["config", "--get", "branch.main.remote"]), merge: tryGit(["config", "--get", "branch.main.merge"]) };
+    git(["init", "-q", "--bare", remote]);
+    git(["remote", "add", "ci-up", remote]);
+    try {
+      git(["push", "-q", "ci-up", `${start}:refs/heads/main`]);
+      git(["fetch", "-q", "ci-up"]);
+      git(["config", "branch.main.remote", "ci-up"]);
+      git(["config", "branch.main.merge", "refs/heads/main"]);
+      const at = (file: string) => { fs.writeFileSync(path.join(root, file), `${file}\n`); git(["add", file]); git(["commit", "-q", "-m", `feat: ${file}`]); return head(); };
+      const first = at("up-one.txt");
+      const second = at("up-two.txt");
+      await send({ type: "refresh" });
+      await listed(second);
+      await act("commitPushUpTo", start); // already there: nothing asked, nothing pushed
+      assert.strictEqual(git(["rev-parse", "main"], { GIT_DIR: remote }), start);
+      await answer("Push");
+      await act("commitPushUpTo", first);
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), `Push 1 commit of main up to ${first.slice(0, 7)} to ci-up/main?`);
+      assert.strictEqual(git(["rev-parse", "main"], { GIT_DIR: remote }), first, "up to that commit");
+      assert.strictEqual(head(), second, "the commit after it stays local, HEAD unmoved");
+    } finally {
+      git(["remote", "remove", "ci-up"]);
+      for (const [key, value] of [["branch.main.remote", before.remote], ["branch.main.merge", before.merge]] as const) {
+        if (value) git(["config", key, value]); else tryGit(["config", "--unset", key]);
+      }
+      git(["reset", "-q", "--hard", start]);
+    }
   });
 
   it("offers Undo and Edit Message on the checked-out commit only", () => {

@@ -131,9 +131,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const commitActions = new CommitActions({ commit: (arg) => log.listedCommit(arg), selection: () => log.selectedCommits(), run: log.countedRun, discovery, ask, changed: (id) => log.branchChanged(id) });
   for (const [command, action] of [["linyra.commitCherryPick", "cherryPick"], ["linyra.commitRevert", "revert"], ["linyra.commitReset", "reset"],
     ["linyra.commitCheckout", "checkout"], ["linyra.commitNewBranch", "newBranch"], ["linyra.commitNewTag", "newTag"],
-    ["linyra.commitUndo", "undo"], ["linyra.commitReword", "reword"]] satisfies [string, CommitAction][]) {
+    ["linyra.commitUndo", "undo"], ["linyra.commitReword", "reword"], ["linyra.commitPushUpTo", "pushUpTo"]] satisfies [string, CommitAction][]) {
     context.subscriptions.push(vscode.commands.registerCommand(command, (arg: unknown) => commitActions.run(action, arg)));
   }
+  context.subscriptions.push(
+    vscode.commands.registerCommand("linyra.commitCompareLocal", (arg: unknown) => commitActions.compareLocal(arg)),
+    vscode.commands.registerCommand("linyra.commitCreatePatch", (arg: unknown) => commitActions.createPatch(arg)),
+  );
   for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase"] satisfies BranchAction[]) {
     context.subscriptions.push(vscode.commands.registerCommand(`linyra.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
   }
@@ -259,6 +263,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
     vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.rollback(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.add", (arg?: unknown, many?: unknown) => commitPanel.addToVcs(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.removeFromVcs", (arg?: unknown, many?: unknown) => commitPanel.removeFromVcs(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.delete", (arg?: unknown, many?: unknown) => commitPanel.deleteFiles(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.ignore", (arg?: unknown, many?: unknown) => commitPanel.ignore(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.history", () => commitPanel.history()),
+    vscode.commands.registerCommand("linyra.commitPanel.groupRepoOn", () => commitPanel.setGrouping("repo", true)),
+    vscode.commands.registerCommand("linyra.commitPanel.groupRepoOff", () => commitPanel.setGrouping("repo", false)),
+    vscode.commands.registerCommand("linyra.commitPanel.groupDirOn", () => commitPanel.setGrouping("dir", true)),
+    vscode.commands.registerCommand("linyra.commitPanel.groupDirOff", () => commitPanel.setGrouping("dir", false)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
     vscode.commands.registerCommand("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedActions.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),

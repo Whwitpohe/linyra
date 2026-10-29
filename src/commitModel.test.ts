@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { checkedLabel, commitFiles, commitPlan, describeCommit, fileKey, filesUnder, pruneChoices, rowsById, setChecked, type CommitRow } from "./commitModel";
+import { checkedLabel, commitFiles, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
 import type { FileChange } from "./types";
 import type { RepoWork } from "./uncommittedModel";
 
@@ -57,6 +57,52 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   assert.match(byId.get("changes:/ws/acme-api")!.tooltip, /Rollback needs VS Code's Git/, "a repository VS Code's Git does not have open says why Rollback does nothing");
   assert.strictEqual(describeCommit([clean], new Map()).message, "No uncommitted changes in the ticked repositories.");
   console.log("ok - the Commit side bar's tree: lists, repositories, folders, files, checks, menus");
+}
+
+{
+  // An added file, and the rows above it, offer Remove from VCS; its own row offers no Rollback.
+  const added = describeCommit([{ ...web, staged: [...web.staged, f("src/new.ts", "A")] }], new Map());
+  const byId = rowsById(added.roots);
+  assert.deepStrictEqual(["changes", "changes:/ws/acme-web", "changes:/ws/acme-web:d:src", "changes:/ws/acme-web:f:src/new.ts", "changes:/ws/acme-web:f:src/app.ts"].map((id) => byId.get(id)?.contextValue),
+    ["commitList.added", "commitRepo.added", "commitFolder.added", "commitFile.added", "commitFile.changed"]);
+  // Group By: no directories, no repositories, or neither.
+  assert.deepStrictEqual(outline(describeCommit([web, api], new Map(), new Map(), () => false, { repo: true, dir: false }).roots), [
+    "[x] Changes | 5 files",
+    "  [x] acme-web | 4 files",
+    "    [x] notes.md",
+    "    [x] old.css",
+    "    [x] app.ts | src",
+    "    [x] b2.ts | src · ← src/b.ts",
+    "  [x] acme-api | 1 file",
+    "    [x] upload.go | upload",
+    "[ ] Unversioned Files | 1 file",
+    "  [ ] acme-web | 1 file",
+    "    [ ] todo.txt",
+  ], "flat: each file's folder beside it");
+  assert.deepStrictEqual(outline(describeCommit([web, api], new Map(), new Map(), () => false, { repo: false, dir: true }).roots), [
+    "[x] Changes | 5 files",
+    "  [x] src | acme-web · 2",
+    "    [x] app.ts",
+    "    [x] b2.ts | ← src/b.ts",
+    "  [x] notes.md | acme-web",
+    "  [x] old.css | acme-web",
+    "  [x] upload | acme-api · 1",
+    "    [x] upload.go",
+    "[ ] Unversioned Files | 1 file",
+    "  [ ] todo.txt | acme-web",
+  ], "without repository rows, each repository's top rows name it");
+  const neither = describeCommit([web, api], new Map(), new Map(), () => false, { repo: false, dir: false });
+  assert.deepStrictEqual(outline(neither.roots).slice(0, 3), ["[x] Changes | 5 files", "  [x] notes.md | acme-web", "  [x] old.css | acme-web"]);
+  assert.ok(rowsById(neither.roots).has("changes:/ws/acme-web:f:src/app.ts"), "a file's row id is the same however it is grouped");
+  // Add to .gitignore: anchored lines, wildcards escaped, appended once in the file's own line ending.
+  assert.strictEqual(ignoreLine("build/out.log", false), "/build/out.log");
+  assert.strictEqual(ignoreLine("dist", true), "/dist/");
+  assert.strictEqual(ignoreLine("logs/a*b?[1].txt ", false), "/logs/a\\*b\\?\\[1].txt\\ ");
+  assert.strictEqual(withIgnored("", ["/dist/"]), "/dist/\n");
+  assert.strictEqual(withIgnored("node_modules/", ["/dist/", "/dist/"]), "node_modules/\n/dist/\n");
+  assert.strictEqual(withIgnored("node_modules/\r\n", ["/dist/"]), "node_modules/\r\n/dist/\r\n");
+  assert.strictEqual(withIgnored("/dist/\n", ["/dist/"]), undefined, "already ignored: the file is left alone");
+  console.log("ok - Remove from VCS on added files; Group By repository and directory; Add to .gitignore lines");
 }
 
 {

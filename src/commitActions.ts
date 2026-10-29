@@ -1,10 +1,13 @@
+import * as path from "path";
 import * as vscode from "vscode";
+import { copyText } from "./clipboard";
 import { commitCommands, newRefProblem, parseRefNames, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
 import type { RepoDiscovery } from "./repoDiscovery";
 import type { Commit, Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
+import { compareWithWorkingTree } from "./workingTreeDiff";
 
 /** A write must finish once started: a cherry-pick killed halfway leaves the working tree mid-change. */
 const WRITE_SIGNAL = new AbortController().signal;
@@ -13,6 +16,7 @@ const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C", GIT_EDITOR: "true" };
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const short = (sha: string) => sha.slice(0, 7);
+const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
 /** What the commit actions need from the Log. */
 export interface CommitActionHost {
@@ -179,6 +183,31 @@ export class CommitActions {
         await this.host.run(repo.root, commitCommands.reword(), WRITE_SIGNAL, { env: WRITE_ENV, input: rewordMessage(message, subject) });
         return localize("Edited the message of {0} in {1}.", short(commit.sha), repo.name);
       }
+      case "pushUpTo": {
+        // The JetBrains Log's Push All up to Here: the checked-out branch's commits up to this one, not the ones after it.
+        const branch = await this.currentBranch(repo);
+        if (branch === "HEAD") throw new Error(localize("HEAD is detached in {0}: there is no branch to push.", repo.name));
+        if (!(await this.succeeds(repo, ["merge-base", "--is-ancestor", commit.sha, "HEAD"]))) throw new Error(localize("{0} is not on {1}, the checked-out branch.", short(commit.sha), branch));
+        const remote = (await this.config(repo, `branch.${branch}.remote`)) ?? (await this.pickRemote(repo));
+        if (!remote) return undefined;
+        const merge = await this.config(repo, `branch.${branch}.merge`);
+        const target = merge?.startsWith("refs/heads/") ? merge.slice("refs/heads/".length) : branch;
+        const tracking = `refs/remotes/${remote}/${target}`;
+        const known = await this.succeeds(repo, ["rev-parse", "--verify", "--quiet", tracking]);
+        const count = (sinceArgs: string[]) => this.host.run(repo.root, ["rev-list", "--count", ...sinceArgs], WRITE_SIGNAL).then((n) => Number(n.trim()) || 0);
+        const outgoing = await count([commit.sha, ...(known ? [`^${tracking}`] : ["--not", `--remotes=${remote}`])]);
+        if (outgoing === 0) {
+          void vscode.window.showInformationMessage(localize("{0} is already on {1}.", short(commit.sha), `${remote}/${target}`));
+          return undefined;
+        }
+        const after = await count([`${commit.sha}..HEAD`]);
+        if (!(await this.host.ask.warning(localize("Push {0} of {1} up to {2} to {3}?", plural(outgoing, "commit"), branch, short(commit.sha), `${remote}/${target}`),
+          after > 0 ? localize("{0} after it stay local.", plural(after, "commit")) : "", localize("Push")))) return undefined;
+        const refspec = `${commit.sha}:refs/heads/${target}`;
+        if (native?.push) await native.push(remote, refspec, false);
+        else await this.host.run(repo.root, ["push", "--", remote, refspec], WRITE_SIGNAL, { env: WRITE_ENV, tree: true });
+        return localize("Pushed {0} up to {1} to {2}.", branch, short(commit.sha), `${remote}/${target}`);
+      }
       case "newTag": {
         const taken = parseRefNames(await this.host.run(repo.root, ["for-each-ref", "--format=%(refname:short)", "refs/tags"], WRITE_SIGNAL));
         const name = await this.askName(localize("New tag at {0}", short(commit.sha)), localize("Tag name"), taken, "tag");
@@ -187,6 +216,65 @@ export class CommitActions {
         return localize("Created tag {0} at {1} in {2}.", name, short(commit.sha), repo.name);
       }
     }
+  }
+
+  /** Compare with Working Tree (the JetBrains Log's Compare with Local): the files that differ from the commit, one as a diff. */
+  async compareLocal(arg: unknown): Promise<void> {
+    const found = this.host.commit(arg);
+    if (found) await compareWithWorkingTree(this.host.run, this.host.ask, found.repo, found.commit.sha, short(found.commit.sha), WRITE_SIGNAL);
+  }
+
+  /**
+   * Create Patch…: the commit, or the commits selected with it (one repository), oldest first, as
+   * git format-patch writes them; saved to a file or copied. A merge commit has no patch of its own.
+   */
+  async createPatch(arg: unknown): Promise<void> {
+    const found = this.host.commit(arg);
+    if (!found) return;
+    const many = this.host.selection?.() ?? [];
+    const picked = many.length > 1 && many.some((x) => x.repo.id === found.repo.id && x.commit.sha === found.commit.sha) ? many : [found];
+    if (new Set(picked.map((x) => x.repo.id)).size > 1) {
+      void vscode.window.showInformationMessage(localize("A patch takes the commits of one repository: select commits of one repository only."));
+      return;
+    }
+    const { repo } = found;
+    const commits = picked.map((x) => x.commit).reverse().filter((c) => c.parents.length < 2);
+    if (commits.length === 0) {
+      void vscode.window.showInformationMessage(localize("A merge commit has no patch of its own."));
+      return;
+    }
+    const patch = (await Promise.all(commits.map((c) => this.host.run(repo.root, ["format-patch", "--stdout", "-1", c.sha, "--"], WRITE_SIGNAL)))).join("");
+    const what = commits.length === 1 ? short(commits[0].sha) : localize("{0} in {1}", plural(commits.length, "commit"), repo.name);
+    const items = [{ label: localize("Save to File…") }, { label: localize("Copy to Clipboard") }];
+    const i = await this.host.ask.pick(items, localize("Create a patch of {0}", what));
+    if (i === 1) {
+      await copyText(patch);
+      vscode.window.setStatusBarMessage(localize("Copied the patch of {0}.", what), 5000);
+    } else if (i === 0) {
+      const name = commits.length === 1 ? `${repo.name}-${short(commits[0].sha)}.patch` : `${repo.name}-${short(commits[0].sha)}..${short(commits[commits.length - 1].sha)}.patch`;
+      const uri = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(repo.root, name)), filters: { [localize("Patch")]: ["patch", "diff"] }, title: localize("Create a patch of {0}", what) });
+      if (!uri) return;
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(patch, "utf8"));
+      vscode.window.setStatusBarMessage(localize("Saved the patch of {0} to {1}.", what, path.basename(uri.fsPath)), 5000);
+    }
+  }
+
+  private succeeds(repo: Repo, args: string[]): Promise<boolean> {
+    return this.host.run(repo.root, args, WRITE_SIGNAL).then(() => true, () => false);
+  }
+
+  private async config(repo: Repo, key: string): Promise<string | undefined> {
+    const value = await this.host.run(repo.root, ["config", "--get", key], WRITE_SIGNAL).catch(() => "");
+    return value.trim() || undefined;
+  }
+
+  /** No upstream: the only remote, or the one picked. */
+  private async pickRemote(repo: Repo): Promise<string | undefined> {
+    const remotes = (await this.host.run(repo.root, ["remote"], WRITE_SIGNAL)).split("\n").map((r) => r.trim()).filter(Boolean);
+    if (remotes.length === 0) throw new Error(localize("{0} has no remote to push to.", repo.name));
+    if (remotes.length === 1) return remotes[0];
+    const i = await this.host.ask.pick(remotes.map((label) => ({ label })), localize("Remote to push to"));
+    return i === undefined ? undefined : remotes[i];
   }
 
   private async askName(prompt: string, placeHolder: string, taken: readonly string[], kind: "branch" | "tag"): Promise<string | undefined> {

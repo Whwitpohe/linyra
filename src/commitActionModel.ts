@@ -2,7 +2,7 @@ import { isValidRef } from "./filterModel";
 import { isSha } from "./types";
 
 /** The Log's commit-row actions that change a repository (the JetBrains Log's set). */
-export type CommitAction = "cherryPick" | "revert" | "reset" | "checkout" | "newBranch" | "newTag" | "undo" | "reword";
+export type CommitAction = "cherryPick" | "revert" | "reset" | "checkout" | "newBranch" | "newTag" | "undo" | "reword" | "pushUpTo";
 export type ResetMode = "soft" | "mixed" | "hard";
 export const RESET_MODES: readonly ResetMode[] = ["soft", "mixed", "hard"];
 

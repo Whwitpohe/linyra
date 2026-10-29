@@ -33,8 +33,8 @@ test("Commit needs a message; Ctrl+Enter commits, Commit and Push… pushes, and
   await page.locator("#commit-push-button").click();
   const commits = (await sent(page)).filter((m) => m.type === "commit");
   expect(commits).toEqual([
-    { type: "commit", message: "feat: one message for three repositories", amend: false, push: false },
-    { type: "commit", message: "feat: and push it", amend: false, push: true },
+    { type: "commit", message: "feat: one message for three repositories", amend: false, push: false, signOff: false },
+    { type: "commit", message: "feat: and push it", amend: false, push: true, signOff: false },
   ]);
 });
 
@@ -43,6 +43,25 @@ test("Amend with an empty box brings the last commit's message to edit", async (
   await page.locator("#commit-amend").click();
   await expect(page.locator("#commit-amend")).toHaveAttribute("aria-checked", "true");
   await expect(page.locator("#commit-message")).toHaveValue("fix(web): keep the login callback on preview builds");
+});
+
+test("Sign-off goes with the commit; Author… shows who until cleared; History and Ctrl+M bring a message back", async ({ page }) => {
+  await open(page);
+  await page.locator("#commit-signoff").click();
+  await expect(page.locator("#commit-signoff")).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator("#commit-author-line")).toBeHidden();
+  await page.locator("#commit-author").click();
+  await expect(page.locator("#commit-author-edit")).toHaveText("Author: rin <rin@example.com>");
+  await page.locator("#commit-author-clear").click();
+  await expect(page.locator("#commit-author-line")).toBeHidden();
+  await page.locator("#commit-history").click();
+  await expect(page.locator("#commit-message")).toHaveValue("fix(api): retry the upload once\n\nThe second try reuses the token.");
+  await page.locator("#commit-message").fill("");
+  await page.locator("#commit-message").press("Control+m");
+  await expect(page.locator("#commit-message")).toHaveValue(/^fix\(api\): retry the upload once/);
+  await page.locator("#commit-button").click();
+  const commit = (await sent(page)).filter((m) => m.type === "commit").at(-1);
+  expect(commit.signOff).toBe(true);
 });
 
 test("no files checked: both buttons wait", async ({ page }) => {
@@ -54,7 +73,7 @@ test("no files checked: both buttons wait", async ({ page }) => {
 
 test("fills a narrow, short view: the buttons stay on screen and nothing is cut at the edges", async ({ page }) => {
   await open(page, { width: 220, height: 150 });
-  for (const id of ["#commit-message", "#commit-button", "#commit-push-button"]) {
+  for (const id of ["#commit-message", "#commit-button", "#commit-push-button", "#commit-history", "#commit-signoff"]) {
     const box = await page.locator(id).boundingBox();
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(220);

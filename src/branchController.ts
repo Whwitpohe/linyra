@@ -13,6 +13,7 @@ import { encodeRevision, SCHEME } from "./revisionUri";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
 import { isStashRef, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
+import { compareWithWorkingTree } from "./workingTreeDiff";
 
 const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
@@ -336,16 +337,8 @@ export class BranchController implements vscode.Disposable {
     await vscode.commands.executeCommand("vscode.diff", before, after, localize("{0} ({1}) — {2}", path.posix.basename(file.path), s.ref, repo.name), { preview: true });
   }
 
-  private async diffWorkingTree(repo: Repo, branch: Branch): Promise<void> {
-    const output = await this.deps.run(repo.root, ["diff", "--raw", "--numstat", "-z", "-M", branch.ref, "--"], this.ctl.signal);
-    const files = parseShow(output).files;
-    if (files.length === 0) { void vscode.window.showInformationMessage(localize("The working tree matches {0}.", branch.name)); return; }
-    const index = await this.deps.ask.pick(files.map((file) => ({ label: file.path, description: file.status })), localize("File to compare with {0}", branch.name));
-    if (index === undefined) return;
-    const file = files[index];
-    const before = vscode.Uri.from({ scheme: SCHEME, ...encodeRevision({ root: repo.root, ref: file.status === "A" ? null : branch.sha, path: file.oldPath ?? file.path }) });
-    const after = file.status === "D" ? vscode.Uri.from({ scheme: SCHEME, ...encodeRevision({ root: repo.root, ref: null, path: file.path }) }) : vscode.Uri.file(path.join(repo.root, ...file.path.split("/")));
-    await vscode.commands.executeCommand("vscode.diff", before, after, localize("{0} ({1} ↔ Working Tree) — {2}", path.posix.basename(file.path), branch.name, repo.name), { preview: true });
+  private diffWorkingTree(repo: Repo, branch: Branch): Promise<void> {
+    return compareWithWorkingTree(this.deps.run, this.deps.ask, repo, branch.sha, branch.name, this.ctl.signal);
   }
 
   dispose(): void { this.ctl.abort(); }

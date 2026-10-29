@@ -1,4 +1,5 @@
 import { escapeHtml, language, localizationScript, localize } from "../../i18n";
+import { codicon } from "../codicons";
 import type { HtmlOptions } from "../html";
 
 /** The Commit side bar's message box, below its native tree of changes. */
@@ -24,7 +25,16 @@ export function renderCommitBody(): string {
   return `
 <main id="commit" class="commit-form" aria-label="${escapeHtml(localize("Commit"))}">
   <div class="commit-options">
-    <span id="commit-amend" class="check-option" role="checkbox" aria-checked="false" tabindex="0"><span class="check" aria-hidden="true"></span>${escapeHtml(localize("Amend"))}</span>
+    <span id="commit-amend" class="check-option" role="checkbox" aria-checked="false" tabindex="0" title="${escapeHtml(localize("Amend the last commit (git commit --amend)"))}"><span class="check" aria-hidden="true"></span><span class="check-label">${escapeHtml(localize("Amend"))}</span></span>
+    <span id="commit-signoff" class="check-option" role="checkbox" aria-checked="false" tabindex="0" title="${escapeHtml(localize("Add a Signed-off-by line (git commit --signoff)"))}"><span class="check" aria-hidden="true"></span><span class="check-label">${escapeHtml(localize("Sign-off"))}</span></span>
+    <span class="commit-tools">
+      <button id="commit-author" class="icon-button" type="button" title="${escapeHtml(localize("Author…"))}" aria-label="${escapeHtml(localize("Author…"))}">${codicon("person")}</button>
+      <button id="commit-history" class="icon-button" type="button" title="${escapeHtml(localize("Commit Message History"))} (Ctrl+M)" aria-label="${escapeHtml(localize("Commit Message History"))}">${codicon("history")}</button>
+    </span>
+  </div>
+  <div id="commit-author-line" class="commit-author" hidden>
+    <button id="commit-author-edit" class="link-button" type="button" title="${escapeHtml(localize("Author…"))}"></button>
+    <button id="commit-author-clear" class="icon-button" type="button" title="${escapeHtml(localize("Use your own git user"))}" aria-label="${escapeHtml(localize("Use your own git user"))}">${codicon("close")}</button>
   </div>
   <textarea id="commit-message" class="commit-message" placeholder="${escapeHtml(localize("Commit Message"))}" aria-label="${escapeHtml(localize("Commit Message"))}" aria-describedby="commit-validation" spellcheck="true"></textarea>
   <div id="commit-validation" class="validation" role="alert" hidden></div>
