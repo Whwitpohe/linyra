@@ -2,6 +2,7 @@ import { localize } from "./i18n";
 // The Commit side bar, as the Commit tool window of the JetBrains IDEs shows uncommitted work:
 // Changes and Unversioned Files, each by repository and folder, every row with a checkbox, and a
 // commit of the checked files only. Pure: no vscode import.
+import { kindCounts, sumKinds, type KindCounts } from "./changeKinds";
 import { fileTree, type TreeNode } from "./fileTree";
 import type { ChangeStatus, FileChange } from "./types";
 import { NO_UNCOMMITTED_VIEW, type RepoWork } from "./uncommittedModel";
@@ -29,6 +30,10 @@ export interface CommitRow {
   label: string;
   description: string;
   tooltip: string;
+  /** The tooltip is Markdown with theme icons ($(git-branch)): lists and repositories. */
+  markdown?: true;
+  /** A list's icon: a codicon in a theme color. */
+  icon?: { id: string; color: string };
   check: Check;
   repoId?: string;
   path?: string;
@@ -130,6 +135,48 @@ function describeFiles(nodes: readonly TreeNode[], files: ReadonlyMap<string, Co
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
+/** Text in a Markdown tooltip: Markdown and theme-icon syntax ($(…)) escaped, so a name shows as written. */
+export const mdText = (text: string): string => text.replace(/[\\`*_{}[\]()#+\-!~|<>$]/g, "\\$&");
+
+/** "develop ↑1 ↓2": the repository row's branch, as Source Control's status bar names it; "" when unknown. */
+export function branchText(w: RepoWork): string {
+  const b = w.branch;
+  if (!b) return "";
+  if (b.name === null) return localize("HEAD detached at {0}", w.head?.slice(0, 7) ?? "HEAD");
+  return [b.name, b.ahead ? `↑${b.ahead}` : "", b.behind ? `↓${b.behind}` : ""].filter(Boolean).join(" ");
+}
+
+/** "$(git-branch) develop · $(cloud) origin/develop · ↑1": a tooltip's branch line (Markdown); "" when unknown. */
+export function branchLine(w: RepoWork): string {
+  const b = w.branch;
+  if (!b) return "";
+  if (b.name === null) return `$(git-commit) ${mdText(localize("HEAD detached at {0}", w.head?.slice(0, 7) ?? "HEAD"))}`;
+  const parts = [`$(git-branch) ${mdText(b.name)}`];
+  if (b.upstream === null) parts.push(`$(cloud-upload) ${mdText(localize("unpublished"))}`);
+  else {
+    parts.push(`$(cloud) ${mdText(b.upstream)}`);
+    const state = b.gone ? localize("gone") : b.uncounted ? localize("differs") : [b.ahead ? `↑${b.ahead}` : "", b.behind ? `↓${b.behind}` : ""].filter(Boolean).join(" ");
+    if (state) parts.push(mdText(state));
+  }
+  return parts.join(" · ");
+}
+
+/** "$(edit) 3  $(diff-added) 143": files by kind, a tooltip's counts line (Markdown). */
+export function countsLine(c: KindCounts): string {
+  const parts: [string, number][] = [["edit", c.modified], ["diff-added", c.added], ["diff-removed", c.deleted], ["diff-renamed", c.renamed]];
+  return parts.filter(([, n]) => n > 0).map(([icon, n]) => `$(${icon}) ${n}`).join("&nbsp;&nbsp;");
+}
+
+/** Files by kind, as the Log's Uncommitted rows count them. */
+const kindsOf = (files: readonly CommitFile[]): KindCounts =>
+  kindCounts(files.map((f): FileChange => ({ path: f.path, status: f.status ?? "M", added: null, deleted: null, ...(f.untracked ? { untracked: true } : {}) })));
+
+/** A Markdown tooltip's lines, empty ones left out: a paragraph each. */
+const paragraphs = (lines: readonly string[]): string => lines.filter(Boolean).join("\n\n");
+
+/** A list's tooltip names each repository's branch, up to this many. */
+const LIST_BRANCHES = 10;
+
 /**
  * Everything the Commit side bar shows: Changes, then Unversioned Files, each by repository (in
  * Repo List order) and folder, or as `group` says. A list, repository or folder is checked when
@@ -143,10 +190,16 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
   let total = 0;
   for (const [list, label, untracked] of [["changes", localize("Changes"), false], ["unversioned", localize("Unversioned Files"), true]] as const) {
     const repos: CommitRow[] = [];
+    const kinds: KindCounts[] = [];
+    const branches: string[] = [];
     for (const w of works) {
       const files = commitFiles(w).filter((f) => f.untracked === untracked);
       if (files.length === 0) continue;
       total += files.length;
+      const k = kindsOf(files);
+      kinds.push(k);
+      const branch = branchLine(w);
+      if (branch) branches.push(`**${mdText(w.name)}** · ${branch}`);
       const byPath = new Map(files.map((f) => [f.path, f]));
       const base = `${list}:${w.repoId}`;
       const nodes: TreeNode[] = group.dir
@@ -159,16 +212,24 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
       }
       const c = counts(children);
       repos.push({
-        id: base, kind: "repo", label: w.name, description: partly(c, plural(c.files, "file")), repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c,
-        tooltip: w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name),
+        // "develop ↑1 · 3 files": the branch beside the count, as the Log's Uncommitted row shows it.
+        id: base, kind: "repo", label: w.name, description: [branchText(w), partly(c, plural(c.files, "file"))].filter(Boolean).join(" · "),
+        repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c, markdown: true,
+        tooltip: paragraphs([mdText(w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name)), branch, countsLine(k)]),
         contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}${addedUnder(children)}`,
       });
     }
     if (repos.length === 0) continue;
     const c = counts(repos);
-    lists.push({ id: list, kind: "list", label, description: partly(c, plural(c.files, "file")), children: repos, ...c,
-      // New files enter version control either way, as in the JetBrains IDEs: checked, with the commit; or now, by Add to VCS.
-      tooltip: untracked ? localize("New files: check them to add them with the commit, or Add to VCS (Ctrl+Alt+A) to add them now.") : label,
+    const more = branches.length - LIST_BRANCHES;
+    lists.push({ id: list, kind: "list", label, description: partly(c, plural(c.files, "file")), children: repos, ...c, markdown: true,
+      tooltip: paragraphs([
+        // New files enter version control either way, as in the JetBrains IDEs: checked, with the commit; or now, by Add to VCS.
+        mdText(untracked ? localize("New files: check them to add them with the commit, or Add to VCS (Ctrl+Alt+A) to add them now.") : label),
+        ...branches.slice(0, LIST_BRANCHES), more > 0 ? mdText(localize("and {0} more", more)) : "", countsLine(sumKinds(kinds)),
+      ]),
+      // Source Control's own colors: changed files, new files.
+      icon: untracked ? { id: "diff-added", color: "gitDecoration.untrackedResourceForeground" } : { id: "diff-modified", color: "gitDecoration.modifiedResourceForeground" },
       contextValue: `commitList${untracked ? ".unversioned" : ""}${addedUnder(repos)}` });
   }
   const plan = commitPlan(works, choices);

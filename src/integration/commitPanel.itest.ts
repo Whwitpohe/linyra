@@ -89,7 +89,7 @@ describe("Commit side bar", () => {
     await vscode.commands.executeCommand("linyra.commit.focus");
     await refresh();
     const p = await shows("both repositories' work", (x) => x.visible && x.items.includes("[x] Changes | 3 files") && x.items.includes("[ ] Unversioned Files | 1 file"));
-    assert.ok(p.items.some((i) => i.trim() === "[x] acme-web | 2 files") && p.items.some((i) => i.trim() === "[x] acme-api | 1 file"), p.items.join("\n"));
+    assert.ok(p.items.some((i) => i.trim() === "[x] acme-web | main · 2 files") && p.items.some((i) => i.trim() === "[x] acme-api | main · 1 file"), p.items.join("\n"));
     assert.ok(p.items.some((i) => i.trim() === "[ ] ci-notes.md"), "a new file waits to be checked");
     assert.strictEqual(p.checked, "3 files checked in 2 repositories", "a staged new file is tracked: checked");
   });
@@ -101,7 +101,7 @@ describe("Commit side bar", () => {
     assert.ok(p.items.some((i) => i.trim() === "[ ] ci-notes.md | acme-web"));
     await vscode.commands.executeCommand("linyra.commitPanel.groupRepoOn");
     await vscode.commands.executeCommand("linyra.commitPanel.groupDirOff");
-    p = await shows("repository rows again", (x) => x.items.some((i) => i.trim() === "[x] acme-web | 2 files"));
+    p = await shows("repository rows again", (x) => x.items.some((i) => i.trim() === "[x] acme-web | main · 2 files"));
     assert.strictEqual(p.checked, "3 files checked in 2 repositories", "grouping changes no check");
     await vscode.commands.executeCommand("linyra.commitPanel.groupDirOn");
   });
