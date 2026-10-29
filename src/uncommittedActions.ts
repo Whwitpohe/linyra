@@ -1,12 +1,14 @@
 import { localize } from "./i18n";
+import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { errorLine } from "./git";
+import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { addedPaths, commitCount, commitStep, deletePrompt, describeUncommitted, diffFor, discardPlan, discardPrompt, rollbackPlan, rollbackPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { addedPaths, commitCount, commitStep, deletePrompt, describeUncommitted, diffFor, discardPlan, discardPrompt, rollbackPlan, rollbackPrompt, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
@@ -92,6 +94,7 @@ export class Ask {
 export interface UncommittedActionsDeps {
   store: UncommittedStore;
   discovery: RepoDiscovery;
+  run(cwd: string, args: string[], signal?: AbortSignal, opts?: RunOptions): Promise<string>;
   /** A commit landed: the Log reads its first page again. */
   committed(): void;
   /** VS Code's prompts, shared with the Log (one queue for the integration suite). */
@@ -216,7 +219,7 @@ export class UncommittedActions {
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
     await this.act(picks, "roll back", async (r) => {
       const plan = rollbackPlan(r.files, r.staged);
-      if (plan.unadd.length > 0) await this.deps.discovery.unstage(r.work.root, plan.unadd);
+      if (plan.unadd.length > 0) await this.unadd(r.work, plan.unadd);
       if (plan.paths.length > 0) await this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
     });
   }
@@ -239,9 +242,29 @@ export class UncommittedActions {
       : deletePrompt(plural(picks.length, "repository", "repositories"), picks.flatMap(paths), false);
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
     await this.act(picks, "delete", async (r) => {
-      if (r.staged.length > 0) await this.deps.discovery.unstage(r.work.root, r.staged.map((f) => f.path));
+      if (r.staged.length > 0) await gitWithPaths(this.deps.run, r.work.root, r.staged.map((f) => f.path), ["reset", "-q"]);
       for (const file of paths(r)) await removeFile(r.work.root, file);
+      this.deps.store.applied(r.work.repoId, (w) => withoutFiles(w, new Set(paths(r))));
     });
+  }
+
+  /** Remove from VCS: the added files under the rows leave the index, kept on disk. No prompt: Add to VCS undoes it. */
+  async removeFromVcs(arg: unknown, many?: unknown): Promise<void> {
+    const picks = this.picks(arg, many).flatMap((r): Pick[] => {
+      const added = addedPaths(r.staged);
+      const files = r.files.filter((f) => added.has(f.path));
+      return files.length === 0 ? [] : [{ work: r.work, files, staged: files.filter((f) => r.staged.includes(f)), one: new Set(files.map((f) => f.path)).size === 1 }];
+    });
+    await this.act(picks, "remove from VCS", (r) => this.unadd(r.work, [...new Set(r.staged.map((f) => f.path))]));
+  }
+
+  /**
+   * Added files out of the index (git reset: one process, unlike VS Code's Git, which reads the whole
+   * repository before and after), shown at once.
+   */
+  private async unadd(work: RepoWork, paths: readonly string[]): Promise<void> {
+    await gitWithPaths(this.deps.run, work.root, paths, ["reset", "-q"]);
+    this.deps.store.applied(work.repoId, (w) => withUnadded(w, new Set(paths)));
   }
 
   /** ✓ on a repository: its staged files, or (nothing staged) as VS Code's own commit does. */
@@ -296,6 +319,20 @@ export class UncommittedActions {
     await openWorkDiff(work, group, file, preserveFocus);
   }
 
+}
+
+/** Writes take the index lock and never open an editor. */
+const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", GIT_EDITOR: "true" };
+
+/** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */
+export async function gitWithPaths(run: UncommittedActionsDeps["run"], root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
+  const list = path.join(os.tmpdir(), `linyra-paths-${randomBytes(8).toString("hex")}`);
+  try {
+    await fs.writeFile(list, paths.join("\0"));
+    await run(root, [...args, `--pathspec-from-file=${list}`, "--pathspec-file-nul"], undefined, { ...opts, env: { ...WRITE_ENV, ...opts.env } });
+  } finally {
+    await fs.rm(list, { force: true });
+  }
 }
 
 /** A new file goes from the disk, and the folders it leaves empty with it (never the repository's root). */

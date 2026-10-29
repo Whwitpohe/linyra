@@ -141,6 +141,30 @@ export function rollbackPrompt(repoName: string, files: readonly FileChange[], o
   return { message, detail: detail.join(" "), button: localize("Rollback") };
 }
 
+const byPath = (a: FileChange, b: FileChange) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+
+/** Add to VCS, as git will show it: the new files staged as added. Shown at once; the read that follows confirms it. */
+export function withAdded(w: RepoWork, paths: ReadonlySet<string>): RepoWork {
+  const moved = w.changes.filter((f) => f.untracked && paths.has(f.path));
+  if (moved.length === 0) return w;
+  return { ...w, changes: w.changes.filter((f) => !moved.includes(f)), staged: [...w.staged, ...moved.map(({ untracked: _, ...f }) => ({ ...f, status: "A" as const }))].sort(byPath) };
+}
+
+/** Remove from VCS, as git will show it: the added files untracked again, edits since included. */
+export function withUnadded(w: RepoWork, paths: ReadonlySet<string>): RepoWork {
+  const moved = new Set(w.staged.filter((f) => f.status === "A" && !f.untracked && paths.has(f.path)).map((f) => f.path));
+  if (moved.size === 0) return w;
+  return {
+    ...w, staged: w.staged.filter((f) => !moved.has(f.path)),
+    changes: [...w.changes.filter((f) => !moved.has(f.path)), ...[...moved].map((path): FileChange => ({ path, added: 0, deleted: 0, status: "A", untracked: true }))].sort(byPath),
+  };
+}
+
+/** Delete, as git will show it: the files gone from both lists. */
+export function withoutFiles(w: RepoWork, paths: ReadonlySet<string>): RepoWork {
+  return { ...w, staged: w.staged.filter((f) => !paths.has(f.path)), changes: w.changes.filter((f) => !paths.has(f.path)) };
+}
+
 /** Delete…'s prompt: new files (unversioned, or added and never committed) go from the disk. */
 export function deletePrompt(repoName: string, paths: readonly string[], one: boolean): { message: string; detail: string; button: string } {
   return {

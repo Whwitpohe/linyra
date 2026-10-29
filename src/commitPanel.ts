@@ -1,6 +1,5 @@
 import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor } from "./changesModel";
@@ -9,8 +8,8 @@ import type { CommitHostMessage, CommitWebviewMessage } from "./commitProtocol";
 import type { RunOptions } from "./git";
 import { localize } from "./i18n";
 import { runPool } from "./pool";
-import { gitMessage, openHeadDiff, type Ask, type UncommittedActions } from "./uncommittedActions";
-import { totals, viewLabel } from "./uncommittedModel";
+import { gitMessage, gitWithPaths, openHeadDiff, type Ask, type UncommittedActions } from "./uncommittedActions";
+import { totals, viewLabel, withAdded } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 import { renderCommitHtml } from "./webview/commit/html";
 import { ACCENT_COLORS } from "./webview/view";
@@ -25,8 +24,6 @@ const HISTORY_SIZE = 20;
 const AUTHOR = /^[^<>\n]+ <[^<>\n]*>$/;
 /** The tree's rows as resources: the file icon theme picks their icons, Linyra's provider their letters. */
 const TREE_SCHEME = "linyra-commit";
-/** A commit writes the index and runs hooks: never an editor, and the index lock is taken. */
-const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", GIT_EDITOR: "true" };
 /** Commits in several repositories at once, but few: each writes and may run hooks. */
 const WRITE_CONCURRENCY = 4;
 const NEVER = new AbortController().signal;
@@ -355,8 +352,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
 
   /** Remove from VCS: added files leave the index (git reset), kept on disk, back under Unversioned Files. No prompt: Add to VCS undoes it. */
   async removeFromVcs(arg?: unknown, many?: unknown): Promise<void> {
-    const files = filesUnder(this.targets(arg, many)).filter((f) => this.added(f)).map((f) => ({ ...f, group: "staged" }));
-    if (files.length > 0) await this.deps.actions.unstage(files[0], files);
+    const files = filesUnder(this.targets(arg, many)).filter((f) => this.added(f));
+    if (files.length > 0) await this.deps.actions.removeFromVcs(files[0], files);
   }
 
   /** Delete…: new files (unversioned, or added and never committed) from the disk, after one prompt. */
@@ -405,6 +402,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
       if (!work) return;
       try {
         await this.withPaths(work.root, paths, ["add"]);
+        // Shown now; the read below confirms it.
+        this.deps.store.applied(repoId, (w) => withAdded(w, new Set(paths)));
       } catch (e) {
         failed.push(localize("{0}: {1}", work.name, gitMessage(e)));
       }
@@ -489,14 +488,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   }
 
   /** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */
-  private async withPaths(root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
-    const list = path.join(os.tmpdir(), `linyra-paths-${randomBytes(8).toString("hex")}`);
-    try {
-      await fs.writeFile(list, paths.join("\0"));
-      await this.deps.run(root, [...args, `--pathspec-from-file=${list}`, "--pathspec-file-nul"], undefined, { env: WRITE_ENV, ...opts });
-    } finally {
-      await fs.rm(list, { force: true });
-    }
+  private withPaths(root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
+    return gitWithPaths(this.deps.run, root, paths, args, opts);
   }
 
   /** HEAD is on a remote-tracking branch: amending it rewrites what others may have. */

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, rollbackPrompt, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
+import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, rollbackPrompt, withAdded, withoutFiles, withUnadded, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -64,6 +64,15 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   assert.strictEqual(mixed.message, "Roll back 4 files in acme-web?", "the unversioned file is not counted");
   assert.strictEqual(mixed.detail, "This can't be undone. Staged changes are discarded too. The 2 added files leave version control and stay on disk, under Unversioned Files.");
   assert.deepStrictEqual(rollbackPrompt("acme-web", web.changes, false), { message: "Roll back 2 files in acme-web?", detail: "This can't be undone.", button: "Rollback" });
+  // Add to VCS, Remove from VCS and Delete are shown at once, as git will show them.
+  const added2 = withAdded(web, new Set(["src/new.ts", "notes.md"]));
+  assert.deepStrictEqual(added2.staged.map((x) => [x.path, x.status, x.untracked]), [["notes.md", "M", undefined], ["src/new.ts", "A", undefined]], "only the new file moves: staged as added");
+  assert.ok(!added2.changes.some((x) => x.path === "src/new.ts"));
+  assert.strictEqual(withAdded(web, new Set(["src/app.ts"])), web, "nothing new among them: unchanged");
+  const back = withUnadded({ ...web, staged: [added], changes: [f("src/added.ts", "M")] }, new Set(["src/added.ts"]));
+  assert.deepStrictEqual([back.staged, back.changes], [[], [{ path: "src/added.ts", added: 0, deleted: 0, status: "A", untracked: true }]], "edited since it was added: one unversioned file");
+  assert.deepStrictEqual(withUnadded(web, new Set(["notes.md"])), web, "a modified file is not added: unchanged");
+  assert.deepStrictEqual(withoutFiles(web, new Set(["src/new.ts", "notes.md"])).changes.map((x) => x.path), ["src/app.ts"]);
   // Delete…: its own words and button, never Rollback's.
   assert.deepStrictEqual(deletePrompt("acme-web", ["src/new.ts"], true), { message: 'Delete "src/new.ts"?', detail: "The file is deleted from disk. This can't be undone.", button: "Delete" });
   assert.deepStrictEqual(deletePrompt("2 repositories", ["a.md", "b.md", "c.md"], false), { message: "Delete 3 files in 2 repositories?", detail: "The files are deleted from disk. This can't be undone.", button: "Delete" });

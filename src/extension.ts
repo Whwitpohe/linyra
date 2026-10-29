@@ -101,7 +101,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return t ? { ...t, group } : arg;
   };
   const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (changes.commandArgument(arg) as { repoId?: unknown } | undefined)?.repoId;
-  const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, committed: () => log.commitsChanged(), ask });
+  const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, run: log.countedRun, committed: () => log.commitsChanged(), ask });
   // The Commit side bar: Commit and Push… pushes through Push… (multiRepo, made below; used only once Linyra runs).
   const commitPanel = new CommitPanel({ context, store: uncommitted, actions: uncommittedActions, run: log.countedRun, ask,
     accents: () => log.accents(), behind: (id) => log.upstream.isBehind(id), shown: () => void log.uncommittedViewShown(),

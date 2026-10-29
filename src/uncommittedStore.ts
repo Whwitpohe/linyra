@@ -169,6 +169,24 @@ export class UncommittedStore implements vscode.Disposable {
     this.touchedSoon();
   }
 
+  /**
+   * An action of Linyra's that git has just done (Add to VCS, Remove from VCS, Delete): its result
+   * shown now, without waiting for the read that confirms it (that read follows; it costs three git
+   * processes). A read started before the action lands older than this and is dropped.
+   */
+  applied(repoId: string, update: (w: RepoWork) => RepoWork): void {
+    const old = this.map.get(repoId);
+    if (!old) return;
+    const work = update(old);
+    if (work === old) return;
+    this.map.set(repoId, { ...work, seq: ++this.seq });
+    if (work.staged.length + work.changes.length > 0) this.dirty.add(repoId);
+    clearTimeout(this.changeTimer);
+    this.changeTimer = undefined;
+    this.changes++;
+    this.emitter.fire();
+  }
+
   /** Reads one repository now (after Stage, Unstage, Discard, Commit). */
   readRepo(repoId: string): Promise<void> {
     return this.read(new Set([repoId]));

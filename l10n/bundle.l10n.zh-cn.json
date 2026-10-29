@@ -279,6 +279,7 @@
   "The {0} added files leave version control and stay on disk, under Unversioned Files.": "新加入的 {0} 个文件会移出版本控制，文件本身保留，回到“未受版本控制的文件”。",
   "Rollback": "回滚",
   "roll back": "回滚",
+  "remove from VCS": "移出版本控制",
   "Delete \"{0}\"?": "删除“{0}”？",
   "Delete {0} in {1}?": "删除 {1} 中的 {0}？",
   "The file is deleted from disk. This can't be undone.": "文件会从磁盘上删除，此操作无法撤销。",
