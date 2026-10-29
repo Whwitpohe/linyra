@@ -1,0 +1,10 @@
+/* Branch pills in a Log row (ui/pill.css draws the pill): whole pills side by side, "+N" for the rest. */
+/* The group keeps the width fitReferences measured (up to its max-width): shrinking after the fit would cut the "+N" off. */
+.commit-message .row-refs { flex: 0 0 auto; gap: 4px; }
+.row-refs .pill { flex: 0 0 auto; }
+/* A pill cut to fit keeps its branch's name longest: the joined remotes give way first. */
+.row-refs .pill-part + .pill-part { flex-shrink: 50; }
+.row-refs .pill[data-ref] { cursor: pointer; }
+.row-ref-more { font-variant-numeric: tabular-nums; }
+/* On the focused selection, the parts' text follows the selection's foreground, as the row's own text does. */
+.list:focus .row.focus[aria-selected="true"] .pill-part { color: inherit; }

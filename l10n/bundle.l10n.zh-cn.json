@@ -712,5 +712,17 @@
   "Avatars: {0} did not answer as a GitLab server. If it is another kind of server, name it in linyra.avatarHosts.": "头像：{0} 的响应不像 GitLab 服务器。如果它是其他类型的服务器，请在 linyra.avatarHosts 中注明。",
   "Avatars: {0} sent a sign-in page. Linyra stops asking it until the window reloads.": "头像：{0} 返回了登录页面。在窗口重新加载之前，Linyra 不再向它请求。",
   "Avatars: {0} answered HTTP {1}. Linyra stops asking it until the window reloads.": "头像：{0} 返回了 HTTP {1}。在窗口重新加载之前，Linyra 不再向它请求。",
-  "Avatars: {0} did not answer in time. Linyra asks it again in {1} minutes.": "头像：{0} 没有及时响应。Linyra 将在 {1} 分钟后再次请求。"
+  "Avatars: {0} did not answer in time. Linyra asks it again in {1} minutes.": "头像：{0} 没有及时响应。Linyra 将在 {1} 分钟后再次请求。",
+  "HEAD is detached": "HEAD 处于分离状态",
+  "You": "你",
+  "1 file changed": "1 个文件已更改",
+  "{0} files changed": "{0} 个文件已更改",
+  "Merge target {0}": "合并目标 {0}",
+  "{0} ahead": "领先 {0} 个提交",
+  "{0} behind": "落后 {0} 个提交",
+  "up to date": "已是最新",
+  "Could not read the commit: {0}": "无法读取提交：{0}",
+  "Reading the commit…": "正在读取提交…",
+  "Copy Hash": "复制哈希",
+  "Explain": "解释"
 }

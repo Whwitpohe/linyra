@@ -35,6 +35,7 @@ import { renderHtml } from "./webview/html";
 import { SELECTION_LIMIT } from "./webview/selectionModel";
 import type { BranchController } from "./branchController";
 import { assignAccents, accentOf, shownAccents } from "./webview/view";
+import { HoverDetails } from "./hoverDetail";
 
 const FILTER_KEY = "linyra.filter";
 /** globalState: true when the user turned Group by Repository off. */
@@ -183,6 +184,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   readonly profiles: ProfileController;
   /** Repository and commit right-click commands that read or filter. */
   readonly commands: RepoCommands;
+  /** The commit hover card's one git show, and the HEAD row's merge target. */
+  readonly hover: HoverDetails;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.run = (cwd, args, signal, opts) => {
@@ -207,11 +210,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg), contextCommit: (arg) => this.contextCommit(arg),
       setRepoFilter: (ids) => this.setRepoFilter(ids), untick: (id) => this.untick(id), behind: (ids) => this.upstream.behind(ids), run: this.run,
     });
+    this.hover = new HoverDetails({ run: this.run, post: (m) => this.post(m), commands: vscode.commands,
+      commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined) });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
     this.disposables.push(
       deps.discovery.onDidChange(() => this.reposChangedSoon()),
       this.onDidChangeRefs((id) => this.refreshCurrentReferences(id)),
+      this.onDidChangeRefs((id) => this.hover.refsChanged(id)),
       // The switch's badge and rows, and the Changes view while on the Uncommitted side.
       deps.uncommitted.onDidChange(() => {
         this.postUncommitted();
@@ -371,6 +377,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
         return;
+      case "hover": await this.hover.show(m.repoId, m.sha); return;
+      case "hoverEnd": this.hover.end(); return;
+      case "hoverAction": await this.hover.action(m.action, m.repoId, m.sha); return;
     }
   }
 
@@ -1397,6 +1406,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.background.abort();
     this.query.abort();
     this.detail.abort();
+    this.hover.end();
     this.upstream.dispose();
     this.commands.dispose();
     this.reloadSoon.cancel();

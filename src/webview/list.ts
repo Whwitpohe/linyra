@@ -1,13 +1,14 @@
 import { commitKey, type Commit } from "../types";
 import { localize } from "../i18n";
-import { referenceLabels } from "../commitReferences";
-import { codiconElement } from "./codicons";
+import { isMine, whenLabel } from "../hoverModel";
 import { clear, h } from "./dom";
+import type { HoverRow } from "./hoverCard";
+import { commitPills, rowRefs, type Upstream } from "./refPills";
 import { fitName, textStyle } from "./measure";
 import { hoverRail, railAt, renderGraph, type FoldAction, type RailAction } from "./graph";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
-import { absoluteTime, accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
+import { accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
 export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
@@ -34,9 +35,17 @@ export interface ListProps {
   highlightMine?: boolean;
   offHead?: ReadonlySet<string>;
   hashColumn?: boolean;
+  /** Each repository's distance from its upstream: the checked-out branch's pill shows it. */
+  upstream?: Upstream;
 }
 
 const SKELETON_ROWS = 8;
+
+/** A commit node's own tooltip would sit on top of the hover card: the card says it all. Fold controls keep theirs. */
+function untitled(graph: SVGSVGElement): SVGSVGElement {
+  graph.querySelector(":scope > .graph-point:not(.graph-fold-control) > title")?.remove();
+  return graph;
+}
 
 
 /**
@@ -66,6 +75,8 @@ export class CommitList {
    */
   private readonly mounted = new Map<number, { el: HTMLElement; top: boolean }>();
   private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, selectedKeys: new Set(), now: 0, skeleton: false };
+  /** A branch pill was clicked: show that branch in the Repo List (main.ts). */
+  onRevealBranch: (repoId: string, ref: string) => void = () => undefined;
 
   constructor(
     private readonly root: HTMLElement,
@@ -115,6 +126,9 @@ export class CommitList {
       if (!row) return;
       root.focus();
       this.onSelect(Number(row.dataset.index), { kind: "click", ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
+      // A plain click on a branch pill also shows the branch in the Repo List.
+      const pill = (e.target as Element).closest<HTMLElement>(".row-ref[data-ref]");
+      if (pill?.dataset.repo && pill.dataset.ref && !(e.ctrlKey || e.metaKey || e.shiftKey)) this.onRevealBranch(pill.dataset.repo, pill.dataset.ref);
     });
     // The rail under the pointer is highlighted and says that a click folds it.
     let hovered: { graph: Element; rail: RailAction | undefined } | undefined;
@@ -159,7 +173,8 @@ export class CommitList {
     // the same rows: those are left as they are, and a new selection only marks the rows it moved
     // between. Rebuilding every visible row for each such message made scrolling stutter.
     const drawn = changed || next.repoNames !== prev.repoNames || next.behind !== prev.behind || next.me !== prev.me || next.highlightMine !== prev.highlightMine
-      || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton;
+      || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton
+      || next.upstream !== prev.upstream;
     if (drawn) this.column = undefined; // the repo column may have changed with the repo list
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
     if (drawn) this.paint();
@@ -349,7 +364,6 @@ export class CommitList {
   private renderRow(c: Commit, i: number, displayIndex: number): HTMLElement {
     const accent = accentOf(this.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
-    const references = referenceLabels(c.refs ?? []), referenceTitle = c.refs?.map((ref) => ref.name).join(", ") ?? "";
     const focus = i === this.props.selected;
     const myEmail = this.props.highlightMine ? this.props.me?.[c.repoId] : undefined;
     const mine = !!myEmail && myEmail.toLowerCase() === c.email.toLowerCase();
@@ -373,27 +387,32 @@ export class CommitList {
     }, [
       h("span", { class: `repo-band accent-${accent}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name },
         showName ? [h("span", { class: "chip repo-label", "data-name": name }, [name])] : []),
-      renderGraph(this.graph.rows[displayIndex], c, this.graph.columns, this.graphWidth, this.height(), {
+      untitled(renderGraph(this.graph.rows[displayIndex], c, this.graph.columns, this.graphWidth, this.height(), {
         node: segment ? { id: segment.id, count: segment.hidden.length, expand: this.collapsed.has(segment.id) } : undefined, edges: this.edgeActions,
-      }),
+      })),
+      // No title tooltips on the subject, node, hash or date: the hover card shows all of it (hoverCard.ts).
       h("span", { class: "commit-message", role: "gridcell" }, [
-        h("span", { class: "subject", title: c.subject }, [c.subject,
+        h("span", { class: "subject" }, [c.subject,
           this.props.historyPath && c.file && c.file.path !== this.props.historyPath ? h("span", { class: "was-path" }, [` — ${c.file.path}`]) : null]),
-        references.length ? h("span", { class: "row-refs", title: referenceTitle }, references.map((ref) => {
-          const badge = h("span", { class: `row-ref ref-${ref.kinds.at(-1)}`, title: ref.title });
-          const marks = h("span", { class: "row-ref-icons" });
-          for (const kind of ref.kinds) {
-            marks.append(h("span", { class: `row-ref-icon ref-${kind}`, "aria-hidden": "true" }, [codiconElement("tag")]));
-          }
-          badge.append(marks, h("span", { class: "row-ref-label" }, [ref.label]));
-          return badge;
-        }).concat(h("span", { class: "row-ref-more", title: referenceTitle,
-          "aria-label": `${localize("Commit references")}: ${referenceTitle}` }, [`+${references.length}`]))) : null,
+        rowRefs(c.repoId, commitPills(c.repoId, c.refs, this.props.upstream)),
       ]),
-      this.props.hashColumn ? h("span", { class: "hash", role: "gridcell", title: c.sha }, [c.sha.slice(0, 8)]) : null,
+      this.props.hashColumn ? h("span", { class: "hash", role: "gridcell" }, [c.sha.slice(0, 8)]) : null,
       h("span", { class: "author", role: "gridcell" }, [c.author]),
-      h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
+      h("span", { class: "date", role: "gridcell", "aria-label": whenLabel(this.props.now, c.time) }, [relativeTime(this.props.now, c.time)]),
     ]);
+  }
+
+  /** The commit at a row's data-index (the hover card asks on every pointer move). */
+  commitAt(index: number): Commit | undefined {
+    return this.props.rows[index];
+  }
+
+  /** What the hover card shows at once for the commit at a row's data-index: the row's own data, no git. */
+  hoverRow(index: number): HoverRow | undefined {
+    const c = this.props.rows[index];
+    if (!c) return undefined;
+    return { commit: c, repoName: this.props.repoNames.get(c.repoId) ?? c.repoId, accent: accentOf(this.accents, c.repoId),
+      mine: isMine(c.email, this.props.me?.[c.repoId]), pills: commitPills(c.repoId, c.refs, this.props.upstream), now: this.props.now };
   }
 
   private renderFold(index: number, segment: LinearSegment): HTMLElement {
