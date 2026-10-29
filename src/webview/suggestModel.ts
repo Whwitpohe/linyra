@@ -1,11 +1,13 @@
-// Suggestions for a text box (Author, Branch), drawn by the webview in VS Code's own
-// suggest-widget style instead of the browser's <datalist> popup. Pure: no DOM.
+// Suggestions for a text box (the search box's operators and values), drawn by the webview in
+// VS Code's own suggest-widget style instead of the browser's <datalist> popup. Pure: no DOM.
 
 export interface Suggestion {
   /** What picking it puts in the box. */
   value: string;
   label: string;
-  /** Dimmer text beside the label (an email and count, a repo count). */
+  /** What it does, after the label (an operator's meaning). */
+  description?: string;
+  /** Dimmer text at the right (an email, a repo count, an operator's aliases). */
   detail?: string;
 }
 

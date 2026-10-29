@@ -23,6 +23,8 @@ import { SyncController } from "./syncController";
 import { ProfileController } from "./profileController";
 import { RepoCommands } from "./repoCommands";
 import { Suggestions } from "./suggestions";
+import { usesMe } from "./searchQuery";
+import { aiService } from "./ai";
 import { CommitGraphHint } from "./commitGraphHint";
 import { wantsCommitGraphHint } from "./commitGraphModel";
 import type { UncommittedStore } from "./uncommittedStore";
@@ -45,6 +47,8 @@ const HASH_COLUMN_KEY = "linyra.hashColumn";
 const DEFAULT_PANE_WIDTH = 190;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
+/** Registered by Linyra AI's features: plain words → an operator query for the search box. */
+const AI_SEARCH_COMMAND = "linyra.ai.translateSearch";
 
 export interface LogDeps {
   discovery: RepoDiscovery;
@@ -203,6 +207,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.postUncommitted();
         this.showWorkTree();
       }),
+      // The search box's ✨ toggle follows Linyra AI's settings.
+      vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration("linyra.ai")) void this.postAiSearch(); }),
     );
   }
 
@@ -259,6 +265,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.suggestions.replay();
         if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
         this.postUncommitted();
+        void this.postAiSearch();
         // A reload on its way posts its page to this webview too.
         if (this.queryState === null) { if (!this.reloading) await this.reload(); }
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
@@ -275,7 +282,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (leaveForHash) this.postInit(true);
         this.persistFilter();
         this.query.abort(); // kill superseded spawns now, not after the debounce
-        if (textOnly) {
+        // Typing waits for the debounce; Enter in the search box runs at once.
+        if (textOnly && m.now !== true) {
           this.reloadSoon();
         } else {
           this.reloadSoon.cancel();
@@ -318,7 +326,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         await this.setHistory(null);
         return;
       case "wantSuggestions":
-        if (m.kind === "authors" || m.kind === "branches") await this.suggestions.load(m.kind);
+        if (m.kind === "authors" || m.kind === "branches" || m.kind === "tags") await this.suggestions.load(m.kind);
         return;
       case "toolbarAction": {
         const command = toolbarCommand(m.action, this.toolbarState());
@@ -350,7 +358,57 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
         return;
+      case "aiSearch":
+        await this.aiSearch(m.text);
+        return;
+      case "aiConfigure":
+        await this.aiConfigure();
+        return;
     }
+  }
+
+  /** The search box's ✨ mode needs linyra.ai.translateSearch and a configured Linyra AI. */
+  private async aiSearchAvailable(): Promise<boolean> {
+    if (!(await vscode.commands.getCommands(true)).includes(AI_SEARCH_COMMAND)) return false;
+    try {
+      return aiService().configured;
+    } catch {
+      return false;
+    }
+  }
+
+  private async postAiSearch(): Promise<void> {
+    this.post({ type: "aiSearchAvailable", available: await this.aiSearchAvailable() });
+  }
+
+  /** Plain words → an operator query; the webview puts it in the box and runs it. */
+  private async aiSearch(raw: unknown): Promise<void> {
+    if (typeof raw !== "string" || raw.trim() === "") return;
+    const text = raw.trim().slice(0, 2000);
+    if (!(await this.aiSearchAvailable())) {
+      this.post({ type: "aiSearchResult", text, error: localize("Natural-language search needs Linyra AI. Set it up, then try again.") });
+      return this.postAiSearch();
+    }
+    try {
+      const query = await vscode.commands.executeCommand<unknown>(AI_SEARCH_COMMAND, text);
+      if (typeof query !== "string" || query.trim() === "") throw new Error(localize("Linyra AI did not return a search."));
+      this.post({ type: "aiSearchResult", text, query: query.replace(/\s+/g, " ").trim().slice(0, 2000) });
+    } catch (e) {
+      this.post({ type: "aiSearchResult", text, error: messageOf(e) });
+    }
+  }
+
+  /** The ✨ toggle while Linyra AI is not available: its own setup, or its settings without it. */
+  private async aiConfigure(): Promise<void> {
+    try {
+      await aiService().ensureReady();
+    } catch {
+      const open = localize("Open Settings");
+      if (await vscode.window.showInformationMessage(localize("Natural-language search needs Linyra AI. Set it up, then try again."), open) === open) {
+        await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.ai");
+      }
+    }
+    await this.postAiSearch();
   }
 
   private settings() {
@@ -628,7 +686,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.meFor === this.repos.map((r) => r.id).join("\0")) return; // read before the page (Me was on)
     if (!(await this.readMe())) return;
     this.postInit();
-    if (this.filter.mine) await this.reload();
+    if (this.filter.mine || usesMe(this.filter.text)) await this.reload();
   }
 
   /** Reads each repo's user.email; true when they changed. */
@@ -881,8 +939,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.syncScope();
     if (this.logMode === "uncommitted") void this.deps.uncommitted.readIfScopeChanged();
     try {
-      // Me needs each repository's user.email, or the first page is empty and read twice.
-      if (this.filter.mine && !hashQuery(this.filter.text) && this.meFor !== this.repos.map((r) => r.id).join("\0")) {
+      // Me (and @me) needs each repository's user.email, or the first page is empty and read twice.
+      if ((this.filter.mine || usesMe(this.filter.text)) && !hashQuery(this.filter.text) && this.meFor !== this.repos.map((r) => r.id).join("\0")) {
         if (await this.readMe()) this.postInit();
         if (ctl.signal.aborted) return;
       }

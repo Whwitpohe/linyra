@@ -84,7 +84,7 @@ const opts = { cspSource: "vscode-resource:", nonce: "localization-test", script
   const data = /<script id="linyra-i18n"[^>]*>([\s\S]*?)<\/script>/.exec(html)![1];
   assert.strictEqual(JSON.parse(data).bundle.Refresh, malicious);
   configureI18n("en");
-  assert.ok(renderHtml(opts).includes('placeholder="Search messages or hash"'));
+  assert.ok(renderHtml(opts).includes('placeholder="Search commits, e.g. fix author:@me file:*.ts"'));
   console.log("ok - both HTML shells transfer the locale before startup and escape translated text and JSON safely");
 }
 

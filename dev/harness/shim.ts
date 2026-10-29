@@ -10,6 +10,7 @@ import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
 import { mockCommits, mockRepos, mockTopoWalk, NOW } from "./mock";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
+import { handleSearch, searchPredicate } from "./mock/search";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
@@ -43,16 +44,17 @@ function send(m: HostMessage, delay = latency): void {
 }
 
 function matching(f: FilterState): Commit[] {
-  const text = f.text.trim().toLowerCase();
+  // The search box's query, by the product's own parser (dev/harness/mock/search.ts).
+  const query = searchPredicate(f, repos, NOW) ?? (() => false);
   const hash = hashQuery(f.text);
-  if (hash) return all.filter((c) => c.sha.startsWith(hash) && (f.repoIds === null || f.repoIds.includes(c.repoId)));
+  if (hash) return all.filter((c) => query(c) && (f.repoIds === null || f.repoIds.includes(c.repoId)));
   const authors = [...(f.authors ?? []), f.author, f.mine ? "dana@example.com" : ""].map((a) => a.trim().toLowerCase()).filter(Boolean);
   const ids = f.repoIds === null ? null : new Set(f.repoIds);
   const span = { "24h": 86_400, "7d": 7 * 86_400, "30d": 30 * 86_400 } as Record<string, number>;
   const since = span[f.date] !== undefined ? NOW - span[f.date] : f.date === "custom" && f.from ? Date.parse(`${f.from}T00:00:00`) / 1000 : -Infinity;
   const until = f.date === "custom" && f.to ? Date.parse(`${f.to}T23:59:59`) / 1000 : Infinity;
   const matched = all.filter((c) =>
-    (!text || c.subject.toLowerCase().includes(text)) && (authors.length === 0 || authors.some((a) => `${c.author} <${c.email}>`.toLowerCase().includes(a))) && (!ids || ids.has(c.repoId)) && c.time >= since && c.time <= until);
+    query(c) && (authors.length === 0 || authors.some((a) => `${c.author} <${c.email}>`.toLowerCase().includes(a))) && (!ids || ids.has(c.repoId)) && c.time >= since && c.time <= until);
   if (f.sort !== "topo") return matched;
   const progress = new Map<string, RepoProgress>(repos.map((r) => [r.id, { fetched: 0, pending: mockTopoWalk(matched.filter((c) => c.repoId === r.id)), exhausted: true }]));
   return takeTopoReady(progress);
@@ -112,6 +114,7 @@ let branchState: BranchSidebarState = sidebarState(JSON.parse(sessionStorage.get
 
 function handle(m: WebviewMessage): void {
   harnessWindow.harnessMessages.push(m);
+  if (handleSearch(m, send, params.get("ai") !== "off")) return;
   if (m.type === "ready") send({ type: "toolbar", state: toolbarState }, 0);
   if (m.type === "ready") send({ type: "sidebarState", state: branchState }, 0);
   switch (m.type) {

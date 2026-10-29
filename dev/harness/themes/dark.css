@@ -57,6 +57,9 @@
   --vscode-inputOption-activeBorder: #2488db;
   --vscode-inputOption-activeForeground: #ffffff;
   --vscode-inputValidation-errorBorder: #be1100;
+  --vscode-inputValidation-errorBackground: #5a1d1d;
+  --vscode-inputValidation-infoBackground: #063b49;
+  --vscode-inputValidation-infoBorder: #007acc;
   --vscode-checkbox-background: #313131;
   --vscode-checkbox-border: #3c3c3c;
   --vscode-checkbox-foreground: #cccccc;

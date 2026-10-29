@@ -69,7 +69,16 @@ const notices = new NoticeBar(byId("notices"), () => {
   render();
 });
 const empty = new EmptyView(byId("empty"), runEmptyAction);
-const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
+const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }), {
+  wip: () => setMode("uncommitted"),
+  ai: (text) => post({ type: "aiSearch", text }),
+  configureAi: () => post({ type: "aiConfigure" }),
+  // The last searches, per workspace: the view's own state.
+  history: {
+    load: () => (vscode.getState() as { searchHistory?: unknown } | undefined)?.searchHistory,
+    save: (list) => vscode.setState({ ...((vscode.getState() ?? {}) as object), searchHistory: list }),
+  },
+});
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }), post);
 const appEl = byId("app");
 /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
@@ -219,6 +228,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       // +2: the chip's own padding, so a name that fits is never cut.
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
+      filters.setRepos(m.repos.map((r) => r.name));
       filters.setMe(m.hasMe);
       filters.update(m.filter);
       state.profiles = m.profiles;
@@ -259,7 +269,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "suggestions":
       if (m.authors) filters.setAuthors(m.authors);
       if (m.branches) filters.setBranches(m.branches);
+      if (m.tags) filters.setTags(m.tags);
       return;
+    case "aiSearchAvailable": filters.setAiAvailable(m.available); return;
+    case "aiSearchResult": filters.aiResult(m); return;
     case "loading":
       state.loading = true;
       clearTimeout(skeletonTimer);
@@ -403,12 +416,13 @@ function openFirstFile(): void {
   if (c) post({ type: "openFirst", repoId: c.repoId, sha: c.sha });
 }
 
-function setFilter(f: FilterState): void {
+/** now: Enter in the search box, run without the host's typing debounce. */
+function setFilter(f: FilterState, now = false): void {
   state.filter = f;
   filters.update(f);
   repoPane.update(state.repos, f.repoIds, state.profiles);
   repoPane.setFilter(f);
-  post({ type: "filter", filter: f });
+  post({ type: "filter", filter: f, ...(now ? { now } : {}) });
   render();
 }
 
