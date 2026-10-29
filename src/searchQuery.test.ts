@@ -11,6 +11,7 @@ import {
   completionAt, fileTerm, fileWithin, isRefValue, OPERATORS, operatorsFor, parseSearch, planSearch, quoteValue, repoMatches,
   runnable, searchDate, searchFlags, searchRepos, searchSkips, usesMe, withoutWip,
 } from "./searchQuery";
+import { emptyState } from "./webview/view";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
 const ALL: FilterState = { ...DEFAULT_FILTER, date: "all" };
@@ -259,11 +260,37 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(operatorsFor("fix"), []);
   assert.strictEqual(quoteValue("dana smith"), '"dana smith"');
   assert.strictEqual(quoteValue("dana"), "dana");
+  assert.ok(emptyState({ repoCount: 3, filter: { ...ALL, text: "author:rin file:*.go" } }).body.startsWith("No commit matches “author:rin file:*.go”"), "an empty result names the query");
+  assert.ok(emptyState({ repoCount: 3, filter: { ...ALL, text: "retry" } }).body.startsWith("No commit message contains"), "plain words as before");
   console.log("ok - completions: an operator being typed, or the value of one, at the caret");
 }
 
 // ── Real git: the flags do what they say ────────────────────────────────────
 (async () => {
+  {
+    // ref: costs no git process of its own: each repository's one git log skips what it lacks.
+    const calls: string[][] = [];
+    const fake = ["acme-web", "acme-api", "acme-libs"].map((name) => ({ id: `/ws/${name}`, root: `/ws/${name}`, name }));
+    const page = await fetchPage({ repos: fake, filter: { ...ALL, text: "ref:release-1.4 fix" }, pageSize: 50, concurrency: 4, now: NOW, prev: null,
+      run: async (cwd, a) => { calls.push([cwd, ...a]); return ""; }, signal: new AbortController().signal });
+    assert.deepStrictEqual(calls.map((c) => c[1]), ["log", "log", "log"], "one git log per repository, no ref lookups");
+    assert.ok(calls.every((c) => c.includes("--ignore-missing") && c.at(-2) === "release-1.4"));
+    assert.ok(page.done);
+    const pending: string[][] = [];
+    await fetchPage({ repos: fake, filter: { ...ALL, text: "fix author:" }, pageSize: 50, concurrency: 4, now: NOW, prev: null,
+      run: async (cwd, a) => { pending.push(a); return ""; }, signal: new AbortController().signal });
+    assert.strictEqual(pending.length, 0, "a query the box would not send starts no git process");
+    const scoped: string[] = [];
+    await fetchPage({ repos: fake, filter: { ...ALL, text: "repo:acme-api fix", repoIds: ["/ws/acme-api", "/ws/acme-web"] }, pageSize: 50, concurrency: 4, now: NOW, prev: null,
+      run: async (cwd) => { scoped.push(cwd); return ""; }, signal: new AbortController().signal });
+    assert.deepStrictEqual(scoped, ["/ws/acme-api"], "repo: within the ticked repositories: no other is spawned");
+    const mine: string[] = [];
+    await fetchPage({ repos: fake, filter: { ...ALL, text: "@me" }, pageSize: 50, concurrency: 4, now: NOW, prev: null, me: new Map([["/ws/acme-libs", "dana@example.com"]]),
+      run: async (cwd) => { mine.push(cwd); return ""; }, signal: new AbortController().signal });
+    assert.deepStrictEqual(mine, ["/ws/acme-libs"], "@me: a repository without user.email is not spawned");
+    console.log("ok - ref: adds no git process; an unsendable query, repo: and @me spawn nothing they need not");
+  }
+
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-search-test-"));
   Object.assign(process.env, gitEnv(home));
   const repos = ["acme-web", "acme-api", "acme-libs"].map((name) => ({ id: path.join(home, name), root: path.join(home, name), name }));

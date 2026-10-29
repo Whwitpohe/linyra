@@ -14,8 +14,8 @@
 .search-field.natural .search { padding-right: 6px; }
 .search-field.asking .search-ai { opacity: 0.6; }
 
-/* Under the box, in VS Code's input-validation colors; only while the box has focus (the red
-   border and the tooltip say it otherwise). */
+/* Under the box, in VS Code's input-validation colors; only while the box has focus (an error's
+   red border and tooltip stay). */
 .search-errors {
   position: absolute; z-index: 9; top: calc(100% + 1px); left: 0; right: 0;
   display: flex; flex-direction: column; gap: 2px; padding: 3px 6px;
@@ -30,7 +30,7 @@
   background: var(--vscode-inputValidation-infoBackground, var(--vscode-editorWidget-background));
   border-color: var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
 }
-.search-field:not(:focus-within) .search-errors:not(.info) { display: none; }
+.search-field:not(:focus-within) .search-errors { display: none; }
 
 /* The suggestions: an operator in the editor's font, what it does, its aliases at the right. */
 #search-suggestions .suggest-label { flex: 0 0 auto; font-family: var(--vscode-editor-font-family); }

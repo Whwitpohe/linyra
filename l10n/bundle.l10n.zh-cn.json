@@ -751,5 +751,7 @@
   "Merge commits": "合并提交",
   "Commits a branch or tag points at": "分支或标签所指的提交",
   "Uncommitted changes, on the Uncommitted side": "未提交的更改，显示在“未提交”一侧",
-  "{0} repository": "{0} 个仓库"
+  "{0} repository": "{0} 个仓库",
+  "change: reads the changes of every commit in the range. Over all time this can take a while: a shorter date range is faster.": "change: 会读取范围内每个提交的改动。范围是全部时间时可能要等一会儿：缩短日期范围会更快。",
+  "No commit matches “{0}” in {1}{2}.": "{1}{2}中，没有提交匹配“{0}”。"
 }

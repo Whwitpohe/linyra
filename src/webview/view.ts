@@ -1,5 +1,6 @@
 import { localize } from "../i18n";
 import { hashQuery, type FilterState } from "../filterModel";
+import { parseSearch } from "../searchQuery";
 import { commitKey } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -279,6 +280,10 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   // "“dana”", "“dana” or “rin”", "“dana”, “rin” or you"
   const by = who.length <= 1 ? who.join("") : localize("{0} or {1}", who.slice(0, -1).join(", "), who[who.length - 1]);
   const touching = f.path ? localize(" touching “{0}”", f.path) : "";
+  // A search with operators (author:, file:…) is more than message text: say "matches", not "contains".
+  if (text && parseSearch(text).ranges.some((t) => t.spelling !== "" || t.operator !== "message:")) {
+    return { title: localize("No matching commits"), body: localize("No commit matches “{0}” in {1}{2}.", text, scope, dateLabel(f)), action: { label: localize("Clear Search"), id: "clearText" } };
+  }
   if (text && author) {
     return { title: localize("No matching commits"), body: localize("No commit by {0}{1} contains “{2}” in {3}{4}.", by, touching, text, scope, dateLabel(f)), action: { label: localize("Clear Search"), id: "clearText" } };
   }

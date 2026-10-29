@@ -204,7 +204,12 @@ export class SearchBox {
       const text = this.input.value;
       const plan = this.plan(text);
       const waiting: SearchError[] = this.explain ? plan.pending.map((t) => ({ message: localize("{0} needs a value", t.spelling), start: t.start, end: t.end })) : [];
-      this.showMessages([...plan.errors, ...waiting].map((x) => x.message));
+      const problems = [...plan.errors, ...waiting].map((x) => x.message);
+      // change: makes git read every commit's diff: over all of history that can take many seconds.
+      if (problems.length === 0 && plan.change !== undefined && this.filter.date === "all" && plan.since === undefined) {
+        return this.showMessages([localize("change: reads the changes of every commit in the range. Over all time this can take a while: a shorter date range is faster.")], "info");
+      }
+      this.showMessages(problems);
     };
     const plan = this.plan(this.input.value);
     // Clearing is never delayed: a fixed query loses its red at once.
