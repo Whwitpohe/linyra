@@ -1365,6 +1365,28 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** A parent hash in the commit details: that commit alone, selected in the Log, if it is listed. */
+  /** The repositories, listed now when the Log has not listed them yet (Insights opened first). */
+  async ensureRepos(): Promise<void> {
+    if (this.repos.length === 0) await this.loadRepos();
+  }
+
+  /**
+   * Shows a commit in the Log (Insights' bubbles): selected where it is listed; else found by its
+   * hash, as the search box finds one whatever the other filters say, and selected once listed.
+   */
+  async showCommit(repoId: string, sha: string): Promise<void> {
+    if (!isSha(sha) || !this.repos.some((r) => r.id === repoId)) return;
+    await vscode.commands.executeCommand(`${LogView.id}.focus`);
+    if (await this.revealCommit(repoId, sha)) return;
+    if (this.history) await this.setHistory(null);
+    this.filter = { ...this.filter, text: sha };
+    this.persistFilter();
+    this.postInit();
+    this.reloadSoon.cancel();
+    await this.reload();
+    await this.revealCommit(repoId, sha);
+  }
+
   private async revealCommit(repoId: string, sha: string): Promise<boolean> {
     if (!this.findCommit(repoId, sha)) return false;
     const ref = { repoId, sha };

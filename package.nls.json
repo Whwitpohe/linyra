@@ -188,5 +188,8 @@
   "command.linyra.release.title": "Release…",
   "command.linyra.showBranchSheet.title": "Show Branch Details",
   "command.linyra.continueAm.title": "Continue Applying Patches",
-  "command.linyra.abortAm.title": "Abort Applying Patches…"
+  "command.linyra.abortAm.title": "Abort Applying Patches…",
+  "command.linyra.insights.title": "Insights",
+  "command.linyra.visualHistory.title": "Visual History",
+  "command.linyra.revealCommit.title": "Show Commit in Log"
 }

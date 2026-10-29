@@ -38,6 +38,9 @@ import type { CommitAction } from "./commitActionModel";
 import { aiIfAny } from "./ai/features/commands";
 import { registerAiFeatures } from "./ai/features/register";
 import { LinyraAi } from "./ai/service";
+import { InsightsPanel } from "./insights/panel";
+import { locate } from "./insights/range";
+import { isSha } from "./types";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   await Promise.all([migratePrivateState(context.workspaceState), migratePrivateState(context.globalState)]);
@@ -413,8 +416,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return { repoId: typeof n?.repoId === "string" ? n.repoId : typeof n?.owner?.repoId === "string" ? n.owner.repoId : undefined, path: typeof n?.path === "string" ? n.path : undefined };
     },
     compareRepos, multiRepo, commitPanel });
+  // Linyra Insights (src/insights): Visual History, Files, Commits and Repository Health, in an editor tab.
+  const insights = new InsightsPanel({ context, repos: () => log.repoList, ticked: () => log.tickedRepos(),
+    // Opened before the Log ever listed its repositories: list them.
+    ensureRepos: () => log.ensureRepos(),
+    accents: () => log.accents(), run: log.countedRun, concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency, ask,
+    reveal: (repoId, sha) => vscode.commands.executeCommand("linyra.revealCommit", { repoId, sha }),
+    onDidChangeRefs: log.onDidChangeRefs, onDidChangeScope: log.onDidChangeScope, onDidChangeAccents: log.onDidChangeAccents });
+  /** Visual History's target: a Changes or Compare row, an Explorer file or folder, or the active editor's file. */
+  const visualTarget = async (arg: unknown): Promise<{ root: string; path: string; folder: boolean } | undefined> => {
+    const row = fileRow(arg);
+    if (row) return { ...row, folder: (compareNode(changes.commandArgument(arg)) as { kind?: unknown } | undefined)?.kind === "folder" };
+    const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
+    if (uri?.scheme !== "file") return undefined;
+    const found = locate(log.repoList, uri.fsPath, process.platform === "win32" || process.platform === "darwin");
+    if (!found) return undefined;
+    const stat = await vscode.workspace.fs.stat(uri).then((s) => s, () => undefined);
+    return { root: found.repo.root, path: found.path, folder: !!stat && (stat.type & vscode.FileType.Directory) !== 0 };
+  };
+  context.subscriptions.push(insights,
+    vscode.commands.registerCommand("linyra.insights", () => insights.open()),
+    vscode.commands.registerCommand("linyra.visualHistory", async (arg?: unknown) => {
+      if (log.repoList.length === 0) await insights.open();
+      return insights.visualHistory(await visualTarget(arg));
+    }),
+    // A commit in the Log (Insights' bubbles): selected where listed, else found by its hash.
+    vscode.commands.registerCommand("linyra.revealCommit", async (arg?: unknown) => {
+      const a = arg as { repoId?: unknown; sha?: unknown } | undefined;
+      if (typeof a?.repoId === "string" && isSha(a.sha)) await log.showCommit(a.repoId, a.sha);
+    }),
+  );
   // Test seam for the integration suite only; never registered for users.
   if (process.env.LINYRA_ITEST === "1") {
+    context.subscriptions.push(
+      vscode.commands.registerCommand("linyra._itest.insights", () => insights.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.insightsSend", (m: unknown) => insights.onMessage(m)),
+    );
     context.subscriptions.push(
       vscode.commands.registerCommand("linyra._itest.branches", () => branchSidebar.snapshot()),
       vscode.commands.registerCommand("linyra._itest.branchError", () => branchSidebar.lastError),

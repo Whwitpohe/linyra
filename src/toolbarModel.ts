@@ -1,5 +1,5 @@
 export type ChangesLayout = "auto" | "sideBySide" | "stacked";
-export type ToolbarAction = "toggleRepos" | "toggleCompare" | "fetchAll" | "showBehind" | "fetchAndPullAll" | "pullAllBehind" | "profileSwitch" | "profileSave"
+export type ToolbarAction = "toggleRepos" | "toggleCompare" | "fetchAll" | "showBehind" | "fetchAndPullAll" | "pullAllBehind" | "profileSwitch" | "profileSave" | "insights"
   | "updateProject" | "pushAll" | "branchesAcross" | "tagAcross" | "runAcross" | "release" | "abortAll" | "aiConfigure" | "aiSwitch" | "aiRemove" | "aiAsk";
 
 export interface ToolbarState {
@@ -30,6 +30,7 @@ export function toolbarCommand(action: unknown, state: ToolbarState): string | u
     case "tagAcross": return "linyra.tagAcross";
     case "runAcross": return "linyra.runAcross";
     case "release": return "linyra.release";
+    case "insights": return "linyra.insights";
     case "abortAll": return state.anyOperation ? "linyra.abortAll" : undefined;
     case "aiConfigure": return "linyra.ai.configure";
     case "aiSwitch": return "linyra.ai.switchModel";

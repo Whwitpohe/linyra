@@ -13,6 +13,8 @@
 !out/commit.css
 !out/form.js
 !out/form.css
+!out/insights.js
+!out/insights.css
 !package.json
 !package.nls*.json
 !l10n/bundle.l10n.*.json

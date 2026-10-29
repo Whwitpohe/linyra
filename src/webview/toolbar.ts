@@ -90,6 +90,7 @@ export class LogToolbar {
       action("tagAcross", "Tag Across Repositories…"),
       action("runAcross", "Run Git Command Across Repositories…"),
       action("release", "Release…"),
+      action("insights", "Insights"),
       ...(s.anyOperation ? [action("abortAll", "Abort in All Repositories…")] : []),
       action("showBehind", "Show Only Repositories Behind", !s.anyBehind),
       action("profileSwitch", "Switch Profile…"),

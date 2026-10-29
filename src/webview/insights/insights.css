@@ -1,0 +1,235 @@
+/* Linyra Insights: an editor tab. Every color and font is a VS Code theme variable (CLAUDE.md constraint 2). */
+@import "../ui/authorDisc.css";
+@import "../ui/counts.css";
+
+/* VS Code pads every webview body 20px: the tab fills its editor instead. */
+html.insights-document, html.insights-document body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+body { color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+.insights * { box-sizing: border-box; }
+.insights [hidden] { display: none !important; }
+.insights button { font: inherit; color: inherit; cursor: pointer; }
+.insights :focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.insights { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.insights-header { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; padding: 0 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); }
+
+/* The tabs: VS Code's panel titles (an underline under the shown one). */
+.insights-tabs { display: flex; gap: 2px; min-width: 0; overflow-x: auto; }
+.insights-tab { display: inline-flex; align-items: center; gap: 6px; height: 35px; padding: 0 10px; border: 0; border-bottom: 1px solid transparent; background: transparent;
+  color: var(--vscode-panelTitle-inactiveForeground, var(--vscode-descriptionForeground)); white-space: nowrap; }
+.insights-tab svg { width: 16px; height: 16px; flex: none; }
+.insights-tab:hover { color: var(--vscode-panelTitle-activeForeground, var(--vscode-foreground)); }
+.insights-tab[aria-selected="true"] { color: var(--vscode-panelTitle-activeForeground, var(--vscode-foreground)); border-bottom-color: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder)); }
+body.vscode-high-contrast .insights-tab[aria-selected="true"] { border-bottom: 2px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+
+.insights-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 5px 0; min-width: 0; }
+.insights-field { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.insights-field-label { color: var(--vscode-descriptionForeground); }
+.insights-select { min-width: 0; max-width: 280px; height: 24px; padding: 0 4px; border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent)); border-radius: 2px;
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); font: inherit; text-overflow: ellipsis; }
+
+/* A segmented control: the find widget's toggles (Match Case…), one of them on. */
+.insights-segments { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-panel-border))); border-radius: 3px; overflow: hidden; }
+.insights-segment { height: 22px; padding: 0 8px; border: 0; background: transparent; color: var(--vscode-foreground); white-space: nowrap; }
+.insights-segment + .insights-segment { border-left: 1px solid var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-panel-border))); }
+.insights-segment:hover { background: var(--vscode-toolbar-hoverBackground); }
+.insights-segment[aria-checked="true"] { color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); background: var(--vscode-inputOption-activeBackground, var(--vscode-list-activeSelectionBackground));
+  box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent); }
+
+.icon-button { flex: none; width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 3px; background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.icon-button svg { width: 16px; height: 16px; }
+
+.insights-panel { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding: 8px 12px 10px; gap: 6px; }
+.insights-panel.loading > :not(.insights-summary) { opacity: 0.55; transition: opacity 0.15s 0.2s; }
+@media (prefers-reduced-motion: reduce) { .insights-panel.loading > :not(.insights-summary) { transition: none; } }
+.insights-summary { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 20px; color: var(--vscode-descriptionForeground); }
+.insights-legend { display: inline-flex; flex-wrap: wrap; gap: 2px 12px; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--vscode-foreground); }
+.legend-swatch { width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 55%, transparent); border: 1px solid var(--accent); }
+.legend-value { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.insights-notes { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; border-left: 2px solid var(--vscode-editorWarning-foreground, var(--vscode-focusBorder));
+  background: var(--vscode-textBlockQuote-background, transparent); }
+.insights-empty { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--vscode-descriptionForeground); }
+
+/* ── Visual History ─────────────────────────────────────────────────────── */
+.history-chart { flex: 1 1 0; min-height: 120px; position: relative; border: 1px solid transparent; border-radius: 2px; }
+.history-chart:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 0; }
+.history-scroll { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
+.history-axis { position: sticky; top: 0; z-index: 1; display: block; background: var(--vscode-editor-background); }
+.history-tick { fill: var(--vscode-descriptionForeground); font-family: var(--vscode-font-family); font-size: 11px; text-anchor: middle; }
+.history-tick-mark, .history-gridline { stroke: var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-descriptionForeground))); stroke-width: 1; }
+.history-gridline { stroke-dasharray: 2 3; }
+/* The labels lie over the plot's left margin: one coordinate system for the axis and the bubbles. */
+.history-body { position: relative; }
+.history-labels { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; }
+.history-author { height: 30px; display: flex; align-items: center; gap: 6px; padding-right: 8px; min-width: 0; }
+.history-author-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-author-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.history-plot { display: block; }
+.history-row { fill: transparent; }
+.history-row.odd { fill: var(--vscode-list-hoverBackground, transparent); fill-opacity: 0.35; }
+.bubble { fill: color-mix(in srgb, var(--accent) 45%, transparent); stroke: var(--accent); stroke-width: 1; cursor: pointer; }
+.bubble:hover { fill: color-mix(in srgb, var(--accent) 75%, transparent); }
+.bubble.focused { stroke: var(--vscode-focusBorder); stroke-width: 2.5; fill: color-mix(in srgb, var(--accent) 75%, transparent); }
+body.vscode-high-contrast .bubble { fill: color-mix(in srgb, var(--accent) 30%, var(--vscode-editor-background)); stroke-width: 1.5; }
+body.vscode-high-contrast .bubble.focused { stroke: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); stroke-width: 3; }
+
+/* ── Files and Commits: the treemap ─────────────────────────────────────── */
+.insights-crumbs { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 3px; min-width: 0; }
+.crumb { padding: 1px 4px; border: 0; border-radius: 3px; background: transparent; color: var(--vscode-textLink-foreground); }
+.insights button.crumb { color: var(--vscode-textLink-foreground); }
+.crumb:hover { background: var(--vscode-toolbar-hoverBackground); text-decoration: underline; }
+.crumb.current { color: var(--vscode-foreground); font-weight: 600; }
+.crumb-sep { color: var(--vscode-descriptionForeground); }
+.crumb-total { margin-left: 8px; color: var(--vscode-descriptionForeground); }
+.legend-label { color: var(--vscode-descriptionForeground); }
+
+.treemap { flex: 1 1 0; min-height: 120px; position: relative; overflow: hidden; border-radius: 2px; }
+.treemap:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.tile { position: absolute; overflow: hidden; display: flex; flex-direction: column; padding: 1px 4px; font-size: 11px; line-height: 15px; color: var(--vscode-foreground); cursor: pointer; }
+.tile.leaf { background: color-mix(in srgb, var(--tile) 42%, var(--vscode-editor-background)); border: 1px solid var(--vscode-editor-background); }
+/* A folder with room for its files: a frame, its name and total in a header strip. */
+.tile.frame { flex-direction: row; align-items: flex-start; gap: 6px; padding: 1px 5px; background: color-mix(in srgb, var(--vscode-descriptionForeground) 9%, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-descriptionForeground))); }
+.tile.frame > .tile-name { font-weight: 600; }
+.tile-name, .tile-value { flex: none; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.frame > .tile-name { flex: 0 1 auto; }
+.tile.frame > .tile-value { flex: 0 1 auto; color: var(--vscode-descriptionForeground); }
+.tile.leaf > .tile-value { opacity: 0.8; font-variant-numeric: tabular-nums; }
+/* A short tile: its name and measure on one line, the measure kept whole. */
+.tile.leaf.one-line { flex-direction: row; gap: 5px; }
+.tile.leaf.one-line > .tile-name { flex: 0 1 auto; }
+.tile.leaf.one-line > .tile-value { flex: 0 0 auto; }
+/* A repository's frame carries its Log color along the top. */
+.tile.kind-repo { border-top: 3px solid var(--accent); }
+/* Never raised: a frame above its own tiles would hide them. A frame's hover is its border. */
+.tile.leaf:hover { outline: 1px solid var(--vscode-foreground); outline-offset: -1px; }
+.tile.frame:hover { border-color: var(--vscode-foreground); }
+.tile.selected { box-shadow: inset 0 0 0 2px var(--vscode-foreground); }
+/* The keyboard's tile: a ring laid over it, above every tile. */
+.tile-ring { position: absolute; z-index: 3; pointer-events: none; outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.treemap:not(:focus) .tile-ring { display: none; }
+.tile-folder { --tile: var(--vscode-descriptionForeground); }
+/* The smaller files of a folder, summed: hatched, so it does not read as one big file. */
+.tile.leaf.tile-rest { cursor: default; --tile: var(--vscode-descriptionForeground);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--tile) 28%, var(--vscode-editor-background)) 0 3px, var(--vscode-editor-background) 3px 6px); }
+
+/* File types: the theme's chart colors, biggest type first; the rest is Other. */
+.type-0 { --tile: var(--vscode-charts-blue); }
+.type-1 { --tile: var(--vscode-charts-green); }
+.type-2 { --tile: var(--vscode-charts-yellow); }
+.type-3 { --tile: var(--vscode-charts-purple); }
+.type-4 { --tile: var(--vscode-charts-red); }
+.type-5 { --tile: var(--vscode-terminal-ansiCyan); }
+.type-6 { --tile: var(--vscode-terminal-ansiMagenta); }
+.type-other { --tile: var(--vscode-descriptionForeground); }
+/* Commits: one hue, stronger with each heat step; every tile also names its count. */
+.heat-0 { --heat: 10%; }
+.heat-1 { --heat: 30%; }
+.heat-2 { --heat: 52%; }
+.heat-3 { --heat: 78%; }
+.tile.leaf[class*="heat-"] { background: color-mix(in srgb, var(--vscode-charts-red) var(--heat), var(--vscode-editor-background)); }
+.tile.leaf.heat-3 > .tile-name { font-weight: 600; }
+.legend-item[class*="type-"] .legend-swatch { background: color-mix(in srgb, var(--tile) 42%, var(--vscode-editor-background)); border-color: var(--tile); }
+.legend-item[class*="heat-"] .legend-swatch { background: color-mix(in srgb, var(--vscode-charts-red) var(--heat), var(--vscode-editor-background)); border-color: var(--vscode-charts-red); }
+.legend-swatch.square { border-radius: 2px; }
+
+body.vscode-high-contrast .tile.leaf { border-color: var(--vscode-contrastBorder, var(--vscode-editor-background)); }
+/* The hottest: a thicker border, in the contrast color (the focus ring keeps the active one). */
+body.vscode-high-contrast .tile.leaf.heat-3 { border: 2px solid var(--vscode-contrastBorder, var(--vscode-foreground)); }
+body.vscode-high-contrast .tile-ring { outline: 3px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+
+/* The chosen file: its path, measure and what to do with it. */
+.insights-strip { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 4px 6px 4px 10px; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); border-radius: 3px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+.strip-repo { display: inline-flex; align-items: center; gap: 5px; }
+.strip-repo::before { content: ""; flex: none; width: 3px; height: 13px; border-radius: 1px; background: var(--accent); }
+.strip-path { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size, 12px); }
+.strip-value { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.strip-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+/* VS Code's secondary button. */
+.insights-button { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; white-space: nowrap;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground)); background: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background)); }
+.insights button.insights-button { color: var(--vscode-button-secondaryForeground, var(--vscode-foreground)); }
+.insights-button:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
+.insights-button svg { width: 14px; height: 14px; flex: none; }
+.insights-button.primary, .insights button.insights-button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.insights-button.primary:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+.insights-button:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Repository Health ──────────────────────────────────────────────────── */
+.health-toolbar { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.health-summary { color: var(--vscode-descriptionForeground); }
+.health-table-wrap { flex: 0 1 auto; max-height: 48%; min-height: 64px; overflow: auto; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); border-radius: 2px; }
+.health-table { border-collapse: separate; border-spacing: 0; width: 100%; font-variant-numeric: tabular-nums; }
+.health-table th, .health-table td { padding: 3px 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); }
+.health-table thead th { position: sticky; top: 0; z-index: 1; background: var(--vscode-editor-background); color: var(--vscode-descriptionForeground); font-weight: 600; cursor: help; }
+.health-table thead th.col-check, .health-table thead th.col-repo, .health-table thead th.col-count { cursor: default; }
+/* The tick and the repository stay in view when the table scrolls sideways. */
+.health-table .col-check { position: sticky; left: 0; z-index: 1; width: 28px; padding: 3px 4px 3px 8px; background: var(--vscode-editor-background); }
+.health-table .col-repo { position: sticky; left: 28px; z-index: 1; background: var(--vscode-editor-background); font-weight: 400; color: var(--vscode-foreground); }
+.health-table thead .col-check, .health-table thead .col-repo { z-index: 2; color: var(--vscode-descriptionForeground); font-weight: 600; }
+.health-table tbody tr { cursor: pointer; }
+/* Each chain ends in a color every theme has: a sticky cell must never turn see-through. */
+.health-table tbody tr:hover > * { background: var(--vscode-list-hoverBackground, var(--vscode-editor-background)); }
+.health-table tbody tr[aria-selected="true"] > * { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground, var(--vscode-editor-background))); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
+.health-table tbody tr:focus { outline: none; }
+.health-table tbody tr:focus-visible > * { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-inactiveSelectionBackground, var(--vscode-editor-background))); color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); }
+.health-table tbody tr:focus-visible > :first-child { box-shadow: inset 2px 0 0 var(--vscode-focusBorder); }
+/* High contrast draws selection as an outline, not a fill: the selected row is dashed, the focused one solid. */
+body.vscode-high-contrast .health-table tbody tr[aria-selected="true"] > * { box-shadow: inset 0 1px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)), inset 0 -1px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+body.vscode-high-contrast .health-table tbody tr:focus-visible > * { box-shadow: inset 0 2px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)), inset 0 -2px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+.health-table tr.busy { opacity: 0.7; }
+.health-table .cell { display: table-cell; }
+.cell-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; }
+.status-ok .cell-icon { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+.status-suggest .cell-icon { color: var(--vscode-editorLightBulb-foreground, var(--vscode-charts-yellow)); }
+.status-unknown, .status-info .cell-value { color: var(--vscode-descriptionForeground); }
+.health-table .col-count { text-align: right; }
+/* VS Code's checkbox. */
+.health-check-box { width: 16px; height: 16px; padding: 0; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; border-radius: 3px;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--vscode-foreground))); background: var(--vscode-checkbox-background, var(--vscode-input-background));
+  color: var(--vscode-checkbox-foreground, var(--vscode-foreground)); }
+.insights button.health-check-box { color: var(--vscode-checkbox-foreground, var(--vscode-foreground)); }
+.health-check-box svg { width: 14px; height: 14px; }
+
+.health-details { flex: 1 1 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.health-details-title { margin: 6px 0 2px; font-size: 1.1em; font-weight: 600; }
+.health-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; padding: 6px 4px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); }
+.health-item-icon { padding-top: 1px; }
+.health-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.health-item-label { font-weight: 600; }
+.health-item-value { font-variant-numeric: tabular-nums; }
+.health-item-explain { color: var(--vscode-descriptionForeground); }
+.health-item.status-suggest .health-item-advice { color: var(--vscode-foreground); }
+.health-item:not(.status-suggest) .health-item-advice { color: var(--vscode-descriptionForeground); }
+.health-item-action { align-self: center; }
+
+/* ── The tooltip: VS Code's hover widget ────────────────────────────────── */
+.insights-tooltip { position: fixed; z-index: 30; max-width: min(440px, calc(100vw - 8px)); display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border-radius: 3px; pointer-events: none;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editorWidget-foreground, var(--vscode-foreground)));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent)); box-shadow: 0 2px 8px var(--vscode-widget-shadow, transparent); }
+body.vscode-high-contrast .insights-tooltip { box-shadow: none; border-color: var(--vscode-contrastBorder, var(--vscode-editorHoverWidget-border)); }
+.tip-subject { font-weight: 600; overflow-wrap: anywhere; }
+.tip-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.tip-muted, .tip-hint { color: var(--vscode-descriptionForeground); }
+.tip-hint { font-size: 11px; }
+.tip-sha { font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
+.tip-repo { display: inline-flex; align-items: center; gap: 5px; }
+.tip-repo::before { content: ""; flex: none; width: 3px; height: 13px; border-radius: 1px; background: var(--accent); }
+
+@media (max-width: 520px) {
+  .insights-header { padding: 0 8px; }
+  .insights-panel { padding: 6px 8px 8px; }
+  .insights-tab { padding: 0 6px; }
+  .insights-tab span { display: none; }
+  .insights-select { max-width: 160px; }
+  .history-author { padding-right: 4px; }
+  .health-table-wrap { max-height: 40%; }
+  .health-item { grid-template-columns: 20px minmax(0, 1fr); }
+  .health-item-action { grid-column: 2; justify-self: start; }
+}
