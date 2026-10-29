@@ -77,13 +77,20 @@ When the address moves to another origin, a stored key is not offered ("The stor
 for https://a; it is never sent to b. Enter a key for this address."), as `AiKeys.keyFor` already
 refuses. The host checks every message again (`checkDraft`): the webview is not trusted.
 
+A typed key is bound to the origin it was typed for (after review): it is never sent while it is
+typed, and an address on another origin clears it, saying why. A redirect to another origin drops
+the key headers (`net.ts`), and a key a provider echoes in an error is cut out before the page sees
+it.
+
 ### Models
 
-Loaded when the form opens (edit) and 600 ms after the address or the key changes, if the address
-is valid and a key is available (or the server is local). One request at a time per page: a new
-one aborts the old (`AbortController`), replies carry a sequence number. Line under the field:
-"Loading models from host…" / "24 models from host" / "Could not read the model list: <why>. Type
-the model id." / "Enter the API key to load the model list."
+Loaded when the form opens and 600 ms after the address changes, when the key is a stored one
+(bound to its origin by the host) or none is needed (a local server); with a typed key, when the
+list is opened (focus, ↓, ▾, Reload). One request at a time per page: a new one aborts the old
+(`AbortController`), replies carry a sequence number, and a reply for an older form is dropped.
+Line under the field: "Fetching the models of host…" / "24 models from host" / the failure in the
+page's words (401: check the key; 404: check the address) / "Enter the API key to load the model
+list, or type the model id."
 
 ### Test Connection
 
@@ -108,6 +115,21 @@ The host validates, writes the secret first (`AiKeys.set`, or copies the `from` 
 it for `none`), then `linyra.ai.profiles` / `activeProfile` / `enabled` (User settings, as now). The
 form closes and the page says "Saved. Linyra AI uses X." (an `aria-live` line). Settings changed
 elsewhere (settings.json) re-render the list.
+
+### Waiting for the setup
+
+`ensureReady()` opens the page and waits until a profile is in use and AI is on; it gives up
+(false) when the page closes, is left for another tab, or after ten minutes, so a feature's
+request never goes out much later, unasked.
+
+## Also in this branch (asked during the work)
+
+- **Resolve Conflicts with AI**, one choice per file: it asked twice (a QuickPick, then a modal),
+  and dismissing either ended the run. Now, beside the proposal's diff: Accept and Stage, Open in
+  Merge Editor, Skip, or Stop while files are left. The list stays open while the diff is read; Esc
+  skips the file and the run goes on. The end says how many were staged and that the operation is
+  the user's to continue (Open Source Control). Pure parts: `reviewStep`, `resolveReport`.
+- **`stashWriter()`** on the AI features, for a Stash Changes… box of its own (`src/stashBox.ts`).
 
 ## Code
 
