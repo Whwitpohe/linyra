@@ -112,9 +112,12 @@ export interface AiService {
   excluded(path: string): boolean;
 }
 
+/** An HTTP answer that failed: its status, the provider's own words, and whether it was a web page. */
+export interface AiHttpFailure { status: number; detail?: string; html?: boolean }
+
 /** Errors the features show as they are: no stack, no provider JSON. */
 export class AiError extends Error {
-  constructor(message: string, readonly kind: "notConfigured" | "auth" | "rateLimit" | "network" | "badRequest" | "refusal" | "cancelled" | "server" | "tooLarge") {
+  constructor(message: string, readonly kind: "notConfigured" | "auth" | "rateLimit" | "network" | "badRequest" | "refusal" | "cancelled" | "server" | "tooLarge", readonly http?: AiHttpFailure) {
     super(message);
   }
 }

@@ -614,6 +614,54 @@ section { display: grid; gap: 16px; }
   </div>
 </section>
 
+<section aria-labelledby="s-ai">
+  <div class="sec-head"><h2 id="s-ai">The Linyra AI page</h2><span class="pill now">Exists</span></div>
+  <p class="how">One editor tab for Linyra AI: Configure AI…, Switch AI Model… and Remove AI Profile… (the Log's ⋯ menu, the Command Palette) open it, and an AI feature that is not set up yet opens it too. It replaced the popups at the top of the window. Plan <code>docs/superpowers/plans/2026-10-30-ai-settings.md</code>.</p>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 520px">
+        <div class="view t"><i class="n tl">74</i>
+          <div class="vhead">✦ Linyra AI</div>
+          <div class="vbody" style="display:grid; gap:10px; padding:10px">
+            <div class="bs-head t"><i class="n tl">75</i><b>◉ AI features</b><span class="desc">On: ✦ uses “Anthropic · claude-opus-5-5”.</span><span class="desc" style="margin-left:auto">More settings…</span></div>
+            <div class="bs-card t"><i class="n tl">76</i>
+              <div class="bs-head"><b>✓ Anthropic · claude-opus-5-5</b><span class="bs-tag">In use</span><span class="bs-btns" style="margin-left:auto"><span class="bs-btn">Edit</span><span class="bs-btn">Remove…</span></span></div>
+              <div class="desc">Anthropic · api.anthropic.com · Thinking: High · Key stored</div>
+              <div class="bs-card t"><i class="n tl">77</i>
+                <div>⚠ <b>Remove the AI profile “Anthropic · claude-opus-5-5”?</b></div>
+                <div class="desc">Its API key is deleted from VS Code's secret storage. Linyra AI will use “Local llama” instead.</div>
+                <div class="bs-btns"><span class="bs-btn primary">Remove</span><span class="bs-btn">Cancel</span></div>
+              </div>
+            </div>
+            <div class="bs-card t"><i class="n tl">78</i>
+              <div class="bs-title">Add Profile</div>
+              <div>Provider: <b>◉ Anthropic</b> ○ OpenAI-compatible ○ Google Gemini</div>
+              <div>Address: <code>https://api.anthropic.com</code> <span class="desc">Use another address (gateway)…</span></div>
+              <div>API key: ⚿ Stored for api.anthropic.com <span class="bs-btn">Replace</span> <span class="bs-btn">Remove</span></div>
+              <div>Model: <code>claude-opus-5-5 ▾ ⟳</code> <span class="desc">4 models from api.anthropic.com</span></div>
+              <div>Thinking level: <span class="bs-tag">Default</span> <span class="bs-tag">Low</span> … <span class="bs-tag">Max</span></div>
+              <div class="bs-card t"><i class="n tl">79</i>
+                <div><b>✗ The test failed.</b></div>
+                <div class="desc">✓ Reached api.anthropic.com and the key was accepted (4 models).</div>
+                <div class="desc">✗ The provider rejected the request (400). claude-opus-5-5 may not take the thinking level High: try Default.</div>
+              </div>
+              <div class="bs-btns"><span class="bs-btn">Test Connection</span><span class="bs-btn primary">Save</span><span class="bs-btn">Cancel</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">74</i><b>Linyra AI page</b><span>An editor tab, one at a time: the AI switch, the profiles, and the form below them. With no profile it says how to start and opens the form. Keys never reach the page: a profile says only whether one is stored, and for which address.</span></div>
+    <div class="g"><i class="num">75</i><b>AI switch</b><span>linyra.ai.enabled as a VS Code switch, with what it means now (off: nothing is sent; on: which profile ✦ uses). More settings… opens the Settings editor at linyra.ai (exclude globs, prompt size, commit-message rules).</span></div>
+    <div class="g"><i class="num">76</i><b>Profile row</b><span>Its name (the model when the name does not say it), provider, address, thinking level and key. The one in use is marked In use; Use switches with one click; Edit opens the form; Remove… asks first.</span></div>
+    <div class="g"><i class="num">77</i><b>Remove confirmation</b><span>In the row itself: what goes (the API key, from VS Code's secret storage) and, for the profile in use, which one is used next. Remove or Cancel; Esc cancels.</span></div>
+    <div class="g"><i class="num">78</i><b>Profile form</b><span>Provider; address (Anthropic's and Gemini's own shown as text, presets for OpenAI, Ollama and LM Studio); API key (a password field, or Stored with Replace and Remove; a key entered for another address is never sent here); model (the provider's list as you type, ↓ opens it, any id works); thinking level (the levels the model takes); name; Use this profile. Errors show once a field is left; warnings never block Save.</span></div>
+    <div class="g"><i class="num">79</i><b>Test Connection report</b><span>Two steps in plain words: the model list (address and key), then one short answer from the model with its thinking level; for what failed, what to do next and the provider's own words. Stop ends a running test; a change to the form clears the report.</span></div>
+  </div>
+</section>
+
 <section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branches in the Repo List</b><span>Each repository's Local/Remote/Tags groups, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out. Branches Across Repositories… checks out, creates or merges one name in every ticked repository.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

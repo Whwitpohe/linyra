@@ -81,15 +81,45 @@ export function matchEol(content: string, sample: string): string {
   return crlf ? out.replace(/\n/g, "\r\n") : out;
 }
 
-/** What Accept writes, in the confirmation: the file, and that it is staged; the merge goes on only when the user continues it. */
-export function acceptPrompt(repo: string, path: string, op: Operation | undefined): { message: string; detail: string; button: string } {
-  const what = op === "rebase" ? localize("The rebase is not continued") : op === "cherry-pick" ? localize("The cherry-pick is not continued")
-    : op === "revert" ? localize("The revert is not continued") : localize("The merge is not continued");
+export type ReviewChoice = "accept" | "editor" | "skip" | "stop";
+
+export interface ReviewItem { id: ReviewChoice; label: string; description: string }
+
+/**
+ * One conflicted file's one decision, asked while the proposal and the file are side by side:
+ * Accept and Stage, Open in Merge Editor, Skip, and Stop while other files are left. Without a
+ * proposal (`reason` says why) there is nothing to accept. Esc is Skip: the run goes on.
+ */
+export function reviewStep(o: { repo: string; path: string; index: number; total: number; note?: string; reason?: string }): { title: string; placeHolder: string; items: ReviewItem[] } {
+  const left = o.total - o.index;
+  const items: ReviewItem[] = [];
+  if (o.reason === undefined) items.push({ id: "accept", label: `$(check) ${localize("Accept and Stage")}`, description: localize("write the proposal to the file and git add it") });
+  items.push(
+    { id: "editor", label: `$(git-merge) ${localize("Open in Merge Editor")}`, description: localize("resolve it yourself") },
+    { id: "skip", label: `$(arrow-right) ${localize("Skip")}`, description: localize("leave it conflicted (Esc)") },
+  );
+  if (left > 0) items.push({ id: "stop", label: `$(debug-stop) ${localize("Stop")}`, description: left === 1 ? localize("leave the last file for now") : localize("leave the other {0} files for now", left) });
   return {
-    message: localize("Write the proposed merge to {0} in {1} and stage it?", path, repo),
-    detail: localize("Linyra writes the file and runs git add on it. {0}: finish it in Source Control once every file is resolved.", what),
-    button: localize("Accept and Stage"),
+    title: o.total > 1 ? localize("Resolve Conflicts with AI ({0} of {1}): {2} in {3}", o.index, o.total, o.path, o.repo) : localize("Resolve Conflicts with AI: {0} in {1}", o.path, o.repo),
+    placeHolder: o.reason !== undefined ? localize("No proposal: {0}", o.reason)
+      : o.note ? localize("The model says: {0}", o.note) : localize("The proposal is on the left, the file on the right."),
+    items,
   };
+}
+
+/** The end of a run: how many files were staged, whether it stopped early, and that the operation is the user's to continue. */
+export function resolveReport(o: { accepted: number; reviewed: number; total: number; operations: readonly (Operation | undefined)[] }): string {
+  const ops = new Set(o.operations);
+  const op = ops.size === 1 ? [...ops][0] : "several";
+  const next = op === "rebase" ? localize("Continue the rebase in Source Control once every file is resolved.")
+    : op === "cherry-pick" ? localize("Continue the cherry-pick in Source Control once every file is resolved.")
+    : op === "revert" ? localize("Continue the revert in Source Control once every file is resolved.")
+    : op === "several" ? localize("Continue each repository's operation in Source Control once every file is resolved.")
+    : localize("Continue the merge in Source Control once every file is resolved.");
+  const done = o.reviewed < o.total
+    ? localize("Linyra AI: {0} of {1} conflicted files resolved and staged; stopped before the other {2}.", o.accepted, o.total, o.total - o.reviewed)
+    : localize("Linyra AI: {0} of {1} conflicted files resolved and staged.", o.accepted, o.total);
+  return `${done} ${next}`;
 }
 
 export const EXPLAIN_CONFLICTS_SYSTEM = `You explain predicted merge conflicts between two branches, without resolving them.

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { configureI18n } from "../../i18n";
-import { acceptPrompt, conflictTooLarge, explainConflictsRequest, matchEol, mergeRequest, parseMerge, sideLabels } from "./conflicts";
+import { conflictTooLarge, explainConflictsRequest, matchEol, mergeRequest, parseMerge, resolveReport, reviewStep, sideLabels } from "./conflicts";
 import { budgetDiffs } from "./context";
 import { fallbackNotes, notesRequest, parseNotes, renderNotes, type NotesSection } from "./releaseNotes";
 import { fileLink, parseReview, renderReview, reviewRequest, type ReviewWords } from "./review";
@@ -83,9 +83,26 @@ const signal = new AbortController().signal;
   assert.strictEqual(parseMerge("````merged\nhas ``` inside\n````", "")?.ok, true);
   assert.strictEqual(matchEol("a\nb", "x\n"), "a\nb\n");
   assert.strictEqual(matchEol("a\r\nb\n", "x"), "a\nb\n");
-  const p = acceptPrompt("acme-api", "src/upload.ts", "rebase");
-  assert.strictEqual(p.message, "Write the proposed merge to src/upload.ts in acme-api and stage it?");
-  assert.ok(p.detail.includes("git add") && p.detail.includes("The rebase is not continued"));
+  const first = reviewStep({ repo: "acme-api", path: "src/upload.ts", index: 1, total: 3, note: "kept both retries" });
+  assert.strictEqual(first.title, "Resolve Conflicts with AI (1 of 3): src/upload.ts in acme-api");
+  assert.strictEqual(first.placeHolder, "The model says: kept both retries");
+  assert.deepStrictEqual(first.items.map((i) => i.id), ["accept", "editor", "skip", "stop"], "one step: accept, the merge editor, skip, or stop the run");
+  assert.strictEqual(first.items[0].label, "$(check) Accept and Stage");
+  assert.ok(first.items[0].description.includes("git add"));
+  assert.strictEqual(first.items[3].description, "leave the other 2 files for now");
+  assert.strictEqual(reviewStep({ repo: "acme-api", path: "a.go", index: 2, total: 3 }).items[3].description, "leave the last file for now");
+  const lastOne = reviewStep({ repo: "acme-api", path: "a.go", index: 3, total: 3 });
+  assert.deepStrictEqual(lastOne.items.map((i) => i.id), ["accept", "editor", "skip"], "nothing left to stop before");
+  assert.strictEqual(lastOne.placeHolder, "The proposal is on the left, the file on the right.");
+  const none = reviewStep({ repo: "acme-web", path: "big.json", index: 1, total: 1, reason: "too large to send. Resolve it in the merge editor." });
+  assert.deepStrictEqual(none.items.map((i) => i.id), ["editor", "skip"], "no proposal: nothing to accept");
+  assert.strictEqual(none.title, "Resolve Conflicts with AI: big.json in acme-web");
+  assert.strictEqual(none.placeHolder, "No proposal: too large to send. Resolve it in the merge editor.");
+  assert.strictEqual(resolveReport({ accepted: 2, reviewed: 3, total: 3, operations: ["rebase"] }),
+    "Linyra AI: 2 of 3 conflicted files resolved and staged. Continue the rebase in Source Control once every file is resolved.");
+  assert.strictEqual(resolveReport({ accepted: 0, reviewed: 1, total: 4, operations: [undefined] }),
+    "Linyra AI: 0 of 4 conflicted files resolved and staged; stopped before the other 3. Continue the merge in Source Control once every file is resolved.");
+  assert.ok(resolveReport({ accepted: 1, reviewed: 2, total: 2, operations: ["merge", "cherry-pick"] }).endsWith("Continue each repository's operation in Source Control once every file is resolved."));
   const e = explainConflictsRequest("acme-web", "feature/login", "main", [{ path: "src/a.ts", base: "a", left: "b", right: undefined }], "en", signal);
   assert.ok((e.turns[0] as { content: string }).content.includes("merging feature/login into main") && (e.turns[0] as { content: string }).content.includes("main:\n(no such file on this side)"));
   console.log("ok - conflicts: ours/theirs named by operation, the merged block parsed (never with markers), line endings kept");

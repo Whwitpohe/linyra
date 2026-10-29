@@ -50,6 +50,11 @@ export class AiKeys {
     return parseSavedKey(await this.secrets.get(secretName(profileId)));
   }
 
+  /** Where the profile's stored key may be sent (scheme, host, port); undefined when none is stored. The key itself stays here. */
+  async storedOrigin(profileId: string): Promise<string | undefined> {
+    return (await this.saved(profileId))?.origin;
+  }
+
   /** The key to send to this profile's address; undefined when it has none. Throws when the key was entered for another address. */
   async keyFor(profile: AiProfile): Promise<string | undefined> {
     const saved = await this.saved(profile.id);

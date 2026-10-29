@@ -68,6 +68,9 @@ function webStream(source: Readable, res: http.IncomingMessage, signal: AbortSig
   });
 }
 
+/** The headers that carry an API key or a session (OpenAI, Anthropic, Gemini, proxies, cookies). */
+const CREDENTIAL_HEADERS = ["authorization", "x-api-key", "x-goog-api-key", "api-key", "proxy-authorization", "cookie"];
+
 export function nodeFetch(options: NodeFetchOptions = {}): FetchLike {
   const idle = options.idleTimeoutMs ?? 300_000;
   const maxRedirects = options.maxRedirects ?? 5;
@@ -110,7 +113,10 @@ export function nodeFetch(options: NodeFetchOptions = {}): FetchLike {
       const location = res.headers.location;
       if ([301, 302, 303, 307, 308].includes(status) && location && init.redirect !== "manual" && redirects < maxRedirects) {
         res.resume();
+        const from = url.origin;
         url = new URL(location, url);
+        // A key is only ever sent to the origin it was entered for: a redirect elsewhere goes without it.
+        if (url.origin !== from) for (const name of CREDENTIAL_HEADERS) headers.delete(name);
         if (status === 303 || ((status === 301 || status === 302) && method === "POST")) {
           if (method !== "HEAD") method = "GET";
           body = undefined;

@@ -1,10 +1,9 @@
 // The AiService every AI feature uses (registered in extension.ts): the active profile, its key,
 // the prompt-size check, the protocol adapter, answers shown as Markdown previews, and the
-// Configure / Switch / Remove commands.
+// Configure / Switch / Remove commands, which open the Linyra AI page (settingsPanel.ts).
 import * as vscode from "vscode";
 import { localize } from "../i18n";
 import { outputLog } from "../outputLog";
-import { AiConfigure } from "./configure";
 import { asAiError, cancelled } from "./errors";
 import { registerAi } from "./index";
 import { nodeFetch } from "./net";
@@ -13,6 +12,8 @@ import { estimateTokens, excludedBy, jsonText, overLimit, requestChars } from ".
 import { anthropicProvider } from "./providers/anthropic";
 import { geminiProvider } from "./providers/gemini";
 import { openAiProvider } from "./providers/openai";
+import { AiSettingsPage } from "./settingsPanel";
+import type { AiSettingsView } from "./settingsProtocol";
 import { AiKeys, readAiSettings } from "./store";
 import { AiError, type AiProfile, type AiProtocol, type AiProvider, type AiRequest, type AiResponse, type AiService } from "./types";
 
@@ -27,7 +28,8 @@ export function defaultProviders(): Record<AiProtocol, AiProvider> {
 export class LinyraAi implements AiService, vscode.Disposable {
   private readonly keys: AiKeys;
   private readonly documents = new AiDocuments();
-  private readonly flows: AiConfigure;
+  /** The Linyra AI page, made the first time a command opens it. */
+  private page: AiSettingsPage | undefined;
   private readonly changed = new vscode.EventEmitter<void>();
   /** Fires when linyra.ai.* changes (a profile, the active one, on or off). */
   readonly onDidChange = this.changed.event;
@@ -35,9 +37,8 @@ export class LinyraAi implements AiService, vscode.Disposable {
   private readonly allowedLarge = new WeakSet<AbortSignal>();
   private readonly disposables: vscode.Disposable[] = [];
 
-  constructor(context: vscode.ExtensionContext, private readonly providers: Readonly<Record<AiProtocol, AiProvider>> = defaultProviders()) {
+  constructor(private readonly context: vscode.ExtensionContext, private readonly providers: Readonly<Record<AiProtocol, AiProvider>> = defaultProviders()) {
     this.keys = new AiKeys(context.secrets);
-    this.flows = new AiConfigure({ providers, keys: this.keys });
     this.disposables.push(this.documents, this.changed, vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration("linyra.ai")) return;
       this.updateContext();
@@ -47,13 +48,39 @@ export class LinyraAi implements AiService, vscode.Disposable {
     registerAi(this);
   }
 
-  /** Configure AI…, Switch AI Model…, Remove AI Profile…. */
+  private settingsPage(): AiSettingsPage {
+    return (this.page ??= new AiSettingsPage({ extensionUri: this.context.extensionUri, providers: this.providers, keys: this.keys }));
+  }
+
+  /** The Linyra AI page: the add form while there is no profile, else the list. */
+  openSettings(view: AiSettingsView = readAiSettings().profiles.length > 0 ? { view: "list", focus: "active" } : { view: "add" }): void {
+    this.settingsPage().open(view);
+  }
+
+  /** Configure AI…, Switch AI Model…, Remove AI Profile…: each opens the Linyra AI page. */
   commands(): vscode.Disposable[] {
-    return [
-      vscode.commands.registerCommand("linyra.ai.configure", () => this.flows.configure()),
-      vscode.commands.registerCommand("linyra.ai.switchModel", () => this.flows.switchModel()),
-      vscode.commands.registerCommand("linyra.ai.removeProfile", () => this.flows.removeProfile()),
+    const commands = [
+      vscode.commands.registerCommand("linyra.ai.configure", () => this.openSettings()),
+      vscode.commands.registerCommand("linyra.ai.switchModel", () => this.openSettings(readAiSettings().profiles.length > 0 ? { view: "list", focus: "active" } : { view: "add" })),
+      vscode.commands.registerCommand("linyra.ai.removeProfile", () => this.openSettings({ view: "list", focus: "first" })),
     ];
+    // Test seam for the integration suite only; never registered for users. The key is compared here, never returned.
+    if (process.env.LINYRA_ITEST === "1") {
+      commands.push(
+        vscode.commands.registerCommand("linyra._itest.aiSettings", () => this.page?.snapshot() ?? { open: false, ready: false, visible: false, title: undefined, posted: [] }),
+        vscode.commands.registerCommand("linyra._itest.aiSettingsSend", (m: unknown) => this.settingsPage().onMessage(m)),
+        // ensureReady()'s wait, without its question: the page opens, and the answer comes when AI is ready or the page is left.
+        vscode.commands.registerCommand("linyra._itest.aiWaitReady", (ms?: number) => {
+          this.openSettings();
+          return this.settingsPage().untilReady(() => this.configured, ms);
+        }),
+        vscode.commands.registerCommand("linyra._itest.aiKeyIs", async (id: string, expected: string | undefined) => {
+          const saved = await this.keys.saved(id);
+          return { stored: !!saved, origin: saved?.origin, matches: saved?.key === expected };
+        }),
+      );
+    }
+    return commands;
   }
 
   get configured(): boolean {
@@ -81,7 +108,9 @@ export class LinyraAi implements AiService, vscode.Disposable {
     const configure = localize("Configure AI…");
     const message = s.profiles.length > 0 ? localize("Choose the AI profile to use first.") : localize("Linyra AI is not set up yet: choose a provider, a model and an API key first.");
     if (await vscode.window.showInformationMessage(message, configure) !== configure) return false;
-    return s.profiles.length > 0 ? await this.flows.switchModel() && this.configured : await this.flows.configure() && this.configured;
+    // The page stays open while the user fills it in: the feature goes on once a profile is in use, or stops when the page closes.
+    this.openSettings();
+    return this.settingsPage().untilReady(() => this.configured);
   }
 
   async ask(request: AiRequest): Promise<AiResponse> {
@@ -123,6 +152,7 @@ export class LinyraAi implements AiService, vscode.Disposable {
 
   dispose(): void {
     registerAi(undefined);
+    this.page?.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

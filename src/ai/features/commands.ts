@@ -22,7 +22,7 @@ import type { UncommittedStore } from "../../uncommittedStore";
 import { aiService } from "../index";
 import { AiError, type AiService } from "../types";
 import { cleanCommitMessage, cleanStashMessage, commitMessageRequest, stashMessageRequest, type CommitRepoInput } from "./commitMessage";
-import { acceptPrompt, conflictTooLarge, explainConflictsRequest, mergeRequest, parseMerge, type PredictedConflict } from "./conflicts";
+import { conflictTooLarge, explainConflictsRequest, mergeRequest, parseMerge, resolveReport, reviewStep, type PredictedConflict, type ReviewChoice, type ReviewItem } from "./conflicts";
 import { budgetDiffs, LIMITS, newFileDiff, splitPatch, type FileDiff, type Limits } from "./context";
 import { explainCommitsRequest, explainRangeRequest, explainWorkRequest, type CommitInput, type RangeInput } from "./explain";
 import {
@@ -332,6 +332,35 @@ export class AiFeatures {
   }
 
   /**
+   * Stash Changes…'s ✨ for a box of its own (src/stashBox.ts): undefined when this build has no AI.
+   * write() sets AI up first if it is not (the Linyra AI page), streams the message through onText
+   * and resolves to it; undefined when cancelled or not set up; throws an Error the box can show.
+   */
+  stashWriter(): { write(repo: Repo, untracked: boolean, signal: AbortSignal, onText: (text: string) => void): Promise<string | undefined> } | undefined {
+    if (!aiIfAny()) return undefined;
+    return {
+      write: async (repo, untracked, signal, onText) => {
+        const ai = await this.ready();
+        return ai && !signal.aborted ? this.writeStash(ai, repo, untracked, signal, onText) : undefined;
+      },
+    };
+  }
+
+  /** A stash message from the repository's uncommitted work (new files only when `untracked`), streamed through onText. */
+  private async writeStash(ai: AiService, repo: Repo, untracked: boolean, signal: AbortSignal, onText: (text: string) => void): Promise<string | undefined> {
+    try {
+      const work = this.deps.uncommitted.get(repo.id);
+      const files = work ? await this.workDiffs(ai, untracked ? work : { ...work, changes: work.changes.filter((f) => !f.untracked) }, signal) : [];
+      let text = "";
+      const res = await ai.ask(stashMessageRequest(repo.name, undefined, budgetDiffs(files, (p) => ai.excluded(p)), signal, (d) => { text += d; onText(cleanStashMessage(text)); }));
+      return cleanStashMessage(res.text || text) || undefined;
+    } catch (e) {
+      if (isCancel(e) || signal.aborted) return undefined;
+      throw new Error(localize("Linyra AI: {0}", messageOf(e)));
+    }
+  }
+
+  /**
    * Stash Changes…'s message box with a ✨ button that writes the message from the repository's
    * uncommitted work. The box is VS Code's own; while the model writes, it shows busy.
    */
@@ -368,14 +397,10 @@ export class AiFeatures {
         box.validationMessage = undefined;
         const before = box.value;
         try {
-          const work = this.deps.uncommitted.get(repo.id);
-          const files = work ? await this.workDiffs(ai, untracked ? work : { ...work, changes: work.changes.filter((f) => !f.untracked) }, ctl.signal) : [];
-          let text = "";
-          const res = await ai.ask(stashMessageRequest(repo.name, undefined, budgetDiffs(files, (p) => ai.excluded(p)), ctl.signal, (d) => { text += d; box.value = cleanStashMessage(text); }));
-          box.value = cleanStashMessage(res.text || text) || before;
+          box.value = (await this.writeStash(ai, repo, untracked, ctl.signal, (text) => { box.value = text; })) || before;
         } catch (e) {
           box.value = before;
-          if (!isCancel(e) && !ctl.signal.aborted) box.validationMessage = localize("Linyra AI: {0}", messageOf(e));
+          box.validationMessage = messageOf(e);
         } finally {
           box.busy = false;
         }
@@ -488,8 +513,8 @@ export class AiFeatures {
   /**
    * linyra.ai.resolveConflicts: every conflicted file of the right-clicked repository (or of every
    * repository with uncommitted work), one at a time: the model's merge beside the file as it is,
-   * then Accept (after a confirmation: write the file, git add), the merge editor, or Skip. The
-   * merge, rebase or cherry-pick itself is never continued.
+   * then one choice: Accept and Stage (write the file, git add), the merge editor, Skip, or Stop.
+   * Esc skips the file and the run goes on. The merge, rebase or cherry-pick itself is never continued.
    */
   async resolveConflicts(arg?: unknown): Promise<void> {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
@@ -500,24 +525,31 @@ export class AiFeatures {
     if (found.length === 0) { void vscode.window.showInformationMessage(localize("No conflicted files in the ticked repositories.")); return; }
     const ai = await this.ready();
     if (!ai) return;
-    let accepted = 0, total = 0;
-    for (const { work, files } of found) {
+    const total = found.reduce((n, f) => n + f.files.length, 0);
+    const operations: (Operation | undefined)[] = [];
+    let accepted = 0, reviewed = 0;
+    run: for (const { work, files } of found) {
       const op = await this.operation(work.root);
+      operations.push(op);
       const head = (await this.run(work.root, ["symbolic-ref", "--short", "-q", "HEAD"], ctl.signal).catch(() => "")).trim() || "HEAD";
-      for (const file of files) {
-        total++;
-        const step = await this.resolveOne(ai, work, file, op, head);
-        if (step === "stop") { await this.deps.uncommitted.readRepo(work.repoId); return this.resolvedReport(accepted, total); }
-        if (step === "accepted") accepted++;
+      try {
+        for (const file of files) {
+          const step = await this.resolveOne(ai, work, file, op, head, { index: reviewed + 1, total });
+          reviewed++;
+          if (step === "accepted") accepted++;
+          if (step === "stop") break run;
+        }
+      } finally {
+        await this.deps.uncommitted.readRepo(work.repoId);
       }
-      await this.deps.uncommitted.readRepo(work.repoId);
     }
-    this.resolvedReport(accepted, total);
+    this.lastConflictReport = resolveReport({ accepted, reviewed, total, operations });
+    const scm = localize("Open Source Control");
+    void vscode.window.showInformationMessage(this.lastConflictReport, scm).then((c) => (c === scm ? vscode.commands.executeCommand("workbench.view.scm") : undefined));
   }
 
-  private resolvedReport(accepted: number, total: number): void {
-    vscode.window.setStatusBarMessage(localize("Linyra AI: {0} of {1} conflicted files resolved and staged. Continue the merge in Source Control.", accepted, total), 10000);
-  }
+  /** Test seam: what the last Resolve Conflicts with AI said at its end. */
+  lastConflictReport: string | undefined;
 
   private async operation(root: string): Promise<Operation | undefined> {
     try {
@@ -537,14 +569,43 @@ export class AiFeatures {
     }
   }
 
-  private async resolveOne(ai: AiService, work: RepoWork, file: string, op: Operation | undefined, head: string): Promise<"accepted" | "skipped" | "stop"> {
+  /**
+   * A file's one choice. The list stays open while the diff beside it is read and scrolled; Esc,
+   * or closing it, is Skip. The integration suite answers through Ask's queue.
+   */
+  private chooseFor(step: { title: string; placeHolder: string; items: ReviewItem[] }): Promise<ReviewChoice> {
+    if (process.env.LINYRA_ITEST === "1") return this.deps.ask.pick(step.items, step.placeHolder).then((i) => (i === undefined ? "skip" : step.items[i].id));
+    return new Promise((resolve) => {
+      const qp = vscode.window.createQuickPick<ReviewItem>();
+      Object.assign(qp, { title: step.title, placeholder: step.placeHolder, items: step.items, ignoreFocusOut: true });
+      let done = false;
+      const finish = (choice: ReviewChoice) => {
+        if (done) return;
+        done = true;
+        resolve(choice);
+        qp.dispose();
+      };
+      qp.onDidAccept(() => finish(qp.selectedItems[0]?.id ?? qp.activeItems[0]?.id ?? "skip"));
+      qp.onDidHide(() => finish("skip"));
+      qp.show();
+    });
+  }
+
+  /** The proposal's diff, once its file is decided: the next file's opens in its place. */
+  private async closeProposal(proposal: vscode.Uri): Promise<void> {
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTextDiff && t.input.original.toString() === proposal.toString());
+    if (tabs.length > 0) await vscode.window.tabGroups.close(tabs);
+  }
+
+  private async resolveOne(ai: AiService, work: RepoWork, file: string, op: Operation | undefined, head: string, at: { index: number; total: number }): Promise<"accepted" | "skipped" | "stop"> {
     const uri = vscode.Uri.file(path.join(work.root, ...file.split("/")));
-    const toEditor = localize("Open in Merge Editor"), skip = localize("Skip");
-    const cannot = async (why: string): Promise<"skipped" | "stop"> => {
-      const choice = await vscode.window.showWarningMessage(localize("{0} in {1}: {2}", file, work.name, why), toEditor, skip);
-      if (choice === toEditor) await this.openMergeEditor(uri);
-      return choice === undefined ? "stop" : "skipped";
+    const decide = async (o: { note?: string; reason?: string }, proposal?: vscode.Uri): Promise<ReviewChoice> => {
+      const choice = await this.chooseFor(reviewStep({ repo: work.name, path: file, index: at.index, total: at.total, ...o }));
+      if (proposal) await this.closeProposal(proposal);
+      if (choice === "editor") await this.openMergeEditor(uri);
+      return choice;
     };
+    const cannot = async (why: string): Promise<"skipped" | "stop"> => ((await decide({ reason: why })) === "stop" ? "stop" : "skipped");
     if (ai.excluded(file)) return cannot(localize("excluded by linyra.ai.exclude, so it is not sent. Resolve it in the merge editor."));
     let current: string;
     try {
@@ -559,30 +620,19 @@ export class AiFeatures {
     if (conflictTooLarge(input)) return cannot(localize("too large to send. Resolve it in the merge editor."));
     let answer: string;
     try {
-      answer = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: localize("Linyra AI is merging {0}…", file), cancellable: true }, async (_p, token) => {
+      answer = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: localize("Linyra AI is merging {0} ({1} of {2})…", file, at.index, at.total), cancellable: true }, async (_p, token) => {
         token.onCancellationRequested(() => ctl.abort());
         return (await ai.ask(mergeRequest(input, ctl.signal))).text;
       });
     } catch (e) {
-      if (isCancel(e) || ctl.signal.aborted) return "stop";
-      return cannot(messageOf(e));
+      return cannot(isCancel(e) || ctl.signal.aborted ? localize("cancelled before the model answered.") : messageOf(e));
     }
     const merged = parseMerge(answer, current);
     if (!merged.ok) return cannot(merged.reason === "markers" ? localize("the proposal still has conflict markers.") : localize("the answer had no merged file."));
     const proposal = this.deps.mergeDocs.put(file, merged.content);
     await vscode.commands.executeCommand("vscode.diff", proposal, uri, localize("{0}: AI proposal ↔ file now ({1})", path.posix.basename(file), work.name), { preview: true });
-    const accept = localize("Accept…");
-    const items: (vscode.QuickPickItem & { id: "accept" | "editor" | "skip" })[] = [
-      { id: "accept", label: `$(check) ${accept}`, description: localize("write the proposal and stage the file") },
-      { id: "editor", label: `$(git-merge) ${toEditor}`, description: localize("resolve it yourself") },
-      { id: "skip", label: `$(arrow-right) ${skip}`, description: localize("leave it conflicted") },
-    ];
-    const picked = await vscode.window.showQuickPick(items, { title: localize("{0} in {1}", file, work.name), placeHolder: merged.note || localize("Compare the proposal with the file, then choose."), ignoreFocusOut: true });
-    if (!picked) return "stop";
-    if (picked.id === "editor") { await this.openMergeEditor(uri); return "skipped"; }
-    if (picked.id === "skip") return "skipped";
-    const p = acceptPrompt(work.name, file, op);
-    if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return "skipped";
+    const choice = await decide({ note: merged.note }, proposal);
+    if (choice !== "accept") return choice === "stop" ? "stop" : "skipped";
     try {
       await fs.writeFile(uri.fsPath, merged.content, "utf8");
       await this.run(work.root, ["add", "--", `:(literal)${file}`], new AbortController().signal);
