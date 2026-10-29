@@ -37,8 +37,8 @@ export function authorLabel(author: string, mine: boolean): string {
 }
 
 /** "3d ago (2026-09-20 12:00)": the row's relative time, and the moment it stands for. */
-export function whenLabel(now: number, time: number): string {
-  return `${relativeTime(now, time)} (${absoluteTime(time)})`;
+export function whenLabel(now: number, time: number, ago = relativeTime(now, time)): string {
+  return `${ago} (${absoluteTime(time)})`;
 }
 
 const BODY_LINES = 24;

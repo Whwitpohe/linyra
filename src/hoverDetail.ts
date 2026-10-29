@@ -34,6 +34,8 @@ export class HoverDetails {
   private ctl: AbortController | undefined;
   /** Each repository's merge target, for the HEAD commit it was read at (null: it has none). */
   private readonly targets = new Map<string, { sha: string; target: MergeTarget | null }>();
+  /** Whether linyra.ai.explainCommit is registered, once it is. */
+  private explainKnown: Promise<boolean> | undefined;
   /** Compare Branches with both sides filled in (extension.ts sets it: Compare is made after the Log). */
   compare: ((repoId: string, left: string, right: string) => Promise<void>) | undefined;
 
@@ -76,7 +78,11 @@ export class HoverDetails {
 
   private hasExplain(): Promise<boolean> {
     if (this.host.aiEnabled && !this.host.aiEnabled()) return Promise.resolve(false);
-    return Promise.resolve(this.host.commands.getCommands(true)).then((all) => all.includes(EXPLAIN_COMMAND), () => false);
+    // Every command VS Code knows, thousands: asked until Explain is there, then once is enough
+    // (a registered command stays for the session).
+    this.explainKnown ??= Promise.resolve(this.host.commands.getCommands(true)).then((all) => all.includes(EXPLAIN_COMMAND), () => false)
+      .then((found) => { if (!found) this.explainKnown = undefined; return found; });
+    return this.explainKnown;
   }
 
   private async mergeTarget(repo: Repo, sha: string, branch: string, signal: AbortSignal): Promise<MergeTarget | null> {

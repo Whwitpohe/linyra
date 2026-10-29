@@ -10,6 +10,7 @@ import { historyChangeCell, historySubjectNotes } from "./history";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
 import { accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
+import { avatarKey } from "./ui/authorDisc";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
 export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
@@ -42,12 +43,6 @@ export interface ListProps {
 
 const SKELETON_ROWS = 8;
 
-/** A commit node's own tooltip would sit on top of the hover card: the card says it all. Fold controls keep theirs. */
-function untitled(graph: SVGSVGElement): SVGSVGElement {
-  graph.querySelector(":scope > .graph-point:not(.graph-fold-control) > title")?.remove();
-  return graph;
-}
-
 
 /**
  * Virtualized commit grid. Only visible rows exist in the DOM. The grid is one
@@ -59,12 +54,21 @@ export class CommitList {
   private frame = 0;
   /** The repo column's width and its names' font, read once per layout change rather than on every scroll paint. */
   private column: { width: number; font: string; paddingX: number } | undefined;
+  /**
+   * The references cell's room and gap, and each pill's width by its look and text, read once per
+   * layout change: every row draws the same few pills (develop | origin, a tag), and reading one
+   * forces the frame's layout early. A scroll through pills already seen reads nothing.
+   */
+  private refRoom: { width: number; gap: number } | undefined;
+  private readonly refWidths = new Map<string, number>();
   private graph: CommitGraph = { rows: [], columns: 0 };
   /** Each row's parents as row indexes, extended page by page instead of rebuilt (fold segments and the graph share it). */
   private parents: ParentIndex | undefined;
   private graphWidth = 32;
   private accents: ReadonlyMap<string, number> = new Map();
   private segments: LinearSegment[] = [];
+  /** The same segments by id: a row finds its own without walking every segment of the history. */
+  private segmentById = new Map<string, LinearSegment>();
   private readonly collapsed = new Set<string>();
   private nodeSegments = new Map<number, string>();
   private edgeActions = new Map<string, FoldAction>();
@@ -99,14 +103,19 @@ export class CommitList {
     }, { passive: true });
     window.addEventListener("resize", () => {
       this.rowHeight = 0;
-      this.column = undefined;
+      this.forgetLayout();
       this.paint();
     });
     // Dragging a divider narrows the Log without a window resize: re-fit the repo names.
     new ResizeObserver(() => {
-      this.column = undefined;
+      this.forgetLayout();
       this.paint();
     }).observe(root);
+    // VS Code sets the theme's variables (the font, its size) on <html>: a change there resizes the text.
+    new MutationObserver(() => {
+      this.forgetLayout();
+      this.paint();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
     // Avatars arrive in batches after the rows that show their discs: AvatarFeed (avatars.ts) calls redraw() once per batch.
     root.addEventListener("keydown", (e) => this.onKey(e));
     body.addEventListener("click", (e) => {
@@ -160,6 +169,7 @@ export class CommitList {
     if (next.rows !== this.props.rows || next.historyPath !== this.props.historyPath) {
       this.parents = indexParents(next.rows, this.parents);
       this.segments = next.historyPath ? [] : linearSegments(next.rows, this.parents);
+      this.segmentById = new Map(this.segments.map((segment) => [segment.id, segment]));
       this.nodeSegments = segmentNodes(next.rows, this.segments);
       const available = new Set(this.segments.map((segment) => segment.id));
       for (const id of this.collapsed) if (!available.has(id)) this.collapsed.delete(id);
@@ -199,8 +209,19 @@ export class CommitList {
   }
 
   /** The rows on screen built again from the same props: new avatars arrived (avatars.ts), once per batch. */
-  redraw(): void {
-    this.paint();
+  redraw(changed?: ReadonlySet<string>): void {
+    if (!changed) { this.paint(); return; }
+    // Only the rows whose author's avatar arrived, and only where the graph draws that author's disc
+    // (a dense graph draws dots, which show no avatar): the rest of the screen stays as it is.
+    let dropped = false;
+    for (const [i, m] of this.mounted) {
+      const c = this.display.rows[i]?.commit;
+      if (!c || !changed.has(avatarKey(c.email)) || !m.el.querySelector(".author-disc")) continue;
+      m.el.remove();
+      this.mounted.delete(i);
+      dropped = true;
+    }
+    if (dropped) this.paint(true);
   }
 
   /** Combined Changes uses the visible order, never commits hidden in a folded path. */
@@ -268,6 +289,8 @@ export class CommitList {
     const { rows, selected, skeleton } = this.props;
     const rh = this.height();
     if (!scrolled || skeleton) {
+      // The graph's width (and the hash column, File History) set the references cell's room.
+      this.refRoom = undefined;
       this.graphWidth = graphWidthFor(this.graph.columns, this.root.clientWidth * 0.24);
       this.root.style.setProperty("--graph-width", `${this.graphWidth}px`);
       this.mounted.clear();
@@ -335,16 +358,36 @@ export class CommitList {
     for (const label of labels) label.textContent = fitName(font, label.dataset.name ?? "", width - paddingX);
   }
 
+  /** A resize, a divider drag or new props: what was measured may no longer hold. */
+  private forgetLayout(): void {
+    this.column = undefined;
+    this.refRoom = undefined;
+    this.refWidths.clear();
+  }
+
   /** Keep whole reference badges; summarize overflow instead of clipping the last branch. */
   private fitReferences(rows: readonly HTMLElement[]): void {
-    const groups = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".row-refs")]).map((group) => {
-      const badges = [...group.querySelectorAll<HTMLElement>(".row-ref")];
-      const more = group.querySelector<HTMLElement>(".row-ref-more")!;
-      return { badges, more, width: group.getBoundingClientRect().width,
-        widths: badges.map((badge) => badge.getBoundingClientRect().width),
-        moreWidth: more.getBoundingClientRect().width, gap: parseFloat(getComputedStyle(group).columnGap) || 0 };
-    });
-    for (const { badges, more, width, widths, moreWidth, gap } of groups) {
+    const cells = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".row-refs")]).map((group) => ({
+      badges: [...group.querySelectorAll<HTMLElement>(".row-ref")], more: group.querySelector<HTMLElement>(".row-ref-more")!, group }));
+    if (cells.length === 0) return;
+    const look = (el: HTMLElement) => `${el.className}\0${el.textContent}`;
+    // Reads first, all of them, and only what is not known yet: one early layout at most.
+    if (!this.refRoom) {
+      const group = cells[0].group, style = getComputedStyle(group);
+      const cell = group.parentElement!.getBoundingClientRect().width;
+      // The cell's max-width (refPills.css / styles.css): a share of the message column.
+      const max = style.maxWidth.endsWith("%") ? (cell * parseFloat(style.maxWidth)) / 100 : parseFloat(style.maxWidth) || cell;
+      this.refRoom = { width: max, gap: parseFloat(style.columnGap) || 0 };
+    }
+    for (const el of cells.flatMap((c) => [...c.badges, c.more])) {
+      const key = look(el);
+      if (!this.refWidths.has(key)) this.refWidths.set(key, el.getBoundingClientRect().width);
+    }
+    const { width: room, gap } = this.refRoom;
+    for (const { badges, more } of cells) {
+      const widths = badges.map((badge) => this.refWidths.get(look(badge)) ?? 0), moreWidth = this.refWidths.get(look(more)) ?? 0;
+      // What the cell takes before the fit: every pill and the "+N", up to its max-width.
+      const width = Math.min(room, widths.reduce((sum, size) => sum + size, 0) + gap * badges.length + moreWidth);
       if (widths.reduce((sum, size) => sum + size, 0) + gap * (badges.length - 1) <= width) {
         more.hidden = true;
         continue;
@@ -377,7 +420,8 @@ export class CommitList {
     const start = this.display.rows[displayIndex - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[displayIndex + 1]?.commit.repoId !== c.repoId;
     const showName = start || displayIndex === Math.floor(this.root.scrollTop / this.height());
-    const segmentId = this.nodeSegments.get(i), segment = this.segments.find((s) => s.id === segmentId);
+    const segmentId = this.nodeSegments.get(i), segment = segmentId === undefined ? undefined : this.segmentById.get(segmentId);
+    const ago = relativeTime(this.props.now, c.time);
     return h("div", {
       class: `row${focus ? " focus" : ""}${mine ? " mine" : ""}${offHead ? " off-head" : ""}`,
       role: "row",
@@ -393,9 +437,9 @@ export class CommitList {
     }, [
       h("span", { class: `repo-band accent-${accent}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name },
         showName ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),
-      untitled(renderGraph(this.graph.rows[displayIndex], c, this.graph.columns, this.graphWidth, this.height(), {
+      renderGraph(this.graph.rows[displayIndex], c, this.graph.columns, this.graphWidth, this.height(), {
         node: segment ? { id: segment.id, count: segment.hidden.length, expand: this.collapsed.has(segment.id) } : undefined, edges: this.edgeActions,
-      }, own)),
+      }, own),
       // No title tooltips on the subject, node, hash or date: the hover card shows all of it (hoverCard.ts).
       h("span", { class: "commit-message", role: "gridcell" }, [
         h("span", { class: "subject" }, [c.subject, ...(this.props.historyPath ? historySubjectNotes(c.file, this.props.historyPath) : [])]),
@@ -405,7 +449,7 @@ export class CommitList {
       this.props.historyPath ? historyChangeCell(c.file) : null,
       this.props.hashColumn ? h("span", { class: "hash", role: "gridcell" }, [c.sha.slice(0, 8)]) : null,
       h("span", { class: "author", role: "gridcell" }, [c.author]),
-      h("span", { class: "date", role: "gridcell", "aria-label": whenLabel(this.props.now, c.time) }, [relativeTime(this.props.now, c.time)]),
+      h("span", { class: "date", role: "gridcell", "aria-label": whenLabel(this.props.now, c.time, ago) }, [ago]),
     ]);
   }
 

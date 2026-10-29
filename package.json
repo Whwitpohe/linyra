@@ -2666,9 +2666,10 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run check:denylist && npm run bundle",
-    "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --target=node18",
-    "bundle": "npm run bundle:ext -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify && npm run bundle:commit -- --minify",
-    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap && npm run bundle:commit -- --sourcemap",
+    "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:@anthropic-ai/sdk --platform=node --format=cjs --target=node18",
+    "bundle:anthropic": "esbuild src/ai/providers/anthropicSdk.ts --bundle --outfile=out/anthropic.js --platform=node --format=cjs --target=node18",
+    "bundle": "npm run bundle:ext -- --minify && npm run bundle:anthropic -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify && npm run bundle:commit -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:anthropic -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap && npm run bundle:commit -- --sourcemap",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",

@@ -2,6 +2,7 @@
 # CHANGELOG.md ships on purpose — both registries render it.
 **
 !out/extension.js
+!out/anthropic.js
 !out/webview.js
 !out/webview.css
 !out/compare.js

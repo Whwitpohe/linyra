@@ -9,27 +9,27 @@ import { h } from "../dom";
  */
 const SVG_NS = "http://www.w3.org/2000/svg";
 const avatars = new Map<string, string>();
-const listeners = new Set<() => void>();
+const listeners = new Set<(changed: ReadonlySet<string>) => void>();
 
-const key = (email: string) => email.trim().toLowerCase();
+export const avatarKey = (email: string): string => email.trim().toLowerCase();
 
-/** Avatars the host resolved (email → data: URI). Callers re-render once, after a batch. */
+/** Avatars the host resolved (email → data: URI). Listeners hear once per batch, with the emails (avatarKey) that changed. */
 export function setAvatars(byEmail: Record<string, string>): void {
-  let changed = false;
+  const changed = new Set<string>();
   for (const [email, uri] of Object.entries(byEmail)) {
-    if (avatars.get(key(email)) === uri) continue;
-    avatars.set(key(email), uri);
-    changed = true;
+    if (avatars.get(avatarKey(email)) === uri) continue;
+    avatars.set(avatarKey(email), uri);
+    changed.add(avatarKey(email));
   }
-  if (changed) for (const listener of listeners) listener();
+  if (changed.size > 0) for (const listener of listeners) listener(changed);
 }
 
 export function avatarFor(email: string): string | undefined {
-  return avatars.get(key(email));
+  return avatars.get(avatarKey(email));
 }
 
-/** Called after setAvatars changed something: redraw what shows discs. */
-export function onAvatars(listener: () => void): () => void {
+/** Called after setAvatars changed something: redraw what shows these authors' discs. */
+export function onAvatars(listener: (changed: ReadonlySet<string>) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

@@ -19,7 +19,7 @@ export class AvatarFeed {
     private readonly rows: HTMLElement,
     private readonly authorAt: (index: number) => { email: string; repoId: string } | undefined,
     private readonly post: (m: WebviewMessage) => void,
-    redraw: () => void,
+    redraw: (changed: ReadonlySet<string>) => void,
   ) {
     // The list adds and removes rows as it scrolls and repaints: that is when the authors may change.
     new MutationObserver(() => {
