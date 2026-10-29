@@ -27,11 +27,13 @@ test("a wide Repo List names every branch, its * + !, and a stopped merge with i
   // acme-libs is on another branch (marked) and stopped in a merge with 2 conflicts.
   await expect(libs.locator(".repo-branch")).toHaveClass(/drift/);
   await expect(libs.locator(".repo-branch")).toHaveText("feature/login");
-  await expect(libs.locator(".repo-op")).toHaveText("merging2");
+  await expect(libs.locator(".op-word")).toHaveText("merging");
+  await expect(libs.locator(".op-count")).toHaveText("2 conflicts");
   expect(await shown(libs.locator(".op-word"))).toBe(true);
+  expect(await shown(libs.locator(".op-noun"))).toBe(true);
   expect(await shown(libs.locator(".repo-work")), "the badge says it: no * + ! beside it").toBe(false);
-  await expect(libs).toHaveAttribute("title", /On branch feature\/login\nMost of the ticked repositories are on develop\.\nUncommitted: changes, staged changes\nMerge stopped: 2 files have conflicts/);
-  await expect(libs).toHaveAttribute("aria-label", /acme-libs, feature\/login, merging · 2/);
+  await expect(libs).toHaveAttribute("title", /On branch feature\/login\nMost of the ticked repositories are on develop\.\nUncommitted: modified \(\*\), staged \(\+\)\nMerge stopped: 2 files have conflicts \(!\)/);
+  await expect(libs).toHaveAttribute("aria-label", /^acme-libs, On branch feature\/login, Most of the ticked repositories are on develop\. Uncommitted: modified, staged, Merge stopped: 2 files have conflicts\. /);
   expect(await contextOf(libs)).toMatchObject({ webviewSection: "repo", repoId: "/work/acme-libs", operation: "merge", conflicts: true });
   expect(await contextOf(web)).not.toHaveProperty("operation");
   expect(errors).toEqual([]);
@@ -44,6 +46,7 @@ test("a narrow Repo List keeps the names whole: only a differing branch, as an i
   await expect(web.locator(".repo-work")).toHaveText("*");
   expect(await shown(libs.locator(".op-word"))).toBe(false);
   expect(await shown(libs.locator(".op-count"))).toBe(true);
+  expect(await shown(libs.locator(".op-noun")), "narrow: the count alone").toBe(false);
   expect(await shown(libs.locator(".repo-branch"))).toBe(false);
   // A detached HEAD differs from develop: its branch icon, the commit in the tooltip.
   const detached = page.locator("#repo-rows .repo-row:not(:has(.repo-op)) .repo-branch.drift").first();

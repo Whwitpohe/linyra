@@ -153,7 +153,7 @@ body.vscode-high-contrast .profile-row.current { outline: 1px dashed var(--vscod
   .repo-row:has(.repo-op) .repo-branch { display: none; }
 }
 @container (max-width: 279px) {
-  .repo-branch:not(.drift), .op-word, .repo-row:has(.repo-op) .repo-sync { display: none; }
+  .repo-branch:not(.drift), .op-word, .op-noun, .repo-row:has(.repo-op) .repo-sync { display: none; }
   .op-count::before { content: none; }
   /* A branch that differs: its icon, the name in the tooltip. */
   .repo-branch.drift { flex: none; margin-left: -4px; }
