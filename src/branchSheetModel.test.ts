@@ -3,7 +3,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { nextSteps, parseSheetRef, sheetRefArgs, targetCard, upstreamCard, type BranchSheetData } from "./branchSheetModel";
+import { acrossActions, acrossRow, acrossState, acrossSummary, acrossText, nextSteps, parseSheetRef, sheetRefArgs, targetCard, upstreamCard, type AcrossRow, type BranchSheetData } from "./branchSheetModel";
 import { gitEnv, makeRepo } from "./fixtures";
 
 const base: BranchSheetData = { repoId: "/w/acme-web", repoName: "acme-web", ref: "refs/heads/develop", name: "develop", kind: "local", current: true, tip: { sha: "a".repeat(40), subject: "s", author: "dana", time: 1 }, ai: false };
@@ -101,4 +101,20 @@ const labels = (c: ReturnType<typeof upstreamCard>) => c?.buttons.map((b) => `${
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
+}
+
+{
+  const r = (name: string, x: Partial<AcrossRow>) => ({ repoId: `/w/${name}`, repoName: name, has: true, upstream: "origin/develop", ahead: 0, behind: 0, ...x });
+  const rows = [r("acme-web", { current: true, ahead: 2 }), r("acme-api", { behind: 3 }), r("acme-libs", { ahead: 1, behind: 1 }), r("acme-docs", {}), { repoId: "/w/acme-svc", repoName: "acme-svc", has: false }];
+  assert.deepStrictEqual(rows.map((x) => acrossText("local", x)), ["↑2", "↓3", "↑1 ↓1 diverged", "up to date", "not on a remote"]);
+  assert.strictEqual(acrossSummary("local", "develop", rows), "develop is in 4 of 5 repositories: 1 checked out · 1 with commits to push · 1 with commits to pull · 1 diverged.");
+  assert.strictEqual(acrossSummary("local", "develop", [r("acme-web", {}), r("acme-api", {})]), "develop is in 2 of 2 repositories, all up to date.");
+  assert.strictEqual(acrossSummary("tag", "v1.4.0", rows), "v1.4.0 is in 4 of 5 repositories.");
+  assert.strictEqual(acrossSummary("local", "spike", [{ repoId: "/w/a", repoName: "a", has: false }]), "spike is in no other ticked repository.");
+  assert.deepStrictEqual([acrossState("local", r("x", { gone: true })), acrossState("remote", r("x", { ahead: 3 }))], ["gone", "present"]);
+  assert.deepStrictEqual(acrossActions("local", rows).map((a) => a.action), ["acrossCheckout", "pushAll", "updateProject"]);
+  assert.deepStrictEqual(acrossActions("local", [r("acme-web", { current: true })]), [], "checked out everywhere, nothing to push or pull: nothing to do");
+  assert.deepStrictEqual(acrossActions("tag", rows), []);
+  assert.deepStrictEqual(acrossRow({ id: "/w/a", name: "a" }, undefined), { repoId: "/w/a", repoName: "a", has: false });
+  console.log("ok - Across repositories: each repository's state, the one-line summary, and what it offers");
 }

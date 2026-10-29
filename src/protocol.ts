@@ -11,6 +11,7 @@ import type { KindCounts } from "./changeKinds";
 import type { BranchStatus } from "./workingTree";
 import type { RepoMark } from "./repoMarkModel";
 import type { ColumnPrefs } from "./webview/logColumns";
+import type { AcrossRow } from "./branchSheetModel";
 import type { BranchSheetData, SheetAction } from "./branchSheetModel";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
@@ -116,7 +117,7 @@ export type HostMessage =
   /** What Linyra AI made of an aiSearch: the operator query for the box, or why there is none. */
   | { type: "aiSearchResult"; text: string; query?: string; error?: string }
   /** A branch pill's sheet: the branch read (or gone, or why it could not be read). */
-  | { type: "branchSheet"; repoId: string; ref: string; data?: BranchSheetData; missing?: true; error?: string }
+  | { type: "branchSheet"; repoId: string; ref: string; data?: BranchSheetData; missing?: true; error?: string; across?: AcrossRow[] }
   /** A pill's Show Branch Details (its right-click, the keyboard's way in): open its sheet, focused. */
   | { type: "branchSheetShow"; repoId: string; ref: string };
 

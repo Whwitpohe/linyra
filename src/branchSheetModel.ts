@@ -70,7 +70,7 @@ export interface BranchSheetData {
 
 /** The buttons a card or step can carry; each runs one of Linyra's existing commands. */
 export type SheetAction = "fetch" | "push" | "pull" | "forcePush" | "publish" | "merge" | "rebase" | "review" | "delete" | "switch" | "openWorktree" | "explain" | "createBranch" | "pushTag"
-  | "history" | "compareWith" | "setUpstream";
+  | "history" | "compareWith" | "setUpstream" | "across" | "acrossCheckout" | "pushAll" | "updateProject";
 
 /** A next step's icon (VS Code's codicons the webview bundles). */
 export type StepIcon = "arrow-swap" | "folder" | "sparkle" | "history" | "git-compare" | "git-branch" | "git-commit" | "cloud-download" | "diff" | "repo-push";
@@ -208,4 +208,80 @@ export function nextSteps(d: BranchSheetData): SheetStep[] {
   steps.push(history, step("Compare it with another branch", "compareWith", "Compare…", "git-compare"));
   if (d.current) steps.push(step("Create a branch from it", "createBranch", "Create Branch…", "git-branch"));
   return steps;
+}
+
+/**
+ * The same ref in one ticked repository (the sheet's Across repositories card): whether it has it,
+ * and for a local branch where it stands against its upstream.
+ */
+export interface AcrossRow {
+  repoId: string;
+  repoName: string;
+  has: boolean;
+  current?: boolean;
+  upstream?: string | null;
+  ahead?: number;
+  behind?: number;
+  gone?: boolean;
+  /** The tip's commit time (a remote branch's or a tag's only line). */
+  time?: number;
+}
+
+export function acrossRow(repo: { id: string; name: string }, r: SheetRef | undefined): AcrossRow {
+  if (!r) return { repoId: repo.id, repoName: repo.name, has: false };
+  return { repoId: repo.id, repoName: repo.name, has: true, current: r.current, upstream: r.upstream, ahead: r.ahead, behind: r.behind, gone: r.gone, time: r.time };
+}
+
+export type AcrossState = "diverged" | "ahead" | "behind" | "gone" | "unpublished" | "upToDate" | "present";
+
+/** Where a local branch stands in one repository; a remote branch or a tag is only there. */
+export function acrossState(kind: SheetKind, row: AcrossRow): AcrossState {
+  if (kind !== "local") return "present";
+  if (row.gone) return "gone";
+  if (!row.upstream) return "unpublished";
+  const ahead = row.ahead ?? 0, behind = row.behind ?? 0;
+  return ahead > 0 && behind > 0 ? "diverged" : ahead > 0 ? "ahead" : behind > 0 ? "behind" : "upToDate";
+}
+
+/** A row's words: "↑2 ↓1 diverged", "↑2", "↓1", "gone", "not published", "up to date". */
+export function acrossText(kind: SheetKind, row: AcrossRow): string {
+  const ahead = row.ahead ?? 0, behind = row.behind ?? 0;
+  switch (acrossState(kind, row)) {
+    case "diverged": return localize("↑{0} ↓{1} diverged", ahead, behind);
+    case "ahead": return `↑${ahead}`;
+    case "behind": return `↓${behind}`;
+    case "gone": return localize("gone on the remote");
+    case "unpublished": return localize("not on a remote");
+    case "upToDate": return localize("up to date");
+    case "present": return "";
+  }
+}
+
+/**
+ * The card's one line: "develop is in 12 of 68 repositories: 3 checked out · 2 with commits to
+ * push · 1 diverged." (a remote branch or a tag: where it is, nothing more).
+ */
+export function acrossSummary(kind: SheetKind, name: string, rows: readonly AcrossRow[]): string {
+  const have = rows.filter((r) => r.has);
+  if (have.length === 0) return localize("{0} is in no other ticked repository.", name);
+  const where = localize("{0} is in {1} of {2} repositories", name, have.length, rows.length);
+  if (kind !== "local") return `${where}.`;
+  const count = (state: AcrossState) => have.filter((r) => acrossState(kind, r) === state).length;
+  const parts = [
+    [have.filter((r) => r.current).length, "{0} checked out"],
+    [count("ahead"), "{0} with commits to push"], [count("behind"), "{0} with commits to pull"], [count("diverged"), "{0} diverged"],
+    [count("gone"), "{0} gone on the remote"], [count("unpublished"), "{0} not on a remote"],
+  ].filter(([n]) => (n as number) > 0).map(([n, text]) => localize(text as string, n as number));
+  return parts.length ? localize("{0}: {1}.", where, parts.join(" · ")) : localize("{0}, all up to date.", where);
+}
+
+/** What the card offers once it is read: each runs one existing command across the repositories. */
+export function acrossActions(kind: SheetKind, rows: readonly AcrossRow[]): { action: SheetAction; label: string }[] {
+  if (kind !== "local") return [];
+  const have = rows.filter((r) => r.has);
+  return [
+    ...(have.some((r) => !r.current) ? [{ action: "acrossCheckout" as const, label: localize("Check Out Everywhere…") }] : []),
+    ...(have.some((r) => (r.ahead ?? 0) > 0) ? [{ action: "pushAll" as const, label: localize("Push…") }] : []),
+    ...(have.some((r) => (r.behind ?? 0) > 0) ? [{ action: "updateProject" as const, label: localize("Update Project…") }] : []),
+  ];
 }

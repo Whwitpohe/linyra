@@ -224,3 +224,25 @@ test("a narrow Changes view: buttons wrap, nothing spills out of the sheet", asy
   const spill = await sheet(page).evaluate((el) => [...el.querySelectorAll("*")].filter((c) => c.getBoundingClientRect().right > el.getBoundingClientRect().right + 1).map((c) => c.className));
   expect(spill).toEqual([]);
 });
+
+test("Across repositories: read only when asked; each repository's state, the rest in one line, its actions; a row opens that repository's sheet", async ({ page }) => {
+  const errors = await open(page);
+  await pill(page, "refs/heads/develop").click();
+  const across = card(page, "Across repositories");
+  await expect(across.locator(".card-status")).toHaveText("Where develop is in the other ticked repositories, and how it stands there.");
+  expect((await sent(page)).filter((m) => m.action === "across"), "never read on its own").toHaveLength(0);
+  await across.locator(".sheet-button", { hasText: "Show in All Repositories" }).click();
+  await expect(across.locator(".card-status")).toHaveText("develop is in 2 of 3 repositories: 1 checked out · 1 with commits to push · 1 with commits to pull.");
+  await expect(across.locator(".across-row .across-name")).toHaveText(["acme-web", "acme-api"]);
+  await expect(across.locator(".across-row .across-state")).toHaveText(["↑2", "↓3"]);
+  await expect(across.locator(".across-row.here")).toContainText("acme-web");
+  await expect(across.locator(".card-hint")).toHaveText("Not in acme-libs.");
+  expect(await buttons(across.locator(".card-buttons"))).toEqual(["Check Out Everywhere…", "Push…", "Update Project…"]);
+  await across.locator(".sheet-button", { hasText: "Check Out Everywhere…" }).click();
+  await expect.poll(async () => (await sent(page)).map((m) => m.action)).toContain("acrossCheckout");
+  // A row: that repository's sheet of the same branch.
+  await across.locator(".across-row", { hasText: "acme-api" }).click();
+  await expect(sheet(page).locator(".sheet-repo")).toHaveText("acme-api");
+  expect((await sent(page)).filter((m) => m.action === "open").at(-1)).toMatchObject({ repoId: "/work/acme-api", ref: "refs/heads/develop" });
+  expect(errors).toEqual([]);
+});

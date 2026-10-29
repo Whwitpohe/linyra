@@ -158,7 +158,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const multiRepo = new MultiRepo({ viewId: LogView.id, repos: () => log.tickedRepos(), run: log.countedRun, ask,
     fetchAll: () => log.upstream.fetchAll(), changed: (ids) => log.reposChanged(ids), state: context.globalState });
   context.subscriptions.push(
-    vscode.commands.registerCommand("linyra.branchesAcross", () => multiRepo.branches()),
+    // { name }: the branch sheet's Check Out Everywhere… (asks first); else the picker of all three.
+    vscode.commands.registerCommand("linyra.branchesAcross", (arg?: { name?: unknown }) => (typeof arg?.name === "string" ? multiRepo.checkoutNamed(arg.name) : multiRepo.branches())),
     vscode.commands.registerCommand("linyra.pushAll", () => multiRepo.push()),
     vscode.commands.registerCommand("linyra.tagAcross", () => multiRepo.tags()),
     vscode.commands.registerCommand("linyra.updateProject", () => multiRepo.update()),
@@ -450,6 +451,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.operationError", () => { const e = operations.lastError; operations.lastError = undefined; return e; }),
       vscode.commands.registerCommand("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
       vscode.commands.registerCommand("linyra._itest.branchSheet", () => log.branchSheet.last),
+      vscode.commands.registerCommand("linyra._itest.branchSheetAcross", () => log.branchSheet.lastAcross),
       vscode.commands.registerCommand("linyra._itest.patch", (file?: string) => { patches.testFile = file; const m = patches.lastMessage; patches.lastMessage = undefined; return m; }),
       vscode.commands.registerCommand("linyra._itest.asked", () => uncommittedActions.ask.asked),
       vscode.commands.registerCommand("linyra._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedActions.ask.beforeAnswer = f)),

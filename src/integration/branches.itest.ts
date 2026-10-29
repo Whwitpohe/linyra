@@ -166,6 +166,29 @@ describe("Branch sidebar", () => {
     assert.strictEqual(await sheetData(), undefined);
   });
 
+  it("Across repositories: the branch in every ticked repository, one for-each-ref each, only when asked; Check Out Everywhere asks first", async () => {
+    const send = (action: string) => vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action, repoId, ref: "refs/heads/ui-feature" });
+    const spawns = async () => (await snapshot()).spawnLog;
+    await send("open");
+    const opened = (await spawns()).length;
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.branchSheetAcross"), undefined, "opening the sheet reads no other repository");
+    await send("across");
+    const rows = await vscode.commands.executeCommand<{ repoId: string; has: boolean; current?: boolean }[]>("linyra._itest.branchSheetAcross");
+    const s = await snapshot();
+    const ticked = s.filter.repoIds === null ? s.repos : s.repos.filter((r) => s.filter.repoIds!.includes(r.id));
+    assert.strictEqual(rows?.length, ticked.length, "every ticked repository");
+    assert.deepStrictEqual(rows?.filter((r) => r.has).map((r) => r.repoId), [repoId], "ui-feature is acme-api's alone");
+    const reads = (await spawns()).slice(opened).filter((x) => x.cmd === "for-each-ref");
+    assert.strictEqual(reads.length, ticked.length, "one for-each-ref per repository");
+    // Check Out Everywhere: the usual question first; declined, nothing moves.
+    const head = git(["rev-parse", "--abbrev-ref", "HEAD"]);
+    await answer("Cancel");
+    await send("acrossCheckout");
+    assert.match(String(await vscode.commands.executeCommand("linyra._itest.lastWarning")), /^Check out ui-feature in 1 /);
+    assert.strictEqual(git(["rev-parse", "--abbrev-ref", "HEAD"]), head);
+    await send("close");
+  });
+
   it("Change Upstream… sets what a local branch tracks, picked from its remote branches; Stop Tracking clears it", async () => {
     git(["fetch", "-q", "branch-test"]);
     git(["update-ref", "refs/heads/track-me", beforeHead]);

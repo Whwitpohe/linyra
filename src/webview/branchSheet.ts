@@ -1,5 +1,5 @@
 import "./branchSheet.css";
-import { kindLabel, nextSteps, targetCard, upstreamCard, worktreeName, type BranchSheetData, type SheetAction, type SheetCard, type SheetKind } from "../branchSheetModel";
+import { acrossActions, acrossState, acrossSummary, acrossText, kindLabel, nextSteps, targetCard, upstreamCard, worktreeName, type AcrossRow, type BranchSheetData, type SheetAction, type SheetCard, type SheetKind } from "../branchSheetModel";
 import { localize } from "../i18n";
 import type { HostMessage, WebviewMessage } from "../protocol";
 import { codiconElement } from "./codicons";
@@ -25,6 +25,8 @@ export class BranchSheetView {
   /** Read out once the sheet is read (opening it moves nothing a screen reader would notice). */
   private readonly announce = h("div", { class: "sheet-announce", role: "status" });
   private shown: { repoId: string; ref: string; focus: boolean } | undefined;
+  /** The sheet's data, for the Across repositories card drawn when its read arrives. */
+  private data: BranchSheetData | undefined;
 
   constructor(private readonly post: (m: WebviewMessage) => void, private readonly host: {
     /** The Repo List's place for the branch (the pill click's old meaning, now the sheet's first button). */
@@ -41,6 +43,11 @@ export class BranchSheetView {
       // A card's branch name: that branch's own sheet (from the keyboard, the focus goes with it).
       const link = (e.target as Element).closest<HTMLButtonElement>("button[data-open]");
       if (link && this.shown) { this.open(this.shown.repoId, link.dataset.open!, e.detail === 0); return; }
+      // Across repositories: a row is that repository's sheet of the same ref.
+      const other = (e.target as Element).closest<HTMLButtonElement>("button[data-open-repo]");
+      if (other && this.shown) { this.open(other.dataset.openRepo!, this.shown.ref, e.detail === 0); return; }
+      const read = (e.target as Element).closest<HTMLButtonElement>('button[data-action="across"]');
+      if (read) { read.disabled = true; read.textContent = localize("Reading the ticked repositories…"); }
       const button = (e.target as Element).closest<HTMLButtonElement>("button[data-action]");
       if (!button || !this.shown) return;
       const { repoId, ref } = this.shown;
@@ -90,11 +97,12 @@ export class BranchSheetView {
 
   receive(m: SheetMessage): void {
     if (!this.shown || this.shown.repoId !== m.repoId || this.shown.ref !== m.ref) return;
+    if (m.across) { this.showAcross(m.across); return; }
     const head = { kind: kindOf(m.ref), name: nameOf(m.ref), repoId: m.repoId, current: m.data?.current ?? false, worktree: m.data?.worktree };
     const gone = localize("This branch no longer exists.");
     if (m.missing) { this.render(head, [h("p", { class: "sheet-note" }, [gone])]); this.say(gone); return; }
     if (m.error || !m.data) { this.render(head, [h("p", { class: "sheet-note error" }, [localize("Linyra could not read the branch: {0}", m.error ?? "")])]); return; }
-    const d = m.data;
+    const d = this.data = m.data;
     // One thing to do next: the first card's primary button stays primary, later ones are secondary.
     let primaryShown = false;
     const shownCards = [upstreamCard(d), targetCard(d)].filter((c): c is SheetCard => !!c);
@@ -109,10 +117,42 @@ export class BranchSheetView {
       ...cards,
       this.group({ title: localize("Next steps") }, steps.map((s) => h("div", { class: "sheet-step" }, [
         h("span", { class: "step-icon", "aria-hidden": "true" }, [codiconElement(s.icon)]), h("span", { class: "step-text" }, [s.text]), this.button(s.action, s.label)])), "sheet-steps"),
+      // Where else the ref is: read when asked (one git process per ticked repository).
+      this.group({ title: localize("Across repositories") }, [
+        h("p", { class: "card-status" }, [localize("Where {0} is in the other ticked repositories, and how it stands there.", d.name)]),
+        h("div", { class: "card-buttons" }, [this.button("across", localize("Show in All Repositories"))]),
+      ], "sheet-across"),
     ]);
     // "Branch develop. Diverged, origin/develop. 2 files conflict, origin/main."
     this.say([`${kindLabel(d.kind)} ${d.name}`, ...shownCards.map((c) => [c.chip?.text ?? c.status, c.subject].filter(Boolean).join(", "))].join(". "));
     if (this.shown.focus) { this.shown.focus = false; this.root.focus(); }
+  }
+
+  /** Across repositories, read: the summary, each repository that has the ref, the rest in one line, what to do. */
+  private showAcross(rows: readonly AcrossRow[]): void {
+    const d = this.data, card = this.root.querySelector<HTMLElement>(".sheet-across");
+    if (!d || !card) return;
+    const have = rows.filter((r) => r.has), missing = rows.filter((r) => !r.has);
+    const summary = acrossSummary(d.kind, d.name, rows);
+    const list = h("ul", { class: "across-list" }, have.map((r) => h("li", {}, [
+      h("button", { type: "button", class: `across-row${r.repoId === d.repoId ? " here" : ""}`, "data-open-repo": r.repoId,
+        title: localize("Show {0} in {1}", d.name, r.repoName) }, [
+        h("span", { class: `repo-dot accent-${this.host.accent(r.repoId)}`, "aria-hidden": "true" }),
+        h("span", { class: "across-name" }, [r.repoName]),
+        r.current ? h("span", { class: "sheet-badge" }, [localize("checked out")]) : null,
+        h("span", { class: `across-state ${acrossState(d.kind, r)}` }, [acrossText(d.kind, r)]),
+      ]),
+    ])));
+    const names = missing.map((r) => r.repoName).join(", ");
+    const actions = acrossActions(d.kind, rows);
+    card.replaceChildren(...[
+      card.querySelector(".card-title"),
+      h("p", { class: "card-status" }, [summary]),
+      have.length ? list : null,
+      missing.length ? h("p", { class: "card-hint", title: names }, [missing.length <= 4 ? localize("Not in {0}.", names) : localize("Not in {0} other repositories.", missing.length)]) : null,
+      actions.length ? h("div", { class: "card-buttons" }, actions.map((a) => this.button(a.action, a.label))) : null,
+    ].filter((x): x is Element => !!x));
+    this.say(summary);
   }
 
   private say(text: string): void {

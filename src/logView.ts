@@ -245,6 +245,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       currentBranch: (id) => this.marks.get(id)?.branch ?? undefined,
       compare: (repoId, left, right) => this.hover.compare?.(repoId, left, right),
       execute: (command, arg) => vscode.commands.executeCommand(command, arg),
+      ticked: () => this.tickedRepos(), concurrency: () => this.settings().maxConcurrency,
     });
     this.profiles = new ProfileController({
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg),

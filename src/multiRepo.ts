@@ -40,7 +40,7 @@ const METHOD_NAMES: Record<UpdateMethod, string> = { merge: "merge", rebase: "re
 const PUSH_TAGS = "linyra.tagAcross.push";
 
 /** A branch action's name given beforehand, and the repositories it is kept to. */
-interface Preset { name: string; only?: ReadonlySet<string> }
+interface Preset { name: string; only?: ReadonlySet<string>; /** Ask before checking out (a preset from Ask AI was confirmed already). */ confirm?: boolean }
 
 /**
  * What one action did across the repositories (also the integration suite's answer). `stopped`:
@@ -79,6 +79,11 @@ export class MultiRepo {
     return this.exclusive(() => (kind === "checkout" ? this.checkout(preset) : kind === "create" ? this.create(preset) : this.merge(preset)));
   }
 
+  /** Check out `name` in every ticked repository that has it, after the usual confirmation (the branch sheet). */
+  checkoutNamed(name: string): Promise<MultiResult | undefined> {
+    return this.exclusive(() => this.checkout({ name, confirm: true }));
+  }
+
   private async checkout(preset?: Preset): Promise<MultiResult | undefined> {
     const all = await this.read(preset?.only);
     const name = preset?.name ?? await this.pickShared(all, localize("Branch to check out in every repository"));
@@ -87,7 +92,7 @@ export class MultiRepo {
     const act = steps.filter((s) => s.step === "local" || s.step === "track");
     const missing = steps.filter((s) => s.step === "missing").map((s) => s.repo.name);
     if (!act.length) return this.report(localize("Check out {0}", name), "checkout", { done: [], unchanged: steps.filter((s) => s.step === "current").map((s) => s.repo.name), stopped: [], skipped: missing.map((n) => ({ name: n, reason: localize("no such branch") })) });
-    if (!preset && !(await this.host.ask.warning(localize("Check out {0} in {1} repositories?", name, act.length),
+    if ((!preset || preset.confirm) && !(await this.host.ask.warning(localize("Check out {0} in {1} repositories?", name, act.length),
       missing.length ? localize("Not in {0}: those stay as they are.", missing.join(", ")) : localize("Each repository's working tree changes to that branch."), localize("Check Out")))) return undefined;
     const argsOf = (repo: Repo) => {
       const s = act.find((x) => x.repo.id === repo.id)!;

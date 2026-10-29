@@ -8,6 +8,17 @@ const NOW = 1790164800;
 
 export function branchSheetReply(m: WebviewMessage, send: (m: HostMessage) => void, params: URLSearchParams): boolean {
   if (m.type !== "branchSheet") return false;
+  if (m.action === "across") {
+    // Across repositories: acme-web has it checked out with 2 to push, acme-api 3 to pull, acme-libs not at all.
+    const local = m.ref.startsWith("refs/heads/");
+    const rows = [
+      { repoId: "/work/acme-web", repoName: "acme-web", has: true, current: local, upstream: local ? "origin/develop" : null, ahead: local ? 2 : 0, behind: 0, gone: false, time: NOW - 3600 },
+      { repoId: "/work/acme-api", repoName: "acme-api", has: true, current: false, upstream: local ? "origin/develop" : null, ahead: 0, behind: local ? 3 : 0, gone: false, time: NOW - 7200 },
+      { repoId: "/work/acme-libs", repoName: "acme-libs", has: false },
+    ];
+    setTimeout(() => send({ type: "branchSheet", repoId: m.repoId, ref: m.ref, across: rows }), 60);
+    return true;
+  }
   if (m.action !== "open") return true;
   const name = m.ref.replace(/^refs\/(heads|remotes|tags)\//, "");
   const kind = m.ref.startsWith("refs/remotes/") ? "remote" : m.ref.startsWith("refs/tags/") ? "tag" : "local";

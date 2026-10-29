@@ -1,7 +1,8 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { debounce } from "./debounce";
-import { parseSheetRef, sheetRefArgs, type BranchSheetData, type SheetAction } from "./branchSheetModel";
+import { acrossRow, parseSheetRef, sheetRefArgs, type AcrossRow, type BranchSheetData, type SheetAction } from "./branchSheetModel";
+import { Limiter } from "./allFiles";
 import { countArgs, parseCounts, pickMergeTarget, remoteHeadArgs, shortRemoteRef, showsMergeTarget } from "./hoverModel";
 import type { RunGit } from "./logQuery";
 import { conflictCount } from "./mergeCheck";
@@ -22,6 +23,10 @@ export interface BranchSheetHost {
   compare(repoId: string, left: string, right: string): unknown;
   /** Runs a command (the Repo List's branch commands, Linyra AI's). */
   execute(command: string, arg: unknown): PromiseLike<unknown>;
+  /** The ticked repositories (Across repositories reads each). */
+  ticked(): readonly Repo[];
+  /** How many git processes at once (linyra.maxConcurrency). */
+  concurrency(): number;
 }
 
 const samePath = (a: string, b: string) => {
@@ -38,8 +43,9 @@ const REF = /^refs\/(heads|remotes|tags)\/[^\s\0~^:?*[\\]+$/;
 export class BranchSheet implements vscode.Disposable {
   private ctl = new AbortController();
   private shown: { repoId: string; ref: string } | undefined;
-  /** The last data sent (integration test seam). */
+  /** The last data sent, and the last Across repositories read (integration test seams). */
   last: BranchSheetData | undefined;
+  lastAcross: AcrossRow[] | undefined;
   /** Branch events and the sheet's own actions come in bursts: one read again for all of them. */
   private readonly reopenSoon = debounce(() => { if (this.shown) void this.open(this.shown.repoId, this.shown.ref); }, 250);
 
@@ -94,6 +100,21 @@ export class BranchSheet implements vscode.Disposable {
     return data;
   }
 
+  /**
+   * Across repositories: the same ref in every ticked repository, one for-each-ref each, a few at a
+   * time. Read when its button asks, never on its own: 68 repositories are 68 git processes.
+   */
+  private async across(d: BranchSheetData): Promise<void> {
+    const ctl = this.ctl;
+    const limiter = new Limiter(Math.max(1, Math.min(8, this.host.concurrency())));
+    const rows = await Promise.all(this.host.ticked().map((repo) => limiter.run(repo.id, async () =>
+      // A repository that cannot be read counts as not having it (its row says "Not in").
+      acrossRow(repo, parseSheetRef(await this.host.run(repo.root, sheetRefArgs(d.ref), ctl.signal).catch(() => ""), d.ref)))));
+    if (ctl.signal.aborted || this.shown?.repoId !== d.repoId || this.shown.ref !== d.ref) return;
+    this.lastAcross = rows;
+    this.host.post({ type: "branchSheet", repoId: d.repoId, ref: d.ref, across: rows });
+  }
+
   register(routes: MessageRoutes): void {
     routes.on("branchSheet", async (m) => {
       if (m.action === "open") await this.open(m.repoId, m.ref);
@@ -120,6 +141,11 @@ export class BranchSheet implements vscode.Disposable {
       case "setUpstream": await run("linyra.branch.upstream"); break;
       case "history": await run("linyra.branch.view"); return;
       case "compareWith": await run("linyra.compareWith", { name: d.name }); return;
+      case "across": await this.across(d); return;
+      // Across repositories' actions: the commands that already work across them (each asks first).
+      case "acrossCheckout": await run("linyra.branchesAcross", { name: d.name }); break;
+      case "pushAll": await run("linyra.pushAll", undefined); break;
+      case "updateProject": await run("linyra.updateProject", undefined); break;
       case "delete": await run("linyra.branch.delete"); break;
       // Bring the merge target into the checked-out branch: the Repo List's Merge and Rebase, asked first.
       case "merge": case "rebase": if (d.target) await run(`linyra.branch.${action as string}`, { repoId: d.repoId, ref: `refs/remotes/${d.target.name}` }); break;
