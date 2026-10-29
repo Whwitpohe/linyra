@@ -82,6 +82,9 @@ for a repository it watches (clean or not, ahead/behind, remotes), never re-read
 cannot have changed (a filter does not change the working tree), and order background reads by
 what is on screen. Measure with `npm run perf:startup` (68 repositories; `PERF_VSCODE_GIT=off`
 for unwatched ones) and `dev/perf/webviewBench.ts`, three runs each: single runs vary ±15%.
+Scrolling the Log: `node dev/perf/scrollBench.mjs` (`--chatter`, `--keys`, `--dist` to compare a
+build). A visible row is rebuilt only when what it draws changed, and a row's graph stays a few
+nodes however many lanes run through it.
 
 ### 2. All color and type come from VS Code theme variables
 
@@ -154,6 +157,11 @@ high-contrast.
 Three payoffs: design iteration in a browser reload instead of an extension-host restart,
 impeccable's live iteration and detectors work against the real markup, and theme
 correctness becomes testable rather than hoped for. Dev-only; excluded from the VSIX.
+
+The harness does not have VS Code's own webview stylesheet, which pads `body` 20px on each
+side: every webview's CSS resets `html, body { padding: 0 }`, or it renders shifted and cut off
+in VS Code while looking right here. Prefer a native view where one exists: a tree of files
+gets the user's file icon theme only as a native TreeView.
 
 ---
 

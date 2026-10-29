@@ -249,14 +249,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     uncommitted,
     // Uncommitted work is on the Log's Uncommitted side (this command opens it) and in the Commit side bar.
     commitPanel,
-    vscode.window.registerWebviewViewProvider(CommitPanel.viewType, commitPanel),
+    vscode.window.registerWebviewViewProvider(CommitPanel.messageId, commitPanel),
+    vscode.window.registerFileDecorationProvider(commitPanel),
     discovery.onDidChangeWatched(() => commitPanel.refresh()),
     log.upstream.onDidChange(() => commitPanel.refresh()),
     log.onDidChangeAccents(() => commitPanel.refresh()),
     vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),
     vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
     vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
-    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown) => commitPanel.rollback(arg)),
+    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.rollback(arg, many)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
     vscode.commands.registerCommand("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedActions.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
@@ -326,6 +327,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.uncommitted", () => uncommittedActions.snapshot()),
       vscode.commands.registerCommand("linyra._itest.commitPanel", () => commitPanel.snapshot()),
       vscode.commands.registerCommand("linyra._itest.commitSend", (m: CommitWebviewMessage) => commitPanel.onMessage(m)),
+      vscode.commands.registerCommand("linyra._itest.commitCheck", (ids: string[], on: boolean) => commitPanel.check(ids.map((id) => ({ id })), on)),
       vscode.commands.registerCommand("linyra._itest.compareStore", () => ({
         pair: compare.pair, reading: compare.reading, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
       })),

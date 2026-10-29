@@ -4,6 +4,7 @@
   "container.linyra-compare.title": "Linyra 分支比较",
   "view.linyra.log.name": "日志",
   "view.linyra.commit.name": "提交",
+  "view.linyra.commitMessage.name": "提交说明",
   "view.linyra.changes.name": "更改",
   "view.linyra.compare.name": "仓库",
   "view.linyra.compareLeft.name": "左侧",

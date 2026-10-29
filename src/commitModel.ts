@@ -35,10 +35,15 @@ export interface CommitRow {
   oldPath?: string;
   status?: ChangeStatus;
   untracked?: boolean;
+  /** A file's half that has the working tree's file: Open File and File History read it. */
+  group?: "staged" | "changes";
   /** The repository's color in the Log. */
   accent?: number;
-  /** data-vscode-context: what a right-click on the row offers (package.json webview/context). */
-  context: Record<string, string | boolean>;
+  /** What its menus offer (package.json view/item/context, viewItem). */
+  contextValue: string;
+  /** Files under the row, and how many of them are checked (a file: 1, and 1 or 0). */
+  files: number;
+  checked: number;
   children?: CommitRow[];
 }
 
@@ -69,10 +74,19 @@ export function isChecked(choices: Choices, repoId: string, f: CommitFile): bool
   return choices.get(fileKey(repoId, f.path)) ?? !f.untracked;
 }
 
-function combine(checks: readonly Check[]): Check {
-  if (checks.length === 0 || checks.every((c) => c === "off")) return "off";
-  return checks.every((c) => c === "on") ? "on" : "mixed";
+function checkOf(checked: number, files: number): Check {
+  return checked === 0 ? "off" : checked === files ? "on" : "mixed";
 }
+
+/** The counts of the rows below: a list, repository or folder is checked when all its files are. */
+function counts(children: readonly CommitRow[]): { files: number; checked: number; check: Check } {
+  const files = children.reduce((n, c) => n + c.files, 0), checked = children.reduce((n, c) => n + c.checked, 0);
+  return { files, checked, check: checkOf(checked, files) };
+}
+
+/** Some files checked: VS Code's checkboxes have no third state, so the description says how many. */
+const partly = (c: { files: number; checked: number; check: Check }, all: string) =>
+  c.check === "mixed" ? localize("{0} of {1} checked", c.checked, all) : all;
 
 const statusName: Partial<Record<ChangeStatus, string>> = { A: "added", M: "modified", D: "deleted", R: "renamed", C: "copied", T: "type changed" };
 
@@ -81,20 +95,20 @@ function describeFiles(nodes: readonly TreeNode[], files: ReadonlyMap<string, Co
     if (n.kind === "folder") {
       const path = parent ? `${parent}/${n.name}` : n.name;
       const children = describeFiles(n.children, files, path, base, w, choices);
-      const id = `${base}:d:${path}`;
-      return { id, kind: "folder", label: n.name, description: String(n.count), tooltip: path, check: combine(children.map((c) => c.check)), repoId: w.repoId, path, children,
-        context: { webviewSection: "commitFolder", kind: "folder", commitRowId: id, repoId: w.repoId, path, preventDefaultContextMenuItems: true } };
+      const c = counts(children);
+      return { id: `${base}:d:${path}`, kind: "folder", label: n.name, description: c.check === "mixed" ? `${c.checked}/${c.files}` : String(c.files), tooltip: path,
+        repoId: w.repoId, path, children, contextValue: "commitFolder", ...c };
     }
     const f = files.get(n.file.path)!;
-    const id = `${base}:f:${f.path}`;
     const state = f.untracked ? localize("new") : localize(statusName[f.status ?? "M"] ?? "modified");
+    const on = isChecked(choices, w.repoId, f);
     return {
-      id, kind: "file", label: n.name, description: f.oldPath ? `← ${f.oldPath}` : "", check: isChecked(choices, w.repoId, f) ? "on" : "off",
+      id: `${base}:f:${f.path}`, kind: "file", label: n.name, description: f.oldPath ? `← ${f.oldPath}` : "", check: on ? "on" : "off", files: 1, checked: on ? 1 : 0,
       tooltip: `${f.oldPath ? `${f.oldPath} → ` : ""}${f.path} · ${state}${f.staged && f.changed ? ` · ${localize("partly staged")}` : ""}`,
       repoId: w.repoId, path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.untracked ? "A" : f.status, untracked: f.untracked,
       // Open File and File History want the half that has the working tree's file.
-      context: { webviewSection: "commitFile", kind: "file", commitRowId: id, repoId: w.repoId, path: f.path, group: f.changed ? "changes" : "staged",
-        viewItem: f.untracked ? "untracked" : f.status === "D" ? "deleted" : "changed", preventDefaultContextMenuItems: true },
+      group: f.changed ? "changes" : "staged",
+      contextValue: `commitFile.${f.untracked ? "untracked" : f.status === "D" ? "deleted" : "changed"}`,
     };
   });
 }
@@ -117,26 +131,22 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
       const byPath = new Map(files.map((f) => [f.path, f]));
       const base = `${list}:${w.repoId}`;
       const children = describeFiles(fileTree(files.map((f): FileChange => ({ path: f.path, added: null, deleted: null }))), byPath, "", base, w, choices);
+      const c = counts(children);
       repos.push({
-        id: base, kind: "repo", label: w.name, description: plural(files.length, "file"), check: combine(children.map((c) => c.check)), repoId: w.repoId,
-        accent: accents.get(w.repoId) ?? 0, children,
+        id: base, kind: "repo", label: w.name, description: partly(c, plural(c.files, "file")), repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c,
         tooltip: w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name),
-        context: { webviewSection: "commitRepo", commitRowId: base, repoId: w.repoId, behind: behind(w.repoId), preventDefaultContextMenuItems: true },
+        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}`,
       });
     }
     if (repos.length === 0) continue;
-    lists.push({ id: list, kind: "list", label, description: plural(countFiles(repos), "file"), tooltip: label, check: combine(repos.map((r) => r.check)), children: repos,
-      context: { webviewSection: "commitList", commitRowId: list, preventDefaultContextMenuItems: true } });
+    const c = counts(repos);
+    lists.push({ id: list, kind: "list", label, description: partly(c, plural(c.files, "file")), tooltip: label, children: repos, contextValue: "commitList", ...c });
   }
   const plan = commitPlan(works, choices);
   return {
     roots: lists, message: lists.length === 0 ? localize(NO_UNCOMMITTED_VIEW) : undefined, total,
     checked: { files: plan.reduce((n, p) => n + p.files, 0), repos: plan.length },
   };
-}
-
-function countFiles(rows: readonly CommitRow[]): number {
-  return rows.reduce((n, r) => n + (r.kind === "file" ? 1 : countFiles(r.children ?? [])), 0);
 }
 
 /** The files under rows (each once), as repository and path: what a check or a Rollback takes. */

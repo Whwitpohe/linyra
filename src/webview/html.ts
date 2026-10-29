@@ -79,7 +79,7 @@ export function renderHtml(o: HtmlOptions): string {
         <button id="refresh" class="icon-button" type="button" aria-label="${escapeHtml(localize("Refresh"))}" title="${escapeHtml(localize("Refresh"))}">${codicon("refresh")}</button>
       </form>
       <span class="header-actions" role="toolbar" aria-label="${escapeHtml(localize("Log actions"))}">
-        <button id="toggle-changes" class="icon-button" type="button" title="${escapeHtml(localize("Show or hide changed files"))}" aria-label="${escapeHtml(localize("Show or hide changed files"))}" aria-pressed="true">${codicon("layout-sidebar-right")}</button>
+        <button id="toggle-changes" class="icon-button" type="button" title="${escapeHtml(localize("Show or hide changed files"))}" aria-label="${escapeHtml(localize("Show or hide changed files"))}" aria-pressed="true">${codicon("diff-multiple")}</button>
         <span class="toolbar-divider" aria-hidden="true"></span>
         <button id="toolbar-repos" class="icon-button" type="button" aria-label="${escapeHtml(localize("Group by Repository"))}"></button>
         <button id="toolbar-compare" class="icon-button" type="button" aria-label="${escapeHtml(localize("Compare Branches"))}"></button>

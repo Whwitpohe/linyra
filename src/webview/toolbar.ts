@@ -5,7 +5,7 @@ import { byId, h } from "./dom";
 
 /** VS Code's own icons for the same actions its Source Control and Git use. */
 const icons = {
-  repos: codicon("layout-sidebar-left"),
+  repos: codicon("repo"),
   compare: codicon("git-compare"),
   fetch: codicon("cloud-download"),
   sync: codicon("sync"),

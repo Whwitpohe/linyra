@@ -98,10 +98,17 @@
       ],
       "linyra-side": [
         {
-          "type": "webview",
           "id": "linyra.commit",
           "name": "%view.linyra.commit.name%",
-          "icon": "$(git-commit)"
+          "icon": "$(git-commit)",
+          "initialSize": 3
+        },
+        {
+          "type": "webview",
+          "id": "linyra.commitMessage",
+          "name": "%view.linyra.commitMessage.name%",
+          "icon": "$(edit)",
+          "initialSize": 1
         }
       ]
     },
@@ -312,12 +319,14 @@
       {
         "command": "linyra.commitPanel.diff",
         "title": "%command.linyra.commitPanel.diff.title%",
-        "category": "Linyra"
+        "category": "Linyra",
+        "icon": "$(diff)"
       },
       {
         "command": "linyra.commitPanel.rollback",
         "title": "%command.linyra.commitPanel.rollback.title%",
-        "category": "Linyra"
+        "category": "Linyra",
+        "icon": "$(discard)"
       },
       {
         "command": "linyra.stage",
@@ -717,6 +726,66 @@
           "command": "linyra.discard",
           "when": "view == linyra.changes && viewItem =~ /^folder\\.discardable/",
           "group": "3_modification@3"
+        },
+        {
+          "command": "linyra.openWorkingFile",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(changed|untracked)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "linyra.commitPanel.rollback",
+          "when": "view == linyra.commit",
+          "group": "inline@2"
+        },
+        {
+          "command": "linyra.commitPanel.diff",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\./",
+          "group": "0_diff@1"
+        },
+        {
+          "command": "linyra.openWorkingFile",
+          "when": "view == linyra.commit && viewItem =~ /^commitFile\\.(changed|untracked)$/",
+          "group": "0_diff@2"
+        },
+        {
+          "command": "linyra.commitPanel.rollback",
+          "when": "view == linyra.commit",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "linyra.stash.create",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "linyra.repoPull",
+          "when": "view == linyra.commit && viewItem == commitRepo.behind",
+          "group": "2_sync@1"
+        },
+        {
+          "command": "linyra.fileHistory",
+          "when": "view == linyra.commit && viewItem == commitFile.changed",
+          "group": "3_history@1"
+        },
+        {
+          "command": "linyra.repoOpenFolder",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "6_open@1"
+        },
+        {
+          "command": "linyra.repoCopyPath",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "7_copy@1"
+        },
+        {
+          "command": "linyra.copyFilePath",
+          "when": "view == linyra.commit && viewItem =~ /^commit(File|Folder)/",
+          "group": "7_copy@1"
+        },
+        {
+          "command": "linyra.copyRelativePath",
+          "when": "view == linyra.commit && viewItem =~ /^commit(File|Folder)/",
+          "group": "7_copy@2"
         }
       ],
       "commandPalette": [
@@ -1066,6 +1135,16 @@
         }
       ],
       "view/title": [
+        {
+          "command": "linyra.refreshUncommitted",
+          "when": "view == linyra.commit",
+          "group": "navigation@1"
+        },
+        {
+          "command": "linyra.commitPanel.rollback",
+          "when": "view == linyra.commit",
+          "group": "navigation@2"
+        },
         {
           "command": "linyra.clearSelection",
           "when": "view == linyra.changes && linyra.combined",
@@ -1565,56 +1644,6 @@
           "command": "linyra.stash.create",
           "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|uncommitted)$/",
           "group": "1_stash@1"
-        },
-        {
-          "command": "linyra.commitPanel.diff",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitFile'",
-          "group": "0_diff@1"
-        },
-        {
-          "command": "linyra.openWorkingFile",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitFile' && viewItem != 'deleted'",
-          "group": "0_diff@2"
-        },
-        {
-          "command": "linyra.commitPanel.rollback",
-          "when": "webviewId == 'linyra.commit' && webviewSection =~ /^commit(File|Folder|Repo|List)$/",
-          "group": "1_modification@1"
-        },
-        {
-          "command": "linyra.stash.create",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitRepo'",
-          "group": "1_modification@2"
-        },
-        {
-          "command": "linyra.repoPull",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitRepo' && behind",
-          "group": "2_sync@1"
-        },
-        {
-          "command": "linyra.fileHistory",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitFile' && viewItem == 'changed'",
-          "group": "3_history@1"
-        },
-        {
-          "command": "linyra.repoOpenFolder",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitRepo'",
-          "group": "6_open@1"
-        },
-        {
-          "command": "linyra.repoCopyPath",
-          "when": "webviewId == 'linyra.commit' && webviewSection == 'commitRepo'",
-          "group": "7_copy@1"
-        },
-        {
-          "command": "linyra.copyFilePath",
-          "when": "webviewId == 'linyra.commit' && webviewSection =~ /^commit(File|Folder)$/",
-          "group": "7_copy@1"
-        },
-        {
-          "command": "linyra.copyRelativePath",
-          "when": "webviewId == 'linyra.commit' && webviewSection =~ /^commit(File|Folder)$/",
-          "group": "7_copy@2"
         }
       ]
     },
@@ -1687,6 +1716,12 @@
         "key": "ctrl+shift+`",
         "mac": "cmd+shift+`",
         "when": "focusedView == linyra.log"
+      },
+      {
+        "command": "linyra.commitPanel.rollback",
+        "key": "ctrl+alt+z",
+        "mac": "cmd+alt+z",
+        "when": "focusedView == linyra.commit"
       }
     ]
   },

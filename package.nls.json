@@ -4,6 +4,7 @@
   "container.linyra-compare.title": "Linyra Compare",
   "view.linyra.log.name": "Log",
   "view.linyra.commit.name": "Commit",
+  "view.linyra.commitMessage.name": "Commit Message",
   "view.linyra.changes.name": "Changes",
   "view.linyra.compare.name": "Repositories",
   "view.linyra.compareLeft.name": "Left",

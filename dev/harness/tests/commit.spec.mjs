@@ -1,36 +1,22 @@
-// The Commit side bar against the dev harness: the JetBrains Commit window's checkbox tree, the
-// message box and its two buttons, in a narrow side bar and in every theme.
+// The Commit side bar's message box against the dev harness (the tree of changes above it is a
+// native VS Code tree): Amend, the message and its two buttons, in a short view and every theme.
 import { expect, test } from "@playwright/test";
 
-const open = async (page, { theme = "dark", width = 340, height = 640, state = "default" } = {}) => {
+const open = async (page, { theme = "dark", width = 300, height = 180, state = "default" } = {}) => {
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
   page.on("pageerror", (e) => errors.push(String(e)));
   await page.setViewportSize({ width, height });
   await page.goto(`/commit.html?theme=${theme}&state=${state}`);
-  await expect(page.locator("#commit-tree .tree-row").first()).toBeVisible();
+  await expect(page.locator("#commit-checked")).not.toBeEmpty();
   return errors;
 };
-const row = (page, id) => page.locator(`[data-node="${encodeURIComponent(id)}"]`);
-const sent = (page) => page.evaluate(() => window.commitMessages.filter((m) => m.type !== "selection" && m.type !== "draft"));
+const sent = (page) => page.evaluate(() => window.commitMessages.filter((m) => m.type !== "draft"));
 
-test("Changes and Unversioned Files by repository; tracked files checked, new files not", async ({ page }) => {
+test("says what the Commit button takes", async ({ page }) => {
   await open(page);
-  await expect(row(page, "changes")).toHaveAttribute("aria-checked", "true");
-  await expect(row(page, "unversioned")).toHaveAttribute("aria-checked", "false");
-  await expect(row(page, "changes:/work/acme-api:f:upload/handler.go")).toContainText("← upload/handle.go");
   await expect(page.locator("#commit-checked")).toHaveText("8 files checked in 3 repositories");
-});
-
-test("a checkbox checks everything under its row; Space checks the selected rows", async ({ page }) => {
-  await open(page);
-  await row(page, "changes:/work/acme-web").locator("[data-check]").click();
-  await expect(row(page, "changes:/work/acme-web")).toHaveAttribute("aria-checked", "false");
-  await expect(row(page, "changes")).toHaveAttribute("aria-checked", "mixed");
-  await row(page, "unversioned:/work/acme-web:f:src/new.ts").locator(".row-label").click();
-  await page.keyboard.press("Space");
-  await expect(row(page, "unversioned:/work/acme-web:f:src/new.ts")).toHaveAttribute("aria-checked", "true");
-  await expect(page.locator("#commit-checked")).toHaveText("4 files checked in 3 repositories");
+  await expect(page.locator("#commit-button")).toBeEnabled();
 });
 
 test("Commit needs a message; Ctrl+Enter commits, Commit and Push… pushes, and the box empties", async ({ page }) => {
@@ -60,31 +46,39 @@ test("Amend with an empty box brings the last commit's message to edit", async (
 });
 
 test("no files checked: both buttons wait", async ({ page }) => {
-  await open(page);
-  for (const id of ["changes", "unversioned"]) {
-    const box = row(page, id);
-    if ((await box.getAttribute("aria-checked")) !== "false") await box.locator("[data-check]").click();
-    await expect(box).toHaveAttribute("aria-checked", "false");
-  }
+  await open(page, { state: "none" });
   await expect(page.locator("#commit-button")).toBeDisabled();
   await expect(page.locator("#commit-push-button")).toBeDisabled();
   await expect(page.locator("#commit-checked")).toHaveText("No files checked");
 });
 
-test("a narrow, short side bar keeps the message and buttons on screen, and nothing scrolls sideways", async ({ page }) => {
-  await open(page, { width: 240, height: 360, state: "many" });
+test("fills a narrow, short view: the buttons stay on screen and nothing is cut at the edges", async ({ page }) => {
+  await open(page, { width: 220, height: 150 });
   for (const id of ["#commit-message", "#commit-button", "#commit-push-button"]) {
     const box = await page.locator(id).boundingBox();
-    expect(box.y + box.height).toBeLessThanOrEqual(360);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(220);
+    expect(box.y + box.height).toBeLessThanOrEqual(150);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect(await page.locator("#commit-tree").evaluate((el) => el.clientHeight)).toBeGreaterThan(60);
+});
+
+test("VS Code's default webview padding cannot push the box off the view", async ({ page }) => {
+  await open(page);
+  // VS Code's webview stylesheet gives the body 20px side padding.
+  await page.addStyleTag({ content: "body { padding: 0 20px; }" });
+  const button = await page.locator("#commit-button").boundingBox();
+  const message = await page.locator("#commit-message").boundingBox();
+  expect(message.x).toBeLessThan(20);
+  expect(button.x).toBeLessThan(20);
+  expect(message.x + message.width).toBeLessThanOrEqual(300);
 });
 
 for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
   test(`renders in ${theme} without console errors`, async ({ page }) => {
     const errors = await open(page, { theme });
-    await expect(page.locator(".check svg").first()).toBeVisible();
+    await page.locator("#commit-amend").click();
+    await expect(page.locator(".check svg")).toBeVisible();
     expect(errors).toEqual([]);
   });
 }

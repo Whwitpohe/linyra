@@ -217,8 +217,8 @@ describe("Compare Branches", () => {
     assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
       linyra: [["linyra.log", "$(history)"]],
       "linyra-compare": [["linyra.compare", "$(repo)"]],
-      "linyra-side": [["linyra.commit", "$(git-commit)"]],
-    }, "one native surface per container prevents accidental header collapsing");
+      "linyra-side": [["linyra.commit", "$(git-commit)"], ["linyra.commitMessage", "$(edit)"]],
+    }, "one native surface per panel container prevents accidental header collapsing; the side bar stacks the Commit tree over its message");
     assert.strictEqual(views["linyra-compare"][0].type, "webview", "the unified comparison retains repositories and both sides");
     const menus = pkg.menus["webview/context"] as { command: string; when: string }[];
     for (const c of ["linyra.repoPull", "linyra.repoShowOnly", "linyra.repoHide", "linyra.repoOpenFolder", "linyra.repoCopyPath"]) {
