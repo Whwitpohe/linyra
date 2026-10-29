@@ -149,7 +149,8 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(a[1], HISTORY_FORMAT);
   assert.ok(a.includes("--grep=fix") && a.includes("--skip=5"));
   assert.ok(!a.includes("--follow"), "no --follow: it cannot page with --skip, and a filtered-out rename would cut the history");
-  assert.deepStrictEqual(a.slice(-9), ["--name-status", "-z", "-M", "--branches", "--remotes", "HEAD", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.deepStrictEqual(a.slice(-10), ["--raw", "--numstat", "-z", "-M", "--branches", "--remotes", "HEAD", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "status letters (--raw) and line counts (--numstat) in one process; the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.ok(!a.includes("--name-status"), "--name-status would replace --numstat: git keeps one of them");
   const inj = historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["--output=/tmp/x"] });
   assert.deepStrictEqual(inj.slice(-2), ["--", ":(literal)--output=/tmp/x"], "a path can never be read as an option");
   assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
@@ -174,7 +175,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   const a = logArgs(ALL, { pageSize: 5, now: NOW, ref: "origin/prod" });
   assert.deepStrictEqual(a.slice(-3), ["--end-of-options", "origin/prod", "--"], "the ref comes after --end-of-options and before --, so a same-named folder is never ambiguous");
   const h = historyArgs({ ...ALL, text: "fix" }, { pageSize: 5, now: NOW, paths: ["b.ts", "a.ts"], ref: "origin/prod" });
-  assert.deepStrictEqual(h.slice(-8), ["--name-status", "-z", "-M", "--end-of-options", "origin/prod", "--", ":(literal)b.ts", ":(literal)a.ts"], "history options stay before the ref; every name the file had is a pathspec");
+  assert.deepStrictEqual(h.slice(-9), ["--raw", "--numstat", "-z", "-M", "--end-of-options", "origin/prod", "--", ":(literal)b.ts", ":(literal)a.ts"], "history options stay before the ref; every name the file had is a pathspec");
   assert.ok(logArgs(ALL, { pageSize: 5, now: NOW }).includes("--branches"), "all local and remote branches by default");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "--output=/tmp/x" }).branch, "", "an invalid persisted branch is dropped");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");

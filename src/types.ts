@@ -24,8 +24,11 @@ export interface Commit {
   ref?: string;
   /** Branches, HEAD and tags pointing directly at this commit, from Git's decoration field. */
   refs?: CommitReference[];
-  /** File history only: the file as it was in this commit (it may have been renamed since). */
-  file?: { path: string; oldPath?: string; status?: ChangeStatus };
+  /**
+   * File history only: the file as it was in this commit (it may have been renamed since), and
+   * the lines this commit added and deleted in it (null: binary; absent: not read).
+   */
+  file?: { path: string; oldPath?: string; status?: ChangeStatus; added?: number | null; deleted?: number | null };
 }
 
 /** What a commit did to a file, from `git show --raw`: Added, Modified, Deleted, Renamed, Copied, Type-changed. */
