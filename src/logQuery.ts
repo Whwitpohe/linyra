@@ -1,9 +1,10 @@
 import type { RunOptions } from "./git";
-import { hasOtherAuthors, hashQuery, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { hasOtherAuthors, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import { fetchHashPage } from "./hashSearch";
 import { countRecords, parseHistory, parseLog } from "./gitLog";
 import { copyTopoState, takeReady, takeTopoReady, type RepoProgress, type TopoMergeState } from "./mergeStream";
 import { abortError, runPool } from "./pool";
+import { planSearch, runnable, searchRepos, searchSkips } from "./searchQuery";
 import type { Commit, Repo, RepoFailure } from "./types";
 
 export type RunGit = (cwd: string, args: string[], signal: AbortSignal, opts?: RunOptions) => Promise<string>;
@@ -70,18 +71,24 @@ export function batchSize(fetched: number, pageSize: number): number {
  * the pending rows live only as long as this query.
  */
 export async function fetchPage(req: PageRequest): Promise<PageResult> {
-  const hash = hashQuery(req.filter.text);
-  if (hash) return fetchHashPage(req, hash);
   const now = req.prev?.now ?? req.now;
+  // The search box's query, read once for every repository and page. One the box would not send
+  // (invalid, or an operator still without its value) runs nothing.
+  const search = planSearch(req.filter, now);
+  if (!runnable(search)) return { rows: [], failures: [], state: { now, progress: new Map() }, done: true };
+  // repo: narrows the ticked repositories (the Repo List keeps its ticks); not in File History.
+  const scoped = req.history ? req.repos : searchRepos(search, req.repos);
+  if (search.hashes.length > 0) return fetchHashPage({ ...req, repos: scoped }, search.hashes);
   const byId = new Map(req.repos.map((r) => [r.id, r]));
   // Copy, so an aborted page leaves the previous state intact.
   const progress = new Map<string, RepoProgress>(
     req.prev
       ? [...req.prev.progress].filter(([id]) => byId.has(id)).map(([id, p]) => [id, { ...p, pending: [...p.pending] }])
-      : (req.history ? req.repos.filter((r) => r.id === req.history!.repoId) : selectRepos(req.filter, req.repos))
+      : (req.history ? req.repos.filter((r) => r.id === req.history!.repoId) : selectRepos(req.filter, scoped))
           // Me alone: a repo with no user.email has no commits that are "mine". With other
-          // authors picked too, it is still searched for them.
+          // authors picked too, it is still searched for them. author:@me alike.
           .filter((r) => !req.filter.mine || hasOtherAuthors(req.filter) || req.me?.has(r.id))
+          .filter((r) => !searchSkips(search, req.me?.get(r.id)))
           .map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
   );
   const failures: RepoFailure[] = [];
@@ -146,8 +153,10 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         const i = targets.indexOf(repo);
         await resolveRef(repo, signal);
         const p = progress.get(repo.id)!;
+        // A repository without a selected branch has nothing to show. With ref: too, both hold:
+        // it needs a selected branch, and walks ref:'s revisions (logArgs).
         if (branches.length && !p.refs?.length) return "";
-        const o = { pageSize: wanted[i], now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs };
+        const o = { pageSize: wanted[i], now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs, search };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);
       },
       req.signal,
@@ -161,7 +170,8 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         const records = countRecords(result.value);
         p.fetched += records;
         const commits = req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id);
-        if (branches.length) for (const c of commits) c.ref = p.refs?.map((r) => r.replace(/^refs\/(heads|remotes|tags)\//, "")).join(", ");
+        // The selected branches it was walked from (ref: walks its own revisions instead).
+        if (branches.length && search.refs.length === 0) for (const c of commits) c.ref = p.refs?.map((r) => r.replace(/^refs\/(heads|remotes|tags)\//, "")).join(", ");
         p.pending.push(...commits);
         if (records < wanted[i]) p.exhausted = true;
       } else {

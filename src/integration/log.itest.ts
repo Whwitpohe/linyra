@@ -105,6 +105,33 @@ describe("Linyra panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("searches with operators: author:, file:, and ref: only where a repository has it", async () => {
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const api = (await until("six rows", (x) => x.rows.length === 6)).repos.find((r) => r.name === "acme-api")!;
+    await send({ type: "filter", filter: { ...ALL, text: "author:rin" }, now: true });
+    await until("rin's three commits", (x) => x.rows.length === 3 && x.rows.every((r) => r.author === "rin"));
+    await send({ type: "filter", filter: { ...ALL, text: "file:upload.go" }, now: true });
+    await until("upload.go's two commits", (x) => x.rows.length === 2 && x.rows.every((r) => r.repoId === api.id));
+    await send({ type: "filter", filter: { ...ALL, text: "author:dana file:*.GO" }, now: true });
+    await until("dana's Go commit, ignoring case", (x) => x.rows.length === 1 && x.rows[0].subject === "feat: scaffold api");
+    await send({ type: "filter", filter: { ...ALL, text: "retry author:" }, now: true });
+    let s = await until("an operator without a value runs nothing", (x) => x.filter.text === "retry author:" && x.done && x.rows.length === 0);
+    assert.strictEqual(s.failures.length, 0);
+    cp.execFileSync("git", ["branch", "release-1.4", "HEAD~1"], { cwd: api.root });
+    try {
+      await send({ type: "filter", filter: { ...ALL, text: "ref:release-1.4" }, now: true });
+      s = await until("release-1.4, in acme-api only", (x) => x.rows.length === 1 && x.rows[0].subject === "feat: scaffold api");
+      assert.strictEqual(s.failures.length, 0, "the repositories without it list nothing and report nothing");
+      await send({ type: "filter", filter: { ...ALL, text: "ref:release-1.4..main" }, now: true });
+      await until("the range", (x) => x.rows.length === 1 && x.rows[0].subject.startsWith("feat: add retry"));
+    } finally {
+      cp.execFileSync("git", ["branch", "-D", "release-1.4"], { cwd: api.root });
+    }
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("one native view keeps Log permanently expanded and remembers the integrated Changes layout", async () => {
     const manifest = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON;
     assert.deepStrictEqual(manifest.contributes.views.linyra.map((view: { id: string }) => view.id), ["linyra.log"]);

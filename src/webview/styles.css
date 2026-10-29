@@ -159,11 +159,7 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
 /* Starting widths sum to about 750px, so the bar stays on one line in a typical panel; each
    box grows from there. */
-/* The message search gets the most room: it is the filter typed into most. */
-.search-field { position: relative; display: inline-flex; align-items: center; flex: 2 1 180px; min-width: 130px; height: 26px; }
-.search-field .search { flex: 1; min-width: 0; padding-right: 56px; }
-.search-field #match-case { right: 30px; }
-.search[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
+/* The search box (search.css) gets the most room: it is the filter typed into most. */
 /* Author dropdown with a separate Me shortcut at its right edge. */
 .author-field {
   position: relative; display: inline-flex; align-items: center; flex: 1 1 130px; min-width: 96px;

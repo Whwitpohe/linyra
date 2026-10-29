@@ -1,9 +1,11 @@
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
+import { parseSearch, planSearch, searchFlags, type SearchPlan } from "./searchQuery";
 import type { Repo } from "./types";
 
 export type DatePreset = "24h" | "7d" | "30d" | "all" | "custom";
 
 export interface FilterState {
+  /** The search box's query: words, a hash, or operators such as author: and file: (searchQuery.ts). */
   text: string;
   /** Matched against "Name <email>" by git's --author; "" = anyone. */
   author: string;
@@ -29,6 +31,10 @@ export interface FilterState {
   matchCase?: boolean;
   /** The message search is an extended regular expression; absent = literal text. */
   regex?: boolean;
+  /** Whole Word: search terms match whole words only (\b…\b). */
+  wholeWord?: boolean;
+  /** Match All: a commit must match every message term (git's --all-match), not any of them. */
+  matchAll?: boolean;
   /** null = every repository; [] = none. */
   repoIds: string[] | null;
   date: DatePreset;
@@ -48,11 +54,12 @@ export interface RepoCursor {
 
 export const DEFAULT_FILTER: FilterState = { text: "", author: "", mine: false, branch: "", repoIds: null, date: "24h" };
 
-/** Ordinary words such as "face" remain message searches; sha: accepts Git's 4-char minimum. */
+/**
+ * The query's first commit: hash (a bare word of 7 to 64 hex digits, or commit:, #: or sha: with 4
+ * or more). Ordinary words such as "face" remain message searches.
+ */
 export function hashQuery(text: string): string | undefined {
-  const value = text.trim();
-  if (/^[a-f\d]{7,64}$/i.test(value)) return value.toLowerCase();
-  return /^sha:([a-f\d]{4,64})$/i.exec(value)?.[1].toLowerCase();
+  return parseSearch(text).operations.get("commit:")?.find((v) => /^[0-9a-f]{4,64}$/.test(v));
 }
 
 const PRESETS: readonly DatePreset[] = ["24h", "7d", "30d", "all", "custom"];
@@ -112,27 +119,20 @@ interface ArgOptions {
   /** Resolved revisions to walk; absent = the filter's selection or all branches. */
   ref?: string;
   refs?: readonly string[];
+  /** The search box's query, resolved once per page (planSearch); absent = resolved here. */
+  search?: SearchPlan;
 }
 
 function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = []): string[] {
   const args = ["log", format, `--max-count=${o.pageSize}`, "--decorate=full"];
   if (f.sort === "topo") args.push("--topo-order");
-  const text = f.text.trim();
-  const authors = authorPatterns(f, o.me);
-  // Literal and case-insensitive unless asked otherwise; git ANDs --author with --grep, ORs
-  // several --author flags, and applies these matching flags to both. Authors stay literal:
-  // in regex mode they are escaped.
-  // An invalid expression (the webview marks it) is searched as text rather than failing every repository.
-  const regex = f.regex === true && !!text && regexProblem(text) === undefined;
-  if (text || authors.length > 0) {
-    if (!f.matchCase) args.push("--regexp-ignore-case");
-    args.push(regex ? "--extended-regexp" : "--fixed-strings");
-  }
-  if (text) args.push(`--grep=${text}`);
-  for (const a of authors) args.push(`--author=${regex ? escapeRegex(a) : a}`);
-  const since = sinceOf(f, o.now);
+  // The query's messages, authors (with the Author box's), committers, change: and type:, as git's
+  // own flags; after: and before: narrow the date range further.
+  const search = o.search ?? planSearch(f, o.now);
+  args.push(...searchFlags(search, f, o.me));
+  const since = latest(sinceOf(f, o.now), search.since);
   if (since !== undefined) args.push(`--since=${gitDate(since)}`);
-  const until = untilOf(f);
+  const until = earliest(untilOf(f), search.until);
   if (until !== undefined) args.push(`--until=${gitDate(until)}`);
   if (o.cursor && o.cursor.skip > 0) args.push(`--skip=${o.cursor.skip}`);
   args.push(...extra);
@@ -161,9 +161,20 @@ export function regexProblem(text: string): string | undefined {
   }
 }
 
+const latest = (a: number | undefined, b: number | undefined) => (a === undefined ? b : b === undefined ? a : Math.max(a, b));
+const earliest = (a: number | undefined, b: number | undefined) => (a === undefined ? b : b === undefined ? a : Math.min(a, b));
+
+/**
+ * The Log's git log for one repository. file: replaces the Path box's pathspec with the files that
+ * match both; ref: walks its revisions instead of the branches, and --ignore-missing lets a
+ * repository without one skip it (one without any lists nothing) at no extra git process.
+ */
 export function logArgs(f: FilterState, o: ArgOptions): string[] {
+  const search = o.search ?? planSearch(f, o.now);
   const path = f.path === undefined ? undefined : normalizePath(f.path);
-  return buildArgs(LOG_FORMAT, f, o, [], path ? [pathspecOf(path)] : []);
+  const paths = search.pathspecs ?? (path ? [pathspecOf(path)] : []);
+  if (search.refs.length === 0) return buildArgs(LOG_FORMAT, f, { ...o, search }, [], paths);
+  return buildArgs(LOG_FORMAT, f, { ...o, search, refs: search.refs }, ["--ignore-missing"], paths);
 }
 
 /**
@@ -290,6 +301,8 @@ export function sanitizeFilter(raw: unknown): FilterState {
   if (r.sort === "topo") f.sort = "topo";
   if (r.matchCase === true) f.matchCase = true;
   if (r.regex === true) f.regex = true;
+  if (r.wholeWord === true) f.wholeWord = true;
+  if (r.matchAll === true) f.matchAll = true;
   if (date === "custom") {
     if (typeof r.from === "string" && DAY.test(r.from)) f.from = r.from;
     if (typeof r.to === "string" && DAY.test(r.to)) f.to = r.to;
@@ -302,5 +315,5 @@ export function sameExceptText(a: FilterState, b: FilterState): boolean {
   const ids = (x: FilterState) => (x.repoIds === null ? null : x.repoIds.join("\0"));
   const authors = (x: FilterState) => (x.authors ?? []).join("\0");
   const branches = (f: FilterState) => selectedBranches(f).sort().join("\0");
-  return a.mine === b.mine && !a.matchCase === !b.matchCase && !a.regex === !b.regex && authors(a) === authors(b) && branches(a) === branches(b) && a.sort === b.sort && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
+  return a.mine === b.mine && !a.matchCase === !b.matchCase && !a.regex === !b.regex && !a.wholeWord === !b.wholeWord && !a.matchAll === !b.matchAll && authors(a) === authors(b) && branches(a) === branches(b) && a.sort === b.sort && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
 }

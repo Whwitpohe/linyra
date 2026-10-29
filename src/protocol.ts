@@ -92,13 +92,17 @@ export type HostMessage =
   /** Each repository's distance from its upstream (only those ahead or behind). */
   | { type: "sync"; byRepo: Record<string, { ahead: number; behind: number }> }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
-  | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] }
+  | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[]; tags?: BranchName[] }
   /** Combined Changes: the host changed the Commit list's selection (Clear Selection). */
   | { type: "setSelection"; items: CommitRef[]; focus: CommitRef }
   /** Avatars of the authors on screen (email → data: URI), a batch at a time. reset: drop those sent before (the settings changed). */
   | { type: "avatars"; byEmail: Record<string, string>; reset?: boolean }
   /** The hover card's commit: its git show (or why it failed), whether Explain exists, and on the HEAD row its merge target. */
-  | { type: "hoverDetail"; repoId: string; sha: string; detail?: HoverDetail; error?: string; explain?: boolean; target?: MergeTarget };
+  | { type: "hoverDetail"; repoId: string; sha: string; detail?: HoverDetail; error?: string; explain?: boolean; target?: MergeTarget }
+  /** The search box's ✨ toggle: linyra.ai.translateSearch is registered and Linyra AI is configured. */
+  | { type: "aiSearchAvailable"; available: boolean }
+  /** What Linyra AI made of an aiSearch: the operator query for the box, or why there is none. */
+  | { type: "aiSearchResult"; text: string; query?: string; error?: string };
 
 /** One commit of the Commit list. */
 export interface CommitRef {
@@ -114,7 +118,8 @@ export type WebviewMessage =
   | { type: "changesView"; message: ChangesMessage }
   | { type: "branchSidebar"; action: "state" | "load" | "refresh" | "select" | "favorite" | "stashShow"; repoId?: string; ref?: string; state?: BranchSidebarState }
   | { type: "ready" }
-  | { type: "filter"; filter: FilterState }
+  /** now: Enter in the search box, run without the typing debounce. */
+  | { type: "filter"; filter: FilterState; now?: boolean }
   | { type: "loadMore" }
   | { type: "refresh" }
   | { type: "select"; repoId: string; sha: string }
@@ -130,7 +135,7 @@ export type WebviewMessage =
   /** A row on the Uncommitted side was selected: its files go to the Changes view. */
   | { type: "selectWork"; repoId: string }
   /** A suggestion box got focus for the first time: read its suggestions now, not at startup. */
-  | { type: "wantSuggestions"; kind: "authors" | "branches" }
+  | { type: "wantSuggestions"; kind: "authors" | "branches" | "tags" }
   | { type: "openSettings" }
   /** The Repo List's ＋ Save as profile… row. */
   | { type: "profileSave" }
@@ -141,4 +146,8 @@ export type WebviewMessage =
   /** The hover card closed: kill its read. */
   | { type: "hoverEnd" }
   /** A link in the hover card's footer. */
-  | { type: "hoverAction"; action: "copySha" | "openOnRemote" | "compare" | "explain"; repoId: string; sha: string };
+  | { type: "hoverAction"; action: "copySha" | "openOnRemote" | "compare" | "explain"; repoId: string; sha: string }
+  /** The search box's ✨ mode: plain words for linyra.ai.translateSearch to turn into a query. */
+  | { type: "aiSearch"; text: string }
+  /** The ✨ toggle while Linyra AI is not available: set it up. */
+  | { type: "aiConfigure" };

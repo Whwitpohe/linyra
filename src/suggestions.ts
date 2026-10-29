@@ -4,7 +4,7 @@ import type { AuthorName, BranchName, HostMessage } from "./protocol";
 import { authorSuggestions, branchSuggestions } from "./repos";
 import type { Repo } from "./types";
 
-export type SuggestionKind = "authors" | "branches";
+export type SuggestionKind = "authors" | "branches" | "tags";
 
 /** What the Author and Branch boxes' suggestions need from the Log. */
 export interface SuggestionHost {
@@ -26,6 +26,8 @@ export class Suggestions {
   authors: AuthorName[] = [];
   /** Branch names across the workspace, most shared first. */
   branches: BranchName[] = [];
+  /** Tag names across the workspace (the search box's ref:), most shared first. */
+  tags: BranchName[] = [];
   /** Kinds a box has asked for this session. */
   private readonly wanted = new Set<SuggestionKind>();
   /** The repo set each kind was last read for. */
@@ -40,7 +42,7 @@ export class Suggestions {
     const key = repos.map((r) => r.id).join("\0");
     if (this.readFor.get(kind) === key) return;
     this.readFor.set(kind, key);
-    await (kind === "authors" ? this.loadAuthors() : this.loadBranches());
+    await (kind === "authors" ? this.loadAuthors() : kind === "branches" ? this.loadBranches() : this.loadTags());
   }
 
   /** The repositories changed: a box focused before they were known asked for nothing useful. */
@@ -51,13 +53,15 @@ export class Suggestions {
 
   /** Branches moved (a fetch, a checkout, a new branch): read the Branch box's names again if it was used. */
   branchesChanged(): void {
-    this.readFor.delete("branches");
-    if (this.wanted.has("branches")) void this.load("branches");
+    for (const kind of ["branches", "tags"] as const) {
+      this.readFor.delete(kind);
+      if (this.wanted.has(kind)) void this.load(kind);
+    }
   }
 
   /** A re-created webview lost what it had: send it again (only then). */
   replay(): void {
-    if (this.branches.length > 0 || this.authors.length > 0) this.host.post({ type: "suggestions", branches: this.branches, authors: this.authors });
+    if (this.branches.length > 0 || this.authors.length > 0 || this.tags.length > 0) this.host.post({ type: "suggestions", branches: this.branches, authors: this.authors, tags: this.tags });
   }
 
   /** People who committed recently, for the Author box: 300 commits per repo. */
@@ -79,5 +83,14 @@ export class Suggestions {
       : []);
     this.branches = branchSuggestions(lists);
     this.host.post({ type: "suggestions", branches: this.branches });
+  }
+
+  /** Tag names across repositories, for the search box's ref: (read only once it is typed). */
+  private async loadTags(): Promise<void> {
+    const repos = [...this.host.repos()];
+    const settled = await runPool(repos, this.host.maxConcurrency(),
+      (r, signal) => this.host.run(r.root, ["for-each-ref", "--format=%(refname:lstrip=2)", "refs/tags"], signal), this.host.signal());
+    this.tags = branchSuggestions(settled.map((s) => (s.status === "fulfilled" ? s.value.split("\n").map((l) => l.trim()).filter(Boolean) : [])));
+    this.host.post({ type: "suggestions", tags: this.tags });
   }
 }

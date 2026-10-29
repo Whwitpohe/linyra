@@ -5,15 +5,22 @@ import { compareCommits, type RepoProgress } from "./mergeStream";
 import { abortError, runPool } from "./pool";
 import { isSha, type Commit, type RepoFailure } from "./types";
 
-/** Git's object database resolves prefixes, including commits outside the current branch. */
-export async function fetchHashPage(req: PageRequest, prefix: string): Promise<PageResult> {
+/**
+ * Git's object database resolves prefixes, including commits outside the current branch. Several
+ * prefixes (commit: more than once) are each resolved, then listed together.
+ */
+export async function fetchHashPage(req: PageRequest, prefixes: string | readonly string[]): Promise<PageResult> {
+  const wanted = typeof prefixes === "string" ? [prefixes] : [...prefixes];
   const repos = selectRepos(req.filter, req.repos);
   const progress = new Map<string, RepoProgress>(repos.map((repo) => [repo.id, { fetched: 0, pending: [], exhausted: true }]));
   const targets = req.prev ? [] : repos;
   const settled = await runPool(targets, req.concurrency, async (repo, signal) => {
     const p = progress.get(repo.id)!;
-    const objects = [...new Set((await req.run(repo.root, ["rev-parse", `--disambiguate=${prefix}`], signal))
-      .split(/\s+/).filter((sha) => isSha(sha) && sha.startsWith(prefix)))];
+    const found: string[] = [];
+    for (const prefix of wanted) {
+      found.push(...(await req.run(repo.root, ["rev-parse", `--disambiguate=${prefix}`], signal)).split(/\s+/).filter((sha) => isSha(sha) && sha.startsWith(prefix)));
+    }
+    const objects = [...new Set(found)];
     if (objects.length === 0) return [];
     const candidates = new Set(objects);
     const types = await req.run(repo.root, ["cat-file", "--batch-check=%(objectname) %(objecttype)"], signal, { input: objects.join("\n") + "\n" });

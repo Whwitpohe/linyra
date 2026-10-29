@@ -1,9 +1,10 @@
 import { localize } from "../i18n";
-import { DEFAULT_FILTER, hashQuery, normalizePath, regexProblem, selectedBranches, type DatePreset, type FilterState } from "../filterModel";
+import { DEFAULT_FILTER, hashQuery, normalizePath, selectedBranches, type DatePreset, type FilterState } from "../filterModel";
 import type { AuthorName, BranchName } from "../protocol";
 import { byId } from "./dom";
 import { AuthorFilter } from "./authorFilter";
 import { BranchFilter } from "./branchFilter";
+import { SearchBox, type SearchBoxHost, type ValueKind } from "./searchBox";
 import { SortFilter } from "./sortFilter";
 
 /**
@@ -12,25 +13,26 @@ import { SortFilter } from "./sortFilter";
  */
 export class FilterBar {
   private filter: FilterState | undefined;
-  private readonly search = byId<HTMLInputElement>("search");
   private readonly meButton = byId<HTMLButtonElement>("me");
-  private readonly matchCase = byId<HTMLButtonElement>("match-case");
-  private readonly useRegex = byId<HTMLButtonElement>("use-regex");
   private readonly path = byId<HTMLInputElement>("path");
   private readonly date = byId<HTMLSelectElement>("date");
   private readonly customRange = byId("custom-range");
   private readonly from = byId<HTMLInputElement>("from");
   private readonly to = byId<HTMLInputElement>("to");
 
+  private readonly searchBox: SearchBox;
   private readonly authorFilter: AuthorFilter;
   private readonly branchFilter: BranchFilter;
   private readonly sortFilter: SortFilter;
 
-  constructor(private readonly onChange: (f: FilterState) => void, onRefresh: () => void, onWantSuggestions: (kind: "authors" | "branches") => void) {
+  constructor(
+    private readonly onChange: (f: FilterState, now?: boolean) => void,
+    onRefresh: () => void,
+    onWantSuggestions: (kind: ValueKind) => void,
+    search: Omit<SearchBoxHost, "change" | "want">,
+  ) {
     byId("filters").addEventListener("submit", (e) => e.preventDefault());
-    this.search.addEventListener("input", () => this.emit({ text: this.search.value }));
-    this.matchCase.addEventListener("click", () => this.emit({ matchCase: !this.current().matchCase || undefined }));
-    this.useRegex.addEventListener("click", () => this.emit({ regex: !this.current().regex || undefined }));
+    this.searchBox = new SearchBox({ ...search, change: (patch, now) => this.onChange({ ...this.current(), ...patch }, now), want: onWantSuggestions });
     this.authorFilter = new AuthorFilter((authors, mine) => this.emit({ author: "", authors: authors.length ? authors : undefined, mine }), () => onWantSuggestions("authors"));
     this.branchFilter = new BranchFilter((branches) => this.emit({ branch: "", branches: branches.length ? branches : undefined }), () => onWantSuggestions("branches"));
     this.sortFilter = new SortFilter((sort) => this.emit({ sort }));
@@ -62,18 +64,7 @@ export class FilterBar {
 
   update(filter: FilterState): void {
     this.filter = filter;
-    if (this.search.value !== filter.text) this.search.value = filter.text;
-    this.matchCase.setAttribute("aria-pressed", String(filter.matchCase === true));
-    this.useRegex.setAttribute("aria-pressed", String(filter.regex === true));
-    // The host searches an invalid expression as text: say so where it is typed.
-    const problem = filter.regex && filter.text.trim() ? regexProblem(filter.text.trim()) : undefined;
-    if (problem) {
-      this.search.setAttribute("aria-invalid", "true");
-      this.search.title = localize("Invalid regular expression, searched as text: {0}", problem);
-    } else {
-      this.search.removeAttribute("aria-invalid");
-      this.search.title = "";
-    }
+    this.searchBox.update(filter);
     this.authorFilter.update(filter);
     // Keep what is being typed (it may still be invalid); follow the filter otherwise.
     if (document.activeElement !== this.path && normalizePath(this.path.value) !== filter.path) {
@@ -90,21 +81,40 @@ export class FilterBar {
     const hash = hashQuery(filter.text);
     byId("hash-search-note").hidden = !hash;
     byId("order-note").hidden = !!hash;
-    for (const id of ["match-case", "use-regex", "author", "me", "path", "branch", "date", "from", "to", "sort"]) {
+    for (const id of ["match-case", "whole-word", "use-regex", "match-all", "author", "me", "path", "branch", "date", "from", "to", "sort"]) {
       (byId(id) as HTMLInputElement | HTMLButtonElement | HTMLSelectElement).disabled = !!hash;
     }
     document.querySelectorAll<HTMLButtonElement>(".picker-chip-remove").forEach((button) => { button.disabled = !!hash; });
-    this.search.title = localize("Paste a commit hash (7 or more characters), or use sha: with at least 4 characters.");
   }
 
-  /** Suggestions for the Branch box: names shared by the most repositories first. */
+  /** Suggestions for the Branch box and ref:: names shared by the most repositories first. */
   setBranches(items: readonly BranchName[]): void {
     this.branchFilter.setItems(items);
+    this.searchBox.setBranches(items);
   }
 
-  /** Suggestions for the Author box: people who committed recently, most commits first. */
+  /** Suggestions for the Author box, author: and committer:: people who committed recently, most commits first. */
   setAuthors(items: readonly AuthorName[]): void {
     this.authorFilter.setItems(items);
+    this.searchBox.setAuthors(items);
+  }
+
+  /** Tags for ref:. */
+  setTags(items: readonly BranchName[]): void {
+    this.searchBox.setTags(items);
+  }
+
+  /** The repositories' names, for repo:. */
+  setRepos(names: readonly string[]): void {
+    this.searchBox.setRepos(names);
+  }
+
+  setAiAvailable(available: boolean): void {
+    this.searchBox.setAiAvailable(available);
+  }
+
+  aiResult(m: { text: string; query?: string; error?: string }): void {
+    this.searchBox.aiResult(m);
   }
 
   /** Shown once the host knows at least one repository's user.email. */

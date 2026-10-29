@@ -1,0 +1,39 @@
+/* ── The search box (searchBox.ts): ✨ on the left, the four toggles on the right, errors under it ── */
+.search-field { position: relative; display: inline-flex; align-items: center; flex: 2 1 240px; min-width: 180px; height: 26px; }
+.search-field .search { flex: 1; min-width: 0; padding-left: 27px; padding-right: 96px; }
+.search[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
+
+/* The toggles sit inside the input, like VS Code's find widget. */
+.search-toggles { position: absolute; right: 3px; top: 50%; transform: translateY(-50%); display: inline-flex; gap: 1px; }
+.search-toggles .input-toggle { position: static; transform: none; width: 22px; min-width: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.search-ai { left: 3px; right: auto; width: 22px; min-width: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.search-ai[aria-disabled="true"] { color: var(--vscode-disabledForeground); cursor: default; }
+.search-ai[aria-disabled="true"]:hover { background: transparent; }
+/* ✨: the words go to Linyra AI, so git's matching toggles do not apply. */
+.search-field.natural .search-toggles { display: none; }
+.search-field.natural .search { padding-right: 6px; }
+.search-field.asking .search-ai { opacity: 0.6; }
+
+/* Under the box, in VS Code's input-validation colors; only while the box has focus (an error's
+   red border and tooltip stay). */
+.search-errors {
+  position: absolute; z-index: 9; top: calc(100% + 1px); left: 0; width: max-content; min-width: 100%; max-width: min(480px, 90vw); box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 2px; padding: 3px 6px;
+  font-size: 12px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere;
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-errorBackground, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, var(--vscode-focusBorder));
+}
+.search-errors[hidden] { display: none; }
+.search-errors.info {
+  color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-infoBackground, var(--vscode-editorWidget-background));
+  border-color: var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
+}
+.search-field:not(:focus-within) .search-errors { display: none; }
+
+/* The suggestions: an operator in the editor's font, what it does, its aliases at the right. */
+#search-suggestions .suggest-label { flex: 0 0 auto; font-family: var(--vscode-editor-font-family); }
+.suggest-description { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); }
+.suggest-row[aria-selected="true"] .suggest-description { color: inherit; opacity: 0.85; }
+#search-suggestions .suggest-detail { flex: 0 0 auto; font-family: var(--vscode-editor-font-family); }
