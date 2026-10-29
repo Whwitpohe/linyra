@@ -68,7 +68,8 @@ test("a pill's right-click carries the refPill context, and package.json offers 
   // A detached HEAD has no branch menu: the row's commit menu shows.
   expect(await contextOf(row(page, 2).locator(".row-refs > .pill.pill-detached"))).toBeNull();
   const menus = JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")).contributes.menus["webview/context"];
-  const onPill = menus.filter((m) => m.when.includes("webviewSection == 'refPill'")).map((m) => m.command).sort();
+  // The Repo List's branch commands, all of them (AI's explain/review items join them).
+  const onPill = menus.filter((m) => m.when.includes("webviewSection == 'refPill'")).map((m) => m.command).filter((c) => c.startsWith("linyra.branch.")).sort();
   expect(onPill).toEqual(["linyra.branch.checkout", "linyra.branch.compare", "linyra.branch.copy", "linyra.branch.merge", "linyra.branch.pull", "linyra.branch.push", "linyra.branch.rebase"]);
 });
 
