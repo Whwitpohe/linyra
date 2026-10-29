@@ -30,6 +30,8 @@ export interface CompareSidePage {
   key: string;
   description: string;
   message?: string;
+  /** An empty side's way back, a link under its message: Hide Files Already on Both off, or Only Conflicts off. */
+  emptyAction?: { kind: "showSame" | "showAll"; label: string };
   rows: CompareTreeRow[];
 }
 export interface CompareLayout {

@@ -289,7 +289,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         ...(f.added !== null && !f.untracked ? { lines: { added: f.added, deleted: f.deleted ?? 0 } } : {}),
         ...(f.oldPath ? { oldPath: f.oldPath } : {}), ...(note ? { note } : {}), ...(f.untracked ? { untracked: true } : {}) };
     };
-    this.presentation = { type: "side", side: this.side, key: this.scope, description: this.view.description, message: this.view.message, rows: roots.map(row) };
+    const emptyAction = this.emptyAction();
+    this.presentation = { type: "side", side: this.side, key: this.scope, description: this.view.description, message: this.view.message, ...(emptyAction ? { emptyAction } : {}), rows: roots.map(row) };
     this.send?.(this.presentation);
   }
 
@@ -327,8 +328,22 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   /** The empty-side message: all hidden (or no conflict) is not "no changes". */
   private emptyText(): string {
     const d = this.detail;
-    if (d && this.mode === "files" && onlyConflictsOf(this.deps.context) && d.repos.some((r) => (r.files?.length ?? 0) > 0)) return localize("No file on this side would conflict (Only Conflicts in the toolbar).");
-    return d && this.mode === "files" && d.repos.some((r) => this.filesOf(r).hidden > 0) ? localize("Every file this side changed is already on both branches (Show Files Already on Both in the title bar).") : localize("No changes on this side.");
+    if (d && this.mode === "files" && onlyConflictsOf(this.deps.context) && d.repos.some((r) => (r.files?.length ?? 0) > 0)) return localize("No file on this side would conflict.");
+    return d && this.mode === "files" && d.repos.some((r) => this.filesOf(r).hidden > 0) ? localize("Every file this side changed is already on both branches.") : localize("No changes on this side.");
+  }
+
+  /**
+   * The way back from an empty side, as a link under its message: "Show 3 files already on both"
+   * (Hide Files Already on Both off), or "Show all files" (Only Conflicts off). Never a pointer at a
+   * toolbar button by its name.
+   */
+  private emptyAction(): CompareSidePage["emptyAction"] {
+    const d = this.detail;
+    if (!d || this.mode !== "files" || this.view.message === undefined) return undefined;
+    if (this.view.message === localize("No file on this side would conflict.")) return { kind: "showAll", label: localize("Show all files") };
+    if (this.view.message !== localize("Every file this side changed is already on both branches.")) return undefined;
+    const hidden = d.repos.reduce((n, r) => n + this.filesOf(r).hidden, 0);
+    return { kind: "showSame", label: localize(hidden === 1 ? "Show the file already on both" : "Show {0} files already on both", hidden) };
   }
 
   /** Hide Files Already on Both or Only Conflicts was switched: the tree again, from the detail already read. */
@@ -453,8 +468,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     const where = isGroupSelection(repoId) ? plural(this.detail?.repos.length ?? 0, "repository", "repositories") : repoId ? resultOf(this.deps.store, repoId)?.repo.name : undefined;
     if (where && count) {
       this.view.description = [this.onlyText(), `${where} · ${count.text}`].filter(Boolean).join(" · ");
-      const empties = [localize("No changes on this side."), localize("Every file this side changed is already on both branches (Show Files Already on Both in the title bar)."),
-        localize("No file on this side would conflict (Only Conflicts in the toolbar).")];
+      const empties = [localize("No changes on this side."), localize("Every file this side changed is already on both branches."), localize("No file on this side would conflict.")];
       this.view.message = count.n === 0 ? this.emptyText() : before !== undefined && empties.includes(before) ? undefined : before;
     }
     void this.postTree();

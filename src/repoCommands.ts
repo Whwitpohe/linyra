@@ -89,7 +89,7 @@ export class RepoCommands implements vscode.Disposable {
     if (repo) await this.host.setRepoFilter([repo.id]);
   }
 
-  /** Right-click → Hide from the Log: untick this repository (the others stay as they are). */
+  /** Right-click → Untick: untick this repository (the others stay as they are). */
   async hide(arg: unknown): Promise<void> {
     const repo = this.host.contextRepo(arg);
     if (!repo) return;
@@ -113,7 +113,7 @@ export class RepoCommands implements vscode.Disposable {
   }
 
   /**
-   * Right-click → Exclude from Linyra: adds the repository's exact path to linyra.excludeRepos
+   * Right-click → Always Hide (Settings): adds the repository's exact path to linyra.excludeRepos
    * (so a repo elsewhere with the same name stays), with an Undo. It goes where the setting
    * already applies from: settings arrays do not merge across scopes, so writing to another
    * would drop the user's own entries. With none yet, the user settings: an absolute path
@@ -131,7 +131,7 @@ export class RepoCommands implements vscode.Disposable {
     this.host.untick(repo.id);
     // The configuration listener lists the repositories again (reposSettingChanged).
     await vscode.workspace.getConfiguration("linyra").update("excludeRepos", next, target);
-    void vscode.window.showInformationMessage(localize("Linyra: {0} is excluded (linyra.excludeRepos).", repo.name), localize("Undo")).then(async (pick) => {
+    void vscode.window.showInformationMessage(localize("Linyra: {0} is always hidden now (linyra.excludeRepos in Settings).", repo.name), localize("Undo")).then(async (pick) => {
       if (pick !== localize("Undo")) return;
       const now = vscode.workspace.getConfiguration("linyra").inspect<string[]>("excludeRepos");
       const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];

@@ -347,6 +347,12 @@
         "icon": "$(trash)"
       },
       {
+        "command": "linyra.deleteNew",
+        "title": "%command.linyra.deleteNew.title%",
+        "category": "Linyra",
+        "icon": "$(trash)"
+      },
+      {
         "command": "linyra.commitPanel.ignore",
         "title": "%command.linyra.commitPanel.ignore.title%",
         "category": "Linyra",
@@ -413,6 +419,12 @@
         "title": "%command.linyra.discardAll.title%",
         "category": "Linyra",
         "icon": "$(discard)"
+      },
+      {
+        "command": "linyra.deleteNewAll",
+        "title": "%command.linyra.deleteNewAll.title%",
+        "category": "Linyra",
+        "icon": "$(trash)"
       },
       {
         "command": "linyra.commitRepo",
@@ -949,8 +961,13 @@
         },
         {
           "command": "linyra.discard",
-          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "when": "view == linyra.changes && viewItem =~ /^file(Deleted)?\\.discardable(?!\\.new)/",
           "group": "3_modification@3"
+        },
+        {
+          "command": "linyra.deleteNew",
+          "when": "view == linyra.changes && viewItem =~ /^file\\.discardable\\.new/",
+          "group": "3_modification@4"
         },
         {
           "command": "linyra.stage",
@@ -971,6 +988,11 @@
           "command": "linyra.discardAll",
           "when": "view == linyra.changes && viewItem =~ /^uncommitted\\.discardable/",
           "group": "1_modification@5"
+        },
+        {
+          "command": "linyra.deleteNewAll",
+          "when": "view == linyra.changes && viewItem =~ /^(uncommitted|folder)\\.discardable.*\\.new$/",
+          "group": "3_modification@6"
         },
         {
           "command": "linyra.compareOpenSinceSplit",
@@ -1253,6 +1275,14 @@
           "when": "false"
         },
         {
+          "command": "linyra.deleteNewAll",
+          "when": "false"
+        },
+        {
+          "command": "linyra.deleteNew",
+          "when": "false"
+        },
+        {
           "command": "linyra.commitRepo",
           "when": "false"
         },
@@ -1366,7 +1396,11 @@
         },
         {
           "command": "linyra.pullAllBehind",
-          "when": "linyra.anyBehind && !linyra.fetching"
+          "when": "false"
+        },
+        {
+          "command": "linyra.fetchAndPullAll",
+          "when": "false"
         },
         {
           "command": "linyra.changesShowAll",
@@ -1906,6 +1940,11 @@
           "group": "0_modification@4"
         },
         {
+          "command": "linyra.deleteNewAll",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && canStage",
+          "group": "0_modification@5"
+        },
+        {
           "command": "linyra.repoShowOnly",
           "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "1_filter@1"
@@ -1924,11 +1963,6 @@
           "command": "linyra.showBehind",
           "when": "webviewId == 'linyra.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && linyra.anyBehind",
           "group": "1_filter@4"
-        },
-        {
-          "command": "linyra.pullAllBehind",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && linyra.anyBehind && !linyra.fetching",
-          "group": "0_sync@2"
         },
         {
           "command": "linyra.repoOpenFolder",
@@ -2027,8 +2061,18 @@
         },
         {
           "command": "linyra.discard",
-          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable/",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file(Deleted)?\\.discardable(?!\\.new)/",
           "group": "3_modification@3"
+        },
+        {
+          "command": "linyra.deleteNew",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^file\\.discardable\\.new/",
+          "group": "3_modification@4"
+        },
+        {
+          "command": "linyra.deleteNewAll",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(uncommitted|folder)\\.discardable.*\\.new$/",
+          "group": "3_modification@6"
         },
         {
           "command": "linyra.stage",
@@ -2504,6 +2548,13 @@
           "maximum": 64,
           "description": "%setting.linyra.maxConcurrency.description%"
         },
+        "linyra.updateMethod": {
+          "type": "string",
+          "enum": ["ask", "merge", "rebase", "ffOnly"],
+          "enumDescriptions": ["%setting.linyra.updateMethod.ask%", "%setting.linyra.updateMethod.merge%", "%setting.linyra.updateMethod.rebase%", "%setting.linyra.updateMethod.ffOnly%"],
+          "default": "ask",
+          "description": "%setting.linyra.updateMethod.description%"
+        },
         "linyra.scanDepth": {
           "type": "number",
           "default": 2,
@@ -2724,8 +2775,8 @@
     "vscode:prepublish": "npm run check:denylist && npm run bundle",
     "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:@anthropic-ai/sdk --platform=node --format=cjs --target=node18",
     "bundle:anthropic": "esbuild src/ai/providers/anthropicSdk.ts --bundle --outfile=out/anthropic.js --platform=node --format=cjs --target=node18",
-    "bundle": "npm run bundle:ext -- --minify && npm run bundle:anthropic -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify && npm run bundle:commit -- --minify && npm run bundle:aiSettings -- --minify",
-    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:anthropic -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap && npm run bundle:commit -- --sourcemap && npm run bundle:aiSettings -- --sourcemap",
+    "bundle": "npm run bundle:ext -- --minify && npm run bundle:anthropic -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify && npm run bundle:commit -- --minify && npm run bundle:aiSettings -- --minify && npm run bundle:form -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:anthropic -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap && npm run bundle:commit -- --sourcemap && npm run bundle:aiSettings -- --sourcemap && npm run bundle:form -- --sourcemap",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
@@ -2746,7 +2797,8 @@
     "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022",
     "bundle:changes": "esbuild src/webview/changes/main.ts --bundle --outfile=out/changes.js --platform=browser --format=iife --target=es2022",
     "bundle:commit": "esbuild src/webview/commit/main.ts --bundle --outfile=out/commit.js --platform=browser --format=iife --target=es2022",
-    "bundle:aiSettings": "esbuild src/webview/aiSettings/main.ts --bundle --outfile=out/aiSettings.js --platform=browser --format=iife --target=es2022"
+    "bundle:aiSettings": "esbuild src/webview/aiSettings/main.ts --bundle --outfile=out/aiSettings.js --platform=browser --format=iife --target=es2022",
+    "bundle:form": "esbuild src/webview/form/main.ts --bundle --outfile=out/form.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

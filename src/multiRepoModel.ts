@@ -1,6 +1,8 @@
 import type { Branches } from "./branchModel";
 import { isValidRef } from "./filterModel";
 import { localize } from "./i18n";
+import { failureReason } from "./actionErrors";
+import { errorLine } from "./git";
 import { pullReason } from "./upstream";
 
 /**
@@ -9,7 +11,19 @@ import { pullReason } from "./upstream";
  * Pure: the plans and argv, decided from each repository's own branch listing.
  */
 
-export type UpdateMethod = "merge" | "rebase";
+export type UpdateMethod = "merge" | "rebase" | "ffOnly";
+export const UPDATE_METHODS: readonly UpdateMethod[] = ["merge", "rebase", "ffOnly"];
+
+/** linyra.updateMethod: "ask" (the default), or the method Update Project runs without asking. */
+export function updateMethodSetting(value: unknown): UpdateMethod | "ask" {
+  return UPDATE_METHODS.includes(value as UpdateMethod) ? value as UpdateMethod : "ask";
+}
+
+/** Update Project's question: the remembered method first. */
+export function updateMethodOrder(last: unknown): UpdateMethod[] {
+  const first = UPDATE_METHODS.includes(last as UpdateMethod) ? last as UpdateMethod : "merge";
+  return [first, ...UPDATE_METHODS.filter((m) => m !== first)];
+}
 
 /** A branch name across repositories: local in some, remote-tracking in others. */
 export interface SharedBranch {
@@ -55,11 +69,13 @@ export const multiCommands = {
    */
   update: (method: UpdateMethod) => method === "merge"
     ? ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--no-edit", "--quiet", "@{upstream}"]
-    : ["-c", "rebase.autoStash=false", "-c", "submodule.recurse=false", "rebase", "--quiet", "@{upstream}"],
+    : method === "ffOnly"
+      ? ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"]
+      : ["-c", "rebase.autoStash=false", "-c", "submodule.recurse=false", "rebase", "--quiet", "@{upstream}"],
   /** Commits a push would send: to the upstream, or (no upstream yet) those on no remote at all. */
   outgoing: (hasUpstream: boolean) => hasUpstream
-    ? ["log", "--format=%h%x00%s", "--max-count=50", "@{upstream}..HEAD", "--"]
-    : ["log", "--format=%h%x00%s", "--max-count=50", "HEAD", "--not", "--remotes", "--"],
+    ? ["log", "--format=%h%x00%s", "--max-count=1000", "@{upstream}..HEAD", "--"]
+    : ["log", "--format=%h%x00%s", "--max-count=1000", "HEAD", "--not", "--remotes", "--"],
   /** A tag on the checked-out commit: annotated when there is a message, lightweight when not. */
   tag: (name: string, message: string) => (message.trim() ? ["tag", "-a", "-m", message.trim(), "--", checkName(name), "HEAD"] : ["tag", "--", checkName(name), "HEAD"]),
   pushTag: (remote: string, name: string) => ["push", "--quiet", "--", checkName(remote), `refs/tags/${checkName(name)}`],
@@ -202,5 +218,62 @@ export function updateReason(message: string): string {
   if (/conflict/i.test(message)) return "conflicts: resolve them in Source Control, or abort";
   if (/unstaged changes|uncommitted changes|cannot rebase/i.test(message)) return "local changes: the rebase needs a clean working tree";
   if (/no upstream|no tracking information/i.test(message)) return "no upstream branch";
-  return pullReason(message);
+  if (/not possible to fast-forward|diverging branches/i.test(message)) return "it has diverged from its upstream: merge or rebase it";
+  const pull = pullReason(message);
+  // Nothing recognized: git's main line, not the whole of its stderr.
+  return pull === message.trim() ? failureReason(message) ?? (errorLine(message) || pull) : pull;
+}
+
+/** git stopped half-way (a merge or rebase on conflicts): the repository is mid-operation, not as it was. */
+export const stoppedOnConflicts = (message: string): boolean => /\bconflict/i.test(message);
+
+/** What one action across repositories did, as its report groups it. */
+export interface Outcome {
+  done: readonly string[];
+  /** Nothing to do there (already up to date, already on the branch). */
+  unchanged: readonly string[];
+  /** Stopped half-way on conflicts: mid-merge or mid-rebase, to resolve or abort. */
+  stopped: readonly { name: string; reason: string }[];
+  /** Left as they were, and why. `failed`: git refused (not just nothing to do there). */
+  skipped: readonly { name: string; reason: string; failed?: boolean }[];
+}
+
+export type ReportKind = "update" | "checkout" | "create" | "merge" | "push" | "tag";
+
+const DONE: Record<ReportKind, string> = {
+  update: "Updated: {0}.", checkout: "Checked out: {0}.", create: "Created: {0}.", merge: "Merged: {0}.", push: "Pushed: {0}.", tag: "Tagged: {0}.",
+};
+
+/** Up to four names, then "and 3 more". */
+function names(list: readonly string[]): string {
+  return list.length > 4 ? localize("{0} and {1} more", list.slice(0, 4).join(", "), list.length - 4) : list.join(", ");
+}
+
+/**
+ * The one notification after an action across repositories: who changed, who was already there,
+ * who stopped half-way on conflicts, who was left as they were (grouped by why). A warning when
+ * something stopped or failed. `commits`: Push… names how many commits it sent.
+ */
+export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?: number): { level: "info" | "warning"; text: string } {
+  const total = r.done.length + r.unchanged.length + r.stopped.length + r.skipped.length;
+  const level = r.stopped.length > 0 || r.skipped.some((s) => s.failed) ? "warning" : "info";
+  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0) {
+    if (total === 0) return { level, text: localize("{0}: nothing to do.", what) };
+    if (kind === "update") return { level, text: total === 1 ? localize("{0}: {1} is already up to date.", what, r.unchanged[0]) : localize("{0}: all {1} repositories already up to date.", what, total) };
+    if (kind === "checkout") return { level, text: localize("{0}: every repository is already on it.", what) };
+  }
+  const parts: string[] = [];
+  if (r.done.length > 0) {
+    parts.push(kind === "push" && commits !== undefined
+      ? localize("Pushed {0} to {1}.", localize(commits === 1 ? "{0} commit" : "{0} commits", commits), r.done.length === 1 ? r.done[0] : localize("{0} repositories", r.done.length))
+      : localize(DONE[kind], names(r.done)));
+  }
+  if (r.unchanged.length > 0) parts.push(localize(kind === "update" ? "Already up to date: {0}." : kind === "checkout" ? "Already on it: {0}." : "Nothing to do: {0}.", names(r.unchanged)));
+  if (r.stopped.length > 0) parts.push(localize("Stopped on conflicts, resolve or abort: {0}.", names(r.stopped.map((s) => s.name))));
+  // Left as they were, one group per reason: "acme-api, acme-libs (no upstream branch)".
+  const why = new Map<string, string[]>();
+  for (const s of r.skipped) why.set(s.reason, [...(why.get(s.reason) ?? []), s.name]);
+  if (why.size > 0) parts.push(localize("Left as they were: {0}.", [...why].map(([reason, list]) => `${names(list)} (${reason})`).join("; ")));
+  const head = kind === "push" && commits !== undefined && r.done.length > 0 ? "" : `${what} — `;
+  return { level, text: `${head}${parts.join(" ")}` };
 }

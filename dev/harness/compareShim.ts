@@ -49,7 +49,19 @@ function sides(): void {
     const id = `${selected}/${side}/commit`;
     const sideRows: CompareTreeRow[] = mode === "files" ? files : [{ id, kind: "commit", label: "fix: retry on 503", description: "dana · a42a50e", tooltip: "fix: retry on 503", contextValue: "compareCommit",
       loaded: expanded.has(id), children: expanded.has(id) ? [file("src/upload.ts")] : [] }, { id: `${side}-more`, kind: "more", label: "Show 500 more", description: "", tooltip: "", contextValue: "" }];
-    send({ type: "side", side, key: `${selected}/${pair.left}/${pair.right}/${mode}`, description: `${pair[side]} only · ${selected.split("/").pop()} · ${mode === "files" ? "2 files" : "1 commit"}`, rows: sideRows });
+    const key = `${selected}/${pair.left}/${pair.right}/${mode}`;
+    // ?empty=same: the left side's files are all on both already (hidden); ?empty=conflicts: none would conflict.
+    const empty = side === "left" && mode === "files" ? params.get("empty") : null;
+    if (empty === "same" && hideSame) {
+      send({ type: "side", side, key, description: `${pair[side]} only · acme-api · 0 files · 3 already on both (hidden)`, rows: [],
+        message: "Every file this side changed is already on both branches.", emptyAction: { kind: "showSame", label: "Show 3 files already on both" } });
+      continue;
+    }
+    if (empty === "conflicts" && onlyConflicts) {
+      send({ type: "side", side, key, description: `${pair[side]} only · acme-api · 0 files`, rows: [], message: "No file on this side would conflict.", emptyAction: { kind: "showAll", label: "Show all files" } });
+      continue;
+    }
+    send({ type: "side", side, key, description: `${pair[side]} only · ${selected.split("/").pop()} · ${mode === "files" ? "2 files" : "1 commit"}`, rows: sideRows });
   }
 }
 

@@ -124,7 +124,7 @@ for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
 
 test("中文: ✨ and its line are translated", async ({ page }) => {
   await open(page, { locale: "zh-cn" });
-  await expect(page.locator("#commit-generate")).toHaveAttribute("aria-label", "用 AI 生成提交说明");
+  await expect(page.locator("#commit-generate")).toHaveAttribute("aria-label", "用 AI 生成提交信息");
   await page.locator("#commit-generate").click();
   await expect(page.locator("#commit-ai-text")).toHaveText("由 AI 撰写：提交前请先检查。");
   await expect(page.locator("#commit-ai-undo")).toHaveText("撤销");

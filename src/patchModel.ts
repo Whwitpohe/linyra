@@ -35,3 +35,25 @@ export function applyArgs(opts: { check?: boolean; threeWay?: boolean } = {}): s
 export function amArgs(): string[] {
   return ["am", "--3way", "--quiet"];
 }
+
+/**
+ * The files a patch expects to find already there: the old names of those it changes, renames or
+ * deletes ("--- a/x"), never a file it adds (--- /dev/null). Where it fits, these exist.
+ */
+export function patchSources(text: string): string[] {
+  const files = new Set<string>();
+  for (const m of text.matchAll(/^--- (?:a\/)?(.+?)(?:\t.*)?\r?$/gm)) if (m[1] !== "/dev/null") files.add(m[1]);
+  return [...files];
+}
+
+/**
+ * Which repositories a patch fits, from the files it expects (found: how many of them each has):
+ * the ones that have them all, else every one, most found first. `sure`: exactly one fits, so
+ * nothing needs asking.
+ */
+export function patchFit<T extends { id: string }>(repos: readonly T[], expected: number, found: ReadonlyMap<string, number>): { sure: T | undefined; offer: T[]; fits: number } {
+  const all = expected > 0 ? repos.filter((r) => found.get(r.id) === expected) : [];
+  if (all.length === 1) return { sure: all[0], offer: all, fits: 1 };
+  const pool = all.length > 1 ? all : [...repos];
+  return { sure: undefined, offer: pool.sort((a, b) => (found.get(b.id) ?? 0) - (found.get(a.id) ?? 0)), fits: all.length };
+}

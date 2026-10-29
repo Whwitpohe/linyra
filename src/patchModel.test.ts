@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { gitEnv, makeRepo } from "./fixtures";
-import { amArgs, applyArgs, isMailbox, looksLikePatch, mailboxCommits, patchFiles } from "./patchModel";
+import { amArgs, applyArgs, isMailbox, looksLikePatch, mailboxCommits, patchFiles, patchFit, patchSources } from "./patchModel";
 
 const diff = "diff --git a/src/app.ts b/src/app.ts\nindex 1111111..2222222 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n";
 {
@@ -59,4 +59,17 @@ const diff = "diff --git a/src/app.ts b/src/app.ts\nindex 1111111..2222222 10064
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
+}
+
+{
+  const diff = "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n"
+    + "diff --git a/new.md b/new.md\nnew file mode 100644\n--- /dev/null\n+++ b/new.md\n@@ -0,0 +1 @@\n+n\n";
+  assert.deepStrictEqual(patchSources(diff), ["src/app.ts"], "a file the patch adds is not expected to exist");
+  const repos = [{ id: "acme-web" }, { id: "acme-api" }, { id: "acme-libs" }];
+  assert.deepStrictEqual(patchFit(repos, 1, new Map([["acme-api", 1]])), { sure: { id: "acme-api" }, offer: [{ id: "acme-api" }], fits: 1 }, "one fits: no question");
+  assert.strictEqual(patchFit(repos, 1, new Map([["acme-web", 1], ["acme-api", 1], ["acme-libs", 1]])).fits, 3, "all fit: several, not none");
+  assert.deepStrictEqual(patchFit(repos, 2, new Map([["acme-web", 2], ["acme-libs", 2]])).offer.map((r) => r.id), ["acme-web", "acme-libs"], "several fit: only those");
+  assert.deepStrictEqual(patchFit(repos, 3, new Map([["acme-libs", 2], ["acme-api", 1]])).offer.map((r) => r.id), ["acme-libs", "acme-api", "acme-web"], "none fits: all, best first");
+  assert.strictEqual(patchFit(repos, 0, new Map()).sure, undefined, "a patch that only adds files: asked");
+  console.log("ok - Apply Patch… finds the repository from the files the patch changes");
 }

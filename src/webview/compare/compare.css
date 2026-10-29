@@ -30,9 +30,9 @@ button, input { font: inherit; }
 
 .cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 8px; }
 .cbar-pair, .cbar-show { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.cbar-pair { flex: 0 1 520px; max-width: 520px; }
+.cbar-pair { flex: 0 1 680px; max-width: 680px; flex-wrap: wrap; row-gap: 4px; }
 .cbar-show { flex-wrap: wrap; }
-.branch-box { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; }
+.branch-box { flex: 1 1 0; min-width: 110px; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; }
 .branch-box .branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-box .caret { margin-left: auto; color: var(--vscode-descriptionForeground); }
 /* Only the ◀ ▶ marks and the counts are colored: a branch name stays the input's text color (contrast). */
@@ -40,6 +40,19 @@ button, input { font: inherit; }
 .branch-box.right .side-mark, .mono.right, .picker .side-mark.right { color: var(--vscode-charts-yellow); }
 .same { color: var(--vscode-charts-green); }
 .error { color: var(--vscode-errorForeground); }
+/* Merge into ▶…: the one action of the pair, labeled with ▶'s name. */
+/* Not room for both boxes and it: it goes to its own line rather than squeezing the branch names. */
+.merge-button { flex: 0 0 auto; max-width: 100%; min-width: 0; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; margin-left: 4px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; cursor: pointer; color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+.merge-button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+.merge-button:disabled { color: var(--vscode-disabledForeground); cursor: default; }
+.merge-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.merge-button svg { flex: 0 0 auto; }
+.merge-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty-action { padding: 0 12px 12px; }
+.empty-action[hidden] { display: none; }
+.link-button { padding: 0; border: 0; background: transparent; color: var(--vscode-textLink-foreground); cursor: pointer; text-align: left; }
+.link-button:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+.link-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .icon-button { background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; border-radius: 3px; padding: 1px 6px; cursor: pointer; }
 .icon-button:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); outline: 1px dashed var(--vscode-contrastActiveBorder, transparent); }
 .seg { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; overflow: hidden; }

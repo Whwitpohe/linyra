@@ -136,6 +136,10 @@ describe("Commit actions", () => {
     assert.strictEqual(head(), tip, "declined: the branch stays");
     await answer("Mixed"); await answer("Reset");
     await act("commitReset", start);
+    // The question names what leaves the branch, and what happens to the files.
+    const leaving = Number(git(["rev-list", "--count", `${start}..${tip}`]));
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), `Reset main to ${start.slice(0, 7)} in acme-api?`);
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastDetail"), `${leaving} commit${leaving === 1 ? " leaves" : "s leave"} main.\nTheir changes stay in your files, unstaged.`);
     assert.strictEqual(head(), start);
     assert.strictEqual(git(["branch", "--show-current"]), "main");
     const s = await until("the Log after the reset", (x) => !x.rows.some((r) => r.sha === tip));
@@ -186,7 +190,8 @@ describe("Commit actions", () => {
   it("stashes changes, lists the stash in the tree's data, applies, pops and drops it", async () => {
     const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
     fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");
-    await answer("Stash including untracked files"); await answer("ci stash");
+    // One box: the message, and Include new files toggled on (off is the first default).
+    await answer("ci stash|toggle");
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
     assert.ok(!fs.existsSync(path.join(root, "stash-me.txt")), "the work tree is clean");
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
@@ -199,7 +204,8 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.stash.pop", { repoId, ref: "stash@{0}" });
     assert.ok(fs.existsSync(path.join(root, "stash-me.txt")));
     assert.strictEqual((await stashes()).length, 0, "pop removes it");
-    await answer("Stash tracked changes"); await answer("ci again");
+    // Remembered: on now, so toggled off for tracked changes only.
+    await answer("ci again|toggle");
     fs.rmSync(path.join(root, "stash-me.txt"));
     fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// changed\n");
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
@@ -255,6 +261,18 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
     assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "The patch does not apply cleanly to acme-api.");
     assert.strictEqual(git(["status", "--porcelain"]), "");
+    // From the Command Palette, no repository given: the patch's files say which one (only acme-api has upload.go).
+    fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// patched\n");
+    const diff = git(["diff", "--", "upload.go"]) + "\n";
+    git(["checkout", "--", "upload.go"]);
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", diff);
+    const asked = await vscode.commands.executeCommand<number>("linyra._itest.asked");
+    await answer("From Clipboard");
+    await vscode.commands.executeCommand("linyra.applyPatch");
+    assert.strictEqual(await vscode.commands.executeCommand<number>("linyra._itest.asked"), asked + 1, "asked only where the patch comes from");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied the patch to acme-api (1 file).");
+    assert.match(fs.readFileSync(path.join(root, "upload.go"), "utf8"), /patched/);
+    git(["checkout", "--", "upload.go"]);
     await vscode.commands.executeCommand("linyra._itest.setClipboard", "not a patch");
     await answer("From Clipboard");
     await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });

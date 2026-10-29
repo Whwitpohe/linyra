@@ -197,15 +197,6 @@ export class UncommittedStore implements vscode.Disposable {
     return this.scope.pathspecs.length > 0;
   }
 
-  /** The whole repository's uncommitted work, ignoring the Path box (what a commit would take). */
-  async whole(repoId: string): Promise<{ staged: number; changes: number; tracked: number } | undefined> {
-    const r = this.scope.repos.find((x) => x.id === repoId);
-    if (!r) return undefined;
-    const split = splitStatus(await this.deps.run(r.root, statusArgs([]), new AbortController().signal));
-    const paths = (fs: readonly { path: string }[]) => new Set(fs.map((f) => f.path)).size;
-    return { staged: paths(split.staged), changes: paths(split.changes), tracked: paths(split.changes.filter((f) => !f.untracked)) };
-  }
-
   /** The work of the repositories read so far, in Repo List order. */
   works(): RepoWork[] {
     return this.scope.repos.flatMap((r) => {

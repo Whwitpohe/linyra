@@ -215,7 +215,7 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
         // "develop ↑1 · 3 files": the branch beside the count, as the Log's Uncommitted row shows it.
         id: base, kind: "repo", label: w.name, description: [branchText(w), partly(c, plural(c.files, "file"))].filter(Boolean).join(" · "),
         repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c, markdown: true,
-        tooltip: paragraphs([mdText(w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name)), branch, countsLine(k)]),
+        tooltip: paragraphs([mdText(w.canStage ? w.root : localize("{0}: Discard Changes needs VS Code's Git to have this repository open.", w.name)), branch, countsLine(k)]),
         // .conflicted: a merge or rebase stopped here (Resolve Conflicts…, and AI's).
         contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}${addedUnder(children)}${(w.conflicts ?? 0) > 0 ? ".conflicted" : ""}`,
       });
@@ -272,6 +272,35 @@ export function setChecked(works: readonly RepoWork[], choices: Choices, rows: r
     else next.set(key, on);
   }
   return next;
+}
+
+/**
+ * Commit… on a repository (the Uncommitted side, the Changes view): that repository's files checked
+ * as the side bar checks them by default (tracked ones; its new files too when it has nothing else),
+ * every other repository's unchecked.
+ */
+export function checkOnly(works: readonly RepoWork[], repoId: string): Map<string, boolean> {
+  const next = new Map<string, boolean>();
+  for (const w of works) {
+    const files = commitFiles(w);
+    const onlyNew = w.repoId === repoId && files.every((f) => f.untracked);
+    for (const f of files) {
+      const want = w.repoId === repoId && (onlyNew || !f.untracked);
+      if (want !== !f.untracked) next.set(fileKey(w.repoId, f.path), want);
+    }
+  }
+  return next;
+}
+
+/**
+ * The Commit side bar's report when some repositories committed and others did not: which did,
+ * which did not and why, and that Commit tries the rest again (the message is kept).
+ */
+export function commitPartly(done: readonly string[], failed: readonly { name: string; why: string }[]): string {
+  const not = failed.map((f) => `${f.name} (${f.why})`).join("; ");
+  return done.length === 0
+    ? localize("Linyra could not commit: {0}. The message is kept: fix that, then Commit again.", not)
+    : localize("Committed in {0}. Not committed in {1}. The message is kept: Commit again takes the files still checked there.", done.join(", "), not);
 }
 
 /** Choices for files no longer listed are forgotten: a file changed again starts from the default. */

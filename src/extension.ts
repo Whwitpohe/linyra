@@ -26,9 +26,10 @@ import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
 import { Ask, UncommittedActions } from "./uncommittedActions";
 import { CommitPanel } from "./commitPanel";
-import { BranchController, type BranchAction, type StashAction } from "./branchController";
+import { BranchController, type BranchAction, type StashAction, type StashWriter } from "./branchController";
 import { CommitActions } from "./commitActions";
 import { MultiRepo } from "./multiRepo";
+import { openForm } from "./formPanel";
 import { OperationActions } from "./operationActions";
 import { PatchActions } from "./patchActions";
 import { RunAcross } from "./runAcross";
@@ -65,6 +66,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
   });
   const ask = new Ask();
+  // Release… and Tag Across Repositories… ask through a review form in an editor tab.
+  ask.formOpener = (spec, check) => openForm(context.extensionUri, spec, check);
   const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted, ask,
     toolbarFlags: () => ({ compareShown: context.workspaceState.get<boolean>(COMPARE_SHOWN, false) }) });
   const changesPanel = new ChangesPanel(context, changes);
@@ -120,7 +123,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return t ? { ...t, group } : arg;
   };
   const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (changes.commandArgument(arg) as { repoId?: unknown } | undefined)?.repoId;
-  const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, run: log.countedRun, committed: () => log.commitsChanged(), ask });
+  const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, run: log.countedRun, ask });
   // The Commit side bar: Commit and Push… pushes through Push… (multiRepo, made below; used only once Linyra runs).
   const commitPanel = new CommitPanel({ context, store: uncommitted, actions: uncommittedActions, run: log.countedRun, ask,
     accents: () => log.accents(), behind: (id) => log.upstream.isBehind(id), shown: () => void log.uncommittedViewShown(),
@@ -134,7 +137,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const selection = new CompareSelection();
   const mergeDocs = new MergePreviewDocs();
   const compareDeps = { context, store: compare, log, selection, mergeDocs, ask,
-    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]) => multiRepo.mergeEach(title, plans, skipped),
+    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string; failed?: boolean }[], opts?: { quiet?: boolean }) => multiRepo.mergeEach(title, plans, skipped, opts),
     mergeRef: (repo: Repo, ref: string) => multiRepo.mergeRef(repo, ref) };
   const compareRepos = new CompareRepos(compareDeps);
   // The hover card's Compare: the HEAD row's branch against its merge target, in Compare Branches.
@@ -146,11 +149,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     compare: async (repoId, branch, current) => { await log.selectBranch(repoId, branch); await compareRepos.comparePair({ left: branch, right: current }, repoId); },
     changed: (id) => log.branchChanged(id), concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
     // The integration suite answers Stash Changes… through Ask's queue: VS Code's plain input box there.
-    ...(process.env.LINYRA_ITEST === "1" ? {} : { stashInput: (repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string) => ai.features.stashInput(repo, untracked, prompt, placeHolder, value) }),
+    ...(process.env.LINYRA_ITEST === "1" ? {} : {
+      // ✨ in Stash Changes…: AI writes into Linyra's box once src/ai offers stashWriter; until then its own box takes over.
+      stashWriter: () => (ai.features as { stashWriter?: () => StashWriter | undefined }).stashWriter?.(),
+      stashInput: (repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string) => ai.features.stashInput(repo, untracked, prompt, placeHolder, value),
+    }),
   });
   log.branchSidebar = branchSidebar;
   const multiRepo = new MultiRepo({ viewId: LogView.id, repos: () => log.tickedRepos(), run: log.countedRun, ask,
-    fetchAll: () => log.upstream.fetchAll(), changed: (ids) => log.reposChanged(ids) });
+    fetchAll: () => log.upstream.fetchAll(), changed: (ids) => log.reposChanged(ids), state: context.globalState });
   context.subscriptions.push(
     vscode.commands.registerCommand("linyra.branchesAcross", () => multiRepo.branches()),
     vscode.commands.registerCommand("linyra.pushAll", () => multiRepo.push()),
@@ -326,7 +333,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),
     vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
     vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
-    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.rollback(arg, many)),
+    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.discard(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.add", (arg?: unknown, many?: unknown) => commitPanel.addToVcs(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.removeFromVcs", (arg?: unknown, many?: unknown) => commitPanel.removeFromVcs(arg, many)),
     vscode.commands.registerCommand("linyra.commitPanel.delete", (arg?: unknown, many?: unknown) => commitPanel.deleteFiles(arg, many)),
@@ -345,7 +352,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.discardAll", (arg?: unknown) => uncommittedActions.discard({ repoId: repoOf(arg) })),
     vscode.commands.registerCommand("linyra.stageAll", (arg?: unknown) => uncommittedActions.stage({ repoId: repoOf(arg), group: "changes" })),
     vscode.commands.registerCommand("linyra.unstageAll", (arg?: unknown) => uncommittedActions.unstage({ repoId: repoOf(arg), group: "staged" })),
-    vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => uncommittedActions.commit(changesTarget(arg) ?? arg)),
+    // Commit… on the Uncommitted side or in the Changes view: the Commit side bar, that repository's files checked.
+    vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => commitPanel.openFor(((changesTarget(arg) ?? arg) as { repoId?: unknown } | undefined)?.repoId ?? repoOf(arg))),
+    vscode.commands.registerCommand("linyra.deleteNew", (arg?: unknown, many?: unknown[]) => uncommittedActions.deleteNew(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
+    // Delete New Files…: a folder's, or a whole repository's (the Uncommitted side's row, the Changes view's root).
+    vscode.commands.registerCommand("linyra.deleteNewAll", (arg?: unknown) => uncommittedActions.deleteNew(changesTarget(arg) ?? { repoId: repoOf(arg) })),
     vscode.commands.registerCommand("linyra.openUncommittedDiff", (arg?: unknown) => uncommittedActions.openDiff(arg)),
     vscode.commands.registerCommand("linyra.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
@@ -406,6 +417,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (process.env.LINYRA_ITEST === "1") {
     context.subscriptions.push(
       vscode.commands.registerCommand("linyra._itest.branches", () => branchSidebar.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.branchError", () => branchSidebar.lastError),
+      vscode.commands.registerCommand("linyra._itest.lastDetail", () => uncommittedActions.ask.lastDetail),
       vscode.commands.registerCommand("linyra._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
       vscode.commands.registerCommand("linyra._itest.snapshot", () => log.snapshot()),
       vscode.commands.registerCommand("linyra._itest.blame", () => blame.last),
@@ -434,6 +447,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.setClipboard", (text: string) => setCopiedText(text)),
       vscode.commands.registerCommand("linyra._itest.answer", (v: string | undefined) => uncommittedActions.ask.queue(v)),
       vscode.commands.registerCommand("linyra._itest.lastWarning", () => uncommittedActions.ask.lastWarning),
+      vscode.commands.registerCommand("linyra._itest.lastForm", () => uncommittedActions.ask.lastForm),
       vscode.commands.registerCommand("linyra._itest.operationError", () => { const e = operations.lastError; operations.lastError = undefined; return e; }),
       vscode.commands.registerCommand("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
       vscode.commands.registerCommand("linyra._itest.branchSheet", () => log.branchSheet.last),
