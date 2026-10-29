@@ -17,11 +17,12 @@ const server = createServer((req, res) => {
   if (!file.startsWith(dist) || !existsSync(file)) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
   createReadStream(file).pipe(res);
-}).listen(0);
+}).listen(0, "127.0.0.1");
+await new Promise((resolve) => server.once("listening", resolve));
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const cdp = await page.context().newCDPSession(page);
-await page.goto(`http://localhost:${server.address().port}/index.html?theme=dark&state=${STATE}&date=all&avatars=off`);
+await page.goto(`http://127.0.0.1:${server.address().port}/index.html?theme=dark&state=${STATE}&date=all&avatars=off`);
 await page.locator("#rows .row").first().waitFor();
 await page.waitForTimeout(500);
 await cdp.send("Performance.enable");
