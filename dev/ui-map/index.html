@@ -374,7 +374,7 @@ section { display: grid; gap: 16px; }
     </div>
   </div>
   <div class="gloss">
-    <div class="g"><i class="num">27</i><b>Uncommitted side</b><span>The Log's Uncommitted tab — the one view of uncommitted work (the former side bar is gone; "Show Uncommitted Changes in the Log" opens this tab): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
+    <div class="g"><i class="num">27</i><b>Uncommitted side</b><span>The Log's Uncommitted tab ("Show Uncommitted Changes in the Log" opens it; the Commit side bar, 43, shows the same work to commit): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository (right-click it for Stage All, Unstage All and Discard All Changes); ↶ Discard and − Unstage on staged rows; ↶ Discard and + Stage on changes. Discard always asks first. Each file opens the diff Source Control would.</span></div>
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>Changes toolbar: switch all/changed files, clear a combined selection, expand/collapse all, copy commit data or open Changes independently.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository on the Uncommitted side. A file staged and changed again is in both.</span></div>
     <div class="g"><i class="num">28</i><b>Linyra Compare tab</b><span>A panel tab next to Linyra (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
@@ -384,6 +384,42 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">34</i><b>Left and Right views</b><span>Two resizable regions within one Compare surface. Folder/commit text selects a row; only the small arrow or a keyboard action folds it. Both sides retain display mode, shared-file filtering, expand/collapse, Show More and file/commit context menus.</span></div>
     <div class="g"><i class="num">35</i><b>On both duplicates</b><span>Under a Repositories row (its ▸): each change committed on both sides (cherry-picked), with both commit ids.</span></div>
     <div class="g"><i class="num">36</i><b>Missing a branch</b><span>Missing repositories are listed separately. Its small arrow expands the names; the heading text and right-hand blank space do not.</span></div>
+  </div>
+</section>
+
+<section aria-labelledby="s-commit">
+  <div class="sec-head"><h2 id="s-commit">The Commit side bar</h2><span class="pill now">Exists</span></div>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 360px">
+        <div class="view t"><i class="n tl">43</i>
+          <div class="vhead">Linyra: Commit</div>
+          <div class="vbody tree">
+            <div class="node t" style="--d:0"><span class="desc">10 files · 3 repositories</span><span class="badge">⟳ ↶ ⇆ ⊟</span><i class="n tl">44</i></div>
+            <div class="node t" style="--d:0">▾ <span class="box">✓</span> <b>Changes</b> <span class="desc">8 files</span><i class="n tl">45</i></div>
+            <div class="node t" style="--d:1">▾ <span class="box">−</span> <span class="dot bg-web"></span> <b>acme-web</b> <span class="desc">5 files</span><i class="n tl">46</i></div>
+            <div class="node" style="--d:2">▾ <span class="box">✓</span> src <span class="desc">2</span></div>
+            <div class="node t" style="--d:3"><span class="box">✓</span> <span class="mod">app.ts</span><span class="badge mod">M</span><i class="n tl">47</i></div>
+            <div class="node" style="--d:3"><span class="box"></span> <span class="mod">Button.tsx</span><span class="badge mod">M</span></div>
+            <div class="node" style="--d:0">▾ <span class="box"></span> <b>Unversioned Files</b> <span class="desc">2 files</span></div>
+            <div class="node t" style="--d:0"><span class="box"></span> Amend<i class="n tl">48</i></div>
+            <div class="node t" style="--d:0"><span class="desc">Commit Message</span><i class="n tl">49</i></div>
+            <div class="node t" style="--d:0"><b>[ Commit ]</b> [ Commit and Push… ]<i class="n tl">50</i></div>
+            <div class="node" style="--d:0"><span class="desc">8 files checked in 3 repositories</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">43</i><b>Commit side bar</b><span>The Linyra icon in the Activity Bar, as the JetBrains Commit window: every ticked repository's uncommitted work with a checkbox on each row, and one message to commit it. VS Code's own Activity Bar menu hides it.</span></div>
+    <div class="g"><i class="num">44</i><b>Commit toolbar</b><span>How much is uncommitted, then Refresh, Rollback… (Ctrl+Alt+Z: the selected rows, else the checked files, after one prompt), Show Diff and Collapse/Expand All.</span></div>
+    <div class="g"><i class="num">45</i><b>Changes and Unversioned Files</b><span>Tracked changes, checked by default; new files, unchecked until you check them. Staged and unstaged halves of a file are one row: the commit takes the file as it is.</span></div>
+    <div class="g"><i class="num">46</i><b>Checkbox</b><span>On a list, repository or folder it checks everything under it; a dash means some. Space checks the selected rows.</span></div>
+    <div class="g"><i class="num">47</i><b>Commit file row</b><span>Click: the diff, last commit ↔ working tree. Double-click or F4: the file. Right-click: Show Diff, Open File, Rollback…, File History, Copy Path. A repository row adds Stash Changes…, Pull, Open Folder.</span></div>
+    <div class="g"><i class="num">48</i><b>Amend</b><span>The checked files join each repository's last commit, under the new message. With an empty box it brings the last commit's message to edit; a commit already pushed asks first.</span></div>
+    <div class="g"><i class="num">49</i><b>Commit message</b><span>Kept as a draft per workspace. The divider above it sets its height.</span></div>
+    <div class="g"><i class="num">50</i><b>Commit and Commit and Push…</b><span>Ctrl+Enter / Ctrl+Alt+K. One commit per repository with checked files, of exactly those files (git commit --only): anything else staged stays staged. Push… then offers the repositories just committed in.</span></div>
   </div>
 </section>
 </div>

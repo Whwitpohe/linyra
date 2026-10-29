@@ -109,10 +109,13 @@ export class MultiRepo {
     return this.report(localize("Merge {0}", name), result);
   }
 
-  /** ⇡ Push…: every ticked repository with commits to send, its target and its outgoing commits; push the ones kept ticked. */
-  push(): Promise<MultiResult | undefined> {
+  /**
+   * ⇡ Push…: every ticked repository with commits to send, its target and its outgoing commits; push the
+   * ones kept ticked. `only`: just these repositories (Commit and Push… offers the ones it committed in).
+   */
+  push(only?: ReadonlySet<string>): Promise<MultiResult | undefined> {
     return this.exclusive(async () => {
-      const all = await this.read();
+      const all = await this.read(only);
       const rows = (await runPool(all, WRITE_CONCURRENCY, async (x) => {
         const plan = x.data && pushPlan(x.data);
         if (!plan) return undefined;
@@ -185,8 +188,8 @@ export class MultiRepo {
   }
 
   /** Each ticked repository's branches and remotes (undefined when they could not be read). */
-  private async read(): Promise<{ repo: Repo; data: Branches | undefined }[]> {
-    const repos = [...this.host.repos()];
+  private async read(only?: ReadonlySet<string>): Promise<{ repo: Repo; data: Branches | undefined }[]> {
+    const repos = this.host.repos().filter((r) => !only || only.has(r.id));
     const settled = await runPool(repos, 8, async (r) => {
       const [refs, remotes] = await Promise.all([this.host.run(r.root, branchArgs(), WRITE_SIGNAL), this.host.run(r.root, ["remote"], WRITE_SIGNAL)]);
       return parseBranches(refs, remotes.split(/\r?\n/).filter(Boolean));

@@ -141,10 +141,10 @@ for the CLI expired, and the web upload does not use it.
 Summarize:
 - the version and the CHANGELOG section;
 - that the suite and bundle are green, and the browser reaches both publishing pages;
-- the package contents, from `vsce ls`: 19 files (`package.json`, the English/Chinese
+- the package contents, from `vsce ls`: 21 files (`package.json`, the English/Chinese
   manifest catalogs, the Chinese runtime catalog, English/Chinese READMEs, LICENSE, CHANGELOG,
-  `ThirdPartyNotices.txt`, the three allowlisted icons, and seven production JS/CSS
-  bundles for extension, Log, Compare and Changes). `vsce package` reports 21 because
+  `ThirdPartyNotices.txt`, the three allowlisted icons, and nine production JS/CSS
+  bundles for extension, Log, Compare, Changes and Commit). `vsce package` reports 23 because
   it adds `[Content_Types].xml` and `extension.vsixmanifest`.
 
 Then ask for explicit confirmation. Neither registry has an undo.
@@ -192,8 +192,8 @@ npx vsce package --out whwitpohe.linyra-X.Y.Z.vsix     # runs vscode:prepublish;
 sha256sum whwitpohe.linyra-X.Y.Z.vsix | sed 's/ \*/  /' > SHA256SUMS.txt   # "<sha256>  <file>", as earlier releases
 ```
 
-- **Expected package: 21 files, about 300 KB, as `vsce package` counts them**
-  (19 allowlisted files plus two manifests). Inspect the allowlist and actual archive;
+- **Expected package: 23 files, about 320 KB, as `vsce package` counts them**
+  (21 allowlisted files plus two manifests). Inspect the allowlist and actual archive;
   source, development dependencies, screenshots and source maps must not ship.
 - Keep `SHA256SUMS.txt` outside the repository (the scratchpad), or delete it after step 10.
 

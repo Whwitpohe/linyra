@@ -17,6 +17,7 @@ import { gitCandidates } from "./gitBinary";
 import { HIDE_REPOS_KEY, LogView } from "./logView";
 import { disposeOutputLog } from "./outputLog";
 import type { WebviewMessage } from "./protocol";
+import type { CommitWebviewMessage } from "./commitProtocol";
 import { RepoDiscovery } from "./repoDiscovery";
 import { RevisionProvider } from "./revisionProvider";
 import { SCHEME } from "./revisionUri";
@@ -24,6 +25,7 @@ import { BlameView } from "./blameView";
 import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
 import { Ask, UncommittedActions } from "./uncommittedActions";
+import { CommitPanel } from "./commitPanel";
 import { BranchController, type BranchAction, type StashAction } from "./branchController";
 import { CommitActions } from "./commitActions";
 import { MultiRepo } from "./multiRepo";
@@ -100,6 +102,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
   const repoOf = (arg: unknown): unknown => changesTarget(arg)?.repoId ?? (changes.commandArgument(arg) as { repoId?: unknown } | undefined)?.repoId;
   const uncommittedActions = new UncommittedActions({ store: uncommitted, discovery, committed: () => log.commitsChanged(), ask });
+  // The Commit side bar: Commit and Push… pushes through Push… (multiRepo, made below; used only once Linyra runs).
+  const commitPanel = new CommitPanel({ context, store: uncommitted, actions: uncommittedActions, run: log.countedRun, ask,
+    accents: () => log.accents(), behind: (id) => log.upstream.isBehind(id), shown: () => void log.uncommittedViewShown(),
+    committed: () => log.commitsChanged(), push: (ids) => multiRepo.push(ids) });
   const compare = new CompareStore({
     run: (root, args, signal) => log.countedRun(root, args, signal),
     concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("linyra").get<number>("maxConcurrency", 16))),
@@ -235,11 +241,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ]),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath, true)),
     // Back from another program (a terminal, a Git client): what VS Code's Git does not watch may have changed.
-    vscode.window.onDidChangeWindowState((state) => { if (state.focused) log.windowFocused(); }),
+    vscode.window.onDidChangeWindowState((state) => {
+      if (!state.focused) return;
+      log.windowFocused();
+      if (commitPanel.visible) void uncommitted.readUnreported();
+    }),
     uncommitted,
-    // Uncommitted work has one home: the Log's Uncommitted side (this command opens it).
+    // Uncommitted work is on the Log's Uncommitted side (this command opens it) and in the Commit side bar.
+    commitPanel,
+    vscode.window.registerWebviewViewProvider(CommitPanel.viewType, commitPanel),
+    discovery.onDidChangeWatched(() => commitPanel.refresh()),
+    log.upstream.onDidChange(() => commitPanel.refresh()),
+    log.onDidChangeAccents(() => commitPanel.refresh()),
     vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),
     vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
+    vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
+    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown) => commitPanel.rollback(arg)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
     vscode.commands.registerCommand("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedActions.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
@@ -307,6 +324,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.blame", () => blame.last),
       vscode.commands.registerCommand("linyra._itest.send", (m: WebviewMessage) => log.onMessage(m)),
       vscode.commands.registerCommand("linyra._itest.uncommitted", () => uncommittedActions.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.commitPanel", () => commitPanel.snapshot()),
+      vscode.commands.registerCommand("linyra._itest.commitSend", (m: CommitWebviewMessage) => commitPanel.onMessage(m)),
       vscode.commands.registerCommand("linyra._itest.compareStore", () => ({
         pair: compare.pair, reading: compare.reading, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
       })),

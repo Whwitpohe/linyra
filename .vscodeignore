@@ -8,6 +8,8 @@
 !out/compare.css
 !out/changes.js
 !out/changes.css
+!out/commit.js
+!out/commit.css
 !package.json
 !package.nls*.json
 !l10n/bundle.l10n.*.json

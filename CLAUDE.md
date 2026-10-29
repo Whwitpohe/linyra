@@ -35,7 +35,9 @@ band names its repository, as the root column does in the JetBrains Log.
 - **Commit details:** full message and references, changed-files tree, native diffs,
   Combined Changes of several commits, file history, blame.
 - **Working tree:** uncommitted work per repository on the Log's Uncommitted side — its one
-  view (no separate side bar); stage, unstage, discard, commit.
+  view in the panel — and the Commit side bar on the left, the JetBrains Commit window: a checkbox
+  per file, one message, Amend, Commit / Commit and Push… of the checked files in every
+  repository (`git commit --only`), Rollback; stage, unstage, discard, commit.
 - **Sync:** Fetch All, Pull, Pull All Behind, ahead/behind badges; Compare Branches.
 
 **Non-goals:** a background index or cache (constraint 1); interactive rebase, hunk staging,

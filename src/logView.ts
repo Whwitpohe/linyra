@@ -695,6 +695,24 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.webviewView?.visible) void this.deps.uncommitted.readUnreported();
   }
 
+  /**
+   * The Commit side bar came on screen. Its work is read even if the Log never opened (the
+   * Log's first page starts that read otherwise); once read, what no event keeps current is read again.
+   */
+  async uncommittedViewShown(): Promise<void> {
+    if (!this.deps.uncommitted.started) {
+      if (this.firstLoad) {
+        await this.firstLoad;
+      } else {
+        if (this.repos.length === 0) await this.loadRepos();
+        this.syncScope();
+        await this.deps.uncommitted.readAll();
+        return;
+      }
+    }
+    await this.deps.uncommitted.readUnreported();
+  }
+
   /** The repositories ticked in the Repo List, in its order. */
   tickedRepos(): Repo[] {
     return selectRepos(this.filter, this.repos);

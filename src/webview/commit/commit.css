@@ -1,0 +1,69 @@
+.commit-document, .commit-document body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+#commit-pane { min-width: 0; min-height: 0; height: 100%; overflow: hidden; color: var(--vscode-foreground); background: var(--vscode-sideBar-background, var(--vscode-editor-background)); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+#commit-pane * { box-sizing: border-box; }
+#commit-pane [hidden] { display: none !important; }
+#commit-pane button { font: inherit; color: inherit; cursor: pointer; }
+#commit-pane button, #commit-pane [role="tree"], #commit-pane .check-option { user-select: none; }
+#commit-pane button:focus-visible, #commit-pane [tabindex]:focus-visible, #commit-pane textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+#commit-pane .commit-view { height: 100%; display: flex; flex-direction: column; }
+
+#commit-pane .commit-toolbar { flex: 0 0 28px; min-width: 0; display: flex; align-items: center; gap: 2px; padding: 0 6px 0 12px; color: var(--vscode-descriptionForeground); font-size: 11px; }
+#commit-pane .commit-summary { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#commit-pane .icon-button { flex: 0 0 22px; border: 0; border-radius: 3px; background: transparent; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+#commit-pane .icon-button svg { width: 16px; height: 16px; }
+#commit-pane .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+#commit-pane .icon-button:disabled { color: var(--vscode-disabledForeground); cursor: default; background: transparent; }
+
+#commit-pane .notice { flex: 1 1 0; padding: 10px 14px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+#commit-pane .commit-tree { flex: 1 1 0; min-height: 0; overflow: auto; padding: 0 0 6px; }
+#commit-pane .tree-row { display: flex; align-items: center; gap: 4px; min-width: 0; height: 22px; padding-right: 10px; white-space: nowrap; cursor: default; }
+#commit-pane .tree-row:hover { background: var(--vscode-list-hoverBackground); }
+#commit-pane .tree-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
+#commit-pane .commit-tree:focus .tree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+#commit-pane .commit-tree:focus .tree-row.focused { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
+#commit-pane .twisty { flex: 0 0 16px; width: 16px; height: 18px; padding: 0; border: 0; background: transparent; display: inline-flex; align-items: center; justify-content: center; }
+#commit-pane .twisty svg { width: 16px; height: 16px; transform: rotate(90deg); }
+#commit-pane .tree-row[aria-expanded="false"] .twisty svg { transform: rotate(0deg); }
+
+/* VS Code's checkbox: the theme's box, its check or (some files) a dash. */
+#commit-pane .check { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--vscode-foreground))); border-radius: 3px; background: var(--vscode-checkbox-background, var(--vscode-input-background)); color: var(--vscode-checkbox-foreground, var(--vscode-foreground)); cursor: pointer; }
+#commit-pane .check svg { width: 14px; height: 14px; }
+#commit-pane .check-option { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 0; border-radius: 3px; cursor: pointer; }
+
+#commit-pane .file-icon, #commit-pane .folder-icon { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
+#commit-pane .file-icon svg, #commit-pane .folder-icon svg { width: 16px; height: 16px; }
+#commit-pane .repo-marker { flex: 0 0 10px; width: 10px; height: 10px; margin: 0 3px; border-radius: 2px; background: var(--accent, var(--vscode-charts-blue)); }
+#commit-pane .row-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#commit-pane .row-list .row-label, #commit-pane .row-repo .row-label { font-weight: 600; }
+#commit-pane .row-description { flex: 0 1000 auto; min-width: 0; margin-left: 4px; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 12px; }
+#commit-pane .status { flex: 0 0 12px; margin-left: auto; text-align: center; font-size: 11px; }
+#commit-pane .change-A, #commit-pane .change-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
+#commit-pane .change-M, #commit-pane .change-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
+#commit-pane .change-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
+#commit-pane .change-D .row-label { text-decoration: line-through; }
+#commit-pane .change-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
+#commit-pane .change-U { color: var(--vscode-gitDecoration-untrackedResourceForeground, var(--vscode-charts-green)); }
+#commit-pane .tree-row.selected .row-label, #commit-pane .tree-row.selected .status, #commit-pane .tree-row.selected .row-description { color: inherit; }
+
+#commit-pane .commit-splitter { flex: 0 0 5px; cursor: row-resize; touch-action: none; position: relative; border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border)); }
+#commit-pane .commit-splitter::after { content: ""; position: absolute; inset: -3px 0; }
+#commit-pane .commit-splitter:hover, #commit-pane .commit-splitter.dragging, #commit-pane .commit-splitter:focus-visible { background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder)); }
+body.resizing #commit-pane { cursor: row-resize; user-select: none; }
+
+#commit-pane .commit-form { flex: 0 0 var(--form-height, 184px); min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 8px 12px; }
+#commit-pane .commit-options { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+#commit-pane .commit-message { flex: 1 1 0; min-height: 40px; width: 100%; resize: none; padding: 5px 7px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; color: var(--vscode-input-foreground, var(--vscode-foreground)); background: var(--vscode-input-background); font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size, var(--vscode-font-size)); line-height: 1.4; }
+#commit-pane .commit-message::placeholder { color: var(--vscode-input-placeholderForeground); }
+#commit-pane .validation { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); background: var(--vscode-inputValidation-warningBackground, var(--vscode-input-background)); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); font-size: 12px; }
+#commit-pane .commit-buttons { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
+#commit-pane .button { min-height: 26px; padding: 3px 12px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; white-space: nowrap; }
+#commit-pane .button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+#commit-pane .button.primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+#commit-pane .button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+#commit-pane .button.secondary:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+#commit-pane .button:disabled { opacity: 0.5; cursor: default; }
+#commit-pane .button:focus-visible { outline-offset: 2px; }
+#commit-pane .commit-checked { flex: 0 0 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 11px; }
+
+body.vscode-high-contrast #commit-pane .tree-row.selected, body.vscode-high-contrast-light #commit-pane .tree-row.selected { outline: 1px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
+body.vscode-high-contrast #commit-pane .button, body.vscode-high-contrast-light #commit-pane .button { border-color: var(--vscode-contrastBorder, var(--vscode-focusBorder)); }

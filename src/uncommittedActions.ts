@@ -14,7 +14,7 @@ interface Target { repoId: string; group?: Group; path?: string }
 interface Pick { work: RepoWork; files: FileChange[]; staged: FileChange[]; one: boolean }
 
 /** vscode.git's errors say "Failed to execute git"; git's own words are in their stderr. */
-function gitMessage(e: unknown): string {
+export function gitMessage(e: unknown): string {
   const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
   const text = typeof stderr === "string" && stderr.trim() !== "" ? errorLine(stderr) : e instanceof Error ? e.message : String(e);
   // Put in a sentence that ends with its own period.
@@ -98,8 +98,8 @@ export interface UncommittedActionsDeps {
 }
 
 /**
- * Stage, Unstage, Discard and Commit for the Log's Uncommitted side and the Changes view. The
- * Log is the one place uncommitted work is shown: this has no view of its own.
+ * Stage, Unstage, Discard and Commit for the Log's Uncommitted side, the Changes view and the
+ * Commit side bar (CommitPanel, which commits through git itself).
  */
 export class UncommittedActions {
   readonly ask: Ask;
@@ -266,6 +266,18 @@ function side(work: RepoWork, file: FileChange, s: DiffSide, before: boolean): v
     return revisionUri({ root: work.root, ref: INDEX, path: at, ...(blob ? { blob } : {}) });
   }
   return revisionUri({ root: work.root, ref: s === "head" ? work.head : null, path: at });
+}
+
+/**
+ * The Commit side bar's diff: the last commit ↔ the working tree, whatever is staged (its commit
+ * takes the file as it is). A new file's left side is empty, a deleted file's right side.
+ */
+export async function openHeadDiff(work: RepoWork, file: { path: string; oldPath?: string; status?: FileChange["status"]; untracked: boolean }, preserveFocus = false): Promise<void> {
+  const change: FileChange = { path: file.path, ...(file.oldPath ? { oldPath: file.oldPath } : {}), added: null, deleted: null, status: file.status, untracked: file.untracked };
+  const left = file.untracked || file.status === "A" ? "empty" : "head";
+  const right = file.status === "D" ? "empty" : "worktree";
+  const title = `${path.posix.basename(file.path)} (${localize("Working Tree")}) — ${work.name}`;
+  await vscode.commands.executeCommand("vscode.diff", side(work, change, left, true), side(work, change, right, false), title, { preview: true, preserveFocus });
 }
 
 /** Opens one uncommitted file's diff (the Log's Uncommitted side and the Changes view). */

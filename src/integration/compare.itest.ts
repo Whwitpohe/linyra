@@ -212,11 +212,13 @@ describe("Compare Branches", () => {
     const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
     assert.deepStrictEqual(pkg.viewsContainers, {
       panel: [{ id: "linyra", title: "Linyra", icon: "media/linyra.svg" }, { id: "linyra-compare", title: "Linyra Compare", icon: "media/compare.svg" }],
-    }, "no side bar: uncommitted work lives in the Log");
+      activitybar: [{ id: "linyra-side", title: "Linyra", icon: "media/linyra.svg" }],
+    }, "the Log and Compare in the panel, the Commit side bar on the left");
     assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
       linyra: [["linyra.log", "$(history)"]],
       "linyra-compare": [["linyra.compare", "$(repo)"]],
-    }, "one native surface per panel prevents accidental header collapsing");
+      "linyra-side": [["linyra.commit", "$(git-commit)"]],
+    }, "one native surface per container prevents accidental header collapsing");
     assert.strictEqual(views["linyra-compare"][0].type, "webview", "the unified comparison retains repositories and both sides");
     const menus = pkg.menus["webview/context"] as { command: string; when: string }[];
     for (const c of ["linyra.repoPull", "linyra.repoShowOnly", "linyra.repoHide", "linyra.repoOpenFolder", "linyra.repoCopyPath"]) {
@@ -473,9 +475,9 @@ describe("Compare Branches", () => {
     await until2("shown again", repos, (x) => x.open && x.roots.length === 2);
   });
 
-  it("uncommitted work has one home: Show Uncommitted Changes opens the Log's Uncommitted side", async () => {
+  it("uncommitted work in the Commit side bar, and Show Uncommitted Changes opens the Log's Uncommitted side", async () => {
     const pkg = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes;
-    assert.ok(!("linyra-side" in pkg.views) && !pkg.viewsContainers.activitybar, "no second Uncommitted view in a side bar");
+    assert.ok(!("when" in pkg.views["linyra-side"][0]), "the side bar is always there (VS Code's own menu hides it)");
     // The remembered Compare tab needs its context key after a reload, before any Linyra view opens.
     assert.ok((vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.activationEvents as string[]).includes("onStartupFinished"));
     await vscode.commands.executeCommand("linyra.focusUncommitted");
