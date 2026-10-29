@@ -2,10 +2,10 @@ import { localize } from "./i18n";
 import { randomBytes } from "crypto";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
-import { candidates, COMMIT_PAGE, conflictNote, mergeSkips, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type MergeSkip, type Pair } from "./compareModel";
+import { candidates, COMMIT_PAGE, conflictNote, isGroupSelection, manyRepos, MANY_PREFIX, mergeSkips, selectionIds, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type MergeSkip, type Pair } from "./compareModel";
 import type { CRepoRow, CompareLayout, ReposHost, ReposWebview } from "./compareProtocol";
 import type { CompareStore } from "./compareStore";
-import { ALL_REPOS, differing, FAVORITES, MODE, modeOf, ONLY_CONFLICTS as ONLY_CONFLICTS_KEY, onlyConflictsOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, short, shortSide, type CompareMode, type Deps, type CompareSide } from "./compareView";
+import { ALL_REPOS, differing, FAVORITES, groupOf, MODE, modeOf, ONLY_CONFLICTS as ONLY_CONFLICTS_KEY, onlyConflictsOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, short, shortSide, type CompareMode, type Deps, type CompareSide } from "./compareView";
 import { outputLog } from "./outputLog";
 import { isAbortError, runPool } from "./pool";
 import type { Repo } from "./types";
@@ -240,9 +240,19 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.deps.selection.touch();
   }
 
-  /** Selects a repository (a click on its row, or the test seam); All repositories when two or more differ. */
+  /**
+   * Selects a repository (a click on its row, or the test seam); All repositories when two or more
+   * differ; or several picked together (Ctrl/Shift-click), in Repo List order. Picked ones that do
+   * not differ are dropped: one left is that one alone.
+   */
   select(repoId: string): void {
-    if (repoId === ALL_REPOS ? differing(this.deps.store).length < 2 : !resultOf(this.deps.store, repoId)) return;
+    if (repoId.startsWith(MANY_PREFIX)) {
+      const picked = new Set(selectionIds(repoId) as string[]);
+      const ids = differing(this.deps.store).map((x) => x.repo.id).filter((id) => picked.has(id));
+      if (ids.length === 0) return;
+      repoId = manyRepos(ids);
+    }
+    if (repoId === ALL_REPOS ? differing(this.deps.store).length < 2 : !repoId.startsWith(MANY_PREFIX) && !resultOf(this.deps.store, repoId)) return;
     this.chosen = true;
     this.deps.selection.set(repoId);
     this.changed();
@@ -310,7 +320,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       repoId: repo.id, name: repo.name, accent: accentOf(accents, repo.id), status: result.kind === "differs" ? "differs" : result.kind === "nobase" ? "nobase" : "error",
       left: result.kind === "differs" ? result.left : 0, right: result.kind === "differs" ? result.right : 0, same: result.kind === "differs" ? result.sameLeft : 0,
       reason: result.kind === "error" ? result.reason : undefined, behind: this.deps.log.upstream.isBehind(repo.id),
-      conflicts: result.kind === "differs" && result.conflicts ? result.conflicts.length : null,
+      conflicts: result.kind === "differs" ? (result.conflicts === undefined ? undefined : result.conflicts ? result.conflicts.length : null) : null,
       ...(several && result.kind === "differs" ? { names: `${short(result.leftName)} → ${short(result.rightName)}` } : {}),
     }));
   }
@@ -328,7 +338,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     }
     const sel = this.deps.selection.repoId;
     // All repositories stays chosen while two or more differ.
-    const valid = (id: string) => (id === ALL_REPOS ? differing(this.deps.store).length >= 2 : listed.some((x) => x.repo.id === id));
+    const valid = (id: string) => (isGroupSelection(id) ? groupOf(this.deps.store, id).length >= (id === ALL_REPOS ? 2 : 1) : listed.some((x) => x.repo.id === id));
     if (pair && pair.left !== pair.right && (!this.chosen || !sel || !valid(sel))) {
       if (sel && !valid(sel)) this.chosen = false;
       this.deps.selection.set(listed[0]?.repo.id, true);
@@ -477,7 +487,14 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   async mergeIntoRight(only?: string): Promise<void> {
     const pair = this.deps.store.pair;
     if (!pair) return;
-    const targets = differing(this.deps.store).filter((x) => !only || only === ALL_REPOS || x.repo.id === only);
+    // The repositories picked together (or All), when the merge comes from the toolbar or from a
+    // right-click inside that selection; else one right-clicked repository, or every one.
+    // A checked-out branch is merged with git merge: a conflict would stop it halfway, so the checks finish first.
+    await this.deps.store.conflictsChecked();
+    const sel = this.deps.selection.repoId;
+    const group = sel !== undefined && isGroupSelection(sel) ? groupOf(this.deps.store, sel) : undefined;
+    const single = !!only && only !== ALL_REPOS && !group?.some((x) => x.repo.id === only);
+    const targets = single ? differing(this.deps.store).filter((x) => x.repo.id === only) : group ?? differing(this.deps.store);
     if (targets.length === 0) return;
     const plans: { repo: Repo; from: string; into: string; checkedOut: boolean; merge: () => Promise<unknown> }[] = [];
     const skipped: MergeSkip[] = [];
@@ -511,7 +528,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     // Where ▶ is not checked out, the merge is made without a checkout: said on each row.
     const how = (p: (typeof plans)[number]) => (p.checkedOut ? localize("checked out: git merge") : localize("not checked out: your working tree is not touched"));
     let chosen = plans;
-    if (only && only !== ALL_REPOS) {
+    if (single) {
       const p = plans[0];
       if (!(await this.deps.ask.warning(localize("Merge {0} into {1} in {2}?", short(p.from), short(p.into), p.repo.name), `${short(p.into)} ${how(p)}`, localize("Merge")))) return;
     } else {
@@ -528,7 +545,9 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
 
   /** Copy as Release Notes: every listed repository's commits only on ◀ (the same change on both left out), as Markdown. */
   async copyReleaseNotes(): Promise<string | undefined> {
-    const targets = differing(this.deps.store).filter((x) => x.result.left > 0);
+    // The repositories picked together (or All); else every one.
+    const sel = this.deps.selection.repoId;
+    const targets = (sel !== undefined && isGroupSelection(sel) ? groupOf(this.deps.store, sel) : differing(this.deps.store)).filter((x) => x.result.left > 0);
     if (targets.length === 0) {
       void vscode.window.showInformationMessage(localize("No commit is only on {0}.", this.deps.store.pair ? shortSide(this.deps.store.pair.left) : "◀"));
       return undefined;

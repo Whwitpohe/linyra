@@ -39,7 +39,7 @@ export function renderReposHtml(o: HtmlOptions): string {
   <div class="compare-pane-heading"><span>${escapeHtml(localize("Repositories"))}</span></div>
   <div id="summary" class="csummary" aria-live="polite"></div>
   <div id="message" class="cmessage" hidden></div>
-  <div id="repo-list" class="repo-list" role="listbox" tabindex="0" aria-label="${escapeHtml(localize("Repositories whose files differ"))}"></div>
+  <div id="repo-list" class="repo-list" role="listbox" tabindex="0" aria-multiselectable="true" aria-label="${escapeHtml(localize("Repositories whose files differ"))}" title="${escapeHtml(localize("Ctrl/Shift-click selects several"))}"></div>
   <div id="missing" class="missing" hidden><div class="missing-heading"><button id="missing-toggle" class="compare-twisty" type="button" aria-expanded="false" aria-controls="missing-list" aria-label="${escapeHtml(localize("Show missing repositories"))}">▸</button><span id="missing-title"></span></div><ul id="missing-list" hidden></ul></div>
   </section>
   <div id="compare-repo-splitter" class="compare-splitter" role="separator" aria-orientation="vertical" aria-label="${escapeHtml(localize("Resize comparison repositories"))}" tabindex="0"></div>

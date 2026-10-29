@@ -119,7 +119,8 @@ the native diff; **Changes since the Split** reviews what that side introduced.
   would conflict, those files are marked, **Show Only Conflicts** lists just them, and
   **Preview Merge Result** opens the merged file with its conflict markers.
 - **All repositories** at the top of the list shows every repository's files or commits in
-  one tree. Each side has a filter box; Commits rows show their date.
+  one tree; Ctrl/Shift-click picks several repositories for the same tree (Merge and Release
+  Notes then take just those). The list comes first: each row's merge check follows on its own. Each side has a filter box; Commits rows show their date.
 - **Act on it:** **Cherry-Pick** the selected commits of a side (Ctrl/Shift-click), **Merge ◀
   into ▶…** (a checklist of the repositories that merge cleanly; one repository from its
   right-click), and **Copy ◀ Commits as Release Notes** (Markdown, by repository). The merge goes

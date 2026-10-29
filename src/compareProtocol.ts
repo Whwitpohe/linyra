@@ -44,8 +44,8 @@ export interface CRepoRow {
   reason?: string;
   /** Behind its upstream: the right-click menu offers Pull. */
   behind: boolean;
-  /** Files a merge of the two would leave conflicted (0: merges cleanly); null when git cannot tell. */
-  conflicts: number | null;
+  /** Files a merge of the two would leave conflicted (0: merges cleanly); undefined while it is checked; null when git cannot tell. */
+  conflicts?: number | null;
   /** The names this repository uses ("develop-k → main"), when a side lists several. */
   names?: string;
 }

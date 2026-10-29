@@ -77,6 +77,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 /* Twisty, color dot, name, then a note ("no common history", "git error"). */
 .crepo { display: grid; grid-template-columns: 14px 8px minmax(0, 1fr) auto; align-items: center; column-gap: 6px; padding: 0 8px; line-height: 22px; cursor: pointer; white-space: nowrap; }
 .crepo:hover { background: var(--vscode-list-hoverBackground); }
+.repo-list { user-select: none; }
 .crepo.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
 .repo-list:focus .crepo.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
 .twisty { color: var(--vscode-descriptionForeground); text-align: center; }
@@ -90,6 +91,10 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 .row-note.clean { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
 .row-note.conflict { color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-list-warningForeground)); }
 .row-note svg, .crepo.all > svg { width: 14px; height: 14px; }
+.row-note.checking { display: inline-flex; justify-content: flex-end; }
+.row-note.checking svg { animation: compare-spin 1.2s linear infinite; }
+@keyframes compare-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .row-note.checking svg { animation: none; } }
 .crepo.selected .row-note { color: inherit; }
 /* All repositories: an icon where a repository has its color dot, and a second note. */
 .crepo.all { grid-template-columns: 14px 16px minmax(0, 1fr) auto auto; }

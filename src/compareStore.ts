@@ -14,8 +14,8 @@ import { isAbortError, runPool } from "./pool";
 import { branchSuggestions } from "./repos";
 import type { FileChange, Repo } from "./types";
 
-/** Files mode for one repository. both: changed on both sides; same: of those, the same at both tips; base: the split point. */
-export interface FilesRead { left: FileChange[]; right: FileChange[]; both: string[]; same: string[]; base: string }
+/** Files mode for one repository. both: changed on both sides; same: of those, the same at both tips. */
+export interface FilesRead { left: FileChange[]; right: FileChange[]; both: string[]; same: string[] }
 
 export interface CompareDeps {
   run: RunGit;
@@ -60,6 +60,17 @@ export class CompareStore implements vscode.Disposable {
     return this.inFlight > 0;
   }
 
+  /** The merge checks after a read are running (the list and the sides do not wait for them). */
+  get checking(): boolean {
+    return this.checks > 0;
+  }
+  private checks = 0;
+  /** The merge checks under way: Merge ◀ into ▶ waits for them. */
+  private checked: Promise<void> = Promise.resolve();
+  conflictsChecked(): Promise<void> {
+    return this.checked;
+  }
+
   /** A new pair: everything in flight stops, every ticked repository is read. null forgets it. */
   async setPair(p: Pair | null): Promise<void> {
     this.ctl.abort();
@@ -86,6 +97,8 @@ export class CompareStore implements vscode.Disposable {
     this.changed();
     // Unanswered repositories, and (a Refresh cut short) answers that may be old: read them again.
     if (wasReading) void this.read(this.deps.repos().filter((r) => !this.map.has(r.id) || this.refreshing.has(r.id)));
+    // Merge checks the swap stopped: checked now (a conflict is the same either way round).
+    this.check(this.deps.repos().map((r) => r.id));
   }
 
   /** The ticks changed: unticked repositories leave at once, newly ticked ones are read. */
@@ -138,6 +151,35 @@ export class CompareStore implements vscode.Disposable {
       this.inFlight--;
       this.changed();
     }
+    // The list is shown; whether merging would conflict follows, repository by repository.
+    if (gen === this.gen && !signal.aborted) this.check(repos.map((r) => r.id));
+  }
+
+  /**
+   * The merge check of each listed repository not checked yet, in the background: it is the slow
+   * part of a repository's read (a whole merge, in memory), so the list and the sides never wait
+   * for it. Each answer lands on its row as it comes; a newer pair or a moved branch drops it.
+   */
+  private check(ids: readonly string[]): void {
+    const gen = this.gen, signal = this.ctl.signal;
+    const todo = this.deps.repos().flatMap((r) => {
+      const c = this.map.get(r.id);
+      return ids.includes(r.id) && c?.kind === "differs" && c.conflicts === undefined ? [{ r, c }] : [];
+    });
+    if (todo.length === 0) return;
+    this.checks++;
+    this.changed();
+    const run = runPool(todo, this.deps.concurrency(), async ({ r, c }, s) => {
+      const merge = await this.mergeCheck(r, c.leftSha, c.rightSha, s);
+      const now = this.map.get(r.id);
+      if (gen !== this.gen || signal.aborted || now?.kind !== "differs" || now.leftSha !== c.leftSha || now.rightSha !== c.rightSha) return;
+      this.map.set(r.id, merge === "nobase" ? { kind: "nobase" } : { ...now, conflicts: merge === "unknown" ? null : merge.conflicts });
+      this.changed();
+    }, signal).then(() => undefined, () => undefined).finally(() => {
+      this.checks--;
+      this.changed();
+    });
+    this.checked = Promise.all([this.checked, run]).then(() => undefined);
   }
 
   private async readOne(r: Repo, p: Pair, signal: AbortSignal): Promise<RepoCompare> {
@@ -155,22 +197,22 @@ export class CompareStore implements vscode.Disposable {
     if (L.tree === R.tree) return { kind: "identical" };
     const l = L.sha, rt = R.sha;
     try {
-      // All three at once: a repository's answer waits for one round of git, not two. The merge
-      // check also says whether the two share history, so the split point waits for a side to need it.
-      const [merge, left, right] = await Promise.all([
-        this.mergeCheck(r, l, rt, signal),
+      // Both counts at once: a repository's row waits for one round of git, not two. The merge
+      // check comes after the list (check()); it also tells a pair with no shared history.
+      const [left, right] = await Promise.all([
         this.deps.run(r.root, sideCountArgs("left", l, rt), signal).then(parseSideCount),
         this.deps.run(r.root, sideCountArgs("right", l, rt), signal).then(parseSideCount),
       ]);
-      if (merge === "nobase") return { kind: "nobase" };
+      // A side with no commit of its own: merging cannot conflict, so there is nothing to check.
+      const trivial = left.only + left.same === 0 || right.only + right.same === 0;
       let base: string | null = null;
-      if (merge === "unknown") {
+      if (this.noMergeTree && !trivial) {
         // A git without merge-tree --write-tree: the split point tells whether they share history.
         base = await this.mergeBase(r, l, rt, signal);
         if (base === null) return { kind: "nobase" };
       }
       return { kind: "differs", leftName: L.name, rightName: R.name, leftSha: l, rightSha: rt, base, left: left.only, right: right.only, sameLeft: left.same, sameRight: right.same,
-        conflicts: merge === "unknown" ? null : merge.conflicts };
+        conflicts: trivial ? [] : this.noMergeTree ? null : undefined };
     } catch (e) {
       if (isAbortError(e)) throw e;
       return { kind: "error", reason: e instanceof Error ? e.message : String(e) };
@@ -224,6 +266,13 @@ export class CompareStore implements vscode.Disposable {
     }
   }
 
+  /** The split point (Changes since the Split), read when asked: the list's read does not need it. */
+  async base(repoId: string): Promise<string | undefined> {
+    const d = this.differs(repoId);
+    if (!d) return undefined;
+    return d.c.base ?? (await this.mergeBase(d.repo, d.c.leftSha, d.c.rightSha, this.ctl.signal)) ?? undefined;
+  }
+
   /**
    * Merge ◀ into ▶ where ▶ is not checked out: the branch moves, the working tree is not touched. A
    * fast-forward when ▶ is behind ◀; else the merge done in memory (`merge-tree`, known clean) is
@@ -270,24 +319,21 @@ export class CompareStore implements vscode.Disposable {
    */
   readFiles(repoId: string): Promise<FilesRead> {
     const d = this.differs(repoId);
-    if (!d) return Promise.resolve({ left: [], right: [], both: [], same: [], base: "" });
+    if (!d) return Promise.resolve({ left: [], right: [], both: [], same: [] });
     const key = `${d.c.leftSha} ${d.c.rightSha}\0${this.gen}`;
     const had = this.files.get(repoId);
     if (had?.key === key) return had.read;
     const signal = this.ctl.signal;
     const { leftSha: l, rightSha: rt } = d.c;
-    const read = (async () => {
-      // The split point, read now that a side needs it (unless the read of the pair had it).
-      const base = d.c.base ?? await this.mergeBase(d.repo, l, rt, signal);
-      if (base === null) throw new Error(localize("{0}: the two branches share no history, so there is no split point.", d.repo.name));
-      const [left, right, tips] = await Promise.all([
-        this.deps.run(d.repo.root, filesArgs(base, l), signal).then(parseFiles),
-        this.deps.run(d.repo.root, filesArgs(base, rt), signal).then(parseFiles),
-        this.deps.run(d.repo.root, tipsDiffArgs(l, rt), signal),
-      ]);
+    // One round of git: `other...tip` diffs from the split point without reading it first.
+    const read = Promise.all([
+      this.deps.run(d.repo.root, filesArgs(rt, l), signal).then(parseFiles),
+      this.deps.run(d.repo.root, filesArgs(l, rt), signal).then(parseFiles),
+      this.deps.run(d.repo.root, tipsDiffArgs(l, rt), signal),
+    ]).then(([left, right, tips]) => {
       const both = bothPaths(left, right);
-      return { left, right, both: [...both], same: [...sameNow(both, tips)], base };
-    })();
+      return { left, right, both: [...both], same: [...sameNow(both, tips)] };
+    });
     this.files.set(repoId, { key, read });
     read.catch(() => {
       if (this.files.get(repoId)?.read === read) this.files.delete(repoId); // a failed or aborted read is not kept

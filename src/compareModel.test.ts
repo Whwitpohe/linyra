@@ -50,7 +50,7 @@ assert.deepStrictEqual(parseSideCount("3\n"), { only: 3, same: 0 });
 assert.deepStrictEqual(parseSideCount(""), { only: 0, same: 0 });
 console.log("ok - each side counts its own commits and its duplicates");
 
-assert.deepStrictEqual(filesArgs(C, A), ["diff", "--raw", "--numstat", "-z", "-M", C, A]);
+assert.deepStrictEqual(filesArgs(C, A), ["diff", "--raw", "--numstat", "-z", "-M", `${C}...${A}`], "since the split, without reading the split point first");
 // --raw records, then --numstat records; a rename carries both names.
 const raw = [
   ":000000 100644 0000000 1111111 A", "src/limit.go",

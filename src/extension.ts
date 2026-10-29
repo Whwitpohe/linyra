@@ -359,7 +359,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.commitSend", (m: CommitWebviewMessage) => commitPanel.onMessage(m)),
       vscode.commands.registerCommand("linyra._itest.commitCheck", (ids: string[], on: boolean) => commitPanel.check(ids.map((id) => ({ id })), on)),
       vscode.commands.registerCommand("linyra._itest.compareStore", () => ({
-        pair: compare.pair, reading: compare.reading, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
+        // The merge checks after a read count as reading here: a test waits for the whole answer.
+        pair: compare.pair, reading: compare.reading || compare.checking, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
       })),
       vscode.commands.registerCommand("linyra._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
       vscode.commands.registerCommand("linyra._itest.compareRefresh", () => compare.refresh()),

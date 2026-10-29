@@ -1,6 +1,6 @@
 import { localize } from "../../i18n";
 import "./compare.css";
-import { ALL_REPOS, candidates, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type Side } from "../../compareModel";
+import { ALL_REPOS, candidates, manyRepos, selectionIds, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type Side } from "../../compareModel";
 import type { CompareMode, CompareLayout, CRepoRow, ReposHost, ReposWebview } from "../../compareProtocol";
 import { byId, clear, h } from "../dom";
 import { codicon, codiconElement } from "../codicons";
@@ -137,7 +137,11 @@ list.addEventListener("click", (e) => {
     return;
   }
   const row = (e.target as Element).closest<HTMLElement>("[data-repo]");
-  if (row) select(row.dataset.repo!);
+  if (!row) return;
+  const id = row.dataset.repo!;
+  // Ctrl-click adds or removes a repository; Shift-click picks every one from the last clicked to it.
+  if (id !== ALL_REPOS && (e.ctrlKey || e.metaKey || e.shiftKey)) pickMany(id, e.shiftKey);
+  else select(id, true);
 });
 list.addEventListener("keydown", (e) => {
   // → / ← unfold and fold the selected repository's duplicates (the twisty, by keyboard).
@@ -155,21 +159,48 @@ list.addEventListener("keydown", (e) => {
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
   e.preventDefault();
   const ids = entries();
-  const i = ids.indexOf(selected ?? "");
+  const i = ids.indexOf(anchor ?? selected ?? "");
   const to = e.key === "Home" ? 0 : e.key === "End" ? ids.length - 1 : i + (e.key === "ArrowDown" ? 1 : -1);
   const id = ids[Math.max(0, Math.min(ids.length - 1, to))];
-  if (id) select(id);
+  if (id) select(id, true);
 });
+// Shift-click picks rows, not their text.
+list.addEventListener("mousedown", (e) => { if (e.shiftKey) e.preventDefault(); });
+
+/** The repositories the selection holds (All repositories: none of them is picked on its own). */
+function pickedIds(): string[] {
+  if (!selected || selected === ALL_REPOS) return [];
+  return selectionIds(selected) as string[];
+}
+
+/** Several repositories at once: Ctrl toggles one, Shift picks the range from the last clicked. */
+function pickMany(id: string, range: boolean): void {
+  const order = rows.map((r) => r.repoId);
+  let ids: string[];
+  if (range && anchor && order.includes(anchor)) {
+    const [a, b] = [order.indexOf(anchor), order.indexOf(id)].sort((x, y) => x - y);
+    ids = order.slice(a, b + 1);
+  } else {
+    const had = new Set(pickedIds());
+    if (had.has(id) && had.size > 1) had.delete(id); else had.add(id);
+    ids = order.filter((x) => had.has(x));
+    anchor = id;
+  }
+  select(manyRepos(ids), false);
+}
 
 /** Selections sent and not yet echoed back by the host: an older echo must not undo a newer pick. */
 let pendingSelects = 0;
+/** The row last clicked on its own: where Shift-click and the arrow keys start. */
+let anchor: string | undefined;
 
-function select(repoId: string): void {
+function select(repoId: string, single: boolean): void {
+  if (single) anchor = repoId;
   if (repoId === selected) return;
   selected = repoId;
   pendingSelects++;
   renderRows();
-  byId(`crepo-${entries().indexOf(repoId)}`)?.scrollIntoView({ block: "nearest" });
+  if (single) byId(`crepo-${entries().indexOf(repoId)}`)?.scrollIntoView({ block: "nearest" });
   post({ type: "select", repoId });
 }
 
@@ -200,7 +231,7 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
     case "repos":
       rows = m.rows;
       // Our own picks come back one echo each; until the last one does, the page's choice stands.
-      if (pendingSelects > 0 && m.selected !== undefined && entries().includes(selected ?? "")) pendingSelects--;
+      if (pendingSelects > 0 && m.selected !== undefined && (entries().includes(selected ?? "") || pickedIds().length > 1)) pendingSelects--;
       else selected = m.selected;
       empty = m.empty;
       // Unfolded duplicates belong to one pair and orientation: a new pair or a swap folds them.
@@ -287,8 +318,9 @@ function entries(): string[] {
   return [...(all ? [ALL_REPOS] : []), ...rows.map((r) => r.repoId)];
 }
 
-/** A row's merge note: how many files would conflict, a check when it merges cleanly, nothing when git cannot tell. */
-function mergeNote(conflicts: number | null): HTMLElement | null {
+/** A row's merge note: how many files would conflict, a check when it merges cleanly, a turning icon while it is checked, nothing when git cannot tell. */
+function mergeNote(conflicts: number | null | undefined): HTMLElement | null {
+  if (conflicts === undefined) return h("span", { class: "row-note checking", title: localize("Checking whether a merge would conflict…") }, [codiconElement("sync")]);
   if (conflicts === null) return null;
   return conflicts === 0
     ? h("span", { class: "row-note clean", title: localize("Merges cleanly") }, [codiconElement("pass")])
@@ -314,7 +346,7 @@ function renderRows(): void {
   const offset = ids[0] === ALL_REPOS ? 1 : 0;
   rows.forEach((r, n) => {
     const i = n + offset;
-    const on = r.repoId === selected;
+    const on = r.repoId === selected || pickedIds().includes(r.repoId);
     const dups = r.status === "differs" && r.same > 0;
     const unfolded = open.has(r.repoId);
     list.append(h("div", {

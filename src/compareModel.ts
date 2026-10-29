@@ -23,9 +23,10 @@ export type RepoCompare =
   /**
    * leftName/rightName: the candidate this repository has. base: the split point, read when a side
    * needs it (null until then). conflicts: the files a merge of the two would leave conflicted
-   * ([] merges cleanly), or null when this git cannot tell (before 2.38).
+   * ([] merges cleanly); undefined while the check (after the list) is still to come; null when
+   * this git cannot tell (before 2.38).
    */
-  | { kind: "differs"; leftName: string; rightName: string; leftSha: string; rightSha: string; base: string | null; left: number; right: number; sameLeft: number; sameRight: number; conflicts: string[] | null };
+  | { kind: "differs"; leftName: string; rightName: string; leftSha: string; rightSha: string; base: string | null; left: number; right: number; sameLeft: number; sameRight: number; conflicts?: string[] | null };
 
 export interface SideCommit {
   /** "+": only on this side; "=": the same change is on the other side too. */
@@ -52,6 +53,22 @@ export interface PickerGroup {
 
 /** The Repositories row that shows every repository whose files differ, at once. */
 export const ALL_REPOS = "*";
+/** Several repositories picked together (Ctrl/Shift-click): "+", then their ids, one per line. */
+export const MANY_PREFIX = "+";
+
+/** The selection for these repositories: one alone is itself; several, "+" and their ids. */
+export function manyRepos(ids: readonly string[]): string {
+  return ids.length === 1 ? ids[0] : `${MANY_PREFIX}${ids.join("\n")}`;
+}
+
+/** The repositories a selection names: "all" (All repositories), the ones picked together, or one. */
+export function selectionIds(selection: string): string[] | "all" {
+  if (selection === ALL_REPOS) return "all";
+  return selection.startsWith(MANY_PREFIX) ? selection.slice(MANY_PREFIX.length).split("\n").filter(Boolean) : [selection];
+}
+
+/** All repositories, or several picked together: the sides show each one's rows under its name. */
+export const isGroupSelection = (selection: string | undefined): selection is string => selection !== undefined && (selection === ALL_REPOS || selection.startsWith(MANY_PREFIX));
 
 /** Commits shown per side before "Show 500 more". */
 export const COMMIT_PAGE = 500;
@@ -142,7 +159,7 @@ export function isConflict(conflicts: readonly string[] | null | undefined, f: {
 
 /** A Repositories row's merge note: "2 conflicts", "merges cleanly", or nothing when git cannot tell. */
 export function conflictNote(c: RepoCompare): string {
-  if (c.kind !== "differs" || c.conflicts === null) return "";
+  if (c.kind !== "differs" || !c.conflicts) return "";
   return c.conflicts.length === 0 ? localize("merges cleanly") : plural(c.conflicts.length, "conflicted file");
 }
 
@@ -157,9 +174,9 @@ export function parseSideCount(out: string): { only: number; same: number } {
   return { only: Number.isFinite(only) ? only : 0, same: Number.isFinite(same) ? same : 0 };
 }
 
-/** What a side changed since the branches split: merge base → its tip, statuses and counts in one spawn. */
-export function filesArgs(base: string, tip: string): string[] {
-  return ["diff", "--raw", "--numstat", "-z", "-M", base, tip];
+/** What a side changed since the branches split (merge base → its tip: `other...tip`), statuses and counts in one spawn. */
+export function filesArgs(other: string, tip: string): string[] {
+  return ["diff", "--raw", "--numstat", "-z", "-M", `${other}...${tip}`];
 }
 
 export function parseFiles(out: string): FileChange[] {

@@ -56,6 +56,24 @@ test("Repositories: each row's merge note and the names it uses; All repositorie
   await expect(page.locator("#compare-left-tree .compare-tree-row.conflict-file").first()).toBeVisible();
 });
 
+test("Repositories: Ctrl-click picks several, Shift-click a range; the sides show the picked ones together", async ({ page }) => {
+  await open(page);
+  const repo = (id) => page.locator(`.crepo[data-repo="${id}"]`);
+  await repo("/work/acme-api").click();
+  // Shift-click: every repository from the last one clicked to this one.
+  await repo("/work/acme-libs").click({ modifiers: ["Shift"] });
+  await expect(page.locator(".crepo.selected")).toHaveCount(3);
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+  // Ctrl-click takes one out (or adds it).
+  await repo("/work/acme-web").click({ modifiers: ["Control"] });
+  await expect(page.locator(".crepo.selected")).toHaveCount(2);
+  await expect.poll(async () => (await sent(page, "select")).at(-1)?.repoId).toBe("+/work/acme-api\n/work/acme-libs");
+  await expect(page.locator("#compare-left-tree .compare-tree-row", { hasText: "acme-libs" })).toBeVisible();
+  // A plain click: one again.
+  await repo("/work/acme-web").click();
+  await expect(page.locator(".crepo.selected")).toHaveCount(1);
+});
+
 test("a side's filter keeps matching rows and their folders; Ctrl/Shift-click selects several", async ({ page }) => {
   await open(page);
   const rows = page.locator("#compare-left-tree .compare-tree-row");

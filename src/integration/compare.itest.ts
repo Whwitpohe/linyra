@@ -234,13 +234,14 @@ describe("Compare Branches", () => {
     await rsend({ type: "select", repoId: roots["acme-web"] });
     await until2("row clicked", repos, (x) => x.selected === roots["acme-web"]);
     await rsend({ type: "select", repoId: roots["acme-api"] });
-    const left = await until2("left side", () => sideOf("left"), (x) => x.tree.length > 0);
+    // The files come first; the merge check lands on them a moment later.
+    const left = await until2("left side", () => sideOf("left"), (x) => x.tree.length > 0 && x.conflicts.length > 0);
     assert.strictEqual(left.title, "release-1.4 only");
     // retry.go, cherry-picked to both: the same at both tips now, so hidden by default; limit.go still differs.
     assert.strictEqual(left.description, "acme-api · 1 file · 1 already on both (hidden)");
     assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · conflict"]);
     assert.deepStrictEqual(left.conflicts, ["limit.go"], "a merge of the two would leave limit.go conflicted");
-    const right = await until2("right side", () => sideOf("right"), (x) => x.tree.length > 0);
+    const right = await until2("right side", () => sideOf("right"), (x) => x.tree.length > 0 && x.conflicts.length > 0);
     assert.strictEqual(right.title, "prod only");
     assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · conflict", "timeout.go | +1 −0"]);
     // Show Files Already on Both: listed again, dimmed; Hide puts it back.
@@ -670,7 +671,8 @@ describe("Compare Branches", () => {
       assert.deepStrictEqual([...s.rows].sort(), ["acme-api ◀1 ▶1 =1 ⚠1", "acme-libs identical", "acme-web ◀1 ▶0 =0"], "the same answers as release-1.4 ↔ prod");
       await viewPick({ left: "release-1.5 release-1.4", right: "nope prod" });
       await vscode.commands.executeCommand("linyra.compareShow");
-      const r = await until2("rows with their names", repos, (x) => x.notes.length === 2);
+      // The merge checks land after the rows: wait for both notes.
+      const r = await until2("rows with their names", repos, (x) => x.notes.length === 2 && x.notes.every((n) => /conflicted|cleanly/.test(n)));
       assert.deepStrictEqual(r.notes, ["acme-api | release-1.5 → prod | 1 conflicted file", "acme-web | release-1.4 → prod | merges cleanly"]);
       assert.strictEqual(r.description, "release-1.5, release-1.4 ↔ nope, prod");
       await select(roots["acme-web"]);
@@ -725,9 +727,15 @@ describe("Compare Branches", () => {
       await until2("listed", repos, (x) => x.roots.length === 2);
       await select("*");
       await until2("All repositories", repos, (x) => x.selected === "*");
-      const all = await until2("every repository's files", () => sideOf("left"), (x) => x.tree.length === 4);
+      const all = await until2("every repository's files", () => sideOf("left"), (x) => x.tree.length === 4 && x.conflicts.length === 1);
       assert.deepStrictEqual(all.tree, ["acme-api | 1", "  limit.go | +1 −0 · conflict", "acme-web | 1", "  billing.ts | +1 −0"]);
       assert.strictEqual(all.description, "2 repositories · 2 files · 1 already on both (hidden)");
+      // Several picked (Ctrl/Shift-click): the same tree, for just those.
+      await select(`+${web}\n${api}`);
+      const picked = await until2("two picked", repos, (x) => x.selected?.startsWith("+") === true);
+      assert.strictEqual(picked.selected, `+${api}\n${web}`, "in Repo List order");
+      await until2("both picked, in one tree", () => sideOf("left"), (x) => x.tree.join() === all.tree.join());
+      await select("*");
       // Release notes: each repository's commits only on ◀ (the cherry-picked one is on both: left out).
       const notes = await vscode.commands.executeCommand<string>("linyra.compareReleaseNotes");
       assert.strictEqual(notes, "## acme-api (release-1.4 → prod)\n\n- feat: rate limit per client (" + git(api, ["rev-parse", "--short=7", "release-1.4~1"]) + ", dana)\n\n"

@@ -33,7 +33,8 @@ function sides(): void {
     const tree: CompareTreeRow[] = [{ id: `${selected}/${side}-src`, kind: "folder", label: "src", description: String(src.length), tooltip: "src", contextValue: "", loaded: true,
       children: src }, ...(hideSame || onlyConflicts ? [] : [file("retry.go", true)])];
     // All repositories: each repository's rows under its name.
-    const files: CompareTreeRow[] = selected === "*" ? rows.filter((r) => r.status === "differs").map((r) => ({ id: `${r.repoId}/${side}/repo`, kind: "repo", label: r.name, description: "2", tooltip: r.name, contextValue: "compareRepoGroup", loaded: true, children: tree.map((t) => ({ ...t, id: `${r.repoId}/${t.id}` })) })) : tree;
+    // Several picked ("+", their ids one per line): those, under their names.
+    const files: CompareTreeRow[] = selected === "*" || selected.startsWith("+") ? rows.filter((r) => r.status === "differs" && (selected === "*" || selected.slice(1).split("\n").includes(r.repoId))).map((r) => ({ id: `${r.repoId}/${side}/repo`, kind: "repo", label: r.name, description: "2", tooltip: r.name, contextValue: "compareRepoGroup", loaded: true, children: tree.map((t) => ({ ...t, id: `${r.repoId}/${t.id}` })) })) : tree;
     const id = `${selected}/${side}/commit`;
     const sideRows: CompareTreeRow[] = mode === "files" ? files : [{ id, kind: "commit", label: "fix: retry on 503", description: "dana · a42a50e", tooltip: "fix: retry on 503", contextValue: "compareCommit",
       loaded: expanded.has(id), children: expanded.has(id) ? [file("src/upload.ts")] : [] }, { id: `${side}-more`, kind: "more", label: "Show 500 more", description: "", tooltip: "", contextValue: "" }];
@@ -49,7 +50,7 @@ function handle(m: ReposWebview): void {
     case "sideReady": sides(); return;
     case "pick": pair = m.pair; state(); repos(); sides(); return;
     case "swap": pair = { left: pair.right, right: pair.left }; state(); repos(); sides(); return;
-    case "select": selected = m.repoId; repos(); sides(); return;
+    case "select": selected = m.repoId; repos(); sides(); return; // "+…": several picked
     case "mode": mode = m.mode; state(); sides(); return;
     case "hideSame": hideSame = m.hide; state(); sides(); return;
     case "onlyConflicts": onlyConflicts = m.on; state(); sides(); return;
