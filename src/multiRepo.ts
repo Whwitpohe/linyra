@@ -32,6 +32,9 @@ export interface MultiRepoHost {
   changed(repoIds: readonly string[]): Promise<void>;
 }
 
+/** A branch action's name given beforehand, and the repositories it is kept to. */
+interface Preset { name: string; only?: ReadonlySet<string> }
+
 /** What one action did across the repositories (also the integration suite's answer). */
 export interface MultiResult { done: string[]; unchanged: string[]; skipped: { name: string; reason: string }[] }
 
@@ -57,15 +60,24 @@ export class MultiRepo {
     return this.exclusive(() => (i === 0 ? this.checkout() : i === 1 ? this.create() : this.merge()));
   }
 
-  private async checkout(): Promise<MultiResult | undefined> {
-    const all = await this.read();
-    const name = await this.pickShared(all, localize("Branch to check out in every repository"));
+  /**
+   * One of Branches Across Repositories' actions with its branch already named and confirmed (Ask
+   * AI lists what runs where first): no picker, no second prompt; `only` keeps it to those repositories.
+   */
+  across(kind: "checkout" | "create" | "merge", name: string, only?: ReadonlySet<string>): Promise<MultiResult | undefined> {
+    const preset = { name, only };
+    return this.exclusive(() => (kind === "checkout" ? this.checkout(preset) : kind === "create" ? this.create(preset) : this.merge(preset)));
+  }
+
+  private async checkout(preset?: Preset): Promise<MultiResult | undefined> {
+    const all = await this.read(preset?.only);
+    const name = preset?.name ?? await this.pickShared(all, localize("Branch to check out in every repository"));
     if (!name) return undefined;
     const steps = all.map((x) => ({ ...x, step: x.data ? checkoutStep(x.data, name) : "missing" as const }));
     const act = steps.filter((s) => s.step === "local" || s.step === "track");
     const missing = steps.filter((s) => s.step === "missing").map((s) => s.repo.name);
     if (!act.length) return this.report(localize("Check out {0}", name), { done: [], unchanged: steps.filter((s) => s.step === "current").map((s) => s.repo.name), skipped: missing.map((n) => ({ name: n, reason: localize("no such branch") })) });
-    if (!(await this.host.ask.warning(localize("Check out {0} in {1} repositories?", name, act.length),
+    if (!preset && !(await this.host.ask.warning(localize("Check out {0} in {1} repositories?", name, act.length),
       missing.length ? localize("Not in {0}: those stay as they are.", missing.join(", ")) : localize("Each repository's working tree changes to that branch."), localize("Check Out")))) return undefined;
     const result = await this.each(localize("Checking out {0}", name), act.map((s) => s.repo), async (repo) => {
       const s = act.find((x) => x.repo.id === repo.id)!;
@@ -77,9 +89,9 @@ export class MultiRepo {
     return this.report(localize("Check out {0}", name), result);
   }
 
-  private async create(): Promise<MultiResult | undefined> {
-    const all = await this.read();
-    const name = (await this.host.ask.input(localize("New branch in {0} repositories, from each one's checked-out commit", all.length), localize("Branch name"),
+  private async create(preset?: Preset): Promise<MultiResult | undefined> {
+    const all = await this.read(preset?.only);
+    const name = preset?.name ?? (await this.host.ask.input(localize("New branch in {0} repositories, from each one's checked-out commit", all.length), localize("Branch name"),
       { validate: (v) => (isValidRef(v.trim()) ? undefined : localize("Enter a valid branch name.")) }))?.trim();
     if (!name || !isValidRef(name)) return undefined;
     const taken = all.filter((x) => x.data?.branches.some((b) => b.kind === "local" && b.name === name));
@@ -89,9 +101,9 @@ export class MultiRepo {
     return this.report(localize("New branch {0}", name), result);
   }
 
-  private async merge(): Promise<MultiResult | undefined> {
-    const all = await this.read();
-    const name = await this.pickShared(all, localize("Branch to merge into each repository's current branch"));
+  private async merge(preset?: Preset): Promise<MultiResult | undefined> {
+    const all = await this.read(preset?.only);
+    const name = preset?.name ?? await this.pickShared(all, localize("Branch to merge into each repository's current branch"));
     if (!name) return undefined;
     const plans = all.map((x) => {
       if (!x.data?.current) return { ...x, ref: undefined, why: localize("no branch checked out") };
@@ -102,7 +114,7 @@ export class MultiRepo {
     });
     const act = plans.filter((p) => p.ref);
     if (!act.length) return this.report(localize("Merge {0}", name), { done: [], unchanged: [], skipped: plans.map((p) => ({ name: p.repo.name, reason: p.why })) });
-    if (!(await this.host.ask.warning(localize("Merge {0} into the current branch of {1} repositories?", name, act.length),
+    if (!preset && !(await this.host.ask.warning(localize("Merge {0} into the current branch of {1} repositories?", name, act.length),
       act.map((p) => `${p.repo.name}: ${p.ref} → ${p.data!.current}`).join("\n"), localize("Merge")))) return undefined;
     const result = await this.each(localize("Merging {0}", name), act.map((p) => p.repo), (repo) => this.git(repo, multiCommands.merge(act.find((p) => p.repo.id === repo.id)!.ref!)));
     result.skipped.push(...plans.filter((p) => !p.ref).map((p) => ({ name: p.repo.name, reason: p.why })));

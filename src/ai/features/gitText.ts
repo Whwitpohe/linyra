@@ -24,9 +24,22 @@ export function parseCommitPatch(stdout: string): CommitText {
   return { sha, author, email, time: Number(time) || 0, message: message.join("\0").replace(/\s+$/, ""), files: splitPatch(end < 0 ? "" : stdout.slice(end + 1)) };
 }
 
-/** Uncommitted work: the working tree (staged or not) against the last commit, or everything before the first one. Untracked files are not in it. */
-export function wipPatchArgs(head: string | null): string[] {
-  return ["diff", ...PATCH, head ?? EMPTY_TREE, "--"];
+/**
+ * Uncommitted work: the working tree (staged or not) against the last commit, or everything before
+ * the first one; `paths` (taken literally) keeps it to those files. Untracked files are not in it.
+ */
+export function wipPatchArgs(head: string | null, paths: readonly string[] = []): string[] {
+  return ["diff", ...PATCH, head ?? EMPTY_TREE, "--", ...paths.map((p) => `:(literal)${p}`)];
+}
+
+/** A pathspec list short enough for one command line (Windows caps it near 32k); longer, the whole diff is read and cut in JS. */
+export function shortPaths(paths: readonly string[], maxChars = 8000): readonly string[] | undefined {
+  return paths.length > 0 && paths.length <= 200 && paths.reduce((n, p) => n + p.length + 12, 0) <= maxChars ? paths : undefined;
+}
+
+/** The named commits' subjects and messages, in the order given (release notes from the Log's selection). */
+export function commitsLogArgs(shas: readonly string[]): string[] {
+  return ["log", "--no-walk=unsorted", "--no-color", "--format=%h%x00%an%x00%at%x00%s%x00%b%x1e", ...shas, "--"];
 }
 
 /** A range given as two refs: both must be refs git accepts, never options. */

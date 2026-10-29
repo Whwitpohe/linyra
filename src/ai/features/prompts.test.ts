@@ -4,7 +4,7 @@ import { cleanCommitMessage, cleanStashMessage, COMMIT_SYSTEM, commitMessageRequ
 import { budgetDiffs, splitPatch } from "./context";
 import { EXPLAIN_SYSTEM, explainCommitsRequest, explainRangeRequest, explainWorkRequest } from "./explain";
 import { fakeAi } from "./fakeAi";
-import { blobArgs, commitPatchArgs, mergeBaseArgs, operationOf, parseCommitPatch, parseNames, parseRangeLog, rangeLogArgs, rangeOk, rangePatchArgs, stageArgs, unmergedArgs, wipPatchArgs } from "./gitText";
+import { blobArgs, commitPatchArgs, commitsLogArgs, shortPaths, mergeBaseArgs, operationOf, parseCommitPatch, parseNames, parseRangeLog, rangeLogArgs, rangeOk, rangePatchArgs, stageArgs, unmergedArgs, wipPatchArgs } from "./gitText";
 import { parseSearchAnswer, SEARCH_SYSTEM, searchRequest } from "./translateSearch";
 
 configureI18n("en");
@@ -22,6 +22,11 @@ const diff = (path: string, body: string) => `diff --git a/${path} b/${path}\n--
   assert.deepStrictEqual(commitPatchArgs("abc").slice(-2), ["abc", "--"]);
   assert.ok(commitPatchArgs("abc").includes("--no-ext-diff") && commitPatchArgs("abc").includes("--diff-merges=first-parent"));
   assert.deepStrictEqual(wipPatchArgs(null).slice(-2), ["4b825dc642cb6eb9a060e54bf8d69288fbee4904", "--"]);
+  assert.deepStrictEqual(wipPatchArgs("abc", [":odd", "src/a.ts"]).slice(-3), ["--", ":(literal):odd", ":(literal)src/a.ts"]);
+  assert.deepStrictEqual(shortPaths(["a", "b"]), ["a", "b"]);
+  assert.strictEqual(shortPaths([]), undefined);
+  assert.strictEqual(shortPaths(Array.from({ length: 300 }, (_, i) => `f${i}`)), undefined);
+  assert.deepStrictEqual(commitsLogArgs(["abc", "def"]).slice(-3), ["abc", "def", "--"]);
   assert.deepStrictEqual(rangeLogArgs("HEAD", "origin/release-1.4", 5), ["log", "--max-count=5", "--no-color", "--format=%h%x00%an%x00%at%x00%s%x00%b%x1e", "HEAD..origin/release-1.4", "--"]);
   assert.deepStrictEqual(rangePatchArgs("@{upstream}", "HEAD").at(-2), "@{upstream}...HEAD");
   assert.ok(rangeOk("@{upstream}", "HEAD") && rangeOk("main", "origin/release-1.4"));

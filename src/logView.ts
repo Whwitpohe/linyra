@@ -805,6 +805,22 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.reload();
   }
 
+  /** AI: the search box's text from the host (the other filters stay), and the first page it lists. */
+  async search(text: string): Promise<readonly Commit[]> {
+    if (this.history) this.leaveHistory();
+    this.setLogMode("commits");
+    this.filter = { ...this.filter, text };
+    this.persistFilter(); this.postInit(true); this.reloadSoon.cancel();
+    await this.reload();
+    return this.rows;
+  }
+
+  /** AI Search's context: names only, as the Author and Branch boxes suggest them (read once, as those boxes do). */
+  async searchNames(): Promise<{ repos: string[]; authors: string[]; branches: string[] }> {
+    await Promise.all([this.suggestions.load("authors"), this.suggestions.load("branches")]);
+    return { repos: this.repos.map((r) => r.name), authors: this.suggestions.authors.map((a) => a.name), branches: this.suggestions.branches.map((b) => b.name) };
+  }
+
   /** A branch row filters history only; it never checks out that branch. */
   async selectBranch(repoId: string, branch: string): Promise<void> {
     if (!this.repos.some((r) => r.id === repoId)) return;

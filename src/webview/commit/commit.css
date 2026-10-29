@@ -25,6 +25,16 @@
 #commit-pane .commit-message { flex: 1 1 0; min-height: 36px; width: 100%; resize: none; padding: 5px 7px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; color: var(--vscode-input-foreground, var(--vscode-foreground)); background: var(--vscode-input-background); font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size, var(--vscode-font-size)); line-height: 1.4; }
 #commit-pane .commit-message::placeholder { color: var(--vscode-input-placeholderForeground); }
 #commit-pane .validation { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); background: var(--vscode-inputValidation-warningBackground, var(--vscode-input-background)); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); font-size: 12px; }
+/* ✨ while it writes: the spinner stops it. Its line under the box says what happened, with Undo. */
+#commit-pane .icon-button.generating svg { animation: commit-spin 1s linear infinite; }
+@keyframes commit-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #commit-pane .icon-button.generating svg { animation: none; } }
+#commit-pane .icon-button:disabled { opacity: 0.5; cursor: default; }
+#commit-pane .icon-button:disabled:hover { background: transparent; }
+#commit-pane .commit-message:read-only { color: var(--vscode-descriptionForeground); }
+#commit-pane .commit-ai-status { flex: 0 0 auto; min-width: 0; display: flex; align-items: baseline; gap: 6px; color: var(--vscode-descriptionForeground); font-size: 11px; }
+#commit-pane .commit-ai-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#commit-pane .commit-ai-status .link-button { flex: 0 0 auto; font-size: 11px; }
 #commit-pane .commit-buttons { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
 #commit-pane .button { min-height: 26px; padding: 3px 12px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; white-space: nowrap; }
 #commit-pane .button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
