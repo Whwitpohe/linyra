@@ -5,19 +5,31 @@
 // api.anthropic.com the models that support it opt into server-side fallback (fallbacks:
 // "default"). The SDK is loaded the first time Anthropic is used, not at activation.
 // No vscode import (fetch is injected; the tests give the SDK a mock fetch).
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { AiTimeout, asAiError, httpError, isHtml, networkError, providerDetail, timeoutError } from "../errors";
 import { linkedSignal } from "../net";
 import { anthropicAdaptive, anthropicFallbacks, FALLBACK_BETA, knownEfforts, protocolEffort, withJsonInstruction } from "../profileModel";
 import { AiError, type AiEffort, type AiModel, type AiProfile, type AiProvider, type AiRequest, type AiResponse, type AiStop, type AiToolCall } from "../types";
 import { HEADERS_TIMEOUT_MS, isObject, joinUrl, LIST_TIMEOUT_MS, num, str, type FetchLike } from "./http";
 
-const load = () => import("@anthropic-ai/sdk");
-type Sdk = Awaited<ReturnType<typeof load>>;
+const importSdk = () => import("@anthropic-ai/sdk");
+type Sdk = Awaited<ReturnType<typeof importSdk>>;
 type AnthropicClient = InstanceType<Sdk["default"]>;
 type Block = Record<string, unknown> & { type?: unknown };
 
+/**
+ * The SDK, loaded on first use. The packaged extension has it as its own bundle beside
+ * extension.js (anthropicSdk.ts; bundle:ext leaves the package out): parsed only by those who use
+ * Anthropic. The unit tests, bundled with the package, have no such file and import it.
+ */
+const load = (): Promise<Sdk> => {
+  const own = join(__dirname, "anthropic.js");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return existsSync(own) ? Promise.resolve(require(own) as Sdk) : importSdk();
+};
+
 let loaded: Promise<Sdk> | undefined;
-/** The SDK module, evaluated on first use (esbuild keeps a dynamic import's module lazy). */
 const sdk = (): Promise<Sdk> => (loaded ??= load());
 
 /** The SDK appends /v1/…; an address typed with /v1 would double it. */
