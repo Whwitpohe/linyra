@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, isProtected, multiCommands, parseOutgoing, pushPlan, sharedBranches, tagRemote, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, isProtected, multiCommands, multiReport, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -70,6 +70,42 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork"])), "fork", "the only remote");
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["a", "b"])), undefined);
   console.log("ok - Tag Across Repositories: annotated or lightweight, and where each repository's tag is pushed");
+}
+
+{
+  const none = { done: [], unchanged: [], stopped: [], skipped: [] };
+  // Nothing was behind: said as such, never "done in 0 of 5".
+  assert.deepStrictEqual(multiReport("Update Project", "update", { ...none, unchanged: ["a", "b", "c", "d", "e"] }), { level: "info", text: "Update Project: all 5 repositories already up to date." });
+  assert.strictEqual(multiReport("Update Project", "update", { ...none, unchanged: ["acme-web"] }).text, "Update Project: acme-web is already up to date.");
+  // Updated, up to date, stopped half-way and left alone: each group named, stopped makes it a warning.
+  const mixed = multiReport("Update Project (merge)", "update", {
+    done: ["acme-web"], unchanged: ["acme-api"], stopped: [{ name: "acme-libs", reason: "conflicts" }],
+    skipped: [{ name: "acme-docs", reason: "no upstream branch" }, { name: "acme-ops", reason: "no upstream branch" }],
+  });
+  assert.strictEqual(mixed.level, "warning");
+  assert.strictEqual(mixed.text, "Update Project (merge) — Updated: acme-web. Already up to date: acme-api. Stopped on conflicts, resolve or abort: acme-libs. Left as they were: acme-docs, acme-ops (no upstream branch).");
+  assert.ok(!/Left as they were[^.]*acme-libs/.test(mixed.text), "a repository mid-merge is not \"left as it was\"");
+  // Left alone because there was nothing to do there (no upstream): information, not a warning.
+  assert.strictEqual(multiReport("Update Project", "update", { ...none, done: ["acme-web"], skipped: [{ name: "acme-api", reason: "no upstream branch" }] }).level, "info");
+  assert.strictEqual(multiReport("Merge x", "merge", { ...none, skipped: [{ name: "acme-api", reason: "local changes", failed: true }] }).level, "warning");
+  // Push: how many commits went where.
+  assert.deepStrictEqual(multiReport("Push", "push", { ...none, done: ["a", "b", "c"] }, 7), { level: "info", text: "Pushed 7 commits to 3 repositories." });
+  assert.strictEqual(multiReport("Push", "push", { ...none, done: ["acme-web"] }, 1).text, "Pushed 1 commit to acme-web.");
+  assert.strictEqual(multiReport("Tag v1", "tag", { ...none, done: ["a", "b", "c", "d", "e", "f"] }).text, "Tag v1 — Tagged: a, b, c, d and 2 more.");
+  assert.strictEqual(multiReport("Push", "push", none).text, "Push: nothing to do.");
+  assert.ok(stoppedOnConflicts("CONFLICT (content): Merge conflict in a.txt") && !stoppedOnConflicts("error: Your local changes would be overwritten"));
+  console.log("ok - one report across repositories: updated, already up to date, stopped on conflicts, left as they were");
+}
+
+{
+  assert.strictEqual(updateMethodSetting(undefined), "ask");
+  assert.strictEqual(updateMethodSetting("ffOnly"), "ffOnly");
+  assert.strictEqual(updateMethodSetting("squash"), "ask", "an unknown value asks");
+  assert.deepStrictEqual(updateMethodOrder(undefined), ["merge", "rebase", "ffOnly"]);
+  assert.deepStrictEqual(updateMethodOrder("rebase"), ["rebase", "merge", "ffOnly"], "the last method first");
+  assert.deepStrictEqual(multiCommands.update("ffOnly"), ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"]);
+  assert.strictEqual(updateReason("fatal: Not possible to fast-forward, aborting."), "it has diverged from its upstream: merge or rebase it");
+  console.log("ok - Update Project's method: the setting, the last one first, and fast-forward only");
 }
 
 {

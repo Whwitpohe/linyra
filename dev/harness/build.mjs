@@ -13,10 +13,10 @@ mkdirSync(dist, { recursive: true });
 // One markup source: render the production HTML, then swap its CSP (there is no
 // host to enforce it against) for the theme stylesheet and host shim.
 const { outputFiles } = await esbuild.build({
-  stdin: { contents: 'export { renderHtml } from "./src/webview/html"; export { renderReposHtml } from "./src/webview/compare/html"; export { renderChangesHtml } from "./src/webview/changes/html"; export { renderCommitHtml } from "./src/webview/commit/html"; export { configureI18n } from "./src/i18n";', resolveDir: root },
+  stdin: { contents: 'export { renderHtml } from "./src/webview/html"; export { renderReposHtml } from "./src/webview/compare/html"; export { renderChangesHtml } from "./src/webview/changes/html"; export { renderCommitHtml } from "./src/webview/commit/html"; export { renderFormHtml } from "./src/webview/form/html"; export { configureI18n } from "./src/i18n";', resolveDir: root },
   bundle: true, format: "esm", platform: "node", write: false,
 });
-const { renderHtml, renderReposHtml, renderChangesHtml, renderCommitHtml, configureI18n } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`);
+const { renderHtml, renderReposHtml, renderChangesHtml, renderCommitHtml, renderFormHtml, configureI18n } = await import(`data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`);
 for (const locale of ["en", "zh-cn"]) {
   const bundle = locale === "en" ? {} : JSON.parse(readFileSync(join(root, `l10n/bundle.l10n.${locale}.json`), "utf8"));
   configureI18n(locale, bundle);
@@ -26,6 +26,7 @@ for (const locale of ["en", "zh-cn"]) {
     ["repos", renderReposHtml, "compare.js", "compare.css", "compareShim.js"],
     ["changes", renderChangesHtml, "changes.js", "changes.css", "changesShim.js"],
     ["commit", renderCommitHtml, "commit.js", "commit.css", "commitShim.js"],
+    ["form", renderFormHtml, "form.js", "form.css", "formShim.js"],
   ]) {
     const html = render({ cspSource: "", nonce: "harness", scriptUri: script, styleUri: style })
       .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n?/, "")
@@ -46,15 +47,18 @@ const contexts = await Promise.all([
   esbuild.context({ entryPoints: [join(here, "changesShim.ts")], bundle: true, format: "iife", outfile: join(dist, "changesShim.js"), sourcemap: true }),
   esbuild.context({ entryPoints: [join(root, "src/webview/commit/main.ts")], bundle: true, format: "iife", outfile: join(dist, "commit.js"), sourcemap: true }),
   esbuild.context({ entryPoints: [join(here, "commitShim.ts")], bundle: true, format: "iife", outfile: join(dist, "commitShim.js"), sourcemap: true }),
+  esbuild.context({ entryPoints: [join(root, "src/webview/form/main.ts")], bundle: true, format: "iife", outfile: join(dist, "form.js"), sourcemap: true }),
+  esbuild.context({ entryPoints: [join(here, "formShim.ts")], bundle: true, format: "iife", outfile: join(dist, "formShim.js"), sourcemap: true }),
 ]);
 
 if (process.argv.includes("--serve")) {
   await Promise.all(contexts.map((c) => c.watch()));
-  const { port } = await contexts[0].serve({ servedir: dist, port: Number(process.env.HARNESS_PORT) || 5178 });
-  console.log(`harness:  http://localhost:${port}/?theme=dark&state=default`);
-  console.log(`gallery:  http://localhost:${port}/gallery.html?state=default`);
-  console.log(`repos:    http://localhost:${port}/repos.html?theme=dark`);
-  console.log(`commit:   http://localhost:${port}/commit.html?theme=dark`);
+  const { port } = await contexts[0].serve({ servedir: dist, host: "127.0.0.1", port: Number(process.env.HARNESS_PORT) || 5178 });
+  console.log(`harness:  http://127.0.0.1:${port}/?theme=dark&state=default`);
+  console.log(`gallery:  http://127.0.0.1:${port}/gallery.html?state=default`);
+  console.log(`repos:    http://127.0.0.1:${port}/repos.html?theme=dark`);
+  console.log(`commit:   http://127.0.0.1:${port}/commit.html?theme=dark`);
+  console.log(`form:     http://127.0.0.1:${port}/form.html?theme=dark&form=release`);
 } else {
   await Promise.all(contexts.map((c) => c.rebuild()));
   await Promise.all(contexts.map((c) => c.dispose()));

@@ -30,14 +30,14 @@ const server = createServer((req, res) => {
   if (!file.startsWith(dist) || !existsSync(file)) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": types[path.extname(file)] ?? "application/octet-stream" });
   createReadStream(file).pipe(res);
-}).listen(0);
+}).listen(0, "127.0.0.1");
 const port = server.address().port;
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const cdp = await page.context().newCDPSession(page);
 await cdp.send("Performance.enable");
-await page.goto(`http://localhost:${port}/index.html?theme=dark&state=${STATE}&date=all`);
+await page.goto(`http://127.0.0.1:${port}/index.html?theme=dark&state=${STATE}&date=all`);
 await page.locator("#rows .row").first().waitFor();
 // Page in until the list holds ROWS commits (the harness serves 200 per page).
 for (;;) {

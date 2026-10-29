@@ -4,6 +4,7 @@ import { promises as fs } from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
+import { checkValues, initialValues, type FormSpec, type FormValues } from "./formModel";
 import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
@@ -89,6 +90,55 @@ export class Ask {
     return chosen ? chosen.map((c) => items.indexOf(c)) : undefined;
   }
 
+  /**
+   * One item, or one item's button (Update Project's 📌 "don't ask again"): its index, and whether
+   * the button was clicked. Testing: the label, or "label|button".
+   */
+  async pickWithButton(items: readonly vscode.QuickPickItem[], placeHolder: string, button: vscode.QuickInputButton): Promise<{ index: number; button: boolean } | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const [label, extra] = (this.answers.shift() ?? "").split("|");
+      const i = items.findIndex((x) => x.label === label);
+      return i < 0 ? undefined : { index: i, button: extra === "button" };
+    }
+    const quick = vscode.window.createQuickPick<vscode.QuickPickItem>();
+    quick.items = items.map((x) => ({ ...x, buttons: [button] }));
+    quick.placeholder = placeHolder;
+    return new Promise((resolve) => {
+      let answer: { index: number; button: boolean } | undefined;
+      quick.onDidAccept(() => { const i = quick.items.indexOf(quick.selectedItems[0]); if (i >= 0) answer = { index: i, button: false }; quick.hide(); });
+      quick.onDidTriggerItemButton((e) => { answer = { index: quick.items.indexOf(e.item), button: true }; quick.hide(); });
+      quick.onDidHide(() => { quick.dispose(); resolve(answer); });
+      quick.show();
+    });
+  }
+
+  /** Opens review forms (set by the extension: it knows where the page's files are). */
+  formOpener: ((spec: FormSpec, check?: (values: FormValues) => Promise<Record<string, string>>) => Promise<FormValues | undefined>) | undefined;
+
+  /**
+   * A review form (Release…, Tag Across Repositories…): every choice on one page, before anything
+   * runs; the checked values, or undefined when cancelled. Testing: the values as JSON, or "Cancel".
+   */
+  async form(spec: FormSpec, check?: (values: FormValues) => Promise<Record<string, string>>): Promise<FormValues | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const a = this.answers.shift();
+      if (a === undefined || a === "Cancel") return undefined;
+      this.lastForm = { spec, problems: {} };
+      const values = checkValues(spec, { ...initialValues(spec), ...(JSON.parse(a) as FormValues) });
+      if (!values) throw new Error(`the queued answer does not fill the form ${spec.id}: ${a}`);
+      // Refused by the host's own check: the form would stay open, saying why; here, nothing runs.
+      const problems = check ? await check(values) : {};
+      this.lastForm.problems = problems;
+      return Object.keys(problems).length > 0 ? undefined : values;
+    }
+    this.lastForm = { spec, problems: {} };
+    return this.formOpener ? this.formOpener(spec, check) : undefined;
+  }
+
+  /** Test seam: the last form shown, and what its host check said about the answer. */
+  lastForm: { spec: FormSpec; problems: Record<string, string> } | undefined;
 }
 
 export interface UncommittedActionsDeps {

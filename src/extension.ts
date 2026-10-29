@@ -29,6 +29,7 @@ import { CommitPanel } from "./commitPanel";
 import { BranchController, type BranchAction, type StashAction } from "./branchController";
 import { CommitActions } from "./commitActions";
 import { MultiRepo } from "./multiRepo";
+import { openForm } from "./formPanel";
 import { OperationActions } from "./operationActions";
 import { PatchActions } from "./patchActions";
 import { RunAcross } from "./runAcross";
@@ -65,6 +66,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
   });
   const ask = new Ask();
+  // Release… and Tag Across Repositories… ask through a review form in an editor tab.
+  ask.formOpener = (spec, check) => openForm(context.extensionUri, spec, check);
   const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted, ask,
     toolbarFlags: () => ({ compareShown: context.workspaceState.get<boolean>(COMPARE_SHOWN, false) }) });
   const changesPanel = new ChangesPanel(context, changes);
@@ -134,7 +137,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const selection = new CompareSelection();
   const mergeDocs = new MergePreviewDocs();
   const compareDeps = { context, store: compare, log, selection, mergeDocs, ask,
-    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]) => multiRepo.mergeEach(title, plans, skipped),
+    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[], opts?: { quiet?: boolean }) => multiRepo.mergeEach(title, plans, skipped, opts),
     mergeRef: (repo: Repo, ref: string) => multiRepo.mergeRef(repo, ref) };
   const compareRepos = new CompareRepos(compareDeps);
   // The hover card's Compare: the HEAD row's branch against its merge target, in Compare Branches.
@@ -150,7 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   log.branchSidebar = branchSidebar;
   const multiRepo = new MultiRepo({ viewId: LogView.id, repos: () => log.tickedRepos(), run: log.countedRun, ask,
-    fetchAll: () => log.upstream.fetchAll(), changed: (ids) => log.reposChanged(ids) });
+    fetchAll: () => log.upstream.fetchAll(), changed: (ids) => log.reposChanged(ids), state: context.globalState });
   context.subscriptions.push(
     vscode.commands.registerCommand("linyra.branchesAcross", () => multiRepo.branches()),
     vscode.commands.registerCommand("linyra.pushAll", () => multiRepo.push()),
@@ -433,6 +436,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.setClipboard", (text: string) => setCopiedText(text)),
       vscode.commands.registerCommand("linyra._itest.answer", (v: string | undefined) => uncommittedActions.ask.queue(v)),
       vscode.commands.registerCommand("linyra._itest.lastWarning", () => uncommittedActions.ask.lastWarning),
+      vscode.commands.registerCommand("linyra._itest.lastForm", () => uncommittedActions.ask.lastForm),
       vscode.commands.registerCommand("linyra._itest.operationError", () => { const e = operations.lastError; operations.lastError = undefined; return e; }),
       vscode.commands.registerCommand("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
       vscode.commands.registerCommand("linyra._itest.branchSheet", () => log.branchSheet.last),

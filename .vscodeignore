@@ -11,6 +11,8 @@
 !out/changes.css
 !out/commit.js
 !out/commit.css
+!out/form.js
+!out/form.css
 !package.json
 !package.nls*.json
 !l10n/bundle.l10n.*.json
