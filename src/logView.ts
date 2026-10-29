@@ -196,7 +196,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg), contextCommit: (arg) => this.contextCommit(arg),
       setRepoFilter: (ids) => this.setRepoFilter(ids), untick: (id) => this.untick(id), behind: (ids) => this.upstream.behind(ids), run: this.run,
     });
-    this.hover = new HoverDetails({ run: this.run, post: (m) => this.post(m),
+    this.hover = new HoverDetails({ run: this.run, post: (m) => this.post(m), commands: vscode.commands,
       commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined) });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();

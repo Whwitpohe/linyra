@@ -1,4 +1,3 @@
-import * as vscode from "vscode";
 import { showArgs } from "./commitDetail";
 import { countArgs, detailOf, parseCounts, pickMergeTarget, remoteHeadArgs, shortRemoteRef, showsMergeTarget, type MergeTarget } from "./hoverModel";
 import type { RunGit } from "./logQuery";
@@ -17,6 +16,8 @@ export interface HoverHost {
   /** The listed commit with these (untrusted) ids, with its repository. */
   commit(repoId: unknown, sha: unknown): { repo: Repo; commit: Commit } | undefined;
   post(m: Extract<HostMessage, { type: "hoverDetail" }>): void;
+  /** vscode.commands (a seam: the unit test has no VS Code). */
+  commands: { getCommands(filterInternal?: boolean): PromiseLike<string[]>; executeCommand(command: string, ...rest: unknown[]): PromiseLike<unknown> };
 }
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -46,7 +47,7 @@ export class HoverDetails {
     const branch = commit.refs?.some((r) => r.kind === "head") ? commit.refs.find((r) => r.kind === "local" && r.current)?.name : undefined;
     // Beside the git show, not after it; a failed or killed read just shows no target.
     const target = branch ? this.mergeTarget(repo, commit.sha, branch, ctl.signal).catch(() => null) : Promise.resolve(null);
-    const explain = Promise.resolve(vscode.commands.getCommands(true)).then((all) => all.includes(EXPLAIN_COMMAND), () => false);
+    const explain = this.hasExplain();
     try {
       const detail = detailOf(await this.host.run(repo.root, showArgs(commit.sha), ctl.signal));
       if (ctl.signal.aborted) return;
@@ -71,6 +72,10 @@ export class HoverDetails {
     else this.targets.clear();
   }
 
+  private hasExplain(): Promise<boolean> {
+    return Promise.resolve(this.host.commands.getCommands(true)).then((all) => all.includes(EXPLAIN_COMMAND), () => false);
+  }
+
   private async mergeTarget(repo: Repo, sha: string, branch: string, signal: AbortSignal): Promise<MergeTarget | null> {
     const known = this.targets.get(repo.id);
     if (known?.sha === sha) return known.target;
@@ -86,12 +91,11 @@ export class HoverDetails {
     const found = this.host.commit(repoId, sha);
     if (!found || !ACTIONS.includes(action as HoverAction)) return;
     const arg = { repoId: found.repo.id, sha: found.commit.sha };
+    const { commands } = this.host;
     switch (action as HoverAction) {
-      case "copySha": await vscode.commands.executeCommand("linyra.commitCopySha", arg); return;
-      case "openOnRemote": await vscode.commands.executeCommand("linyra.commitOpenOnRemote", arg); return;
-      case "explain":
-        if ((await vscode.commands.getCommands(true)).includes(EXPLAIN_COMMAND)) await vscode.commands.executeCommand(EXPLAIN_COMMAND, arg);
-        return;
+      case "copySha": await commands.executeCommand("linyra.commitCopySha", arg); return;
+      case "openOnRemote": await commands.executeCommand("linyra.commitOpenOnRemote", arg); return;
+      case "explain": if (await this.hasExplain()) await commands.executeCommand(EXPLAIN_COMMAND, arg); return;
       case "compare": {
         const known = this.targets.get(found.repo.id);
         if (known?.sha === found.commit.sha && known.target) await this.compare?.(found.repo.id, known.target.name, known.target.branch);
