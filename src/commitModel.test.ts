@@ -54,7 +54,7 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   assert.deepStrictEqual(["unversioned", "unversioned:/ws/acme-web"].map((id) => byId.get(id)?.contextValue), ["commitList.unversioned", "commitRepo.unversioned"], "new files' rows offer Add to VCS");
   assert.match(byId.get("unversioned")!.tooltip, /check them to add them with the commit, or Add to VCS/, "how a new file gets into version control");
   assert.match(byId.get("changes:/ws/acme-web:f:notes.md")!.tooltip, /partly staged/);
-  assert.match(byId.get("changes:/ws/acme-api")!.tooltip, /Rollback needs VS Code's Git/, "a repository VS Code's Git does not have open says why Rollback does nothing");
+  assert.match(byId.get("changes:/ws/acme-api")!.tooltip, /Discard Changes needs VS Code's Git/, "a repository VS Code's Git does not have open says why Discard Changes does nothing");
   assert.strictEqual(describeCommit([clean], new Map()).message, "No uncommitted changes in the ticked repositories.");
   console.log("ok - the Commit side bar's tree: lists, repositories, folders, files, checks, menus");
 }
