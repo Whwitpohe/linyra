@@ -1,4 +1,5 @@
 import type { CommitHostMessage, CommitWebviewMessage } from "../../src/commitProtocol";
+import { mockAiCommit } from "./mock/aiCommit";
 
 // The Commit side bar's message box (the tree above it is VS Code's own). ?state=none: nothing checked.
 const params = new URLSearchParams(location.search);
@@ -9,13 +10,15 @@ const none = params.get("state") === "none";
 let busy = false;
 
 const send = (data: CommitHostMessage) => window.dispatchEvent(new MessageEvent("message", { data }));
-const post = () => send({ type: "state", checkedLabel: none ? "No files checked" : "8 files checked in 3 repositories", checkedFiles: none ? 0 : 8, busy });
+const ai = mockAiCommit(send, params);
+const post = () => send({ type: "state", checkedLabel: none ? "No files checked" : "8 files checked in 3 repositories", checkedFiles: none ? 0 : 8, busy, ai: ai.ai });
 
 const host = window as unknown as { acquireVsCodeApi(): unknown; commitMessages: CommitWebviewMessage[] };
 host.commitMessages = [];
 host.acquireVsCodeApi = () => ({
   postMessage(m: CommitWebviewMessage) {
     host.commitMessages.push(m);
+    ai.handle(m);
     if (m.type === "ready") setTimeout(() => { send({ type: "draft", text: params.get("message") ?? "", amend: false, signOff: false, author: "" }); post(); }, 0);
     if (m.type === "history") send({ type: "message", text: "fix(api): retry the upload once\n\nThe second try reuses the token." });
     if (m.type === "author") send({ type: "author", author: m.clear ? "" : "rin <rin@example.com>" });
