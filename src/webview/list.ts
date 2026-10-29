@@ -181,6 +181,11 @@ export class CommitList {
     this.root.scrollTop = 0;
   }
 
+  /** The rows on screen built again from the same props: new avatars arrived (avatars.ts), once per batch. */
+  redraw(): void {
+    this.paint();
+  }
+
   /** Combined Changes uses the visible order, never commits hidden in a folded path. */
   visibleCommitIndexes(): number[] { return this.display.rows.filter((row) => !row.segment).map((row) => row.sourceIndex); }
 

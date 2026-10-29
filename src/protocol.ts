@@ -69,7 +69,9 @@ export type HostMessage =
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
   | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] }
   /** Combined Changes: the host changed the Commit list's selection (Clear Selection). */
-  | { type: "setSelection"; items: CommitRef[]; focus: CommitRef };
+  | { type: "setSelection"; items: CommitRef[]; focus: CommitRef }
+  /** Avatars of the authors on screen (email → data: URI), a batch at a time. reset: drop those sent before (the settings changed). */
+  | { type: "avatars"; byEmail: Record<string, string>; reset?: boolean };
 
 /** One commit of the Commit list. */
 export interface CommitRef {
@@ -102,4 +104,6 @@ export type WebviewMessage =
   | { type: "wantSuggestions"; kind: "authors" | "branches" }
   | { type: "openSettings" }
   /** The Repo List's ＋ Save as profile… row. */
-  | { type: "profileSave" };
+  | { type: "profileSave" }
+  /** The authors of the rows on screen, once they settle after a scroll (avatars are asked only for these). */
+  | { type: "visibleAuthors"; authors: { email: string; repoId: string }[] };

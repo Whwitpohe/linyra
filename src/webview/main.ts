@@ -20,6 +20,7 @@ import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
 import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
 import { WorkList } from "./workList";
+import { AvatarFeed } from "./avatars";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import type { ChangesLayout } from "../toolbarModel";
 
@@ -63,6 +64,7 @@ const list = new CommitList(listEl, byId("rows"), (i, how) => gesture(i, how), o
   accents = next;
   showAccents(next);
 });
+const avatars = new AvatarFeed(byId("rows"), (i) => state.rows[i], post, () => list.redraw());
 const limitEl = byId("limit");
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
@@ -209,6 +211,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "changesView": changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })); return;
     case "sidebarState": repoPane.applyBranchState(m.state); return;
     case "branchTree": repoPane.receiveBranches(m); return;
+    case "avatars": avatars.receive(m.byEmail, m.reset); return;
     case "init": {
       const previousNames = new Map(state.repos.map((repo) => [repo.id, repo.name]));
       if (m.repos.length !== state.repos.length || m.repos.some((repo) => previousNames.get(repo.id) !== repo.name)) {

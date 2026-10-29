@@ -33,7 +33,7 @@ interface GitRepository extends BranchRepository {
     workingTreeChanges?: readonly unknown[];
     mergeChanges?: readonly unknown[];
     untrackedChanges?: readonly unknown[];
-    remotes?: readonly { name: string }[];
+    remotes?: readonly { name: string; fetchUrl?: string; pushUrl?: string }[];
   };
   status?(): Promise<void>;
   // Absolute file paths; in vscode.git's API v1 since before 1.85.
@@ -147,6 +147,15 @@ export class RepoDiscovery implements vscode.Disposable {
     if (!this.reportsChanges(root)) return;
     const state = this.vsCodeGitRepo(root)?.state;
     return state?.HEAD && state.remotes ? state.remotes.map((r) => r.name) : undefined;
+  }
+
+  /** The remote URLs VS Code's Git has for a repository it watches, origin's first (undefined: ask git). */
+  remoteUrls(root: string): string[] | undefined {
+    if (!this.reportsChanges(root)) return;
+    const state = this.vsCodeGitRepo(root)?.state;
+    if (!state?.HEAD || !state.remotes) return;
+    const ordered = [...state.remotes.filter((r) => r.name === "origin"), ...state.remotes.filter((r) => r.name !== "origin")];
+    return ordered.map((r) => r.fetchUrl ?? r.pushUrl).filter((u): u is string => !!u);
   }
 
   /** Ahead/behind its upstream as VS Code's Git last found it (undefined: not watched, no status yet). */

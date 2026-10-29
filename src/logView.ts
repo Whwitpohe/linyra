@@ -16,7 +16,10 @@ import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMes
 import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
-import { readSettings } from "./settings";
+import { readAvatarSettings, readSettings } from "./settings";
+import { Avatars, visibleAuthors } from "./avatars";
+import { parseRemoteConfig } from "./avatarModel";
+import { outputLog } from "./outputLog";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import type { AheadBehind } from "./upstream";
 import { SyncController } from "./syncController";
@@ -149,6 +152,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private branchUse: BranchUse | undefined;
   /** The repo set the background reads last ran for. */
   private backgroundFor: string | undefined;
+  /** Author avatars for the rows on screen (linyra.avatars), kept in memory for the session. */
+  private readonly avatars = new Avatars({
+    settings: () => {
+      const config = vscode.workspace.getConfiguration("linyra");
+      const mode = config.inspect("avatars");
+      return readAvatarSettings((key) => (key === "avatars" ? mode?.globalValue : config.get(key)), [mode?.workspaceValue, mode?.workspaceFolderValue]);
+    },
+    remotes: (repoId, signal) => this.remoteUrls(repoId, signal),
+    post: (byEmail, reset) => this.post({ type: "avatars", byEmail, ...(reset ? { reset } : {}) }),
+    log: (message) => outputLog().info(message),
+  });
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
@@ -203,6 +217,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.postUncommitted();
         this.showWorkTree();
       }),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (["linyra.avatars", "linyra.avatarHosts", "linyra.avatarUrlTemplate"].some((key) => e.affectsConfiguration(key))) this.avatars.settingsChanged();
+      }),
     );
   }
 
@@ -244,6 +261,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "branchSidebar": await this.branchSidebar?.handle(m); return;
       case "ready":
         this.branchSidebar?.ready();
+        this.avatars.webviewReset();
         this.readyCount++;
         if (!this.stats.readyAt) this.stats.readyAt = Date.now();
         // The first load started when the view was created; wait for it, then
@@ -347,6 +365,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "profileSave":
         await this.profiles.save();
         return;
+      case "visibleAuthors":
+        this.avatars.want(visibleAuthors(m.authors, (id) => this.repos.some((r) => r.id === id)));
+        return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "linyra.scanDepth");
         return;
@@ -356,6 +377,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private settings() {
     const config = vscode.workspace.getConfiguration("linyra");
     return readSettings((key) => config.get(key));
+  }
+
+  /** A repository's remote URLs for avatars: VS Code's Git has them for the repositories it watches; one git process for the others. */
+  private async remoteUrls(repoId: string, signal: AbortSignal): Promise<string[]> {
+    const repo = this.repos.find((r) => r.id === repoId);
+    if (!repo) return [];
+    const known = this.deps.discovery.remoteUrls(repo.root);
+    if (known) return known;
+    // Exit status 1: no remote at all.
+    return parseRemoteConfig(await this.run(repo.root, ["config", "--get-regexp", String.raw`^remote\..*\.url$`], signal).catch(() => ""));
   }
 
   private layout(): Layout {
@@ -1362,6 +1393,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   postBranchMessage(message: Extract<HostMessage, { type: "sidebarState" | "branchTree" }>): void { this.post(message); }
 
   dispose(): void {
+    this.avatars.dispose();
     this.background.abort();
     this.query.abort();
     this.detail.abort();

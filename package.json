@@ -1957,6 +1957,39 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%setting.linyra.blame.markdownDescription%"
+        },
+        "linyra.avatars": {
+          "type": "string",
+          "enum": [
+            "off",
+            "remote",
+            "remote+gravatar"
+          ],
+          "enumDescriptions": [
+            "%setting.linyra.avatars.off%",
+            "%setting.linyra.avatars.remote%",
+            "%setting.linyra.avatars.remoteGravatar%"
+          ],
+          "default": "remote",
+          "markdownDescription": "%setting.linyra.avatars.markdownDescription%"
+        },
+        "linyra.avatarHosts": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "gitlab",
+              "github"
+            ]
+          },
+          "markdownDescription": "%setting.linyra.avatarHosts.markdownDescription%"
+        },
+        "linyra.avatarUrlTemplate": {
+          "type": "string",
+          "default": "",
+          "scope": "application",
+          "markdownDescription": "%setting.linyra.avatarUrlTemplate.markdownDescription%"
         }
       }
     },

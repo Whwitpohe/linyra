@@ -708,5 +708,9 @@
   "{0} deleted": "{0} 个删除",
   "{0} renamed": "{0} 个重命名",
   "{0} lines added, {1} deleted": "新增 {0} 行，删除 {1} 行",
-  "unpublished": "未发布"
+  "unpublished": "未发布",
+  "Avatars: {0} did not answer as a GitLab server. If it is another kind of server, name it in linyra.avatarHosts.": "头像：{0} 的响应不像 GitLab 服务器。如果它是其他类型的服务器，请在 linyra.avatarHosts 中注明。",
+  "Avatars: {0} sent a sign-in page. Linyra stops asking it until the window reloads.": "头像：{0} 返回了登录页面。在窗口重新加载之前，Linyra 不再向它请求。",
+  "Avatars: {0} answered HTTP {1}. Linyra stops asking it until the window reloads.": "头像：{0} 返回了 HTTP {1}。在窗口重新加载之前，Linyra 不再向它请求。",
+  "Avatars: {0} did not answer in time. Linyra asks it again in {1} minutes.": "头像：{0} 没有及时响应。Linyra 将在 {1} 分钟后再次请求。"
 }
