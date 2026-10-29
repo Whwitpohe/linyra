@@ -130,5 +130,7 @@
   "command.linyra.stash.drop.title": "Drop Stash…",
   "command.linyra.stash.create.title": "Stash Changes…",
   "command.linyra.branch.delete.title": "Delete Branch…",
-  "command.linyra.openChangesEditor.title": "Open Changes in Editor"
+  "command.linyra.openChangesEditor.title": "Open Changes in Editor",
+  "command.linyra.folderHistory.title": "Folder History",
+  "command.linyra.historyBlame.title": "Blame at This Revision"
 }

@@ -5,6 +5,7 @@ import { codiconElement } from "./codicons";
 import { clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { hoverRail, railAt, renderGraph, type FoldAction, type RailAction } from "./graph";
+import { historyChangeCell, historySubjectNotes } from "./history";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
 import { absoluteTime, accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
@@ -364,7 +365,7 @@ export class CommitList {
       // Cut/Copy/Paste. File History is one file of one repository: no repo filter items there.
       // head: the checked-out commit, which alone offers Undo Commit and Edit Commit Message.
       "data-vscode-context": JSON.stringify({ webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, behind: this.props.behind?.has(c.repoId) === true,
-        head: c.refs?.some((ref) => ref.kind === "head") === true, preventDefaultContextMenuItems: true }),
+        head: c.refs?.some((ref) => ref.kind === "head") === true, ...(this.props.historyPath ? { historyFileDeleted: c.file?.status === "D" } : {}), preventDefaultContextMenuItems: true }),
     }, [
       h("span", { class: `repo-band accent-${accent}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name },
         showName ? [h("span", { class: "chip repo-label", "data-name": name }, [name])] : []),
@@ -372,8 +373,7 @@ export class CommitList {
         node: segment ? { id: segment.id, count: segment.hidden.length, expand: this.collapsed.has(segment.id) } : undefined, edges: this.edgeActions,
       }),
       h("span", { class: "commit-message", role: "gridcell" }, [
-        h("span", { class: "subject", title: c.subject }, [c.subject,
-          this.props.historyPath && c.file && c.file.path !== this.props.historyPath ? h("span", { class: "was-path" }, [` — ${c.file.path}`]) : null]),
+        h("span", { class: "subject", title: c.subject }, [c.subject, ...(this.props.historyPath ? historySubjectNotes(c.file, this.props.historyPath) : [])]),
         references.length ? h("span", { class: "row-refs", title: referenceTitle }, references.map((ref) => {
           const badge = h("span", { class: `row-ref ref-${ref.kinds.at(-1)}`, title: ref.title });
           const marks = h("span", { class: "row-ref-icons" });
@@ -385,6 +385,8 @@ export class CommitList {
         }).concat(h("span", { class: "row-ref-more", title: referenceTitle,
           "aria-label": `${localize("Commit references")}: ${referenceTitle}` }, [`+${references.length}`]))) : null,
       ]),
+      // File History: what this commit did to the file (M +12 −3).
+      this.props.historyPath ? historyChangeCell(c.file) : null,
       this.props.hashColumn ? h("span", { class: "hash", role: "gridcell", title: c.sha }, [c.sha.slice(0, 8)]) : null,
       h("span", { class: "author", role: "gridcell" }, [c.author]),
       h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),

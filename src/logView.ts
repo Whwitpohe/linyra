@@ -12,7 +12,7 @@ import { toolbarCommand, type ToolbarState, type ChangesLayout } from "./toolbar
 import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
-import type { AuthorName, BranchName, CommitRef, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
+import type { AuthorName, BranchName, CommitRef, HistoryWork, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
 import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
@@ -26,7 +26,8 @@ import { Suggestions } from "./suggestions";
 import { CommitGraphHint } from "./commitGraphHint";
 import { wantsCommitGraphHint } from "./commitGraphModel";
 import type { UncommittedStore } from "./uncommittedStore";
-import { openWorkDiff, type Ask } from "./uncommittedActions";
+import { openHeadDiff, openWorkDiff, type Ask } from "./uncommittedActions";
+import { folderFilter, historyWorkOf, revisionPair } from "./historyModel";
 import type { ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
 import { SELECTION_LIMIT } from "./webview/selectionModel";
@@ -69,6 +70,8 @@ export interface LogSnapshot {
   /** Each repository's user.email, in repo order (test seam). */
   me: string[];
   history: { repoId: string; path: string } | null;
+  /** File History's uncommitted row: the file's change, or null (test seam). */
+  historyWork: HistoryWork | null;
   /** The store's uncommitted work, by repository (test seam). */
   uncommitted: { repoId: string; staged: string[]; changes: string[] }[];
   /** How many times the store reported a change (test seam). */
@@ -202,6 +205,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       deps.uncommitted.onDidChange(() => {
         this.postUncommitted();
         this.showWorkTree();
+        this.postHistoryWork();
       }),
     );
   }
@@ -259,6 +263,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.suggestions.replay();
         if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
         this.postUncommitted();
+        this.postHistoryWork(true);
         // A reload on its way posts its page to this webview too.
         if (this.queryState === null) { if (!this.reloading) await this.reload(); }
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
@@ -316,6 +321,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "exitHistory":
         await this.setHistory(null);
+        return;
+      case "openHistoryWork":
+        await this.openHistoryWork();
         return;
       case "wantSuggestions":
         if (m.kind === "authors" || m.kind === "branches") await this.suggestions.load(m.kind);
@@ -398,7 +406,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(forceMode = false): void {
     this.toolbarChanged();
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
-    const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
+    const history = this.history && repo ? { repoId: repo.id, repoName: repo.name, path: this.history.path } : null;
     this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layout(), history, profiles: this.profiles.resolved(), ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
@@ -534,6 +542,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.history = null;
     // The next File History is a new session: its first step must not close this one's diff.
     this.historyTab = undefined;
+    // The webview drops the uncommitted row with the history.
+    this.postedHistoryWork = "null";
+    this.historyPair = null;
     this.persistFilter();
   }
 
@@ -556,7 +567,77 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (history) this.setLogMode("commits");
     this.persistFilter();
     this.postInit(history !== null);
+    this.postHistoryWork();
     await this.reload();
+  }
+
+  /** File History's uncommitted row: what the uncommitted store already read (no git process). */
+  private historyWork(): HistoryWork | null {
+    return this.history ? historyWorkOf(this.deps.uncommitted.get(this.history.repoId), this.history.path) : null;
+  }
+
+  private postedHistoryWork = "null";
+  /** Posts the row when it changed (always: a new webview has none). */
+  private postHistoryWork(always = false): void {
+    const work = this.historyWork();
+    const key = JSON.stringify(work);
+    if (key === this.postedHistoryWork && !always) return;
+    this.postedHistoryWork = key;
+    this.post({ type: "historyWork", work });
+  }
+
+  /** The uncommitted row: the file from the last commit to the working tree, in File History's one tab. */
+  private async openHistoryWork(): Promise<void> {
+    const work = this.history ? this.deps.uncommitted.get(this.history.repoId) : undefined;
+    const file = this.historyWork();
+    if (!work || !file) return;
+    await this.swapHistoryTab(async () => {
+      await openHeadDiff(work, file, true);
+      return file.status === "D" ? undefined : vscode.Uri.file(path.join(work.root, ...file.path.split("/"))).toString();
+    });
+  }
+
+  /**
+   * Folder History (a folder of the Changes view or the Commit side bar): the Log's own Path
+   * filter for that folder, in its repository, of all time. Not a mode: the filters say it all.
+   */
+  async folderHistory(target: { root: string; path: string } | undefined): Promise<void> {
+    if (this.repos.length === 0) await this.loadRepos();
+    const repo = target && this.repos.find((r) => r.root === target.root);
+    const folder = target && normalizePath(target.path);
+    if (!repo || !folder) {
+      void vscode.window.showInformationMessage(localize("Linyra: this folder is not in a repository of this workspace."));
+      return;
+    }
+    if (this.history) this.leaveHistory();
+    this.setLogMode("commits");
+    this.filter = folderFilter(this.filter, repo.id, folder);
+    // A repository filter the user cannot see is a trap: it shows the pane.
+    if (this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false)) {
+      await this.context.globalState.update(HIDE_REPOS_KEY, false);
+      await vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, false);
+    }
+    await vscode.commands.executeCommand(`${LogView.id}.focus`);
+    this.persistFilter();
+    this.postInit(true);
+    this.postHistoryWork();
+    this.reloadSoon.cancel();
+    await this.reload();
+  }
+
+  /**
+   * Blame at This Revision (a File History row): the file as it was at that commit, where the
+   * Log's blame names who last changed the line under the cursor.
+   */
+  async blameAt(arg: unknown): Promise<void> {
+    const found = this.history ? this.listedCommit(arg) : undefined;
+    const file = found?.commit.file;
+    if (!found || !file || file.status === "D") return;
+    if (!vscode.workspace.getConfiguration("linyra").get<boolean>("blame", true)) {
+      void vscode.window.showInformationMessage(localize("Linyra: blame is turned off (linyra.blame)."));
+    }
+    const uri = toUri({ root: found.repo.root, ref: found.commit.sha, path: file.path });
+    await vscode.commands.executeCommand("vscode.open", uri, { preview: true }, `${path.posix.basename(file.path)} (${found.commit.sha.slice(0, 7)})`);
   }
 
   /**
@@ -773,7 +854,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** The commits selected together (Combined Changes), in Log order: newest first. */
   selectedCommits(): { repo: Repo; commit: Commit }[] {
     const index = new Map(this.rows.map((c, i) => [commitKey(c), i]));
-    return [...(this.combinedSel ?? [])].sort((a, b) => (index.get(commitKey(a.commit)) ?? 0) - (index.get(commitKey(b.commit)) ?? 0));
+    return [...(this.combinedSel ?? this.historyPair ?? [])].sort((a, b) => (index.get(commitKey(a.commit)) ?? 0) - (index.get(commitKey(b.commit)) ?? 0));
   }
 
   /** The listed commit a right-click on a Log row was on, with its repository. */
@@ -946,6 +1027,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       repos: this.repos, profiles: this.profiles.resolved(), filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.suggestions.branches, authors: this.suggestions.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
+      historyWork: this.historyWork(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,
         reloads: this.stats.reloads, discoveries: this.stats.discoveries, spawns: this.stats.spawns,
@@ -974,7 +1056,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return repo && commit ? { commit, repo } : undefined;
   }
 
-  private async showDetail(repoId: string, sha: string): Promise<void> {
+  /** followDiff: File History opens the selected commit's diff of its file (not when two rows compare it). */
+  private async showDetail(repoId: string, sha: string, followDiff = true): Promise<void> {
     // Validate first: a select that is not a listed commit must not kill the
     // detail already loading for the one that is.
     const found = this.findCommit(repoId, sha);
@@ -982,12 +1065,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.detail.abort();
     const ctl = (this.detail = new AbortController());
     this.combinedSel = null;
+    this.historyPair = null;
     const { commit, repo } = found;
     const key = commitKey(commit);
     if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
     const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path, repoAccent: accentOf(this.accents(), repoId) };
     // File history: the diff follows the selection, in one preview tab, keeping focus in the Log.
-    if (this.history && commit.file) void this.openHistoryDiff(commit);
+    if (this.history && commit.file && followDiff) void this.openHistoryDiff(commit);
     this.setCommitTree({ ...base, status: "loading" });
     try {
       const { files, message } = parseShow(await this.run(repo.root, showArgs(sha), ctl.signal));
@@ -1054,6 +1138,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** A filter or refresh removed the tree's commit from the list: show nothing rather than a stale commit. */
   private clearTreeIfGone(): void {
+    if (this.historyPair?.some((f) => !this.listed.has(commitKey(f.commit)))) this.historyPair = null;
     if (this.combinedSel) {
       // Combined Changes: keep the selected commits still listed.
       const kept = this.combinedSel.filter((f) => this.listed.has(commitKey(f.commit)));
@@ -1119,13 +1204,27 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const fc = typeof focus === "object" && focus !== null ? this.findCommit((focus as CommitRef).repoId, (focus as CommitRef).sha)?.commit : undefined;
     if (found.length === 0) return;
     if (found.length === 1) return this.showDetail(found[0].commit.repoId, found[0].commit.sha);
+    if (this.history && found.length === 2) {
+      // File History: two rows compare the file between them; the Changes view shows the focused one.
+      const index = new Map(this.rows.map((c, i) => [commitKey(c), i]));
+      const at = (x: { commit: Commit }) => index.get(commitKey(x.commit)) ?? 0;
+      const pair: [{ commit: Commit; repo: Repo }, { commit: Commit; repo: Repo }] = at(found[0]) <= at(found[1]) ? [found[0], found[1]] : [found[1], found[0]];
+      const shown = fc ?? pair[0].commit;
+      const detail = this.showDetail(shown.repoId, shown.sha, false);
+      this.historyPair = pair; // after showDetail, which clears it: cherry-pick and revert still take both
+      void this.openRevisionsDiff(pair);
+      return detail;
+    }
     await this.showCombined(found, fc ?? found[found.length - 1].commit);
   }
+  /** File History: the two rows selected together (their file is compared, not combined). */
+  private historyPair: [{ commit: Commit; repo: Repo }, { commit: Commit; repo: Repo }] | null = null;
 
   private async showCombined(found: { commit: Commit; repo: Repo }[], focus: Commit): Promise<void> {
     this.detail.abort();
     const ctl = (this.detail = new AbortController());
     this.openWhenLoaded = null;
+    this.historyPair = null;
     this.combinedSel = found;
     this.combinedFocus = commitKey(focus);
     // Repo List order; each repository's commits oldest first (the list is newest first).
@@ -1185,18 +1284,37 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
+    const f = commit.file!;
+    return this.swapHistoryTab(() => this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath, status: f.status }, preserveFocus));
+  }
+
+  /** Two File History rows: the file between their revisions (instead of Combined Changes). */
+  private openRevisionsDiff(rows: [{ commit: Commit; repo: Repo }, { commit: Commit; repo: Repo }]): Promise<void> {
+    const [newer, older] = rows;
+    const pair = revisionPair([newer.commit, older.commit]);
+    if (!pair) return Promise.resolve();
+    const root = newer.repo.root;
+    const label = `${path.posix.basename(pair.after.path)} (${older.commit.sha.slice(0, 7)} ↔ ${newer.commit.sha.slice(0, 7)}) — ${newer.repo.name}`;
+    return this.swapHistoryTab(async () => {
+      const modified = toUri({ root, ...pair.after });
+      await vscode.commands.executeCommand("vscode.diff", toUri({ root, ...pair.before }), modified, label, { preview: true, preserveFocus: true });
+      return modified.toString();
+    });
+  }
+
+  /** Opens a File History diff (`open` returns its modified side), in place of the one before. */
+  private swapHistoryTab(open: () => Promise<string | undefined>): Promise<void> {
     // Overlapping swaps (holding ↓ with preview editors off) closed the tab a later
     // step had just activated: its diff was still open, so VS Code reused it.
     const step = ++this.historyStep;
-    const run = () => (step === this.historyStep ? this.swapHistoryDiff(commit, preserveFocus) : undefined);
+    const run = () => (step === this.historyStep ? this.swapHistoryDiff(open) : undefined);
     this.historySteps = this.historySteps.then(run, run);
     return this.historySteps;
   }
 
-  private async swapHistoryDiff(commit: Commit, preserveFocus: boolean): Promise<void> {
+  private async swapHistoryDiff(open: () => Promise<string | undefined>): Promise<void> {
     if (!this.history) return; // queued before the user closed File History
-    const f = commit.file!;
-    const opened = await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath, status: f.status }, preserveFocus);
+    const opened = await open();
     // Stepping through a history reuses one tab. VS Code's preview tab does that
     // unless the user turned preview editors off; then close the previous one.
     const previous = this.historyTab;

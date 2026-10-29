@@ -130,5 +130,7 @@
   "command.linyra.stash.drop.title": "删除储藏…",
   "command.linyra.stash.create.title": "储藏更改…",
   "command.linyra.branch.delete.title": "删除分支…",
-  "command.linyra.openChangesEditor.title": "在编辑区独立打开更改"
+  "command.linyra.openChangesEditor.title": "在编辑区独立打开更改",
+  "command.linyra.folderHistory.title": "文件夹历史",
+  "command.linyra.historyBlame.title": "在此版本查看 Blame"
 }

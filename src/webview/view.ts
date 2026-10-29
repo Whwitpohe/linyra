@@ -1,5 +1,5 @@
 import { localize } from "../i18n";
-import { hashQuery, type FilterState } from "../filterModel";
+import { hashQuery, selectedBranches, type FilterState } from "../filterModel";
 import { commitKey } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -239,7 +239,7 @@ export function dateLabel(f: FilterState): string {
   }
 }
 
-export type EmptyAction = "clearText" | "clearAuthor" | "allTime" | "selectAll" | "settings" | "clearPath";
+export type EmptyAction = "clearText" | "clearAuthor" | "allTime" | "selectAll" | "settings" | "clearPath" | "allBranches";
 
 export interface EmptyState {
   title: string;
@@ -254,7 +254,11 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
     const text = f.text.trim();
     if (text) return { title: localize("No matching commits"), body: localize("No commit to {0} contains “{1}”.", p, text), action: { label: localize("Clear Search"), id: "clearText" } };
     if (f.date !== "all") return { title: localize("No commits in this date range"), body: localize("No commits to {0}{1}.", p, dateLabel(f)), action: { label: localize("Show All Time"), id: "allTime" } };
-    return { title: localize("No matching commits"), body: localize("No commits to {0} match these filters.", p), action: { label: localize("Clear Author"), id: "clearAuthor" } };
+    if (f.author.trim() || f.mine || f.authors?.length) return { title: localize("No matching commits"), body: localize("No commits to {0} match these filters.", p), action: { label: localize("Clear Author"), id: "clearAuthor" } };
+    if (selectedBranches(f).length) return { title: localize("No commits on the selected branches"), body: localize("No commit on the selected branches touches {0}.", p), action: { label: localize("Show All Branches"), id: "allBranches" } };
+    // Nothing filtered and nothing found: the file was never committed (a path that existed
+    // before, deleted and created again, has the earlier commits).
+    return { title: localize("Not committed yet"), body: localize("Its history appears here once it is committed.") };
   }
   if (o.repoCount === 0) {
     return {

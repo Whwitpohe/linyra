@@ -2,7 +2,7 @@ import type { ResolvedProfile } from "./profileModel";
 import type { Branches, BranchSidebarState } from "./branchModel";
 import type { FilterState } from "./filterModel";
 import type { BranchUse } from "./logQuery";
-import type { Commit, Repo, RepoFailure } from "./types";
+import type { ChangeStatus, Commit, Repo, RepoFailure } from "./types";
 import type { ChangesMessage, ChangesPage } from "./changesProtocol";
 import type { ChangesLayout, ToolbarAction, ToolbarState } from "./toolbarModel";
 
@@ -50,6 +50,21 @@ export interface WorkRow {
   hasChanges: boolean;
 }
 
+/** File History: the file's uncommitted change (the row above its commits), HEAD to the working tree. */
+export interface HistoryWork {
+  /** Its name in the working tree (a staged rename's new name). */
+  path: string;
+  oldPath?: string;
+  status: ChangeStatus;
+  untracked: boolean;
+  staged: boolean;
+  /** Staged, then changed again. */
+  partlyStaged: boolean;
+  /** null: binary. */
+  added: number | null;
+  deleted: number | null;
+}
+
 /** Extension host → webview. */
 export type HostMessage =
   | { type: "toolbar"; state: ToolbarState }
@@ -57,7 +72,9 @@ export type HostMessage =
   | { type: "changesView"; message: ChangesPage | { type: "copied" } }
   | { type: "sidebarState"; state: BranchSidebarState }
   | { type: "branchTree"; repoId: string; data?: Branches; loading?: boolean; error?: string }
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; /** Each repository's user.email (Highlight My Commits). */ me?: Record<string, string>; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; /** Each repository's user.email (Highlight My Commits). */ me?: Record<string, string>; layout: Layout; history: { repoId: string; repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
+  /** File History: the file's uncommitted change, or null (none, or no File History). */
+  | { type: "historyWork"; work: HistoryWork | null }
   | { type: "loading" }
   /** Highlight Current Branch: the listed commits (commitKey) not reachable from their repository's HEAD. */
   | { type: "offHead"; keys: string[] }
@@ -94,6 +111,8 @@ export type WebviewMessage =
   | { type: "openFirst"; repoId: string; sha: string }
   | { type: "layout"; repoPaneWidth?: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout; highlightMine?: boolean; highlightHead?: boolean; hashColumn?: boolean }
   | { type: "exitHistory" }
+  /** File History's uncommitted row: open the file's diff, HEAD to the working tree. */
+  | { type: "openHistoryWork" }
   /** The Log's switch: Commits or Uncommitted. */
   | { type: "logMode"; mode: "commits" | "uncommitted" }
   /** A row on the Uncommitted side was selected: its files go to the Changes view. */

@@ -34,15 +34,11 @@ export function renderHtml(o: HtmlOptions): string {
   </aside>
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="${escapeHtml(localize("Resize the repositories pane"))}" tabindex="0"></div>
   <div class="log">
-    <div id="modebar" class="modebar" role="toolbar" aria-label="${escapeHtml(localize("Log mode"))}" hidden>
-      <button id="mode-all" class="mode" type="button">${escapeHtml(localize("All commits"))}</button>
-      <span id="mode-history" class="mode active" aria-current="true">${codicon("history")}<span>${escapeHtml(localize("File history:"))}</span><span id="history-path" class="history-path"></span>
-        <button id="history-close" class="icon-button mode-close" type="button" aria-label="${escapeHtml(localize("Close file history"))}" title="${escapeHtml(localize("Back to all commits"))}">${codicon("close")}</button>
-      </span>
-    </div>
     <!-- One header row, as the JetBrains Log keeps it: the switch, the filters, then the actions.
-         It wraps onto more rows only when the Log is narrow. -->
+         It wraps onto more rows only when the Log is narrow. File History puts its chip where the
+         switch is: [⟲ src/client.ts · acme-web ×]. -->
     <div id="log-header" class="log-header">
+      <span id="history-chip" class="history-chip" role="group" aria-label="${escapeHtml(localize("File history"))}" hidden>${codicon("history", "history-chip-icon")}<span id="history-path" class="history-path"></span><span class="history-sep" aria-hidden="true">·</span><span id="history-repo" class="history-repo"></span><button id="history-close" class="icon-button history-close" type="button" aria-label="${escapeHtml(localize("Close file history"))}" title="${escapeHtml(localize("Back to all commits"))}">${codicon("close")}</button></span>
       <div class="switch" role="tablist" aria-label="${escapeHtml(localize("The Log shows"))}">
         <button id="mode-commits" class="switch-tab" role="tab" type="button" aria-selected="true" tabindex="0">${escapeHtml(localize("Commits"))}</button>
         <button id="mode-work" class="switch-tab" role="tab" type="button" aria-selected="false" tabindex="-1">${escapeHtml(localize("Uncommitted"))}<span id="work-count" class="work-count" hidden></span></button>
@@ -93,6 +89,7 @@ export function renderHtml(o: HtmlOptions): string {
     <div id="notices" class="notices"></div>
     <main class="main">
       <section class="list-pane" aria-label="${escapeHtml(localize("Commits"))}">
+        <div id="history-work" class="history-work" role="button" tabindex="0" hidden></div>
         <div id="list" class="list" role="grid" aria-label="${escapeHtml(localize("Commits"))}" aria-rowcount="0" tabindex="0">
           <div id="rows" class="rows" role="rowgroup"></div>
         </div>
