@@ -487,7 +487,8 @@ export class BranchController implements vscode.Disposable {
           box.busy = true;
           box.validationMessage = undefined;
           try { box.value = (await writer.write(repo, on, ctl.signal, (text) => { box.value = text; })) ?? before; }
-          catch (e) { box.value = before; box.validationMessage = localize("Linyra AI: {0}", e instanceof Error ? e.message : String(e)); }
+          // The writer's errors already say "Linyra AI: …" in the user's words.
+          catch (e) { box.value = before; box.validationMessage = e instanceof Error ? e.message : String(e); }
           finally { box.busy = false; }
           return;
         }
