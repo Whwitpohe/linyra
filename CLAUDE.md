@@ -173,6 +173,12 @@ style:
 - **CI** runs lint, typecheck, compile and tests on Linux/macOS/Windows.
 - **`.vscodeignore`** excludes `docs/`, `.claude/`, `CLAUDE.md`, the dev harness, and CI
   config. `CHANGELOG.md` ships intentionally — the registries render it.
+- **Local installs carry their commit.** After landing a change, install it with
+  `npm run install:local`: it packages the working tree and installs it into VS Code as
+  `<version>+<short hash>` (`.dirty` with uncommitted changes), leaving `package.json` alone
+  (constraint 5). Never install a local build as a bare `X.Y.Z` — the Extensions view must
+  tell it from the published release. `+`, not `-`: `1.5.0-abc1234` is a pre-release older
+  than `1.5.0`, and VS Code would offer the published version as an update over it.
 - **README images must use absolute `raw.githubusercontent.com` URLs.** Both marketplaces
   render the README on their own domain and will not resolve relative paths.
 

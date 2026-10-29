@@ -1618,6 +1618,7 @@
     "test:unit": "node scripts/run-unit.mjs",
     "test": "npm run test:unit",
     "package": "vsce package --no-dependencies",
+    "install:local": "node scripts/install-local.mjs",
     "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",
     "harness": "node dev/harness/build.mjs --serve",
     "harness:build": "node dev/harness/build.mjs",
