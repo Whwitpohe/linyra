@@ -36,8 +36,13 @@ function sides(): void {
     const kinds = params.get("files") === "kinds" ? [kind("src/new-client.ts", "A", { added: 40, deleted: 0 }), kind("src/old-auth.ts", "D", { added: 0, deleted: 25 }),
       kind("src/http-client.ts", "R", { added: 2, deleted: 1 }, { oldPath: "src/http.ts" }), kind("assets/logo.png", "A", undefined, { note: "binary" })] : [];
     const src = onlyConflicts ? [file("src/limits.ts", false, true)] : [file("src/limits.ts", false, true), file("src/upload.ts"), ...kinds];
-    const tree: CompareTreeRow[] = [{ id: `${selected}/${side}-src`, kind: "folder", label: "src", description: String(src.length), tooltip: "src", contextValue: "", loaded: true,
-      children: src }, ...(hideSame || onlyConflicts ? [] : [file("retry.go", true)])];
+    // ?files=many: 480 files in 40 folders under src, for the trees' performance (dev/perf/fileTreeBench.mjs).
+    const many = params.get("files") === "many" ? Array.from({ length: 40 }, (_, d): CompareTreeRow => {
+      const children = Array.from({ length: 12 }, (_, i) => file(`src/module-${d}/part-${i}.ts`, i % 7 === 6, i % 11 === 10));
+      return { id: `${selected}/${side}-src/module-${d}`, kind: "folder", label: `module-${d}`, description: String(children.length), tooltip: `src/module-${d}`, contextValue: "", loaded: true, children };
+    }) : [];
+    const tree: CompareTreeRow[] = [{ id: `${selected}/${side}-src`, kind: "folder", label: "src", description: String(src.length + many.length * 12), tooltip: "src", contextValue: "", loaded: true,
+      children: [...many, ...src] }, ...(hideSame || onlyConflicts ? [] : [file("retry.go", true)])];
     // All repositories: each repository's rows under its name.
     // Several picked ("+", their ids one per line): those, under their names.
     const files: CompareTreeRow[] = selected === "*" || selected.startsWith("+") ? rows.filter((r) => r.status === "differs" && (selected === "*" || selected.slice(1).split("\n").includes(r.repoId))).map((r) => ({ id: `${r.repoId}/${side}/repo`, kind: "repo", label: r.name, description: "2", tooltip: r.name, contextValue: "compareRepoGroup", loaded: true, children: tree.map((t) => ({ ...t, id: `${r.repoId}/${t.id}` })) })) : tree;

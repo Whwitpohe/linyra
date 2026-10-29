@@ -70,6 +70,7 @@ function renderSide(side: "left" | "right"): string {
       <button id="compare-${side}-tree-toggle" class="icon-button" type="button" aria-controls="compare-${side}-tree" aria-label="${escapeHtml(localize("Collapse All"))}" disabled></button>
     </span></div>
     <div id="compare-${side}-message" class="cmessage" role="status" hidden></div>
-    <div id="compare-${side}-tree" class="compare-tree" role="tree" tabindex="0" aria-label="${escapeHtml(label)}"></div>
+    <div id="compare-${side}-empty" class="cmessage" role="status" hidden></div>
+    <div id="compare-${side}-tree" class="compare-tree" role="tree" aria-multiselectable="true" tabindex="0" aria-label="${escapeHtml(label)}"></div>
   </section>`;
 }

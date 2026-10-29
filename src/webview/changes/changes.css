@@ -5,7 +5,7 @@
 #changes-pane button { font: inherit; color: inherit; }
 #changes-pane button, #changes-pane [role="tree"] { user-select: none; }
 #changes-pane button { cursor: pointer; }
-#changes-pane button:focus-visible, #changes-pane [tabindex]:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+#changes-pane button:focus-visible, #changes-pane [tabindex]:not(.ftree):focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 #changes-pane .changes { height: 100%; display: flex; flex-direction: column; }
 #changes-pane .files-pane { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
 #changes-pane .files-heading { flex: 0 0 30px; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 14px; color: var(--vscode-descriptionForeground); font-size: 11px; }
@@ -26,35 +26,11 @@
 #changes-pane .changes-menu button:hover, #changes-pane .changes-menu button:focus-visible { background: var(--vscode-list-hoverBackground); }
 #changes-pane .changes-menu button:disabled { color: var(--vscode-disabledForeground); cursor: default; }
 #changes-pane .notice { padding: 10px 14px; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
-#changes-pane .file-tree { flex: 1; min-height: 0; overflow: auto; padding: 2px 0 8px; }
-#changes-pane .tree-row { display: flex; align-items: center; gap: 6px; min-width: 0; height: 25px; padding-right: 12px; white-space: nowrap; cursor: default; }
-#changes-pane .tree-row:hover { background: var(--vscode-list-hoverBackground); }
-#changes-pane .tree-row.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
-#changes-pane .file-tree:focus .tree-row.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-#changes-pane .file-tree:focus .tree-row.focused { outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
-#changes-pane .twisty { flex: 0 0 16px; width: 16px; height: 18px; padding: 0; border: 0; background: transparent; color: inherit; display: inline-flex; align-items: center; justify-content: center; }
-#changes-pane .twisty svg { width: 16px; height: 16px; transform: rotate(90deg); }
-#changes-pane .tree-row[aria-expanded="false"] .twisty svg { transform: rotate(0deg); }
-#changes-pane .file-icon, #changes-pane .folder-icon { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
-#changes-pane .file-icon { font-size: 10px; font-weight: 600; font-family: var(--vscode-editor-font-family); }
-#changes-pane .file-type-js, #changes-pane .file-type-jsx, #changes-pane .file-type-mjs, #changes-pane .file-type-json { color: var(--vscode-terminal-ansiYellow, var(--vscode-charts-yellow)); }
-#changes-pane .file-type-ts, #changes-pane .file-type-tsx, #changes-pane .file-type-css, #changes-pane .file-type-scss { color: var(--vscode-terminal-ansiBlue, var(--vscode-charts-blue)); }
-#changes-pane .file-type-vue { color: var(--vscode-terminal-ansiGreen, var(--vscode-charts-green)); }
-#changes-pane .file-type-html { color: var(--vscode-terminal-ansiRed, var(--vscode-charts-red)); }
-#changes-pane .file-icon svg, #changes-pane .folder-icon svg { width: 16px; height: 16px; }
-#changes-pane .file-name { flex: 0 1 auto; min-width: 32px; overflow: hidden; text-overflow: ellipsis; }
-#changes-pane .old-path { flex: 1 3 0; min-width: 0; color: inherit; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
-#changes-pane .row-description { overflow: hidden; text-overflow: ellipsis; }
-#changes-pane .row-stats { margin-left: auto; flex: 0 0 auto; display: inline-flex; justify-content: flex-end; gap: 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
-/* Lines added and deleted, in Source Control's add and delete colors (ui/counts.css). */
-#changes-pane .row-stats .line-counts { gap: 7px; font-size: inherit; }
-/* The status letter: the shared one (ui/fileStatus.css), here only its column. */
-#changes-pane .file-status { flex: 0 0 12px; width: 12px; }
-#changes-pane .change-A, #changes-pane .change-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
-#changes-pane .change-M, #changes-pane .change-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
-#changes-pane .change-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
-#changes-pane .change-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
-#changes-pane .tree-row.selected .file-name, #changes-pane .tree-row.selected .row-stats > span, #changes-pane .tree-row.selected .file-status { color: inherit; }
+/* The changed files: the shared tree (ui/fileTree.css), here only its place in the pane. */
+#changes-pane .file-tree { flex: 1; min-height: 0; }
+/* The details' copy icon. */
+#changes-pane .file-icon { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground, var(--vscode-descriptionForeground)); }
+#changes-pane .file-icon svg { width: 16px; height: 16px; }
 /* The sash between the files and the details draws no line of its own (the details' header draws
    the one line); it lights up as VS Code's sash does, and its grab area reaches into the header. */
 #changes-pane .detail-splitter { flex: 0 0 6px; cursor: row-resize; touch-action: none; position: relative; }
@@ -91,11 +67,8 @@ body.resizing #changes-pane { cursor: row-resize; user-select: none; }
 #changes-pane .branches-toggle:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground); }
 #changes-pane .containing-list { margin-top: 2px; color: var(--vscode-foreground); overflow-wrap: anywhere; }
 #changes-pane .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-body.vscode-high-contrast #changes-pane .tree-row.selected, body.vscode-high-contrast-light #changes-pane .tree-row.selected { outline: 1px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
 @media (max-width: 320px) {
   #changes-pane .commit-details { padding-left: 12px; padding-right: 12px; }
-  #changes-pane .tree-row { gap: 4px; padding-right: 8px; }
-  #changes-pane .old-path { font-size: 11px; }
 }
 
 #changes-pane .files-mode { background: transparent; color: var(--vscode-descriptionForeground); border: 0; padding: 2px 4px; font: inherit; font-size: 11px; white-space: nowrap; }

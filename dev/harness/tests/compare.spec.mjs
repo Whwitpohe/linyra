@@ -52,8 +52,8 @@ test("Repositories: each row's merge note and the names it uses; All repositorie
   await expect(all).toContainText("All repositories");
   await all.click();
   await expect.poll(async () => (await sent(page, "select")).at(-1)?.repoId).toBe("*");
-  await expect(page.locator("#compare-left-tree .compare-tree-row", { hasText: "acme-api" })).toBeVisible();
-  await expect(page.locator("#compare-left-tree .compare-tree-row.conflict-file").first()).toBeVisible();
+  await expect(page.locator("#compare-left-tree .ftree-row", { hasText: "acme-api" })).toBeVisible();
+  await expect(page.locator("#compare-left-tree .ftree-row.conflict").first()).toBeVisible();
 });
 
 test("Repositories look like the Repo List: a box per row; the box or Ctrl-click ticks one, a click shows only it", async ({ page }) => {
@@ -69,7 +69,7 @@ test("Repositories look like the Repo List: a box per row; the box or Ctrl-click
   await repo("/work/acme-libs").locator(".repo-check").click();
   await expect(ticked).toHaveCount(2);
   await expect.poll(async () => (await sent(page, "select")).at(-1)?.repoId).toBe("+/work/acme-api\n/work/acme-libs");
-  await expect(page.locator("#compare-left-tree .compare-tree-row", { hasText: "acme-libs" })).toBeVisible();
+  await expect(page.locator("#compare-left-tree .ftree-row", { hasText: "acme-libs" })).toBeVisible();
   // Some ticked, not all: All repositories shows a dash.
   await expect(repo("*").locator(".repo-check")).toHaveJSProperty("indeterminate", true);
   // Ctrl-click the last one: every repository whose files differ, so All repositories.
@@ -88,7 +88,7 @@ test("Repositories look like the Repo List: a box per row; the box or Ctrl-click
 
 test("a side's filter keeps matching rows and their folders; Ctrl/Shift-click selects several", async ({ page }) => {
   await open(page);
-  const rows = page.locator("#compare-left-tree .compare-tree-row");
+  const rows = page.locator("#compare-left-tree .ftree-row");
   await expect(rows).toHaveCount(3);
   await page.locator("#compare-left-filter").fill("upload");
   await expect(rows).toHaveText([/src/, /upload\.ts/]);
@@ -96,7 +96,7 @@ test("a side's filter keeps matching rows and their folders; Ctrl/Shift-click se
   await expect(rows).toHaveCount(3);
   await rows.nth(1).click();
   await rows.nth(2).click({ modifiers: ["Control"] });
-  await expect(page.locator("#compare-left-tree .compare-tree-row.selected")).toHaveCount(2);
+  await expect(page.locator("#compare-left-tree .ftree-row.selected")).toHaveCount(2);
   await expect.poll(async () => (await sent(page, "sideSelect")).at(-1)?.ids.length).toBe(2);
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
 });
@@ -111,7 +111,7 @@ test("Only Conflicts lists only the conflicted files, says how many and looks pr
   await button.click();
   await expect.poll(look).not.toBe(off);
   await expect(button).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#compare-left-tree .compare-tree-row", { hasText: ".ts" })).toHaveText([/limits\.ts/]);
+  await expect(page.locator("#compare-left-tree .ftree-row", { hasText: ".ts" })).toHaveText([/limits\.ts/]);
   await button.click();
   await expect(button).toHaveAttribute("aria-pressed", "false");
   await page.locator("#compare-merge").click();

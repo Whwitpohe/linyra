@@ -4,12 +4,10 @@ import type { ChangeRow, ChangesMessage, ChangesPage, CommitDetails } from "../.
 import { byId, h } from "../dom";
 import { codicon, codiconElement } from "../codicons";
 import { attachSplitter } from "../splitter";
-import { absoluteTime, moveSelection } from "../view";
-import { filterFiles } from "./fileFilterModel";
+import { absoluteTime } from "../view";
+import { changeLines, changeNote, changesFilter } from "./fileFilterModel";
 import { referencePills } from "./referencePills";
-import { updateTreeToggle } from "../treeToggle";
-import { renderLines } from "../ui/counts";
-import { nameClass, renderStatus } from "../ui/fileStatus";
+import { FileTree, type RowParts } from "../ui/fileTree";
 import { renderPill } from "../ui/pill";
 
 export interface SavedState { detailHeight?: number; key?: string; collapsed?: string[]; detailsCollapsed?: boolean; fileFilter?: string }
@@ -23,7 +21,6 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   const post = (m: ChangesMessage) => api.postMessage(m);
   const saved = api.getState();
   const app = byId("changes");
-  const tree = byId("file-tree");
   const treeToggle = byId<HTMLButtonElement>("changes-tree-toggle");
   const details = byId("commit-details");
   const splitter = byId("detail-splitter");
@@ -32,23 +29,13 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   const notice = byId("notice");
   const fileFilter = byId<HTMLInputElement>("file-filter");
   fileFilter.value = saved?.fileFilter ?? "";
-  const searchCollapsed = new Set<string>();
-  const activeCollapsed = () => fileFilter.value.trim() ? searchCollapsed : collapsed;
   let page: ChangesPage | undefined;
   let key = saved?.key ?? "";
   let wantedHeight = saved?.detailHeight ?? 240;
   let detailsCollapsed = saved?.detailsCollapsed ?? false;
-  let collapsed = new Set(saved?.collapsed ?? []);
-  let selected = new Set<string>();
-  let focused: string | undefined;
-  let anchor: string | undefined;
-  let rows: { node: ChangeRow; depth: number; parent?: string }[] = [];
-  let seen = new Set<string>();
-  let expandNewFolders = false;
   let lastFocusId: string | undefined;
-  const elements = new Map<string, HTMLElement>();
   const collapsedBranches = new Set<string>();
-  const save = () => api.setState({ detailHeight: wantedHeight, key, collapsed: [...collapsed], detailsCollapsed, fileFilter: fileFilter.value });
+  const save = () => api.setState({ detailHeight: wantedHeight, key, collapsed: tree.closedIds, detailsCollapsed, fileFilter: fileFilter.value });
   const availableHeight = () => Math.max(0, app.clientHeight - detailHeading.offsetHeight);
 
   function resize(): void {
@@ -79,187 +66,45 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   detailHeading.addEventListener("click", () => { detailsCollapsed = !detailsCollapsed; resize(); save(); });
   new ResizeObserver(resize).observe(app);
 
-  // VS Code's own icons.
-  const icons = { copy: "copy", twisty: "chevron-right", folder: "folder", file: "file" } as const;
-  function icon(name: keyof typeof icons, className: string): HTMLElement {
-    return h("span", { class: className, "aria-hidden": "true" }, [codiconElement(icons[name])]);
-  }
-
-  function fileIcon(node: ChangeRow): HTMLElement {
-    const extension = node.label.split(".").pop()?.toLowerCase() ?? "";
-    const label: Record<string, string> = { js: "JS", jsx: "JS", mjs: "JS", ts: "TS", tsx: "TS", vue: "V", json: "{}", css: "#", scss: "#", md: "M↓", html: "<>" };
-    return label[extension] ? h("span", { class: `file-icon file-type-${extension}`, "aria-hidden": "true" }, [label[extension]]) : icon("file", "file-icon");
+  function icon(name: "copy", className: string): HTMLElement {
+    return h("span", { class: className, "aria-hidden": "true" }, [codiconElement(name)]);
   }
 
   function context(node: ChangeRow): string {
     return JSON.stringify({ webviewSection: "changesRow", changesNodeId: node.id, changesViewId: api.viewId ?? "editor", viewItem: node.contextValue, preventDefaultContextMenuItems: true });
   }
 
-  function paintSelection(reveal = false): void {
-    for (const { node } of rows) {
-      const el = elements.get(node.id)!;
-      el.classList.toggle("selected", selected.has(node.id));
-      el.classList.toggle("focused", node.id === focused);
-      el.setAttribute("aria-selected", String(selected.has(node.id)));
-    }
-    const active = focused && elements.get(focused);
-    if (active) {
-      tree.setAttribute("aria-activedescendant", active.id);
-      if (reveal) active.scrollIntoView({ block: "nearest" });
-    } else tree.removeAttribute("aria-activedescendant");
-    // A filtered folder represents only visible matches. Bulk file actions must not
-    // expand that folder back to hidden files in the host's complete tree.
-    const selectable = fileFilter.value.trim() ? new Set(rows.filter((r) => r.node.kind === "file").map((r) => r.node.id)) : undefined;
-    post({ type: "selection", ids: [...selected].filter((id) => !selectable || selectable.has(id)) });
-  }
-
-  function renderTree(): void {
-    const scrollTop = tree.scrollTop;
-    const searching = fileFilter.value.trim() !== "";
-    const filtered = filterFiles((searching ? page?.searchRoots : undefined) ?? page?.roots ?? [], fileFilter.value);
-    byId("file-filter-count").hidden = !searching;
-    byId("file-filter-count").textContent = localize("{0} of {1} files", filtered.matched, filtered.total);
-    byId("file-filter-empty").hidden = !searching || filtered.matched > 0 || !!page?.message;
-    byId("file-filter-empty").textContent = localize("No files match “{0}”.", fileFilter.value.trim());
-    rows = [];
-    elements.clear();
-    const walk = (nodes: ChangeRow[], depth: number, parent?: string) => {
-      for (const node of nodes) {
-        rows.push({ node, depth, parent });
-        if (node.children && !activeCollapsed().has(node.id)) walk(node.children, depth + 1, node.id);
-      }
+  /** A row's parts: a file's name, old path, + − (or what it is: new, binary, staged) and letter; a folder's or repository's count. */
+  function parts(node: ChangeRow): RowParts {
+    if (node.kind !== "file") return { icon: node.kind === "repo" ? "repo" : "folder", label: node.label, description: node.description, title: node.tooltip, context: context(node) };
+    return {
+      icon: "file", label: node.label, status: node.unchanged ? undefined : node.status, untracked: node.untracked === true, letter: true, oldPath: node.oldPath,
+      note: changeNote(node), lines: changeLines(node), title: node.tooltip, context: context(node),
     };
-    walk(filtered.roots, 1);
-    const branches = rows.filter((row) => row.node.kind !== "file");
-    updateTreeToggle(treeToggle, branches.length > 0, branches.some((row) => !activeCollapsed().has(row.node.id)));
-    const visible = new Set(rows.map((r) => r.node.id));
-    selected = new Set([...selected].filter((id) => visible.has(id)));
-    if (focused && !visible.has(focused)) focused = undefined;
-    if (anchor && !visible.has(anchor)) anchor = undefined;
-    const fragment = document.createDocumentFragment();
-    for (const { node, depth } of rows) {
-      const folder = node.kind !== "file";
-      const expanded = folder && !activeCollapsed().has(node.id);
-      const el = h("div", { class: `tree-row${!node.unchanged && node.status ? ` change-${node.status}` : ""}`, id: `change-row-${elements.size}`, role: "treeitem", "aria-level": String(depth),
-        "aria-expanded": folder ? String(expanded) : undefined, "data-node": encodeURIComponent(node.id),
-        "data-vscode-context": context(node), title: node.tooltip });
-      el.style.paddingLeft = `${8 + (depth - 1) * 14}px`;
-      const twisty = folder ? h("button", { class: "twisty", tabindex: "-1", "data-toggle": "true", "aria-label": localize(expanded ? "Collapse {0}" : "Expand {0}", node.label) }, [icon("twisty", "")]) : h("span", { class: "twisty" });
-      el.append(twisty, folder ? icon("folder", "folder-icon") : fileIcon(node), h("span", { class: folder ? "file-name" : nameClass("file-name", node.status) }, [node.label]));
-      if (node.oldPath) el.append(h("span", { class: "old-path", title: node.oldPath }, [`← ${node.oldPath}`]));
-      if (folder || node.combined || node.unchanged || node.untracked) {
-        el.append(h("span", { class: "row-stats row-description" }, [node.description]));
-      } else if (node.added !== null && node.added !== undefined) {
-        const stats = h("span", { class: "row-stats" }, [
-          node.staged ? h("span", { class: "row-description" }, [localize("staged")]) : null,
-          renderLines(node.added, node.deleted ?? 0),
-        ]);
-        el.append(stats);
-      } else el.append(h("span", { class: "row-stats row-description" }, [node.description]));
-      if (!folder) el.append(renderStatus(node.status, node.untracked === true, "status"));
-      elements.set(node.id, el);
-      fragment.append(el);
-    }
-    tree.replaceChildren(fragment);
-    tree.scrollTop = scrollTop;
-    paintSelection();
   }
 
-  function toggle(node: ChangeRow): void {
-    if (node.kind === "file") return;
-    const closed = activeCollapsed();
-    if (closed.has(node.id)) {
-      closed.delete(node.id);
-      post({ type: "expand", id: node.id });
-    } else closed.add(node.id);
-    save();
-    renderTree();
-  }
-
-  function choose(id: string, range = false, additive = false): void {
-    if (range) {
-      const from = Math.max(0, rows.findIndex((r) => r.node.id === anchor));
-      const to = rows.findIndex((r) => r.node.id === id);
-      if (!additive) selected.clear();
-      for (const r of rows.slice(Math.min(from, to), Math.max(from, to) + 1)) selected.add(r.node.id);
-    } else {
-      if (!additive) selected.clear();
-      if (additive && selected.has(id)) selected.delete(id);
-      else selected.add(id);
-      anchor = id;
-    }
-    focused = id;
-    paintSelection(true);
-  }
-
-  tree.addEventListener("click", (e) => {
-    const el = (e.target as Element).closest<HTMLElement>("[data-node]");
-    if (!el) return;
-    const id = decodeURIComponent(el.dataset.node!);
-    const node = rows.find((r) => r.node.id === id)!.node;
-    tree.focus({ preventScroll: true });
-    if ((e.target as Element).closest("[data-toggle]")) { focused = id; toggle(node); return; }
-    choose(id, e.shiftKey, e.ctrlKey || e.metaKey);
-    if (node.kind === "file" && !e.shiftKey && !e.ctrlKey && !e.metaKey) post({ type: "open", id });
-    else if (node.kind !== "file" && !e.shiftKey && !e.ctrlKey && !e.metaKey) toggle(node);
+  const tree = new FileTree<ChangeRow>({
+    root: byId("file-tree"), idPrefix: "change-row", parts,
+    isBranch: changesFilter.isBranch, isFile: changesFilter.isFile, filterText: changesFilter.text, remake: changesFilter.remake,
+    // All Files: a folder with no changed file under it starts closed.
+    startsClosed: (node) => node.collapsed === true,
+    open: (node) => post({ type: "open", id: node.id }),
+    // All Files reads a folder when it opens.
+    opened: (node) => post({ type: "expand", id: node.id }),
+    selectionChanged: (ids) => post({ type: "selection", ids }),
+    closedChanged: () => save(),
+    toggleButton: treeToggle,
+    expandedAll: (searching) => { if (page?.allFiles && !searching) post({ type: "action", action: "expandAll" }); },
+    refreshed: ({ searching, matched, total }) => {
+      const count = byId("file-filter-count"), empty = byId("file-filter-empty");
+      count.hidden = !searching;
+      count.textContent = localize("{0} of {1} files", matched, total);
+      empty.hidden = !searching || matched > 0 || !!page?.message;
+      empty.textContent = localize("No files match “{0}”.", fileFilter.value.trim());
+    },
   });
-  tree.addEventListener("contextmenu", (e) => {
-    const el = (e.target as Element).closest<HTMLElement>("[data-node]");
-    if (!el) return;
-    const id = decodeURIComponent(el.dataset.node!);
-    if (!selected.has(id)) choose(id);
-  });
-  tree.addEventListener("keydown", (e) => {
-    if (!rows.length) return;
-    const index = Math.max(0, rows.findIndex((r) => r.node.id === focused));
-    const row = rows[index];
-    const next = moveSelection(e.key, index, rows.length, Math.max(1, Math.floor(tree.clientHeight / 25)));
-    if (next !== null) { e.preventDefault(); choose(rows[next].node.id, e.shiftKey, e.ctrlKey || e.metaKey); return; }
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      if (e.key === " ") choose(row.node.id, e.shiftKey, e.ctrlKey || e.metaKey);
-      else if (row.node.kind !== "file") toggle(row.node);
-      else post({ type: "open", id: row.node.id });
-    } else if (e.key === "ArrowRight" && row.node.kind !== "file") {
-      e.preventDefault();
-      if (activeCollapsed().has(row.node.id)) toggle(row.node);
-      else if (rows[index + 1]?.parent === row.node.id) choose(rows[index + 1].node.id);
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      if (row.node.kind !== "file" && !activeCollapsed().has(row.node.id)) toggle(row.node);
-      else if (row.parent) choose(row.parent);
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
-      e.preventDefault();
-      selected = new Set(rows.map((r) => r.node.id));
-      paintSelection();
-    }
-  });
-  treeToggle.addEventListener("click", () => {
-    const collapse = treeToggle.dataset.action === "collapse";
-    expandNewFolders = !collapse;
-    if (collapse) {
-      const walk = (nodes: ChangeRow[]) => nodes.forEach((node) => { if (node.kind !== "file") { activeCollapsed().add(node.id); walk(node.children ?? []); } });
-      walk(fileFilter.value.trim() ? page?.searchRoots ?? page?.roots ?? [] : page?.roots ?? []);
-    } else activeCollapsed().clear();
-    renderTree();
-    save();
-    if (!collapse && page?.allFiles && !fileFilter.value.trim()) post({ type: "action", action: "expandAll" });
-  });
-
-  fileFilter.addEventListener("input", () => { searchCollapsed.clear(); tree.scrollTop = 0; renderTree(); save(); });
-  fileFilter.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && fileFilter.value) {
-      e.preventDefault();
-      fileFilter.value = "";
-      searchCollapsed.clear();
-      renderTree();
-      save();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const first = rows.find((r) => r.node.kind === "file");
-      if (first) { choose(first.node.id); tree.focus(); post({ type: "open", id: first.node.id }); }
-    }
-  });
+  tree.closedIds = saved?.collapsed ?? [];
+  tree.bindFilter(fileFilter, save);
   document.addEventListener("keydown", (e) => {
     if (!(e.target instanceof Node) || !byId("changes-pane").contains(e.target)) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") { e.preventDefault(); fileFilter.focus(); fileFilter.select(); }
@@ -333,26 +178,14 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
     for (const id of ["changes-copy-sha", "changes-copy-message", "changes-open-remote"]) byId<HTMLButtonElement>(id).disabled = page.details.length !== 1;
     if (page.details.length === 1) byId("changes-heading").setAttribute("data-vscode-context", JSON.stringify({ webviewSection: "commitDetails", repoId: page.details[0].repoId, sha: page.details[0].sha }));
     else byId("changes-heading").removeAttribute("data-vscode-context");
-    if (changed) { key = page.key; expandNewFolders = false; collapsed = new Set(); searchCollapsed.clear(); seen = new Set(); selected.clear(); focused = undefined; anchor = undefined; lastFocusId = undefined; tree.scrollTop = 0; details.scrollTop = 0; }
-    const defaults = (nodes: ChangeRow[]) => nodes.forEach((n) => { if (!expandNewFolders && !seen.has(n.id) && n.collapsed) collapsed.add(n.id); seen.add(n.id); if (n.children) defaults(n.children); });
-    defaults(page.roots);
+    if (changed) { key = page.key; tree.reset(); lastFocusId = undefined; details.scrollTop = 0; }
     byId("summary").textContent = page.description;
     notice.hidden = !page.message;
     notice.textContent = page.message ?? "";
     details.replaceChildren(...page.details.map(renderDetail));
-    const reveal = !!page.focusId && lastFocusId !== page.focusId;
-    if (reveal) {
-      const expandParents = (nodes: ChangeRow[]): boolean => nodes.some((n) => {
-        if (n.id === page!.focusId) return true;
-        if (n.children && expandParents(n.children)) { collapsed.delete(n.id); return true; }
-        return false;
-      });
-      expandParents(page.roots);
-    }
-    renderTree();
-    if (reveal) {
-      for (const { node } of rows) if (node.id === page.focusId) { selected = new Set([node.id]); focused = anchor = node.id; paintSelection(true); }
-    }
+    tree.setRoots(page.roots, page.searchRoots);
+    // File History: its file, opened to and selected once.
+    if (page.focusId && lastFocusId !== page.focusId) tree.reveal(page.focusId);
     lastFocusId = page.focusId;
     resize();
   });

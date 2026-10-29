@@ -285,7 +285,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       const f = node.file;
       const note = [f.untracked ? localize("new") : f.added === null ? localize("binary") : "",
         node.conflict ? localize("conflict") : node.same ? localize("already on both") : node.both ? localize("changed on both sides") : ""].filter(Boolean).join(" · ");
-      return { ...common, status: f.status, same: node.same, conflict: node.conflict,
+      return { ...common, path: f.path, status: f.status, same: node.same, conflict: node.conflict,
         ...(f.added !== null && !f.untracked ? { lines: { added: f.added, deleted: f.deleted ?? 0 } } : {}),
         ...(f.oldPath ? { oldPath: f.oldPath } : {}), ...(note ? { note } : {}), ...(f.untracked ? { untracked: true } : {}) };
     };

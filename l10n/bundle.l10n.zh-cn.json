@@ -10,6 +10,7 @@
   "Filter changed files by name or path": "按文件名或路径筛选更改",
   "{0} of {1} files": "{0} / {1} 个文件",
   "No files match “{0}”.": "没有匹配“{0}”的文件。",
+  "No commits match “{0}”.": "没有匹配“{0}”的提交。",
   "Graph folding": "提交图折叠",
   "Collapse Linear Branches": "折叠全部线性分支",
   "Expand Linear Branches": "展开全部线性分支",
