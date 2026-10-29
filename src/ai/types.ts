@@ -97,11 +97,15 @@ export interface AiService {
   readonly profile: AiProfile | undefined;
   /** Configured, or walk the user through Configure AI… now; false if they backed out. */
   ensureReady(): Promise<boolean>;
-  /** One request to the active profile. Throws AiError. */
+  /**
+   * One request to the active profile. Throws AiError: "cancelled" when the signal aborts or the
+   * user declines the linyra.ai.maxPromptTokens check, "refusal" when the model declines.
+   */
   ask(request: AiRequest): Promise<AiResponse>;
   /**
    * Shows a streamed Markdown answer in the editor area (a read-only preview titled `title`), with
-   * a cancellable progress notification while `run` writes to it.
+   * a cancellable progress notification while `run` writes to it. `write` appends a delta. A
+   * failure thrown by `run` is written at the end of the answer and shown, not rethrown.
    */
   present(title: string, run: (write: (markdown: string) => void, signal: AbortSignal) => Promise<void>): Promise<void>;
   /** Files the prompts leave out (linyra.ai.exclude globs: lockfiles, minified and built files, secrets). */
