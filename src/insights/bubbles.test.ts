@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { authorRows, moveFocus, radiusScale, rowOrder, timeDomain, timeTicks } from "./bubbles";
+import { authorRows, bubbleRange, moveFocus, radiusScale, rowOrder, timeDomain, timeTicks } from "./bubbles";
 import { locate, logPathspec, readKey, safePath, sanitizeScope, sinceOf, treePath } from "./range";
 
 // ── Bubble sizes: area grows with lines, capped at the 95th percentile ─────
@@ -12,6 +12,11 @@ import { locate, logPathspec, readKey, safePath, sanitizeScope, sinceOf, treePat
   assert.ok(r(10) > r(5) && r(5) > r(1));
   assert.ok(Math.abs((r(24) - 3) / (r(6) - 3) - 2) < 0.2, "four times the lines, twice the radius above the minimum");
   assert.strictEqual(radiusScale([], 3, 12)(5), 12, "no data: any commit fills the scale");
+  assert.deepStrictEqual(bubbleRange(40, 900, 60), { min: 3, max: 22 }, "few commits: up to 22px, the row's half at most");
+  assert.deepStrictEqual(bubbleRange(40, 900, 30), { min: 3, max: 13 });
+  const crowded = bubbleRange(1500, 900, 60);
+  assert.ok(crowded.max === 3 && crowded.min === 1.5, "a crowded row draws dots");
+  assert.ok(bubbleRange(300, 900, 60).max === 6, "in between: twice the room each commit has");
   console.log("ok - bubble radii grow with the square root of lines changed, capped against outliers");
 }
 

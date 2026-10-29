@@ -604,6 +604,58 @@ section { display: grid; gap: 16px; }
   </div>
 </section>
 
+<section aria-labelledby="s-insights">
+  <div class="sec-head"><h2 id="s-insights">Linyra Insights</h2><span class="pill now">Exists</span></div>
+  <p class="how">An editor tab: Linyra: Insights, or Visual History on a file or folder (the Explorer, an editor tab, a Changes row). Each tab reads only while shown, one git process per repository (Health: two). Plan <code>docs/superpowers/plans/2026-10-30-insights.md</code>.</p>
+  <div class="stage">
+    <div class="vs">
+      <div class="views" style="grid-template-columns: 1fr; min-height: 0">
+        <div class="view">
+          <div class="vhead" style="text-transform:none; font-weight:400; font-size:13px; letter-spacing:0">
+            <span class="t" style="display:inline-flex; gap:14px; padding:2px 6px"><i class="n tl">74</i><b>Visual History</b><span class="desc">Files</span><span class="desc">Commits</span><span class="desc">Health</span></span>
+            <span class="tools" style="font-size:13px; gap:12px">
+              <span class="t" style="padding:0 4px"><i class="n tl">75</i>Scope: Ticked repositories (3) ▾</span>
+              <span class="t" style="padding:0 4px"><i class="n tl">76</i>1 week · 4 weeks · <b>3 months</b> · 1 year · All</span>
+              <span class="t" style="padding:0 4px"><i class="n tl">77</i><b>Repository</b> · Author</span>
+            </span>
+          </div>
+          <div class="vbody" style="padding:8px 12px; display:grid; gap:10px">
+            <div class="t" style="padding:6px"><i class="n tl">78</i>
+              <div class="desc">90 commits by 4 authors in 3 repositories · merges not shown</div>
+              <div style="display:grid; grid-template-columns: 110px 1fr; align-items:center; row-gap:6px; margin-top:6px">
+                <span>(D) dana <span class="desc">40</span></span><span>● ○ ●  ●● ○  ●  ○ ●●</span>
+                <span>(R) rin <span class="desc">19</span></span><span>  ○  ●   ● ○    ●</span>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+              <div class="t" style="padding:6px"><i class="n tl">79</i><b>Files</b> <span class="desc">Ticked repositories (3) › acme-web · 625 KB in 18 files</span>
+                <div style="display:grid; grid-template-columns: 2fr 1fr; gap:2px; margin-top:6px; height:70px"><span class="bg-web" style="opacity:.55; padding:2px 4px">package-lock.json</span><span class="bg-api" style="opacity:.55; padding:2px 4px">src</span></div></div>
+              <div class="t" style="padding:6px"><i class="n tl">80</i><b>Commits</b> <span class="desc">Commits per file: 1–4 · 5–34 · 35+</span>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:2px; margin-top:6px; height:70px"><span class="bg-libs" style="padding:2px 4px">upload.go 45</span><span class="bg-libs" style="opacity:.6; padding:2px 4px">retry.go 35</span><span class="bg-libs" style="opacity:.25; padding:2px 4px">store.go 4</span></div></div>
+            </div>
+            <div class="t" style="padding:6px"><i class="n tl">81</i><b>Health</b> <span class="desc">6 suggestions in 3 repositories</span> <span class="bs-btn primary t" style="float:right"><i class="n tl">82</i>Optimize Selected (1)…</span>
+              <div class="desc" style="margin-top:6px">☑ acme-web · 💡 Missing · 💡 8,412 loose · 61 packs · 128,400 files · 💡 Off · 💡 Off · 💡 Off · 💡 Not registered · 6</div>
+              <div class="t" style="margin-top:8px; padding:4px"><i class="n tl">83</i><b>Commit-graph</b> Missing — <span class="desc">Write one: topological order and the graph walk the whole history without it.</span> <span class="bs-btn primary">Write Commit-Graph</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">74</i><b>Insights tabs</b><span>Visual History, Files, Commits, Health. ←/→ move between them; the last one shown is remembered.</span></div>
+    <div class="g"><i class="num">75</i><b>Scope</b><span>The ticked repositories (the Repo List's ticks), one of them, or the file or folder Visual History was opened on. A new tab starts from the ticked repositories.</span></div>
+    <div class="g"><i class="num">76</i><b>Range</b><span>Visual History and Commits: git's --since, by committer date as the Log's date filter.</span></div>
+    <div class="g"><i class="num">77</i><b>Color by</b><span>Visual History: each bubble in its repository's Log color, or in its author's.</span></div>
+    <div class="g"><i class="num">78</i><b>Visual History</b><span>One bubble per commit (area: lines changed), one row per author with the Author disc (52). Hover: the commit; click or Enter: shows it in the Log. Merges are left out; at most 5,000 commits per repository, and it says when it cut.</span></div>
+    <div class="g"><i class="num">79</i><b>Files treemap</b><span>Tracked files at HEAD by size: repositories, folders, files, colored by the file types holding the most bytes. A folder opens on click (the breadcrumb goes back); a file's strip has Open File and Visual History.</span></div>
+    <div class="g"><i class="num">80</i><b>Commits treemap</b><span>The same map sized by the commits touching each file in the range; hot files are stronger red, and every tile names its count.</span></div>
+    <div class="g"><i class="num">81</i><b>Health table</b><span>One row per repository: commit-graph, objects, tracked files, untracked cache, file system monitor, many files, maintenance, each with a recommendation from a threshold.</span></div>
+    <div class="g"><i class="num">82</i><b>Optimize Selected</b><span>Every recommended write in the ticked rows, after one modal that names each command. Rows with something to optimize start ticked.</span></div>
+    <div class="g"><i class="num">83</i><b>Health details</b><span>The selected row's checks: what each means, what to do, and its button (Write Commit-Graph, Run Maintenance…, Turn On/Off, Copy Command). Nothing is written without its confirmation.</span></div>
+  </div>
+</section>
+
 <section aria-labelledby="s-140"><div class="sec-head"><h2 id="s-140">Version 1.4 interaction contract</h2><span class="pill now">Exists</span></div><div class="gloss"><div class="g"><b>Changed-file search</b><span>Matches filenames, full paths and rename sources. Enter opens the first match; Escape clears. Matching ancestors remain visible and bulk actions cannot include hidden children.</span></div><div class="g"><b>Layout and fold controls</b><span>Log/Changes and Compare support remembered sizes and side-by-side/stacked layouts. Section titles and their blank space do not collapse any view. Folder, commit, duplicate and missing-repository disclosure use their own arrow controls.</span></div><div class="g"><b>Branches in the Repo List</b><span>Each repository's Local/Remote/Tags groups, search, favorites and explicitly scoped Git actions; selecting a ref for history does not check it out. Branches Across Repositories… checks out, creates or merges one name in every ticked repository.</span></div><div class="g"><b>Language and themes</b><span>English and Simplified Chinese follow the editor language. All colors/fonts follow the editor theme, including both high-contrast variants.</span></div></div></section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>

@@ -14,6 +14,16 @@ export function radiusScale(lines: readonly number[], min: number, max: number):
   };
 }
 
+/**
+ * The radii a chart can afford: at most half a row, and smaller as the busiest row crowds its
+ * width (a year of one author's daily commits would otherwise be one smear).
+ */
+export function bubbleRange(busiestRow: number, plotWidth: number, rowHeight: number): { min: number; max: number } {
+  const spacing = plotWidth / Math.max(1, busiestRow);
+  const max = Math.max(3, Math.min(22, rowHeight / 2 - 2, spacing * 2));
+  return { min: Math.min(3, Math.max(1.5, max / 3)), max };
+}
+
 export interface AuthorRow {
   /** The lowercased email (the name when there is none): one row per person. */
   key: string;

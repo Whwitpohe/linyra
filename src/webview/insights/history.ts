@@ -1,5 +1,5 @@
 // Visual History: one bubble per commit, time along x, one row per author. SVG, theme colors only.
-import { authorKey, authorRows, moveFocus, radiusScale, rowOrder, timeDomain, timeTicks, type AuthorRow, type MoveKey, type TickUnit } from "../../insights/bubbles";
+import { authorKey, authorRows, bubbleRange, moveFocus, radiusScale, rowOrder, timeDomain, timeTicks, type AuthorRow, type MoveKey, type TickUnit } from "../../insights/bubbles";
 import type { BubbleCommit, HistoryData, InsightsRepo } from "../../insights/protocol";
 import type { ColorBy } from "../../insights/range";
 import { language, localize } from "../../i18n";
@@ -145,11 +145,15 @@ export class HistoryChart {
     const width = Math.max(240, this.scroll.clientWidth);
     const narrow = width < 520;
     const label = narrow ? 38 : Math.min(200, Math.max(120, width * 0.18));
-    const plot = width - label - 12;
-    const [from, to] = timeDomain(data.since, data.now, this.times);
-    const x = (t: number) => label + ((t - from) / (to - from)) * plot;
     const ROW = (this.row = Math.max(ROW_MIN, Math.min(ROW_MAX, Math.floor((this.scroll.clientHeight - AXIS - 2) / Math.max(1, this.rows.length)))));
-    const r = radiusScale(this.commits.map((c) => c.added + c.deleted), 3, Math.min(22, ROW / 2 - 2));
+    let busiest = 1;
+    for (const list of this.order) busiest = Math.max(busiest, list.length);
+    const size = bubbleRange(busiest, width - label - 12, ROW);
+    // Room for a whole bubble at either end: the oldest does not run under the authors' counts.
+    const left = label + size.max + 4, plot = width - left - size.max - 8;
+    const [from, to] = timeDomain(data.since, data.now, this.times);
+    const x = (t: number) => left + ((t - from) / (to - from)) * plot;
+    const r = radiusScale(this.commits.map((c) => c.added + c.deleted), size.min, size.max);
 
     const axis = svg("svg", { class: "history-axis", width, height: AXIS, "aria-hidden": "true" });
     const ticks = timeTicks(from, to, plot);
@@ -181,7 +185,7 @@ export class HistoryChart {
     const height = this.rows.length * ROW;
     const plotSvg = svg("svg", { class: "history-plot", width, height, "aria-hidden": "true" });
     const stripes = svg("g", { class: "history-rows" });
-    this.rows.forEach((_, i) => stripes.append(svg("rect", { x: label, y: i * ROW, width: plot, height: ROW, class: i % 2 ? "history-row odd" : "history-row" })));
+    this.rows.forEach((_, i) => stripes.append(svg("rect", { x: label, y: i * ROW, width: width - label - 4, height: ROW, class: i % 2 ? "history-row odd" : "history-row" })));
     plotSvg.append(stripes, grid);
     // Biggest first: a small commit on top of a big one stays clickable.
     const radii = this.commits.map((c) => r(c.added + c.deleted));
