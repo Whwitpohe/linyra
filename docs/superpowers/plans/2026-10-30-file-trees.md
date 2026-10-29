@@ -47,17 +47,19 @@ compress. The component draws whatever tree the host sends.
 | Ctrl+A | selects all rows | nothing | selects all rows | VS Code `list.selectAll`; Cherry-Pick takes several |
 | Type-to-find | — | — (the native Commit tree has VS Code's) | typing a name's first letters focuses the next match; the same letter again cycles | The native tree has it; VS Code's lists do it |
 | Focus when the tree gets focus | none (↓ then skips the first row) | none (same) | the first row is focused, not selected | VS Code's; no skipped row |
-| Focused row hidden by a collapse | focus dropped | kept on the hidden row | moves to the nearest shown parent | VS Code's |
+| Focused row hidden by a collapse | focus dropped | kept on the hidden row | moves to the nearest shown parent; a new page with the tree focused focuses the row nearest | VS Code's; a focused tree always shows where |
+| A mouse press in an unfocused tree | — | — | focuses the pressed row (never the first row on the way) | No outline jumping to the top |
 | High contrast | selected rows outlined | — | selected outlined, hover dashed | VS Code's high-contrast lists |
 | Outline around the whole tree on keyboard focus | yes | yes | no: the focused row's outline shows where focus is | VS Code's lists |
 | Filter matches | files by name, path, old path | any row by label, tooltip, description (a folder's count, "1", matched) | a row matches by its own text (files: name, path, old path, note; commits: subject, author, hash; folders, repositories: name); every row under a match shows | A matching folder or commit used to show with none of its files |
 | Filter: folders | counts recounted | counts kept | recounted | Says what is shown |
 | Filter: collapse | a search's own collapse state, reset each keystroke; the tree's comes back after | the tree's own state, parents forced open | the search's own state | Clearing the search gives back the tree as it was |
-| Filter: unread commits | — | forced open, so each one read (a git process each) | stay closed until opened | Constraint 1: count git processes |
+| Filter: unread commits | — | forced open, so each one read (a git process each); Expand All read every commit on the side | stay closed until opened; Expand All reads the shown ones | Constraint 1: count git processes |
 | Filter: count, nothing-matches text | "3 of 301 files", "No files match “x”." | — | both views say nothing matches; the Changes view keeps its count | Compare's empty tree said nothing |
 | Filter: Enter, ↓ | Enter opens the first file | — | Enter opens the first file; ↓ moves into the tree | One filter |
 | Filter: Ctrl+F | focuses the filter | — | focuses that tree's filter | One filter |
-| Selection sent while filtering | only shown files (a filtered folder must not bulk-act on hidden files) | everything picked | only shown files | The Changes view's reason holds for Compare's folders |
+| Selection sent while filtering | only shown files (a filtered folder must not bulk-act on hidden files) | everything picked | shown files, and Compare's commits | The Changes view's reason holds for Compare's folders; a commit is cherry-picked whole either way |
+| Selection sent after a page with the same key | yes (every redraw sent it) | no | yes, once per page | The host drops its selection when it draws a page (the working tree refreshed, Compare's Refresh) |
 | Selection pruned to shown rows | yes | no | yes | What is acted on is what is seen |
 | Expanded state kept | in the view's state | per page key | unchanged (each view's own) | — |
 
@@ -123,6 +125,24 @@ What made the difference:
 Commit side bar (native): `dev/perf/commitTreeBench.ts`, the host model at full speed:
 300 files 1.8 ms to describe, 1000 files 4.1 ms, 3000 files 9.2 ms; a folder's check and the
 redraw after it about the same. VS Code's tree draws only the rows on screen. Nothing to fix.
+
+## Review
+
+An independent review (a subagent reading the code and the old views, not this plan's reasoning)
+found, and the branch fixed, each with a harness spec that fails without the fix:
+
+- The host lost the Changes view's selection when a page with the same key arrived (the
+  Uncommitted side refreshes on every working-tree change): a menu then acted on one file only.
+  Every page now sends the selection again.
+- A tree reset while hidden showed blank space when shown: a hidden element ignores a scroll
+  written to it. The ResizeObserver writes the tree's own scroll when it is shown again, and no
+  layout is read while hidden.
+- Filtering Compare's commits sent no commit in the selection, so Cherry-Pick took one of several.
+- A mouse press focused the first row before the pressed one; a new page could leave a focused
+  tree with no focused row.
+- Expand All while filtering read every commit on the side (before this change too).
+- Smaller: "No commits match" in All repositories, the Changes filter reading the note it draws,
+  a protocol comment.
 
 ## Tests
 

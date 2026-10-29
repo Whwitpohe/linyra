@@ -244,6 +244,62 @@ test("a narrow tree: nothing spills out, the names stay longest, the letters lin
   }
 });
 
+test("a page with the same key (the working tree refreshed) sends the selection again: the host dropped its own", async ({ page }) => {
+  await page.addInitScript(() => window.addEventListener("message", (e) => { if (e.data?.type === "changes") window.__page = e.data; }));
+  await changes(page);
+  await label(row(page, "#file-tree", "AccountDialog")).click();
+  await label(row(page, "#file-tree", "ActivityDetail")).click({ modifiers: ["Control"] });
+  const before = (await sent(page, "changesMessages", "selection")).length;
+  await page.evaluate(() => window.changePreview({ ...window.__page }));
+  await expect.poll(async () => (await sent(page, "changesMessages", "selection")).length).toBe(before + 1);
+  expect((await sent(page, "changesMessages", "selection")).at(-1).ids).toEqual(["asset-0", "asset-1"]);
+});
+
+test("a tree reset while hidden shows its first rows when it comes back", async ({ page }) => {
+  await page.addInitScript(() => window.addEventListener("message", (e) => { if (e.data?.type === "changes") window.__page = e.data; }));
+  await changes(page, { state: "many" });
+  const tree = page.locator("#file-tree");
+  await tree.evaluate((el) => { el.scrollTop = el.scrollHeight; });
+  await expect(page.locator("#file-tree .ftree-row", { hasText: "logo.png" })).toBeVisible();
+  // Hidden (the Log's Changes pane can be), another commit arrives, then the tree is shown again.
+  await tree.evaluate((el) => { el.style.display = "none"; });
+  await page.evaluate(() => window.changePreview({ ...window.__page, key: "another" }));
+  await tree.evaluate((el) => { el.style.display = ""; });
+  await expect(row(page, "#file-tree", "dist")).toBeVisible();
+  expect(await tree.evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test("pressing a row of an unfocused tree focuses that row, never the first one on the way", async ({ page }) => {
+  await changes(page);
+  const target = row(page, "#file-tree", "CategoryView");
+  const box = await target.boundingBox();
+  await page.mouse.move(box.x + 40, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(page.locator("#file-tree")).toBeFocused();
+  await expect(page.locator("#file-tree .ftree-row.focused")).toHaveCount(0);
+  await page.mouse.up();
+  await expect(focusedLabel(page, "#file-tree")).toHaveText(/^CategoryView/);
+});
+
+test("Compare's commits while filtering: several selected all reach the host, Expand All reads only the shown ones", async ({ page }) => {
+  await compare(page);
+  await page.locator("#mode-commits").click();
+  const commit = row(page, "#compare-left-tree", "fix: retry on 503");
+  await expect(commit).toBeVisible();
+  await page.locator("#compare-left-filter").fill("dana");
+  await expect(page.locator("#compare-left-tree .ftree-row .ftree-label")).toHaveText(["fix: retry on 503"]);
+  await page.locator("#compare-left-tree").focus();
+  await page.keyboard.press("Control+a");
+  await expect.poll(async () => (await sent(page, "compareMessages", "sideSelect")).at(-1)?.ids).toEqual([expect.stringMatching(/\/left\/commit$/)]);
+  const all = (await sent(page, "compareMessages", "sideExpandAll")).length;
+  await page.locator("#compare-left-tree-toggle").click();
+  await expect.poll(async () => (await sent(page, "compareMessages", "sideExpand")).at(-1)?.id).toMatch(/\/left\/commit$/);
+  expect((await sent(page, "compareMessages", "sideExpandAll")).length).toBe(all);
+  // Nothing matches: it says commits.
+  await page.locator("#compare-left-filter").fill("nothing-here");
+  await expect(page.locator("#compare-left-empty")).toHaveText("No commits match “nothing-here”.");
+});
+
 const themeColor = (page, name) => page.evaluate((n) => {
   const probe = document.createElement("div");
   probe.style.color = `var(${n})`;

@@ -279,8 +279,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       this.nodes.set(node.id, node);
       const item = this.getTreeItem(node);
       const common = { id: node.id, kind: node.kind, label: labelOf(item), description: String(item.description ?? ""), tooltip: typeof item.tooltip === "string" ? item.tooltip : "", contextValue: item.contextValue ?? "" };
-      if (node.kind === "folder") return { ...common, path: node.path, loaded: true, children: node.children.map(row) };
-      if (node.kind === "repo") return { ...common, loaded: true, children: node.children.map(row) };
+      if (node.kind === "folder" || node.kind === "repo") return { ...common, loaded: true, children: node.children.map(row) };
       if (node.kind === "commit") return { ...common, loaded: this.commitFiles.has(node.id), children: (this.commitFiles.get(node.id) ?? []).map(row) };
       if (node.kind !== "file") return common;
       const f = node.file;

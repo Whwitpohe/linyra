@@ -5,7 +5,7 @@ import { byId, h } from "../dom";
 import { codicon, codiconElement } from "../codicons";
 import { attachSplitter } from "../splitter";
 import { absoluteTime } from "../view";
-import { changesFilter } from "./fileFilterModel";
+import { changeLines, changeNote, changesFilter } from "./fileFilterModel";
 import { referencePills } from "./referencePills";
 import { FileTree, type RowParts } from "../ui/fileTree";
 import { renderPill } from "../ui/pill";
@@ -77,11 +77,9 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
   /** A row's parts: a file's name, old path, + − (or what it is: new, binary, staged) and letter; a folder's or repository's count. */
   function parts(node: ChangeRow): RowParts {
     if (node.kind !== "file") return { icon: node.kind === "repo" ? "repo" : "folder", label: node.label, description: node.description, title: node.tooltip, context: context(node) };
-    const counted = !node.combined && !node.unchanged && !node.untracked && node.added !== null && node.added !== undefined;
     return {
       icon: "file", label: node.label, status: node.unchanged ? undefined : node.status, untracked: node.untracked === true, letter: true, oldPath: node.oldPath,
-      note: counted ? (node.staged ? localize("staged") : undefined) : node.description || undefined,
-      lines: counted ? { added: node.added!, deleted: node.deleted ?? 0 } : undefined, title: node.tooltip, context: context(node),
+      note: changeNote(node), lines: changeLines(node), title: node.tooltip, context: context(node),
     };
   }
 

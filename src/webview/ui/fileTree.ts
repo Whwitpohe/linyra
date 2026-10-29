@@ -48,8 +48,13 @@ export interface FileTreeOptions<N extends TreeItem<N>> {
   /** Row element ids (aria-activedescendant): `${idPrefix}-1`, … */
   idPrefix: string;
   isBranch(node: N): boolean;
-  /** Counts as a file: "3 of 301 files", Enter in the filter, what a filtered selection sends. */
+  /** Counts as a file: "3 of 301 files", Enter in the filter. */
   isFile(node: N): boolean;
+  /**
+   * Sent with the selection while filtering (default: files). A folder shown in part is not: the
+   * host would take its hidden files too. A commit is (Cherry-Pick takes it whole either way).
+   */
+  wholeWhileFiltering?(node: N): boolean;
   parts(node: N): RowParts;
   /** The row's own texts a filter looks in. */
   filterText(node: N): readonly (string | undefined)[];
@@ -138,7 +143,11 @@ export class FileTree<N extends TreeItem<N>> {
   private readonly drawn = new Map<string, Drawn<N>>();
   private readonly elementIds = new Map<string, string>();
   private top = 0;
+  /** The view's height, once the ResizeObserver has said it (0 while hidden). */
   private height = 0;
+  private measured = false;
+  /** A press of the mouse is focusing the tree: the row it lands on takes the focus, not the first. */
+  private pointing = false;
   private activeId: string | undefined;
   /** The selection the view was last told (undefined: tell it the next one). */
   private posted: string | undefined;
@@ -154,7 +163,12 @@ export class FileTree<N extends TreeItem<N>> {
     root.replaceChildren(this.sizer);
     root.addEventListener("click", (e) => this.click(e));
     // Shift-click selects rows, not their text.
-    root.addEventListener("mousedown", (e) => { if (e.shiftKey) e.preventDefault(); });
+    root.addEventListener("mousedown", (e) => {
+      if (e.shiftKey) e.preventDefault();
+      // The tree's focus event comes during this press; the click then focuses the row itself.
+      this.pointing = true;
+      setTimeout(() => { this.pointing = false; });
+    });
     root.addEventListener("contextmenu", (e) => {
       const index = this.indexAt(e.target);
       // Right-click inside the selection keeps it (the menu acts on all of it); outside, it selects that row.
@@ -163,12 +177,21 @@ export class FileTree<N extends TreeItem<N>> {
     root.addEventListener("keydown", (e) => this.key(e));
     // As VS Code's lists: the tree takes the focus on its first row, not selecting it.
     root.addEventListener("focus", () => {
-      if (this.focusIndex() < 0 && this.rows.length) { this.sel = { ...this.sel, focus: this.ids[0] }; this.render(); }
+      if (!this.pointing && this.focusIndex() < 0 && this.rows.length) { this.sel = { ...this.sel, focus: this.ids[0] }; this.render(); }
     });
     root.addEventListener("scroll", () => { this.top = root.scrollTop; this.render(); }, { passive: true });
     new ResizeObserver(([entry]) => {
       const height = entry.contentRect.height;
-      if (height !== this.height) { this.height = height; this.render(); }
+      if (height === this.height && this.measured) return;
+      const shown = height > 0 && (this.height === 0 || !this.measured);
+      this.height = height;
+      this.measured = true;
+      // A hidden element keeps its old scroll whatever is written to it: the tree's own comes back.
+      if (shown && this.root.scrollTop !== this.top) {
+        this.root.scrollTop = this.top;
+        this.top = this.root.scrollTop;
+      }
+      this.render();
     }).observe(root);
     const button = o.toggleButton;
     button?.addEventListener("click", () => (button.dataset.action === "collapse" ? this.collapseAll() : this.expandAll()));
@@ -204,6 +227,8 @@ export class FileTree<N extends TreeItem<N>> {
 
   /** The host's rows; `searchRoots`, when the shown tree is not all a search looks in (All Files). */
   setRoots(roots: readonly N[], searchRoots?: readonly N[]): void {
+    // The host drops its selection with each page it draws (the same commit refreshed too): send it again.
+    this.posted = undefined;
     this.roots = roots;
     this.searchRoots = searchRoots;
     const walk = (nodes: readonly N[]) => {
@@ -317,11 +342,16 @@ export class FileTree<N extends TreeItem<N>> {
     this.counts = { matched: filtered.matched, total: filtered.total };
     // The focused row's parents, nearest first: a collapse that hides it moves the focus there.
     const parents: string[] = [];
-    for (let i = this.rows[this.focusIndex()]?.parent ?? -1; i >= 0; i = this.rows[i].parent) parents.push(this.ids[i]);
+    const was = this.focusIndex();
+    for (let i = this.rows[was]?.parent ?? -1; i >= 0; i = this.rows[i].parent) parents.push(this.ids[i]);
     this.rows = flattenTree(filtered.roots, (n) => this.o.isBranch(n), (n) => this.isOpen(n));
     this.ids = this.rows.map((r) => r.node.id);
     this.index = new Map(this.ids.map((id, i) => [id, i]));
     this.sel = keepShown(this.sel, this.index, parents);
+    // The focused row went with nothing of its own shown (another page): the tree keeps the focus, on the row nearest.
+    if (this.sel.focus === undefined && this.rows.length && document.activeElement === this.root) {
+      this.sel = { ...this.sel, focus: this.ids[Math.min(Math.max(0, was), this.rows.length - 1)] };
+    }
     for (const r of this.rows) if (r.expanded && this.o.isUnread?.(r.node)) this.o.wantChildren?.(r.node);
     if (this.o.toggleButton) updateTreeToggle(this.o.toggleButton, this.rows.some((r) => r.branch), this.rows.some((r) => r.expanded));
     this.root.classList.toggle("ftree-empty", this.rows.length === 0);
@@ -333,8 +363,9 @@ export class FileTree<N extends TreeItem<N>> {
     this.o.refreshed?.({ searching, matched: this.counts.matched, total: this.counts.total, rows: this.rows.length });
   }
 
+  /** No layout is read once the ResizeObserver has measured the view (a hidden one is 0 high). */
   private viewHeight(): number {
-    return this.height || this.root.clientHeight;
+    return this.measured ? this.height : this.root.clientHeight;
   }
 
   /** Draws the rows on screen and the focused one; a row whose node, depth and state are the same keeps its element. */
@@ -494,8 +525,9 @@ export class FileTree<N extends TreeItem<N>> {
 
   private post(): void {
     // A filtered folder stands for its shown files only: the host must not take the hidden ones too.
+    const whole = (node: N) => (this.o.wholeWhileFiltering ?? this.o.isFile)(node);
     const ids = this.searching
-      ? [...this.sel.selected].filter((id) => { const i = this.index.get(id); return i !== undefined && this.o.isFile(this.rows[i].node); })
+      ? [...this.sel.selected].filter((id) => { const i = this.index.get(id); return i !== undefined && whole(this.rows[i].node); })
       : [...this.sel.selected];
     const key = JSON.stringify(ids);
     if (key === this.posted) return;

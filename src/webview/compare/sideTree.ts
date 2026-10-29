@@ -39,6 +39,8 @@ export class CompareTree {
     this.tree = new FileTree<CompareTreeRow>({
       root: byId(`compare-${side}-tree`), idPrefix: `compare-${side}-row`,
       isBranch, isFile: (node) => node.kind === "file",
+      // Filtered, a commit still stands for all of itself: Cherry-Pick takes every selected one.
+      wholeWhileFiltering: (node) => node.kind === "file" || node.kind === "commit",
       parts: (node) => parts(side, node),
       // A file by its name, path, old path and note (conflict, binary…); a commit by its subject, author and hash.
       filterText: (node) => (node.kind === "file" ? [node.label, node.path ?? node.tooltip, node.oldPath, node.note] : node.kind === "commit" ? [node.label, node.description] : [node.label]),
@@ -55,8 +57,9 @@ export class CompareTree {
       },
       selectionChanged: (ids) => this.post({ type: "sideSelect", side, ids }),
       toggleButton: byId<HTMLButtonElement>(`compare-${side}-tree-toggle`),
-      // Expand All: the host reads every commit's files at once.
-      expandedAll: () => {
+      // Expand All: the host reads every commit's files at once; while filtering, only the shown ones are asked for.
+      expandedAll: (searching) => {
+        if (searching) return;
         const walk = (nodes: readonly CompareTreeRow[]) => nodes.forEach((node) => { if (node.kind === "commit" && !node.loaded) this.requested.add(node.id); walk(node.children ?? []); });
         walk(this.page?.rows ?? []);
         this.post({ type: "sideExpandAll", side });
@@ -64,7 +67,7 @@ export class CompareTree {
       refreshed: ({ searching, rows }) => {
         const empty = byId(`compare-${side}-empty`);
         empty.hidden = !searching || rows > 0 || !!this.page?.message;
-        const commits = (this.page?.rows ?? []).some((node) => node.kind === "commit");
+        const commits = (this.page?.rows ?? []).some((node) => node.kind === "commit" || (node.kind === "repo" && node.children?.some((c) => c.kind === "commit")));
         empty.textContent = localize(commits ? "No commits match “{0}”." : "No files match “{0}”.", filter.value.trim());
       },
     });
