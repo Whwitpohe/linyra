@@ -338,19 +338,6 @@ export function switchCount(known: boolean, files: number): string {
   return known && files > 0 ? String(files) : "";
 }
 
-/** "3 repositories · +24 −5", beside the switch on its Uncommitted side. */
-export function totalsLabel(t: { files: number; repos: number; added: number; deleted: number }): string {
-  if (t.files === 0) return "";
-  return localize("{0} {1} · +{2} −{3}", t.repos, localize(t.repos === 1 ? "repository" : "repositories"), t.added, t.deleted);
-}
-
-/** An Uncommitted row's change meter: each kind's share of the files, empty kinds left out. */
-export function meterParts(m: { added: number; modified: number; deleted: number }): { kind: "added" | "modified" | "deleted"; share: number }[] {
-  const total = m.added + m.modified + m.deleted;
-  if (total === 0) return [];
-  return (["added", "modified", "deleted"] as const).filter((k) => m[k] > 0).map((kind) => ({ kind, share: m[kind] / total }));
-}
-
 /** Escape returns focus to the list the Log shows (never to a hidden one). */
 export function escapeTarget(mode: "commits" | "uncommitted"): "list" | "worklist" {
   return mode === "uncommitted" ? "worklist" : "list";

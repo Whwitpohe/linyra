@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, rollbackPrompt, withAdded, withoutFiles, withUnadded, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
+import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, rollbackPrompt, withAdded, withoutFiles, withUnadded, editedLabel, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, workKinds, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -15,17 +15,18 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
 {
   assert.deepStrictEqual(distinctPaths(web), ["notes.md", "src/app.ts", "src/new.ts"], "a file in both halves counts once");
   assert.deepStrictEqual(totals([web, api, clean]), { files: 4, repos: 2, added: 8, deleted: 1 }, "clean repositories do not count");
-  assert.deepStrictEqual(meter(web), { added: 1, modified: 2, deleted: 0 });
-  assert.deepStrictEqual(tags(web), ["1 staged", "1 new"]);
+  assert.deepStrictEqual(workKinds(web), { added: 1, modified: 2, deleted: 0, renamed: 0 }, "notes.md, staged and changed again, counts once");
+  assert.deepStrictEqual(workKinds({ ...web, staged: [f("b.md", "R", 0, 0, { oldPath: "a.md" })], changes: [f("gone.ts", "D", 0, 3)] }), { added: 0, modified: 0, deleted: 1, renamed: 1 });
+  assert.deepStrictEqual(tags(web), ["1 staged"], "only what is staged: new files are counted, not tagged");
   assert.deepStrictEqual(tags({ ...web, changes: [] }), ["all staged"]);
   assert.deepStrictEqual(tags(api), []);
-  assert.strictEqual(previewLabel(web), "3 files · notes.md, src/app.ts, src/new.ts");
-  assert.strictEqual(previewLabel(api), "1 file · upload/upload.go");
+  assert.strictEqual(previewLabel(web), "notes.md, src/app.ts, src/new.ts", "the paths only: the counts say how many");
+  assert.strictEqual(previewLabel(api), "upload/upload.go");
   assert.strictEqual(editedLabel(1_000_000 + 125_000, 1_000_000), "edited 2m ago");
   assert.strictEqual(editedLabel(1_000_000 + 20_000, 1_000_000), "edited just now");
   assert.strictEqual(editedLabel(1_000_000 + 3 * 3_600_000, 1_000_000), "edited 3h ago");
   assert.strictEqual(editedLabel(5, null), "");
-  console.log("ok - the Log's Uncommitted rows: distinct files, totals, meter, tags, preview, edited time");
+  console.log("ok - the Log's Uncommitted rows: distinct files, totals, kinds, the staged tag, preview, edited time");
 }
 {
   const staged = f("a.ts", "M"), added = f("n.ts", "A"), untracked = f("u.ts", "A", 0, 0, { untracked: true }), gone = f("g.ts", "D");

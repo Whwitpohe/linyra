@@ -409,25 +409,3 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
 .app.work :is(#search-field, .author-field, .picker-field, #branch, #sort, #date-field, #custom-range, .hash-search-note) { display: none; }
 .app.work :is(#more, .footer .note, #count) { display: none; }
 .app.work #list { display: none; }
-.worklist { overflow-y: auto; height: 100%; outline: none; }
-.work-row { display: grid; grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) minmax(0, 1fr) auto 12ch; align-items: center; column-gap: 12px; padding: 5px var(--pad-x); cursor: default; user-select: none; border-bottom: 1px solid var(--vscode-widget-border, transparent); }
-.work-row:hover { background: var(--vscode-list-hoverBackground); }
-.work-row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
-.worklist:focus .work-row[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
-/* minmax(0, 1fr): without it the track takes the meter's 160px, and on a narrow panel the
-   meter and preview run under the tags. */
-.work-what { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
-.work-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.meter { display: flex; gap: 1px; width: 160px; max-width: 100%; height: 4px; border-radius: 2px; overflow: hidden; background: var(--vscode-widget-border, var(--vscode-input-border, transparent)); }
-.meter .added { background: var(--vscode-gitDecoration-addedResourceForeground); }
-.meter .modified { background: var(--vscode-gitDecoration-modifiedResourceForeground); }
-.meter .deleted { background: var(--vscode-gitDecoration-deletedResourceForeground); }
-.work-tags { display: flex; gap: 6px; }
-.work-tag { padding: 0 7px; border: 1px solid currentColor; border-radius: 9px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 16px; white-space: nowrap; }
-.work-tag.staged { border-color: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-gitDecoration-addedResourceForeground); }
-.work-row[aria-selected="true"] .work-tag:not(.staged), .work-row[aria-selected="true"] .work-edited { color: inherit; }
-.work-edited { color: var(--vscode-descriptionForeground); text-align: right; white-space: nowrap; font-size: 12px; }
-
-/* High contrast leaves the list backgrounds unset: the Uncommitted side's rows get outlines, like commit rows. */
-body.vscode-high-contrast .work-row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
-body.vscode-high-contrast .work-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }

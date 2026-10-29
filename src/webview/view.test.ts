@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, separateAdjacentAccents, shownAccents, splitPath, visibleRange, switchCount, totalsLabel, meterParts, escapeTarget,
+  relativeTime, repoButtonLabel, reselect, separateAdjacentAccents, shownAccents, splitPath, visibleRange, switchCount, escapeTarget,
 } from "./view";
 
 const NOW = 1790164800;
@@ -250,13 +250,7 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(switchCount(false, 5), "", "not read yet: no number");
   assert.strictEqual(switchCount(true, 0), "", "nothing uncommitted: no badge");
   assert.strictEqual(switchCount(true, 6), "6");
-  assert.strictEqual(totalsLabel({ files: 6, repos: 3, added: 24, deleted: 5 }), "3 repositories · +24 −5");
-  assert.strictEqual(totalsLabel({ files: 1, repos: 1, added: 2, deleted: 0 }), "1 repository · +2 −0");
-  assert.strictEqual(totalsLabel({ files: 0, repos: 0, added: 0, deleted: 0 }), "");
-  assert.deepStrictEqual(meterParts({ added: 1, modified: 2, deleted: 1 }).map((p) => [p.kind, p.share]), [["added", 0.25], ["modified", 0.5], ["deleted", 0.25]]);
-  assert.deepStrictEqual(meterParts({ added: 0, modified: 3, deleted: 0 }).map((p) => p.kind), ["modified"], "empty kinds are left out");
-  assert.deepStrictEqual(meterParts({ added: 0, modified: 0, deleted: 0 }), []);
-  console.log("ok - the switch's badge, totals and change meter");
+  console.log("ok - the switch's badge");
 }
 {
   assert.strictEqual(escapeTarget("commits"), "list");

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { EMPTY_TREE, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
+import { branchOf, EMPTY_TREE, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
 
 // git status --porcelain=v2 -z: "1 XY sub mH mI mW hH hI path", "2 XY … Xscore path\0orig", "? path", "u XY …".
 const H = "0".repeat(40);
@@ -67,4 +67,31 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   assert.deepStrictEqual(s.staged.map((e) => [e.path, e.blob]), [["src/both.ts", I], ["docs/b.md", I]], "each staged entry knows its index blob (the hI field)");
   assert.strictEqual(workFiles(s.staged, new Map())[0].blob, I);
   console.log("ok - the staged side keeps its index blob id");
+}
+{
+  // The branch header, as git 2.55 prints it (recorded from real repositories).
+  const OID = `# branch.oid ${"5".repeat(40)}`;
+  const z = (...lines: string[]) => lines.join("\0") + "\0";
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head main", "# branch.upstream origin/main", "# branch.ab +0 -0")),
+    { name: "main", upstream: "origin/main", ahead: 0, behind: 0 }, "in step with its upstream");
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head develop", "# branch.upstream origin/develop", "# branch.ab +1 -0")),
+    { name: "develop", upstream: "origin/develop", ahead: 1, behind: 0 }, "ahead only");
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head develop", "# branch.upstream origin/develop", "# branch.ab +3 -12") + rec(".M", "a.ts") + "\0"),
+    { name: "develop", upstream: "origin/develop", ahead: 3, behind: 12 }, "ahead and behind, files after the header");
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head local-only")), { name: "local-only", upstream: null, ahead: 0, behind: 0 }, "no upstream: never published");
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head (detached)")), { name: null, upstream: null, ahead: 0, behind: 0 }, "detached HEAD: no branch");
+  assert.deepStrictEqual(branchOf(z("# branch.oid (initial)", "# branch.head main")), { name: "main", upstream: null, ahead: 0, behind: 0 }, "before the first commit: the branch to be");
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head feature", "# branch.upstream origin/feature")),
+    { name: "feature", upstream: "origin/feature", ahead: 0, behind: 0, gone: true }, "the upstream's branch is gone: no ab line");
+  assert.deepStrictEqual(branchOf(z(OID, "# branch.head main", "# branch.upstream origin/main", "# branch.ab +? -?")),
+    { name: "main", upstream: "origin/main", ahead: 0, behind: 0, uncounted: true }, "--no-ahead-behind: it differs, by an unknown count");
+  assert.deepStrictEqual(branchOf(`${OID}\n# branch.head main\n# branch.upstream upstream/release-1.4\n# branch.ab +0 -2\n1 .M N... x\n`),
+    { name: "main", upstream: "upstream/release-1.4", ahead: 0, behind: 2 }, "without -z: one header per line");
+  assert.deepStrictEqual(branchOf(z(OID, "# stash 2", "# branch.head main")), { name: "main", upstream: null, ahead: 0, behind: 0 }, "other headers (--show-stash) are skipped");
+  assert.strictEqual(branchOf(rec(".M", "a.ts") + "\0"), undefined, "status without --branch: no header, nothing known");
+  assert.strictEqual(branchOf(""), undefined);
+  assert.strictEqual(branchOf(rec(".M", "a.ts") + "\0# branch.head evil\0"), undefined, "a header-like token after the first file is a file name, not a header");
+  const renamed = `2 R. N... 100644 100644 100644 ${H} ${H} R100 new.md\0# branch.head evil`;
+  assert.strictEqual(branchOf(z(OID, "# branch.head main") + renamed + "\0")?.name, "main", "a rename's old name never overrides the header");
+  console.log("ok - branchOf: the branch, its upstream and the distance from git status --branch (detached, unpublished, gone, uncounted)");
 }

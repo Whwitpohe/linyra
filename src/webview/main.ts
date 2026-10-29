@@ -18,8 +18,8 @@ import { RepoPane } from "./repoPane";
 import { applyGesture, keepListed, SELECTION_LIMIT, type Selection } from "./selectionModel";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
-import { WorkList } from "./workList";
+import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, type EmptyAction } from "./view";
+import { renderWorkTotals, WorkList } from "./workList";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import type { ChangesLayout } from "../toolbarModel";
 
@@ -441,7 +441,7 @@ function render(): void {
   workCount.textContent = count;
   workCount.hidden = count === "";
   tabs.uncommitted.setAttribute("aria-label", count ? localize("Uncommitted, {0} {1}", count, localize(count === "1" ? "file" : "files")) : localize("Uncommitted"));
-  workTotals.textContent = mode === "uncommitted" ? totalsLabel(work.totals) : "";
+  renderWorkTotals(workTotals, mode === "uncommitted" ? work.rows : [], work.totals);
   if (mode === "uncommitted") {
     const next = separateAdjacentAccents(work.rows, accents, repoOrder);
     if (next !== accents) {

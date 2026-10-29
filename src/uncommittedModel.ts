@@ -1,13 +1,17 @@
 import { localize } from "./i18n";
 // Uncommitted work as the Log's switch and the Uncommitted view show it. Pure: no vscode import.
+import { kindCounts, type KindCounts } from "./changeKinds";
 import { fileTree, type TreeNode } from "./fileTree";
 import type { FileChange } from "./types";
+import type { BranchStatus } from "./workingTree";
 
 export interface RepoWork {
   repoId: string;
   root: string;
   name: string;
   head: string | null;
+  /** The checked-out branch and its upstream, from the same git status (absent where git was not run: a clean repository). */
+  branch?: BranchStatus;
   /** What a commit now would contain: the index against the last commit. */
   staged: FileChange[];
   /** What is not staged yet: the working tree against the index, untracked files included. */
@@ -46,29 +50,20 @@ export function totals(works: readonly RepoWork[]): { files: number; repos: numb
   return { files, repos, added, deleted };
 }
 
-/** Distinct files by kind: new (added or untracked), deleted, modified (the rest). */
-export function meter(w: RepoWork): { added: number; modified: number; deleted: number } {
-  const kind = new Map<string, "added" | "modified" | "deleted">();
-  for (const f of [...w.staged, ...w.changes]) {
-    const k = f.status === "A" || f.untracked ? "added" : f.status === "D" ? "deleted" : "modified";
-    if (!kind.has(f.path) || k !== "modified") kind.set(f.path, k);
-  }
-  const out = { added: 0, modified: 0, deleted: 0 };
-  for (const k of kind.values()) out[k]++;
-  return out;
+/** Distinct files by kind (a file staged and changed again counts once): the row's +3 ✎2 −1 and its meter. */
+export function workKinds(w: RepoWork): KindCounts {
+  return kindCounts([...w.staged, ...w.changes]);
 }
 
+/** The row's one tag: what is staged. New files are counted by workKinds, not tagged. */
 export function tags(w: RepoWork): string[] {
-  const out: string[] = [];
-  if (w.staged.length > 0) out.push(w.changes.length === 0 ? localize("all staged") : localize("{0} staged", w.staged.length));
-  const news = w.changes.filter((f) => f.untracked).length;
-  if (news > 0) out.push(localize("{0} new", news));
-  return out;
+  if (w.staged.length === 0) return [];
+  return [w.changes.length === 0 ? localize("all staged") : localize("{0} staged", w.staged.length)];
 }
 
+/** The changed paths, each once: how many is the counts' job. */
 export function previewLabel(w: RepoWork): string {
-  const paths = distinctPaths(w);
-  return `${plural(paths.length, "file")} · ${paths.join(", ")}`;
+  return distinctPaths(w).join(", ");
 }
 
 export function editedLabel(nowMs: number, editedAt: number | null): string {

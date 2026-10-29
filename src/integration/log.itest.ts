@@ -439,7 +439,7 @@ describe("Linyra panel", () => {
       let s = await until("both repositories behind the switch", (x) => x.workRows.length === 2 && x.workTotals.files === 3);
       assert.ok(s.workKnown, "the badge has a number once every repository was read");
       assert.deepStrictEqual(s.workRows.map((r) => r.split(" | ")[0]).sort(), ["acme-api", "acme-web"]);
-      assert.ok(s.workRows.some((r) => r.startsWith("acme-api | 2 files · notes.md, upload.go | 1 new")), `the row: preview and tags (${s.workRows.join(" / ")})`);
+      assert.ok(s.workRows.includes("acme-api | notes.md, upload.go |  | main"), `the row: preview, no staged tag, the branch from the same git status (${s.workRows.join(" / ")})`);
       assert.ok((s.posts.uncommitted?.count ?? 0) > 0, "the webview was told");
       const before = { rows: s.rows.map((r) => r.subject), filter: s.filter };
 

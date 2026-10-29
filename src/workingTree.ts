@@ -20,6 +20,48 @@ export function headOf(stdout: string): string | null {
   return m ? m[1] : null;
 }
 
+/** The checked-out branch and its upstream, as `git status --porcelain=v2 --branch` reports them. */
+export interface BranchStatus {
+  /** The branch's short name; null when HEAD is detached. Set before the first commit too. */
+  name: string | null;
+  /** The upstream's short name ("origin/develop"); null when none is configured. */
+  upstream: string | null;
+  /** Commits not pushed and commits to pull; 0 without an upstream, a gone one, or uncounted. */
+  ahead: number;
+  behind: number;
+  /** An upstream is configured but its branch does not exist (deleted on the remote and pruned, or never pushed). */
+  gone?: true;
+  /** The branch differs from its upstream, but git did not count by how much (status.aheadBehind=false). */
+  uncounted?: true;
+}
+
+/**
+ * The branch header of `git status --porcelain=v2 --branch` (with or without -z): its
+ * `# branch.head`, `# branch.upstream` and `# branch.ab` lines. Undefined when the output has no
+ * branch header (status ran without --branch). The header comes before every file, so a file
+ * whose name looks like a header line is never read as one.
+ */
+export function branchOf(stdout: string): BranchStatus | undefined {
+  let head: string | undefined;
+  let upstream: string | null = null;
+  let ab: string | undefined;
+  for (const line of stdout.split(/\0|\n/)) {
+    if (!line.startsWith("# ")) break;
+    const [key, ...rest] = line.slice(2).split(" ");
+    const value = rest.join(" ");
+    if (key === "branch.head") head = value;
+    else if (key === "branch.upstream") upstream = value;
+    else if (key === "branch.ab") ab = value;
+  }
+  if (head === undefined) return undefined;
+  const out: BranchStatus = { name: head === "(detached)" ? null : head, upstream, ahead: 0, behind: 0 };
+  if (upstream === null) return out;
+  // No ab line: the upstream's branch does not exist. "+? -?": it differs, uncounted.
+  if (ab === undefined) return { ...out, gone: true };
+  const m = /^\+(\d+) -(\d+)$/.exec(ab);
+  return m ? { ...out, ahead: Number(m[1]), behind: Number(m[2]) } : { ...out, uncounted: true };
+}
+
 /** `git diff --numstat -z` output: path → counts (null for binary). Renames by the new name. */
 export function parseNumstat(stdout: string): Map<string, { added: number | null; deleted: number | null }> {
   const counts = new Map<string, { added: number | null; deleted: number | null }>();
