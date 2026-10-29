@@ -9,7 +9,7 @@ import type { InsightsHostMessage } from "../insights/protocol";
 import type { InsightsScope, InsightsTab } from "../insights/range";
 import { ALL, send, snapshot, until, waitFor } from "./helpers";
 
-interface InsightsSnapshot { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[] }
+interface InsightsSnapshot { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[]; lastWrite: { repo: string; command: string; error?: string }[] }
 const insights = () => vscode.commands.executeCommand<InsightsSnapshot>("linyra._itest.insights");
 const tell = (m: unknown) => vscode.commands.executeCommand("linyra._itest.insightsSend", m);
 type Ready<T extends InsightsHostMessage["type"]> = Extract<InsightsHostMessage, { type: T }> & { status: "ready" };
@@ -25,7 +25,7 @@ describe("Insights", () => {
   const mark = async () => { const s = await insights(); posted = s.posted.length; spawned = s.spawned.length; };
   const sinceMark = async () => { const s = await insights(); return { posts: s.posted.slice(posted), spawns: s.spawned.slice(spawned) }; };
   /** The latest "ready" answer of a type after the mark (that `ok` accepts: a read superseded on the way may answer first). */
-  const answer = <T extends "history" | "tree">(type: T, ok: (m: Ready<T>) => boolean = () => true) => waitFor(`an Insights ${type} answer`, async () => {
+  const answer = <T extends "history" | "tree" | "health">(type: T, ok: (m: Ready<T>) => boolean = () => true) => waitFor(`an Insights ${type} answer`, async () => {
     const { posts } = await sinceMark();
     const last = posts.reverse().find((m): m is Ready<T> => m.type === type && m.status === "ready");
     return last && ok(last) ? last : undefined;
@@ -56,9 +56,16 @@ describe("Insights", () => {
   });
 
   after(async () => {
+    await vscode.commands.executeCommand("linyra._itest.answer", undefined);
     for (const r of repos) {
       git(r.root, ["reset", "-q", "--hard", heads.get(r.id)!]);
       fs.rmSync(path.join(r.root, "insights.txt"), { force: true });
+      try { git(r.root, ["config", "--local", "--unset", "core.untrackedCache"]); } catch { /* not set */ }
+      // git writes the commit-graph read-only, and another git may still hold it open: a leftover is harmless.
+      const graph = path.join(r.root, ".git", "objects", "info", "commit-graph");
+      try {
+        if (fs.existsSync(graph)) { fs.chmodSync(graph, 0o666); fs.rmSync(graph, { force: true }); }
+      } catch { /* in use */ }
     }
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
   });
@@ -188,6 +195,84 @@ describe("Insights", () => {
     await answer("history");
     await quiet();
     assert.deepStrictEqual((await sinceMark()).spawns, [], "every tab shows what it read, without git");
+  });
+
+  it("Health: count-objects and one git config per repository; the commit-graph and the file count from the git dir", async () => {
+    await mark();
+    await tell({ type: "tab", tab: "health" });
+    const h = await answer("health");
+    await quiet();
+    const counts = perRepo((await sinceMark()).spawns);
+    for (const r of repos) assert.deepStrictEqual((counts[r.name] ?? []).sort(), ["config", "count-objects"], `${r.name}: two processes`);
+    const web = h.data!.rows.find((r) => r.name === "acme-web")!;
+    const cell = (id: string) => web.checks.find((c) => c.id === id)!;
+    const files = git(repo("acme-web").root, ["ls-files"]).split("\n").filter(Boolean).length;
+    assert.strictEqual(cell("tracked").value, `${files} files`, "the index's own count");
+    assert.strictEqual(cell("commitGraph").value, "Missing");
+    assert.match(cell("objects").value, /^\d+ loose · \d+ packs? · /);
+    assert.strictEqual(cell("untrackedCache").value, "Off");
+    assert.strictEqual(cell("maintenance").value, "Not registered");
+    assert.deepStrictEqual(web.optimize, [], "a fixture this small has nothing to optimize");
+  });
+
+  it("Health writes only after the confirmation, exactly the command it names; declined, nothing is written", async () => {
+    const web = repo("acme-web");
+    const graph = path.join(web.root, ".git", "objects", "info", "commit-graph");
+    const ask = (v: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", v);
+
+    // Declined: no process at all.
+    await mark();
+    await ask("Cancel");
+    await tell({ type: "health", action: "commitGraph", repoIds: [web.id] });
+    assert.deepStrictEqual((await sinceMark()).spawns, []);
+    assert.ok(!fs.existsSync(graph));
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Write the commit-graph in acme-web?");
+
+    await mark();
+    await ask("Write Commit-Graph");
+    await tell({ type: "health", action: "commitGraph", repoIds: [web.id] });
+    assert.deepStrictEqual((await insights()).lastWrite, [{ repo: "acme-web", command: "git commit-graph write --reachable" }]);
+    assert.ok(fs.existsSync(graph), "the commit-graph is written");
+    const after = await answer("health", (m) => m.data!.rows.find((r) => r.name === "acme-web")!.checks[0].value === "Present");
+    assert.ok(after);
+    await quiet();
+    const spawns = (await sinceMark()).spawns;
+    assert.deepStrictEqual(spawns[0].args, ["commit-graph", "write", "--reachable"]);
+    assert.deepStrictEqual(perRepo(spawns.slice(1))["acme-web"].sort(), ["config", "count-objects"], "only the written repository is read again");
+    assert.deepStrictEqual(Object.keys(perRepo(spawns)), ["acme-web"]);
+
+    // A setting: git config --local, both ways.
+    await ask("Turn On");
+    await tell({ type: "health", action: "config", repoIds: [web.id], key: "core.untrackedCache", value: true });
+    assert.strictEqual(git(web.root, ["config", "--local", "--get", "core.untrackedCache"]), "true");
+    await answer("health", (m) => m.data!.rows.find((r) => r.name === "acme-web")!.checks.find((c) => c.id === "untrackedCache")!.value === "On");
+    await ask("Turn Off");
+    await tell({ type: "health", action: "config", repoIds: [web.id], key: "core.untrackedCache", value: false });
+    assert.strictEqual(git(web.root, ["config", "--local", "--get", "core.untrackedCache"]), "false");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Set core.untrackedCache to false in acme-web?");
+    // Not one of Health's keys: refused before anything is asked.
+    await mark();
+    await tell({ type: "health", action: "config", repoIds: [web.id], key: "core.hooksPath", value: true });
+    assert.deepStrictEqual((await sinceMark()).spawns, []);
+
+    // Maintenance: the tasks picked, then the confirmation.
+    await ask(JSON.stringify(["loose-objects"]));
+    await ask("Run Maintenance");
+    await tell({ type: "health", action: "maintenance", repoIds: [web.id] });
+    assert.deepStrictEqual((await insights()).lastWrite, [{ repo: "acme-web", command: "git maintenance run --task=loose-objects" }]);
+    await quiet();
+
+    // Optimize Selected over small repositories: nothing recommended, nothing asked, nothing written.
+    await mark();
+    const asked = Number(await vscode.commands.executeCommand("linyra._itest.asked"));
+    await tell({ type: "health", action: "optimize", repoIds: repos.map((r) => r.id) });
+    assert.strictEqual(Number(await vscode.commands.executeCommand("linyra._itest.asked")), asked);
+    assert.deepStrictEqual((await sinceMark()).spawns, []);
+
+    // Copy Command: git maintenance start, for a terminal; Linyra runs nothing.
+    await tell({ type: "health", action: "copy", repoIds: [web.id] });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.clipboard"), `git -C "${web.root}" maintenance start`);
+    assert.deepStrictEqual((await sinceMark()).spawns, []);
   });
 
   it("a bubble's click shows the commit in the Log", async () => {

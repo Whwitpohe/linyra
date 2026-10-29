@@ -1,7 +1,8 @@
 // Files and Commits: a squarified treemap of one folder, its folders nested inside. HTML tiles, theme colors only.
 import { heatLevel, layoutTreemap, nearestTile, type Tile, type TreeNodeMsg } from "../../insights/treemap";
 import type { InsightsRepo, TreeData } from "../../insights/protocol";
-import { language, localize } from "../../i18n";
+import { formatBytes, formatNumber } from "../../insights/format";
+import { localize } from "../../i18n";
 import { h } from "../dom";
 
 export interface TreemapContext {
@@ -15,15 +16,8 @@ export interface TreemapContext {
 
 const ARROWS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 
-/** 1536 → "1.5 KB": a size as the Explorer's hover says it, in the UI language. */
-export function bytes(n: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let i = 0, v = n;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return `${new Intl.NumberFormat(language(), { maximumFractionDigits: v < 10 && i > 0 ? 1 : 0 }).format(v)} ${units[i]}`;
-}
-
-const count = (n: number) => new Intl.NumberFormat(language()).format(n);
+export const bytes = formatBytes;
+const count = formatNumber;
 
 /** A tile's measure in words: its size (Files) or its commits (Commits). */
 export function valueText(tab: TreeData["tab"], value: number): string {

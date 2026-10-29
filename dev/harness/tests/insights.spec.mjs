@@ -240,3 +240,92 @@ test.describe("Files and Commits", () => {
     await expect(page.locator("#files-crumbs .crumb-total")).toHaveText(/^1\.1 MB，共 53 个文件$/);
   });
 });
+
+test.describe("Repository Health", () => {
+  for (const theme of THEMES) {
+    test(`a row per repository, a column per check, the selected row's details, in ${theme}`, async ({ page }) => {
+      const errors = await open(page, { theme, tab: "health" });
+      const rows = page.locator("#health-table tbody tr");
+      await expect(rows).toHaveCount(3);
+      await expect(page.locator("#health-table thead th")).toHaveCount(10);
+      await expect(rows.first()).toHaveAttribute("aria-selected", "true");
+      await expect(rows.first().locator(".col-count")).toHaveText("6");
+      await expect(page.locator(".health-details-title")).toHaveText("acme-web");
+      await expect(page.locator(".health-item")).toHaveCount(7);
+      const ok = await rows.nth(1).locator(".status-ok .cell-icon").first().evaluate((el) => getComputedStyle(el).color);
+      const suggest = await rows.first().locator(".status-suggest .cell-icon").first().evaluate((el) => getComputedStyle(el).color);
+      expect(ok).not.toBe(suggest);
+      await expect(page.locator("#health-toolbar .health-summary")).toHaveText("6 suggestions in 3 repositories");
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test("each check's button and Optimize Selected post the write they ask for; nothing writes here", async ({ page }) => {
+    await open(page, { tab: "health" });
+    const optimize = page.getByRole("button", { name: "Optimize Selected (1)…" });
+    await expect(optimize).toBeEnabled();
+    await optimize.click();
+    const details = page.locator("#health-details");
+    await details.getByRole("button", { name: "Write Commit-Graph" }).click();
+    // By its label: "untracked cache" is also in Many files' explanation.
+    const item = (label) => details.locator(".health-item").filter({ has: page.locator(".health-item-label", { hasText: new RegExp(`^${label}$`) }) });
+    await item("Untracked cache").getByRole("button", { name: "Turn On" }).click();
+    await details.getByRole("button", { name: "Run Maintenance…" }).click();
+    await details.getByRole("button", { name: "Copy Command" }).click();
+    expect((await messages(page, "health")).map(({ action, repoIds, key, value }) => [action, repoIds.join(), key, value])).toEqual([
+      ["optimize", "/work/acme-web", undefined, undefined],
+      ["commitGraph", "/work/acme-web", undefined, undefined],
+      ["config", "/work/acme-web", "core.untrackedCache", true],
+      ["maintenance", "/work/acme-web", undefined, undefined],
+      ["copy", "/work/acme-web", undefined, undefined],
+    ]);
+    // Unticked, there is nothing to optimize.
+    await page.getByRole("checkbox", { name: "Optimize acme-web" }).click();
+    await expect(page.getByRole("button", { name: "Optimize Selected…" })).toBeDisabled();
+    await page.getByRole("checkbox", { name: "Tick every repository with something to optimize" }).click();
+    await expect(page.getByRole("button", { name: "Optimize Selected (1)…" })).toBeEnabled();
+  });
+
+  test("the keyboard: ↑/↓ choose a repository, Enter goes to its first button", async ({ page }) => {
+    await open(page, { tab: "health" });
+    await page.locator("#health-table tbody tr").first().focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator("#health-table tbody tr").nth(1)).toBeFocused();
+    await expect(page.locator(".health-details-title")).toHaveText("acme-api");
+    await page.keyboard.press("End");
+    await expect(page.locator(".health-details-title")).toHaveText("acme-libs");
+    await page.keyboard.press("Home");
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("checkbox", { name: "Optimize acme-web" })).toHaveAttribute("aria-checked", "false");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#health-details").getByRole("button", { name: "Write Commit-Graph" })).toBeFocused();
+  });
+
+  test("on Linux git has no built-in monitor: no button, and it says why", async ({ page }) => {
+    await open(page, { tab: "health", query: "&platform=linux" });
+    const fs = page.locator(".health-item").filter({ has: page.locator(".health-item-label", { hasText: /^File system monitor$/ }) });
+    await expect(fs).toContainText("git's built-in monitor runs on Windows and macOS only.");
+    await expect(fs.getByRole("button")).toHaveCount(0);
+  });
+
+  test("narrow: the table scrolls sideways inside its box, the repository stays in view", async ({ page }) => {
+    const errors = await open(page, { tab: "health", width: 420, height: 700, theme: "hc-dark" });
+    await expect(page.locator("#health-table tbody tr")).toHaveCount(3);
+    expect(await noOverflow(page)).toBe(true);
+    const wrap = page.locator(".health-table-wrap");
+    expect(await wrap.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await wrap.evaluate((el) => { el.scrollLeft = 400; });
+    const repo = await page.locator("#health-table tbody tr").first().locator(".col-repo").boundingBox();
+    const box = await wrap.boundingBox();
+    expect(repo.x).toBeGreaterThanOrEqual(box.x);
+    expect(repo.x).toBeLessThan(box.x + 60);
+    expect(errors).toEqual([]);
+  });
+
+  test("Chinese", async ({ page }) => {
+    await open(page, { tab: "health", page: "insights.zh-cn.html" });
+    await expect(page.getByRole("tab", { name: "健康" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: "优化所选（1）…" })).toBeVisible();
+    await expect(page.locator("#health-details").getByRole("button", { name: "写入 Commit-Graph" })).toBeVisible();
+  });
+});

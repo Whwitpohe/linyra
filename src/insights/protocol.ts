@@ -1,5 +1,6 @@
 // Messages between the Insights tab and the extension host.
 import type { ColorBy, InsightsRange, InsightsScope, InsightsTab } from "./range";
+import type { HealthRow } from "./health";
 import type { TreeNodeMsg } from "./treemap";
 
 export interface InsightsRepo { id: string; name: string; accent: number }
@@ -48,10 +49,21 @@ export interface TreeData {
   failures: ReadFailure[];
 }
 
+export interface HealthData {
+  rows: HealthRow[];
+  failures: ReadFailure[];
+  /** Repositories being written now (their buttons wait). */
+  busy: string[];
+}
+
+/** A Health button: the check's own write, Optimize Selected over several, or copying git maintenance start. */
+export type HealthActionKind = "commitGraph" | "maintenance" | "config" | "optimize" | "copy";
+
 export type InsightsHostMessage =
   | { type: "init"; repos: InsightsRepo[]; ticked: string[]; scope: InsightsScope; range: InsightsRange; tab: InsightsTab; colorBy: ColorBy; platform: string }
   | { type: "history"; status: "loading" | "ready"; data?: HistoryData }
-  | { type: "tree"; tab: TreeTab; status: "loading" | "ready"; data?: TreeData };
+  | { type: "tree"; tab: TreeTab; status: "loading" | "ready"; data?: TreeData }
+  | { type: "health"; status: "loading" | "ready"; data?: HealthData };
 
 export type InsightsWebviewMessage =
   | { type: "ready" }
@@ -63,4 +75,5 @@ export type InsightsWebviewMessage =
   | { type: "reveal"; repoId: string; sha: string }
   | { type: "openFile"; repoId: string; path: string }
   | { type: "visualHistory"; repoId: string; path: string; folder: boolean }
-  | { type: "drill"; tab: TreeTab; path: string[] };
+  | { type: "drill"; tab: TreeTab; path: string[] }
+  | { type: "health"; action: HealthActionKind; repoIds: string[]; key?: string; value?: boolean };

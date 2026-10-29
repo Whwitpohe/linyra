@@ -409,7 +409,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const insights = new InsightsPanel({ context, repos: () => log.repoList, ticked: () => log.tickedRepos(),
     // Opened before the Log ever listed its repositories: list them (LogView.ensureRepos once it has one).
     ensureRepos: async () => { if (log.repoList.length === 0) await ((log as unknown as { ensureRepos?: () => Promise<void> }).ensureRepos?.call(log) ?? log.reposSettingChanged()); },
-    accents: () => log.accents(), run: log.countedRun, concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
+    accents: () => log.accents(), run: log.countedRun, concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency, ask,
     reveal: (repoId, sha) => vscode.commands.executeCommand("linyra.revealCommit", { repoId, sha }),
     onDidChangeRefs: log.onDidChangeRefs, onDidChangeScope: log.onDidChangeScope, onDidChangeAccents: log.onDidChangeAccents });
   /** Visual History's target: a Changes or Compare row, an Explorer file or folder, or the active editor's file. */

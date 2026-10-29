@@ -4,7 +4,9 @@
 import type { InsightsHostMessage, InsightsWebviewMessage, TreeTab } from "../../src/insights/protocol";
 import { buildTree, findNode, heatSteps, keysOf, pruneTree, rankExtensions } from "../../src/insights/treemap";
 import { sinceOf, type ColorBy, type InsightsRange, type InsightsScope, type InsightsTab } from "../../src/insights/range";
-import { INSIGHTS_NOW, INSIGHTS_REPOS, mockBubbles, mockFiles, mockTouches } from "./mock/insights";
+import { INSIGHTS_NOW, INSIGHTS_REPOS, mockBubbles, mockFiles, mockHealth, mockTouches } from "./mock/insights";
+import { assess } from "../../src/insights/health";
+import { formatBytes, formatNumber } from "../../src/insights/format";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
@@ -56,7 +58,22 @@ function tree(tab: TreeTab): void {
   } });
 }
 
+const HEALTH = mockHealth();
+const busy: string[] = [];
+
+/** Health's rows, assessed by the product's own thresholds (src/insights/health.ts). */
+function health(): void {
+  const repos = INSIGHTS_REPOS.filter((r) => inScope(r.id));
+  const rows = state === "empty" ? [] : repos.map((r) => assess(r, HEALTH[r.id], { number: formatNumber, bytes: formatBytes, platform: params.get("platform") ?? "win32", insensitive: true }));
+  send({ type: "health", status: "ready", data: { rows, busy, failures: state === "error" ? [{ repoId: "/work/acme-libs", name: "acme-libs", reason: "fatal: not a git repository" }] : [] } });
+}
+
 function show(): void {
+  if (tab === "health") {
+    send({ type: "health", status: "loading" }, 0);
+    if (state !== "loading") health();
+    return;
+  }
   if (tab === "files" || tab === "commits") {
     send({ type: "tree", tab, status: "loading" }, 0);
     if (state !== "loading") tree(tab);

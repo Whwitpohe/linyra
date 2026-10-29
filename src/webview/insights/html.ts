@@ -36,6 +36,7 @@ export function renderInsightsHtml(o: HtmlOptions): string {
       ${tab("history", "history", localize("Visual History"))}
       ${tab("files", "files", localize("Files"))}
       ${tab("commits", "git-commit", localize("Commits"))}
+      ${tab("health", "pass", localize("Health"))}
     </div>
     <div class="insights-controls">
       <label class="insights-field"><span class="insights-field-label">${escapeHtml(localize("Scope"))}</span><select id="scope" class="insights-select"></select></label>
@@ -53,6 +54,14 @@ export function renderInsightsHtml(o: HtmlOptions): string {
   </section>
   ${treePanel("files", localize("Tracked files by size"))}
   ${treePanel("commits", localize("Files by commits in the range"))}
+  <section id="panel-health" class="insights-panel" role="tabpanel" aria-labelledby="tab-health" hidden>
+    <div id="health-toolbar" class="health-toolbar"></div>
+    <div id="health-notes" class="insights-notes" hidden></div>
+    <div class="health-table-wrap"><table id="health-table" class="health-table" aria-label="${escapeHtml(localize("Repository Health"))}" aria-describedby="health-help"></table></div>
+    <div id="health-help" class="sr-only">${escapeHtml(localize("Up and Down arrows choose a repository; Space ticks it for Optimize Selected; Enter goes to its details."))}</div>
+    <section id="health-details" class="health-details" hidden></section>
+    <div id="health-empty" class="insights-empty" hidden></div>
+  </section>
   <div id="treemap-help" class="sr-only">${escapeHtml(localize("Arrow keys move between tiles; Enter opens a folder or chooses a file; Backspace goes up a folder."))}</div>
   <div id="insights-tooltip" class="insights-tooltip" role="tooltip" hidden></div>
   <div id="insights-status" class="sr-only" role="status" aria-live="polite"></div>

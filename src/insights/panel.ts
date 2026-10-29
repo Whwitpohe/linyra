@@ -2,14 +2,20 @@ import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { copyText } from "../clipboard";
 import { debounce } from "../debounce";
 import { gitDate } from "../filterModel";
+import { GitError } from "../git";
 import { localize } from "../i18n";
 import type { RunGit } from "../logQuery";
-import { isAbortError, runPool } from "../pool";
+import { abortError, isAbortError, runPool } from "../pool";
+import { gitDirOf } from "../repoHead";
+import type { Ask } from "../uncommittedActions";
 import { isSha, type Repo } from "../types";
 import { renderInsightsHtml } from "../webview/insights/html";
-import { HISTORY_FORMAT, parseHistory, parseTouches, parseTree, type HistoryCommit } from "./parse";
+import { formatBytes, formatNumber } from "./format";
+import { assess, commandText, confirmText, isConfigKey, maintenanceStart, taskInfo, TASKS, writePlan, type FormatOptions, type HealthAction, type HealthFacts, type MaintenanceTask, type WritePlan } from "./health";
+import { HEALTH_CONFIG_REGEXP, HISTORY_FORMAT, indexEntries, parseConfig, parseCountObjects, parseHistory, parseTouches, parseTree, type HistoryCommit } from "./parse";
 import { isTreeTab, type HistoryData, type InsightsHostMessage, type InsightsWebviewMessage, type ReadFailure, type TreeData, type TreeTab } from "./protocol";
 import { DEFAULT_RANGE, HISTORY_LIMIT, isColorBy, isRange, isTab, logPathspec, readKey, safePath, sanitizeScope, sinceOf, treePath, type ColorBy, type InsightsRange, type InsightsScope, type InsightsTab } from "./range";
 import { buildTree, findNode, heatSteps, keysOf, pruneTree, rankExtensions, type TreeNode } from "./treemap";
@@ -25,6 +31,8 @@ export interface InsightsDeps {
   /** The Log's counted runner: the integration suite counts every process. */
   run: RunGit;
   concurrency(): number;
+  /** Every write is asked first (modal), through the integration suite's answer queue when testing. */
+  ask: Ask;
   /** Show a commit in the Log (linyra.revealCommit). */
   reveal(repoId: string, sha: string): Thenable<unknown>;
   onDidChangeRefs: vscode.Event<string | undefined>;
@@ -50,7 +58,7 @@ interface Answer<T> {
   version: number;
 }
 
-interface Answers { history?: Answer<HistoryRead>; files?: Answer<TreeRead>; commits?: Answer<TreeRead> }
+interface Answers { history?: Answer<HistoryRead>; files?: Answer<TreeRead>; commits?: Answer<TreeRead>; health?: Answer<HealthFacts> }
 
 /** A treemap's tree, built from an answer's version for a set of repositories, kept for its drills. */
 interface Built { answer: Answer<TreeRead>; version: number; repos: string; root: TreeNode; base: string[]; legend: TreeData["legend"]; heat: number[] }
@@ -60,6 +68,40 @@ const RANGE_KEY = "linyra.insights.range";
 const COLOR_KEY = "linyra.insights.colorBy";
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const exists = (p: string) => fs.stat(p).then(() => true, () => false);
+/** A read Health can do without (its cell says it could not be read); an abort still stops the read. */
+const orUndefined = <T>(p: Promise<T>): Promise<T | undefined> => p.catch((e) => { if (isAbortError(e)) throw e; return undefined; });
+/** Health's numbers in the UI language; the file system monitor is git's own on Windows and macOS. */
+const healthFormat = (): FormatOptions => ({ number: formatNumber, bytes: formatBytes, platform: process.platform, insensitive: process.platform === "win32" || process.platform === "darwin" });
+
+/**
+ * What Health reads from the git dir's files, with no git process: whether a commit-graph is there
+ * (a single file or a split chain, in the common dir a worktree shares) and the index's entry count.
+ */
+async function gitDirFacts(root: string): Promise<Pick<HealthFacts, "commitGraph" | "tracked">> {
+  const dir = await gitDirOf(root);
+  if (!dir) return { commitGraph: undefined, tracked: undefined };
+  const common = await fs.readFile(path.join(dir, "commondir"), "utf8").then((c) => path.resolve(dir, c.trim()), () => dir);
+  const info = path.join(common, "objects", "info");
+  const header = async (): Promise<number | undefined> => {
+    let file: fs.FileHandle | undefined;
+    try {
+      file = await fs.open(path.join(dir, "index"), "r");
+      const buf = new Uint8Array(12);
+      const { bytesRead } = await file.read(buf, 0, 12, 0);
+      // A split index's own entries are only those changed since its shared index.
+      const split = (await fs.readdir(dir)).some((n) => n.startsWith("sharedindex."));
+      return indexEntries(buf.subarray(0, bytesRead), split);
+    } catch (e) {
+      // No index yet: nothing was ever added.
+      return (e as NodeJS.ErrnoException).code === "ENOENT" ? 0 : undefined;
+    } finally {
+      await file?.close();
+    }
+  };
+  const [single, chain, tracked] = await Promise.all([exists(path.join(info, "commit-graph")), exists(path.join(info, "commit-graphs", "commit-graph-chain")), header()]);
+  return { commitGraph: single || chain, tracked };
+}
 /** A repository with no commit yet has no HEAD: an empty answer, not a failure. */
 const unborn = (e: unknown) => /HEAD/.test(messageOf(e)) && /unknown revision|not a valid object name|ambiguous argument|bad default revision|does not have any commits/i.test(messageOf(e));
 
@@ -79,6 +121,10 @@ export class InsightsPanel implements vscode.Disposable {
   private built: { files?: Built; commits?: Built } = {};
   /** The folder each treemap shows: keys below its base (the scope's root, or the scope's folder). */
   private drilled: Record<TreeTab, string[]> = { files: [], commits: [] };
+  /** Repositories being written (Health's buttons wait for them). */
+  private readonly busy = new Set<string>();
+  /** Test seam: the last Health write's commands and failures. */
+  lastWrite: { repo: string; command: string; error?: string }[] = [];
   /** The read in flight per tab: a newer request kills it. */
   private readonly reads = new Map<InsightsTab, AbortController>();
   /** Several repositories reporting at once (Update Project) read once. */
@@ -272,6 +318,9 @@ export class InsightsPanel implements vscode.Disposable {
         this.postTree(m.tab, built);
         return;
       }
+      case "health":
+        await this.healthAction(m);
+        return;
     }
   }
 
@@ -280,6 +329,7 @@ export class InsightsPanel implements vscode.Disposable {
     if (!this.panel) return;
     if (this.tab === "history") await this.showHistory();
     else if (isTreeTab(this.tab)) await this.showTree(this.tab);
+    else if (this.tab === "health") await this.showHealth();
   }
 
   /** The answer for `key`, a fresh one if the key changed (a new scope path or range). */
@@ -411,9 +461,127 @@ export class InsightsPanel implements vscode.Disposable {
     this.post({ type: "tree", tab, status: "ready", data });
   }
 
+  /**
+   * Health, per repository: git count-objects -v and one git config --get-regexp (every scope,
+   * so the global maintenance.repo list comes with it): two processes. The commit-graph and the
+   * tracked-file count come from the git dir's files.
+   */
+  private async readHealth(repo: Repo, signal: AbortSignal): Promise<HealthFacts> {
+    const [objects, config, files] = await Promise.all([
+      orUndefined(this.run(repo.root, ["count-objects", "-v"], signal).then(parseCountObjects)),
+      // Exit 1: no key matched, which is an answer (nothing is set).
+      orUndefined(this.run(repo.root, ["config", "--get-regexp", HEALTH_CONFIG_REGEXP], signal).then(parseConfig, (e) => {
+        if (e instanceof GitError && e.exitCode === 1) return new Map<string, (string | null)[]>();
+        throw e;
+      })),
+      gitDirFacts(repo.root),
+    ]);
+    if (signal.aborted) throw abortError();
+    return { root: repo.root, objects, config, ...files };
+  }
+
+  private async showHealth(): Promise<void> {
+    const repos = this.scopeRepos();
+    const answer = this.answerFor("health", readKey("health", this.scope, this.range, []));
+    if (repos.some((r) => !answer.byRepo.has(r.id))) this.post({ type: "health", status: "loading" });
+    const done = await this.fill("health", answer, repos, (repo, signal) => this.readHealth(repo, signal));
+    if (!done || this.tab !== "health") return;
+    this.postHealth();
+  }
+
+  /** The rows as they stand: what was read, assessed now (thresholds, this platform). */
+  private postHealth(): void {
+    const answer = this.answers.health;
+    if (!answer) return;
+    const repos = this.scopeRepos();
+    const rows = repos.flatMap((r) => {
+      const facts = answer.byRepo.get(r.id)?.value;
+      return facts ? [assess(r, facts, healthFormat())] : [];
+    });
+    this.post({ type: "health", status: "ready", data: { rows, failures: this.failures(answer, repos), busy: [...this.busy] } });
+  }
+
+  /**
+   * A Health button. Nothing is written without the modal confirmation naming every command; a
+   * copy writes nothing. Afterwards the written repositories are read again.
+   */
+  private async healthAction(m: Extract<InsightsWebviewMessage, { type: "health" }>): Promise<void> {
+    const answer = this.answers.health;
+    if (!answer || !Array.isArray(m.repoIds)) return;
+    const repos = m.repoIds.flatMap((id) => {
+      const repo = typeof id === "string" ? this.deps.repos().find((r) => r.id === id) : undefined;
+      return repo && !this.busy.has(repo.id) && answer.byRepo.get(repo.id)?.value ? [repo] : [];
+    });
+    if (!repos.length) return;
+    const row = (repo: Repo) => assess(repo, answer.byRepo.get(repo.id)!.value!, healthFormat());
+    if (m.action === "copy") {
+      await copyText(maintenanceStart(repos[0].root));
+      void vscode.window.showInformationMessage(localize("Copied: {0}. Run it in a terminal to schedule git maintenance for {1}.", maintenanceStart(repos[0].root), repos[0].name));
+      return;
+    }
+    let actions: (repo: Repo) => HealthAction[];
+    if (m.action === "commitGraph") actions = () => [{ kind: "commitGraph" }];
+    else if (m.action === "config") {
+      if (!isConfigKey(m.key) || typeof m.value !== "boolean") return;
+      const key = m.key, value = m.value;
+      actions = () => [{ kind: "config", key, value }];
+    } else if (m.action === "maintenance") {
+      // The tasks the repositories' rows recommend start ticked.
+      const wanted = new Set(repos.flatMap((r) => {
+        const a = row(r).checks.find((c) => c.id === "objects")?.action;
+        return a?.kind === "maintenance" && a.recommended ? a.tasks : [];
+      }));
+      const items = TASKS.map((task) => ({ label: task, detail: taskInfo(task).detail, picked: wanted.has(task) }));
+      const picked = await this.deps.ask.pickMany(items, localize("git maintenance run: the tasks to run in {0}", repos.map((r) => r.name).join(", ")));
+      if (!picked?.length) return;
+      const tasks = picked.map((i) => TASKS[i]) as MaintenanceTask[];
+      actions = () => [{ kind: "maintenance", tasks }];
+    } else if (m.action === "optimize") actions = (repo) => row(repo).optimize;
+    else return;
+    const targets = repos.map((repo) => ({ repo, plans: actions(repo).flatMap((a) => writePlan(a) ?? []) })).filter((t) => t.plans.length > 0);
+    if (!targets.length) {
+      void vscode.window.showInformationMessage(localize("Nothing to optimize in the selected repositories."));
+      return;
+    }
+    const c = confirmText(targets.map((t) => ({ name: t.repo.name, plans: t.plans })));
+    if (!(await this.deps.ask.warning(c.message, c.detail, c.button))) return;
+    await this.write(targets);
+  }
+
+  private async write(targets: { repo: Repo; plans: WritePlan[] }[]): Promise<void> {
+    for (const t of targets) this.busy.add(t.repo.id);
+    this.postHealth();
+    // A write is never killed by a newer read: it runs to its end.
+    const signal = new AbortController().signal;
+    const log: { repo: string; command: string; error?: string }[] = [];
+    await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: localize("Linyra: writing to {0}", targets.map((t) => t.repo.name).join(", ")) }, () =>
+      runPool(targets, 2, async (t) => {
+        // In order, and no further after a failure: a later command may rely on an earlier one.
+        for (const p of t.plans) {
+          try {
+            await this.run(t.repo.root, p.args, signal, { env: { GIT_OPTIONAL_LOCKS: "1" } });
+            log.push({ repo: t.repo.name, command: commandText(p) });
+          } catch (e) {
+            log.push({ repo: t.repo.name, command: commandText(p), error: messageOf(e) });
+            void vscode.window.showErrorMessage(localize("{0}: {1} failed: {2}", t.repo.name, commandText(p), messageOf(e)));
+            return;
+          }
+        }
+      }, signal));
+    this.lastWrite = log;
+    const answer = this.answers.health;
+    for (const t of targets) {
+      this.busy.delete(t.repo.id);
+      answer?.byRepo.delete(t.repo.id);
+    }
+    if (answer) answer.version++;
+    if (this.tab === "health" && this.panel) await this.show();
+    else this.postHealth();
+  }
+
   /** Test seam: the tab's state as the integration suite checks it. */
-  snapshot(): { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; range: InsightsRange; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[] } {
-    return { open: !!this.panel, visible: !!this.panel?.visible, tab: this.tab, scope: this.scope, range: this.range, reading: [...this.reads.keys()], posted: this.posted, spawned: this.spawned };
+  snapshot(): { open: boolean; visible: boolean; tab: InsightsTab; scope: InsightsScope; range: InsightsRange; reading: InsightsTab[]; posted: InsightsHostMessage[]; spawned: { root: string; args: string[] }[]; lastWrite: { repo: string; command: string; error?: string }[] } {
+    return { open: !!this.panel, visible: !!this.panel?.visible, tab: this.tab, scope: this.scope, range: this.range, reading: [...this.reads.keys()], posted: this.posted, spawned: this.spawned, lastWrite: this.lastWrite };
   }
 
   dispose(): void {

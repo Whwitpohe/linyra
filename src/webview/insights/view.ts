@@ -7,6 +7,7 @@ import { byId, h } from "../dom";
 import { codiconElement } from "../codicons";
 import { commitTooltip, HistoryChart } from "./history";
 import { bytes, keyOf, TreemapView, valueText } from "./treemap";
+import { HealthView } from "./health";
 
 export interface InsightsApi {
   postMessage(message: InsightsWebviewMessage): void;
@@ -69,6 +70,7 @@ export function mountInsights(api: InsightsApi): void {
   const status = byId("insights-status");
   const chart = new HistoryChart(byId("history-chart"));
   const maps: Record<TreeTab, TreemapView> = { files: new TreemapView(byId("files-map")), commits: new TreemapView(byId("commits-map")) };
+  const health = new HealthView(byId("health-table"), byId("health-details"), byId("health-toolbar"));
   const post = (m: InsightsWebviewMessage) => api.postMessage(m);
 
   const showTip = (content: HTMLElement[] | undefined, at?: DOMRect) => {
@@ -276,6 +278,23 @@ export function mountInsights(api: InsightsApi): void {
         history = m.data;
         drawHistory();
         return;
+      case "health": {
+        const panel = byId("panel-health");
+        if (m.status === "loading") {
+          panel.classList.add("loading");
+          return;
+        }
+        panel.classList.remove("loading");
+        const d = m.data!;
+        const notes = byId("health-notes");
+        const lines = d.failures.map((f) => localize("{0} could not be read: {1}", f.name, f.reason));
+        notes.replaceChildren(...lines.map((l) => h("div", {}, [l])));
+        notes.hidden = lines.length === 0;
+        byId("health-empty").hidden = d.rows.length > 0;
+        byId("health-empty").textContent = d.rows.length ? "" : localize("No repository is ticked.");
+        health.render(d, { repos, act: (action, repoIds, key, value) => post({ type: "health", action, repoIds, ...(key ? { key } : {}), ...(value === undefined ? {} : { value }) }) });
+        return;
+      }
       case "tree":
         if (m.status === "loading") {
           byId(`panel-${m.tab}`).classList.add("loading");

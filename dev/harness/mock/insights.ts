@@ -2,6 +2,7 @@
 // (CLAUDE.md constraint 3). Deterministic, so screenshots reproduce.
 import type { BubbleCommit } from "../../../src/insights/protocol";
 import type { InsightsRepo } from "../../../src/insights/protocol";
+import type { HealthFacts } from "../../../src/insights/health";
 
 /** 2026-09-23T12:00:00Z, as the Log's harness. */
 export const INSIGHTS_NOW = 1790164800;
@@ -31,6 +32,20 @@ function sha(n: number): string {
     s += x.toString(16).padStart(8, "0");
   }
   return s.slice(0, 40);
+}
+
+/**
+ * What Health reads per repository: acme-web big and neglected (no commit-graph, many loose
+ * objects, many files, nothing set), acme-api tuned, acme-libs small.
+ */
+export function mockHealth(): Record<string, HealthFacts> {
+  const objects = (loose: number, packs: number, packKiB: number) => ({ loose, looseKiB: loose * 4, inPack: 180_000, packs, packKiB, prunePackable: 0, garbage: 0 });
+  return {
+    "/work/acme-web": { root: "/work/acme-web", commitGraph: false, objects: objects(8_412, 61, 412_000), tracked: 128_400, config: new Map() },
+    "/work/acme-api": { root: "/work/acme-api", commitGraph: true, objects: objects(220, 3, 96_000), tracked: 54_200,
+      config: new Map([["core.untrackedcache", ["true"]], ["core.fsmonitor", ["true"]], ["maintenance.repo", ["/work/acme-api"]]]) },
+    "/work/acme-libs": { root: "/work/acme-libs", commitGraph: true, objects: objects(35, 1, 4_200), tracked: 2_310, config: new Map() },
+  };
 }
 
 /** Tracked files and their sizes: a web app, a Go service and a package workspace. */
