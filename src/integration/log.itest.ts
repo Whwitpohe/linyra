@@ -21,7 +21,9 @@ describe("Linyra panel", () => {
     assert.strictEqual(s.profiles.length, 0, "retired Polylog profiles are ignored");
     assert.strictEqual(vscode.workspace.getConfiguration("linyra").inspect("excludeRepos")?.workspaceValue, undefined, "activation does not migrate old settings");
     const properties = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties;
-    assert.strictEqual(Object.keys(properties).length, 6);
+    // 6 Log settings, 3 for avatars (linyra.avatars, avatarHosts, avatarUrlTemplate) and 6 for AI
+    // (enabled, profiles, activeProfile, exclude, maxPromptTokens, commitMessageInstructions).
+    assert.strictEqual(Object.keys(properties).length, 15);
     assert.ok(Object.keys(properties).every((key) => key.startsWith("linyra.")), "only Linyra settings are registered");
   });
 
