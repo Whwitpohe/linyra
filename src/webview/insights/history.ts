@@ -109,6 +109,8 @@ export class HistoryChart {
     this.data = data;
     this.ctx = ctx;
     if (!same) {
+      // The keyboard's commit stays focused when the same commit is in the new answer.
+      const was = this.focusedCommit;
       // Newest last within a row, so the keyboard's → walks forward in time.
       this.commits = data.commits;
       this.rows = authorRows(this.commits);
@@ -116,7 +118,8 @@ export class HistoryChart {
       this.rowOf = this.commits.map((c) => rowIndex.get(authorKey(c.author, c.email)) ?? 0);
       this.times = this.commits.map((c) => c.time);
       this.order = rowOrder(this.rowOf, this.times, this.rows.length);
-      this.focused = undefined;
+      const at = was ? this.commits.findIndex((c) => c.sha === was.sha && c.repoId === was.repoId) : -1;
+      this.focused = at < 0 ? undefined : at;
     }
     this.draw();
   }

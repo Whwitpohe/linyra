@@ -99,8 +99,11 @@ import { locate, logPathspec, readKey, safePath, sanitizeScope, sinceOf, treePat
   assert.strictEqual(locate(repos, "c:\\work\\acme-web\\a.ts", false), undefined, "case matters where the file system says so");
   assert.deepStrictEqual(locate(repos, "C:\\work\\acme-api", true), { repo: repos[2], path: "" }, "the root itself: the whole repository");
 
-  assert.notStrictEqual(readKey("history", { kind: "ticked" }, "1w", ["a"]), readKey("history", { kind: "ticked" }, "4w", ["a"]));
-  assert.strictEqual(readKey("files", { kind: "ticked" }, "1w", ["a"]), readKey("files", { kind: "ticked" }, "4w", ["a"]), "Files does not depend on the range");
-  assert.notStrictEqual(readKey("health", { kind: "ticked" }, "1w", ["a"]), readKey("health", { kind: "ticked" }, "1w", ["a", "b"]));
+  const path = { kind: "path", repoId: "r", path: "src", folder: true } as const;
+  assert.notStrictEqual(readKey("history", { kind: "ticked" }, "1w"), readKey("history", { kind: "ticked" }, "4w"));
+  assert.strictEqual(readKey("history", { kind: "ticked" }, "1w"), readKey("history", { kind: "repo", repoId: "r" }, "1w"), "one repository shows what the ticked ones read");
+  assert.notStrictEqual(readKey("history", path, "1w"), readKey("history", { kind: "repo", repoId: "r" }, "1w"), "a path is its own read");
+  assert.strictEqual(readKey("files", { kind: "ticked" }, "1w"), readKey("files", { kind: "ticked" }, "4w"), "Files does not depend on the range");
+  assert.strictEqual(readKey("health", path, "1w"), readKey("health", { kind: "ticked" }, "all"), "Health reads whole repositories, whatever the scope");
   console.log("ok - ranges count back calendar units; scopes and paths from a webview are checked");
 }

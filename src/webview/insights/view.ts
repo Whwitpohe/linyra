@@ -1,5 +1,5 @@
 // Linyra Insights' webview: the tabs, the scope, range and color controls, and each tab's drawing.
-import type { BubbleCommit, HistoryData, InsightsHostMessage, InsightsRepo, InsightsWebviewMessage, TreeData, TreeTab } from "../../insights/protocol";
+import type { BubbleCommit, HealthData, HistoryData, InsightsHostMessage, InsightsRepo, InsightsWebviewMessage, TreeData, TreeTab } from "../../insights/protocol";
 import { heatLegend, type TreeNodeMsg } from "../../insights/treemap";
 import { HISTORY_LIMIT, RANGES, type ColorBy, type InsightsRange, type InsightsScope, type InsightsTab } from "../../insights/range";
 import { language, localize } from "../../i18n";
@@ -89,31 +89,43 @@ export function mountInsights(api: InsightsApi): void {
   const tabs = [...document.querySelectorAll<HTMLButtonElement>("#insights-tabs [role=tab]")];
   const tabOf = (b: HTMLElement) => b.dataset.tab as InsightsTab;
   for (const b of tabs) b.addEventListener("click", () => select(tabOf(b), true));
+  // Arrows move the focus, Enter or Space shows the tab (manual activation): walking past a tab
+  // starts no read.
   byId("insights-tabs").addEventListener("keydown", (e) => {
     const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
     if (at < 0) return;
     const next = e.key === "ArrowRight" ? at + 1 : e.key === "ArrowLeft" ? at - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -2;
     if (next === -2) return;
     e.preventDefault();
-    const b = tabs[(next + tabs.length) % tabs.length];
-    b.focus();
-    select(tabOf(b), true);
+    tabs[(next + tabs.length) % tabs.length].focus();
   });
 
   function select(tab: InsightsTab, ask: boolean): void {
     if (!init) return;
     const changed = init.tab !== tab;
     init = { ...init, tab };
+    const focused = tabs.includes(document.activeElement as HTMLButtonElement);
     for (const b of tabs) {
       const on = tabOf(b) === tab;
       b.setAttribute("aria-selected", on ? "true" : "false");
+      // The tab list is one stop; while the focus is in it, every tab can be reached.
       b.tabIndex = on ? 0 : -1;
       byId(`panel-${tabOf(b)}`).hidden = !on;
     }
+    if (focused) tabs.find((b) => tabOf(b) === tab)?.focus();
     showTip(undefined);
     controls();
     if (ask && changed) post({ type: "tab", tab });
   }
+
+  let rangeTimer: ReturnType<typeof setTimeout> | undefined;
+  const chooseRange = (value: InsightsRange) => {
+    if (!init) return;
+    init = { ...init, range: value };
+    controls();
+    clearTimeout(rangeTimer);
+    rangeTimer = setTimeout(() => { rangeTimer = undefined; post({ type: "range", range: value }); }, 300);
+  };
 
   const scopeSelect = byId<HTMLSelectElement>("scope");
   scopeSelect.addEventListener("change", () => post({ type: "scope", scope: JSON.parse(scopeSelect.value) as InsightsScope }));
@@ -130,7 +142,7 @@ export function mountInsights(api: InsightsApi): void {
     ];
     const s = i.scope;
     if (s.kind !== "ticked" && !i.ticked.includes(s.repoId)) options.push({ scope: { kind: "repo", repoId: s.repoId }, label: repos.get(s.repoId)?.name ?? "" });
-    if (s.kind === "path") options.push({ scope: s, label: `${repos.get(s.repoId)?.name ?? ""} › ${s.path}` });
+    if (s.kind === "path") options.push({ scope: s, label: localize("{0} › {1}", repos.get(s.repoId)?.name ?? "", s.path) });
     const current = JSON.stringify(s);
     scopeSelect.replaceChildren(...options.map((o) => h("option", { value: JSON.stringify(o.scope), selected: JSON.stringify(o.scope) === current }, [o.label])));
     scopeSelect.value = current;
@@ -138,7 +150,7 @@ export function mountInsights(api: InsightsApi): void {
     const range = byId("range"), color = byId("color-by");
     range.hidden = !(i.tab === "history" || i.tab === "commits");
     color.hidden = i.tab !== "history";
-    segments(range, RANGES.map((value) => ({ value, label: RANGE_LABELS[value]() })), i.range, (value) => post({ type: "range", range: value }));
+    segments(range, RANGES.map((value) => ({ value, label: RANGE_LABELS[value]() })), i.range, chooseRange);
     segments<ColorBy>(color, [{ value: "repo", label: localize("Repository") }, { value: "author", label: localize("Author") }], i.colorBy, (value) => {
       init = { ...i, colorBy: value };
       post({ type: "colorBy", colorBy: value });
@@ -256,17 +268,34 @@ export function mountInsights(api: InsightsApi): void {
     drawStrip(tab);
   }
 
+  let healthData: HealthData | undefined;
+  function drawHealth(d: HealthData): void {
+    const notes = byId("health-notes");
+    const lines = d.failures.map((f) => localize("{0} could not be read: {1}", f.name, f.reason));
+    notes.replaceChildren(...lines.map((l) => h("div", {}, [l])));
+    notes.hidden = lines.length === 0;
+    byId("health-empty").hidden = d.rows.length > 0;
+    byId("health-empty").textContent = d.rows.length ? "" : localize("No repository is ticked.");
+    health.render(d, { repos, act: (action, repoIds, key, value) => post({ type: "health", action, repoIds, ...(key ? { key } : {}), ...(value === undefined ? {} : { value }) }) });
+  }
+
   window.addEventListener("message", (event: MessageEvent) => {
     const m = event.data as InsightsHostMessage;
     if (!m || typeof m !== "object") return;
     switch (m.type) {
       case "init": {
-        const redraw = !init || init.colorBy !== m.colorBy || init.repos !== m.repos;
-        init = m;
+        const colors = !init || JSON.stringify(init.repos) !== JSON.stringify(m.repos);
+        const redraw = colors || init?.colorBy !== m.colorBy;
+        // A range still waiting to be sent stays chosen.
+        init = rangeTimer !== undefined && init ? { ...m, range: init.range } : m;
         repos.clear();
         for (const r of m.repos) repos.set(r.id, r);
         select(m.tab, false);
         if (redraw) drawHistory();
+        if (colors) {
+          for (const t of ["files", "commits"] as const) drawTree(t);
+          if (healthData) drawHealth(healthData);
+        }
         return;
       }
       case "history":
@@ -285,14 +314,8 @@ export function mountInsights(api: InsightsApi): void {
           return;
         }
         panel.classList.remove("loading");
-        const d = m.data!;
-        const notes = byId("health-notes");
-        const lines = d.failures.map((f) => localize("{0} could not be read: {1}", f.name, f.reason));
-        notes.replaceChildren(...lines.map((l) => h("div", {}, [l])));
-        notes.hidden = lines.length === 0;
-        byId("health-empty").hidden = d.rows.length > 0;
-        byId("health-empty").textContent = d.rows.length ? "" : localize("No repository is ticked.");
-        health.render(d, { repos, act: (action, repoIds, key, value) => post({ type: "health", action, repoIds, ...(key ? { key } : {}), ...(value === undefined ? {} : { value }) }) });
+        healthData = m.data!;
+        drawHealth(healthData);
         return;
       }
       case "tree":

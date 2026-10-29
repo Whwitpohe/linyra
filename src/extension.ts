@@ -436,7 +436,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const show = (log as unknown as { showCommit?: (repoId: string, sha: string) => Promise<void> }).showCommit;
       if (show) return show.call(log, a.repoId, a.sha);
       await vscode.commands.executeCommand(`${LogView.id}.focus`);
-      if (!(await changes.selectCommit?.(a.repoId, a.sha))) void vscode.window.showInformationMessage(localize("This commit is not in the Log's list. Search for its id: {0}", a.sha.slice(0, 10)));
+      if (await changes.selectCommit?.(a.repoId, a.sha)) return;
+      const copy = localize("Copy Commit ID");
+      const sha = a.sha;
+      void vscode.window.showInformationMessage(localize("This commit is not in the Log's list. Search for its id: {0}", sha.slice(0, 10)), copy).then((pick) => (pick === copy ? copyText(sha) : undefined));
     }),
   );
   // Test seam for the integration suite only; never registered for users.

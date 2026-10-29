@@ -241,6 +241,14 @@ describe("Insights", () => {
     assert.deepStrictEqual(perRepo(spawns.slice(1))["acme-web"].sort(), ["config", "count-objects"], "only the written repository is read again");
     assert.deepStrictEqual(Object.keys(perRepo(spawns)), ["acme-web"]);
 
+    // A double click: the second request finds the repository busy and does nothing.
+    await quiet();
+    await mark();
+    await ask("Write Commit-Graph");
+    await Promise.all([tell({ type: "health", action: "commitGraph", repoIds: [web.id] }), tell({ type: "health", action: "commitGraph", repoIds: [web.id] })]);
+    assert.strictEqual((await sinceMark()).spawns.filter((s) => s.args[0] === "commit-graph").length, 1, "one write, not two");
+    await quiet();
+
     // A setting: git config --local, both ways.
     await ask("Turn On");
     await tell({ type: "health", action: "config", repoIds: [web.id], key: "core.untrackedCache", value: true });

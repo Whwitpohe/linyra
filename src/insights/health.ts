@@ -52,7 +52,7 @@ export function taskInfo(task: MaintenanceTask): { label: string; detail: string
     case "loose-objects": return { label: task, detail: localize("Packs the loose objects, then deletes the loose copies already packed.") };
     case "incremental-repack": return { label: task, detail: localize("Merges small packs into bigger ones, a little at a time.") };
     case "pack-refs": return { label: task, detail: localize("Packs branches and tags into one file (git 2.38 and later).") };
-    case "gc": return { label: task, detail: localize("git gc: repacks everything and deletes unreachable objects older than two weeks.") };
+    case "gc": return { label: task, detail: localize("git gc: repacks everything, expires old reflog entries and deletes unreachable objects older than two weeks.") };
   }
 }
 
@@ -64,6 +64,8 @@ export interface HealthFacts {
   tracked: number | undefined;
   /** Every scope's values (git config --get-regexp), lowercased keys. */
   config: ReadonlyMap<string, readonly (string | null)[]> | undefined;
+  /** A linked worktree: its settings and objects are its main repository's, shared by every worktree. */
+  shared?: boolean;
 }
 
 export type HealthStatus = "ok" | "suggest" | "info" | "unknown";
@@ -232,7 +234,7 @@ export function writePlan(action: HealthAction): WritePlan | undefined {
   switch (action.kind) {
     case "commitGraph": return { args: ["commit-graph", "write", "--reachable"], writes: localize("writes .git/objects/info/commit-graph") };
     case "maintenance": return action.tasks.length ? { args: ["maintenance", "run", ...action.tasks.map((t) => `--task=${t}`)], writes: action.tasks.includes("gc")
-      ? localize("rewrites the packs and deletes unreachable objects older than two weeks")
+      ? localize("rewrites the packs, expires old reflog entries and deletes unreachable objects older than two weeks")
       : localize("rewrites packs and loose objects, keeping every object") } : undefined;
     case "config": return { args: ["config", "--local", action.key, action.value ? "true" : "false"], writes: localize("writes .git/config") };
     case "copy": return undefined;
@@ -249,10 +251,11 @@ export const maintenanceStart = (root: string): string => `git -C "${root}" main
  * The confirmation: what will be written, in which repository, by which command. Nothing is
  * written without it.
  */
-export function confirmText(plans: readonly { name: string; plans: readonly WritePlan[] }[]): { message: string; detail: string; button: string } {
+export function confirmText(plans: readonly { name: string; plans: readonly WritePlan[]; shared?: boolean }[]): { message: string; detail: string; button: string } {
   const repos = plans.filter((p) => p.plans.length > 0);
-  const lines = repos.flatMap((r) => [`${r.name}:`, ...r.plans.map((p) => `  ${commandText(p)}  (${p.writes})`), ""]);
-  const detail = [localize("Linyra will run:"), "", ...lines, localize("Each command writes only inside that repository's .git folder.")].join("\n");
+  const lines = repos.flatMap((r) => [localize("{0}:", r.name), ...r.plans.map((p) => `  ${commandText(p)}  ${localize("({0})", p.writes)}`),
+    ...(r.shared ? [localize("  {0} is a linked worktree: this writes to its main repository's git folder, for every worktree of it.", r.name)] : []), ""]);
+  const detail = [localize("Linyra will run:"), "", ...lines, localize("Each command writes only inside that repository's git folder.")].join("\n");
   const only = repos.length === 1 && repos[0].plans.length === 1 ? repos[0].plans[0] : undefined;
   if (only?.args[0] === "commit-graph") return { message: localize("Write the commit-graph in {0}?", repos[0].name), detail, button: localize("Write Commit-Graph") };
   if (only?.args[0] === "maintenance") return { message: localize("Run git maintenance in {0}?", repos[0].name), detail, button: localize("Run Maintenance") };

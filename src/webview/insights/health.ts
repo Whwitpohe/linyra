@@ -101,7 +101,8 @@ export class HealthView {
       h("th", { class: "col-repo", scope: "row" }, [h("span", { class: `strip-repo accent-${repo?.accent ?? 0}` }, [r.name])]),
       ...r.checks.map((c) => {
         const icon = ICONS[c.status];
-        return h("td", { class: `cell status-${c.status}`, title: `${checkInfo(c.id).label}: ${c.value}${statusLabel(c.status) ? ` · ${statusLabel(c.status)}` : ""}\n${c.advice}` },
+        const head = localize("{0}: {1}", checkInfo(c.id).label, c.value);
+        return h("td", { class: `cell status-${c.status}`, title: `${statusLabel(c.status) ? localize("{0} · {1}", head, statusLabel(c.status)) : head}\n${c.advice}` },
           [icon ? codiconElement(icon, "cell-icon") : null, h("span", { class: "cell-value" }, [c.value])]);
       }),
       h("td", { class: "col-count" }, [this.busy(r.repoId) ? localize("Writing…") : r.suggestions ? formatNumber(r.suggestions) : "—"]),

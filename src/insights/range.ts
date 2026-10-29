@@ -85,8 +85,13 @@ export function locate<R extends { root: string }>(repos: readonly R[], fsPath: 
   return best;
 }
 
-/** The key one read answers: a scope and a range (Files and Health ignore the range). */
-export function readKey(tab: InsightsTab, scope: InsightsScope, range: InsightsRange, repoIds: readonly string[]): string {
-  const where = scope.kind === "path" ? `${scope.repoId}\0${scope.path}` : repoIds.join("\0");
+/**
+ * The key one answer is read for: a path scope's path and the range (Files ignores the range).
+ * The repositories are not in it: a scope of fewer repositories shows what was read of them. Health
+ * reads whole repositories, so one answer serves every scope.
+ */
+export function readKey(tab: InsightsTab, scope: InsightsScope, range: InsightsRange): string {
+  if (tab === "health") return tab;
+  const where = scope.kind === "path" ? `${scope.repoId}\0${scope.path}` : "";
   return [tab, tab === "history" || tab === "commits" ? range : "", where].join("\x01");
 }

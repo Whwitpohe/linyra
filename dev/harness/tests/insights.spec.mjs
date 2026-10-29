@@ -77,9 +77,17 @@ test.describe("Visual History", () => {
     await expect(range.getByRole("radio", { name: "3 months" })).toHaveAttribute("aria-checked", "true");
     await range.getByRole("radio", { name: "1 year" }).click();
     await expect(range.getByRole("radio", { name: "1 year" })).toHaveAttribute("aria-checked", "true");
+    // Arrows walk the choices at once; the read waits until they stop, so passing one reads nothing.
     await page.keyboard.press("ArrowRight");
     await expect(range.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
-    expect((await messages(page, "range")).map((m) => m.range)).toEqual(["1y", "all"]);
+    await expect(range.getByRole("radio", { name: "All" })).toBeFocused();
+    await expect.poll(async () => (await messages(page, "range")).map((m) => m.range)).toEqual(["all"]);
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    await expect(range.getByRole("radio", { name: "3 months" })).toHaveAttribute("aria-checked", "true");
+    await expect.poll(async () => (await messages(page, "range")).map((m) => m.range)).toEqual(["all", "3m"]);
+    await range.getByRole("radio", { name: "All" }).click();
+    await expect.poll(async () => (await messages(page, "range")).length).toBe(3);
     const before = await page.locator("#history-chart circle.bubble").count();
     expect(before).toBeGreaterThan(200);
 
@@ -327,5 +335,40 @@ test.describe("Repository Health", () => {
     await expect(page.getByRole("tab", { name: "健康" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("button", { name: "优化所选（1）…" })).toBeVisible();
     await expect(page.locator("#health-details").getByRole("button", { name: "写入 Commit-Graph" })).toBeVisible();
+  });
+});
+
+test.describe("The tabs", () => {
+  test("arrows move between the tabs; Enter or Space shows one, so passing a tab reads nothing", async ({ page }) => {
+    await open(page);
+    await page.getByRole("tab", { name: "Visual History" }).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "Commits" })).toBeFocused();
+    await expect(page.getByRole("tab", { name: "Visual History" })).toHaveAttribute("aria-selected", "true");
+    expect(await messages(page, "tab")).toEqual([]);
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("tab", { name: "Commits" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#panel-commits")).toBeVisible();
+    await page.keyboard.press("End");
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("tab", { name: "Health" })).toHaveAttribute("aria-selected", "true");
+    expect((await messages(page, "tab")).map((m) => m.tab)).toEqual(["commits", "health"]);
+  });
+
+  test("the keyboard's bubble stays focused when the same answer comes again", async ({ page }) => {
+    await open(page);
+    await expect(page.locator("#history-chart circle.bubble").first()).toBeVisible();
+    await page.locator("#history-chart").focus();
+    await page.keyboard.press("ArrowLeft");
+    await page.keyboard.press("ArrowLeft");
+    const status = await page.locator("#insights-status").textContent();
+    const focused = await page.locator("#history-chart circle.bubble.focused").getAttribute("data-i");
+    // The host posts the same commits again (a repository was read again, unchanged).
+    await page.evaluate(() => window.insightsMessages.length);
+    await page.locator("#refresh").click();
+    await expect(page.locator("#history-chart circle.bubble.focused")).toHaveCount(1);
+    expect(await page.locator("#history-chart circle.bubble.focused").getAttribute("data-i")).toBe(focused);
+    expect(status).toMatch(/ — /);
   });
 });

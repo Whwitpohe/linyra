@@ -99,6 +99,10 @@ body.vscode-high-contrast .bubble.focused { stroke: var(--vscode-contrastActiveB
 .tile.frame > .tile-name { flex: 0 1 auto; }
 .tile.frame > .tile-value { flex: 0 1 auto; color: var(--vscode-descriptionForeground); }
 .tile.leaf > .tile-value { opacity: 0.8; font-variant-numeric: tabular-nums; }
+/* A short tile: its name and measure on one line, the measure kept whole. */
+.tile.leaf.one-line { flex-direction: row; gap: 5px; }
+.tile.leaf.one-line > .tile-name { flex: 0 1 auto; }
+.tile.leaf.one-line > .tile-value { flex: 0 0 auto; }
 /* A repository's frame carries its Log color along the top. */
 .tile.kind-repo { border-top: 3px solid var(--accent); }
 /* Never raised: a frame above its own tiles would hide them. A frame's hover is its border. */
@@ -169,11 +173,15 @@ body.vscode-high-contrast .tile-ring { outline: 3px solid var(--vscode-contrastA
 .health-table .col-repo { position: sticky; left: 28px; z-index: 1; background: var(--vscode-editor-background); font-weight: 400; color: var(--vscode-foreground); }
 .health-table thead .col-check, .health-table thead .col-repo { z-index: 2; color: var(--vscode-descriptionForeground); font-weight: 600; }
 .health-table tbody tr { cursor: pointer; }
-.health-table tbody tr:hover > * { background: var(--vscode-list-hoverBackground); }
-.health-table tbody tr[aria-selected="true"] > * { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground)); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
+/* Each chain ends in a color every theme has: a sticky cell must never turn see-through. */
+.health-table tbody tr:hover > * { background: var(--vscode-list-hoverBackground, var(--vscode-editor-background)); }
+.health-table tbody tr[aria-selected="true"] > * { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-list-hoverBackground, var(--vscode-editor-background))); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); }
 .health-table tbody tr:focus { outline: none; }
-.health-table tbody tr:focus-visible > * { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-inactiveSelectionBackground)); color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); }
+.health-table tbody tr:focus-visible > * { background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-inactiveSelectionBackground, var(--vscode-editor-background))); color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground)); }
 .health-table tbody tr:focus-visible > :first-child { box-shadow: inset 2px 0 0 var(--vscode-focusBorder); }
+/* High contrast draws selection as an outline, not a fill: the selected row is dashed, the focused one solid. */
+body.vscode-high-contrast .health-table tbody tr[aria-selected="true"] > * { box-shadow: inset 0 1px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)), inset 0 -1px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+body.vscode-high-contrast .health-table tbody tr:focus-visible > * { box-shadow: inset 0 2px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)), inset 0 -2px 0 var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
 .health-table tr.busy { opacity: 0.7; }
 .health-table .cell { display: table-cell; }
 .cell-icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 5px; }

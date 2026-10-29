@@ -32,7 +32,7 @@ export function nodeName(n: TreeNodeMsg): string {
 /** What a tile says to a screen reader and in its tooltip's first line. */
 export function describeNode(tab: TreeData["tab"], n: TreeNodeMsg): string {
   const what = n.kind === "file" ? (n.path ?? n.name) : nodeName(n);
-  return n.kind === "file" ? `${what}, ${valueText(tab, n.value)}` : localize("{0}, {1} in {2} files", what, valueText(tab, n.value), count(n.files));
+  return n.kind === "file" ? localize("{0}, {1}", what, valueText(tab, n.value)) : localize("{0}, {1} in {2} files", what, valueText(tab, n.value), count(n.files));
 }
 
 export class TreemapView {
@@ -67,12 +67,18 @@ export class TreemapView {
   }
 
   render(data: TreeData, ctx: TreemapContext): void {
-    const changed = this.data?.node !== data.node;
+    // The keyboard's tile stays focused when the same folder is drawn again (a repository read again).
+    const was = this.focused === undefined ? undefined : tileKey(this.tiles[this.focused]?.node);
+    const sameFolder = this.data && this.data.tab === data.tab && this.data.path.join("\0") === data.path.join("\0");
     this.data = data;
     this.ctx = ctx;
     this.types = new Map(data.legend.map((l, i) => [l.ext, i]));
-    if (changed) this.focused = undefined;
+    this.focused = undefined;
     this.draw();
+    if (sameFolder && was !== undefined) {
+      const at = this.tiles.findIndex((t) => tileKey(t.node) === was);
+      if (at >= 0) { this.focused = at; this.placeRing(); }
+    }
   }
 
   /** The file whose strip shows below the map (kept across drawings by its key). */
@@ -146,7 +152,9 @@ export class TreemapView {
       el.style.height = `${t.h}px`;
       if (t.label) {
         el.append(h("span", { class: "tile-name" }, [nodeName(n)]));
-        if (t.frame || t.h >= 32) el.append(h("span", { class: "tile-value" }, [value]));
+        // Every labeled tile names its measure: on its own line, or beside the name in a short tile.
+        el.append(h("span", { class: "tile-value" }, [value]));
+        if (!t.frame && t.h < 32) el.classList.add("one-line");
       }
       if (keyOf(n) === this.selected) el.classList.add("selected");
       return el;
@@ -183,7 +191,10 @@ export class TreemapView {
 
   private key(e: KeyboardEvent): void {
     if (!this.tiles.length || !this.data) return;
-    if (ARROWS.has(e.key)) {
+    if ((e.key === "Backspace" || (e.key === "ArrowUp" && e.altKey)) && this.data.path.length) {
+      e.preventDefault();
+      this.ctx?.drill(this.data.path.slice(0, -1));
+    } else if (ARROWS.has(e.key)) {
       e.preventDefault();
       const next = this.focused === undefined ? 0 : nearestTile(this.tiles, this.focused, e.key as "ArrowLeft");
       if (next !== undefined) this.setFocus(next, true);
@@ -193,9 +204,6 @@ export class TreemapView {
     } else if ((e.key === "Enter" || e.key === " ") && this.focused !== undefined) {
       e.preventDefault();
       this.activate(this.focused);
-    } else if ((e.key === "Backspace" || (e.key === "ArrowUp" && e.altKey)) && this.data.path.length) {
-      e.preventDefault();
-      this.ctx?.drill(this.data.path.slice(0, -1));
     } else if (e.key === "Escape") {
       this.ctx?.tooltip(undefined);
     }
@@ -212,6 +220,9 @@ export class TreemapView {
     this.ctx.announce(describeNode(this.data.tab, n));
   }
 }
+
+/** Any tile's identity across drawings: its kind, repository, path and name. */
+const tileKey = (n: TreeNodeMsg | undefined): string | undefined => (n ? [n.kind, n.repoId ?? "", n.path ?? "", n.name].join("\0") : undefined);
 
 /** A file's identity across drawings: its repository and path. */
 export const keyOf = (n: TreeNodeMsg): string | undefined => (n.kind === "file" ? `${n.repoId}\0${n.path}` : undefined);
