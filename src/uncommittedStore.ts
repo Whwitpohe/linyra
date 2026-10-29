@@ -81,6 +81,8 @@ export class UncommittedStore implements vscode.Disposable {
   private readonly touched = new Set<string>();
   /** Touched by a save: VS Code's Git has not looked yet, so its "clean" is not trusted for these. */
   private readonly saved = new Set<string>();
+  /** Repositories git itself last found changes in (kept when they leave the scope): never cleaned on VS Code's Git's word. */
+  private readonly dirty = new Set<string>();
   private readonly touchedSoon = debounce(() => {
     const ids = new Set(this.touched);
     const trusted = new Set([...ids].filter((id) => !this.saved.has(id)));
@@ -282,9 +284,9 @@ export class UncommittedStore implements vscode.Disposable {
     // Clean as VS Code's Git last found it, and its view is current: no git process at all. Only
     // to confirm a repository already known clean: its event can come before it has read the
     // working tree again, and its word must never erase changes git itself reported.
-    const known = this.map.get(r.id);
-    const knownClean = !known || known.staged.length + known.changes.length === 0;
-    const cleanHead = trusted && knownClean ? this.deps.cleanHead?.(r.root) : undefined;
+    // "Known" outlives the scope: a repository unticked with changes and ticked again is still
+    // one git saw changes in, whatever a stale VS Code's Git says.
+    const cleanHead = trusted && !this.dirty.has(r.id) ? this.deps.cleanHead?.(r.root) : undefined;
     if (cleanHead !== undefined) return { repoId: r.id, root: r.root, name: r.name, head: cleanHead, staged: [], changes: [], editedAt: null, canStage: this.deps.canStage(r.root) };
     this.reads.push({ root: r.root, why });
     if (process.env.LINYRA_ITEST !== "1" && this.reads.length > 200) this.reads.splice(0, this.reads.length - 200);
@@ -305,6 +307,7 @@ export class UncommittedStore implements vscode.Disposable {
       const present = [...new Set([...staged, ...changes].filter((f) => f.status !== "D").map((f) => f.path))].slice(0, EDITED_SAMPLE);
       editedAt = await newestMtime(r.root, present);
     }
+    if (staged.length + changes.length > 0) this.dirty.add(r.id); else this.dirty.delete(r.id);
     return { repoId: r.id, root: r.root, name: r.name, head, staged, changes, editedAt, canStage: this.deps.canStage(r.root) };
   }
 
