@@ -69,7 +69,8 @@ export function visibleAuthors(input: unknown, isRepo: (id: string) => boolean):
 }
 
 type Result = { kind: "found"; uri: string } | { kind: "none" } | { kind: "later" };
-type Got = { kind: "body"; body: Uint8Array; contentType: string } | { kind: "none"; status?: number } | { kind: "later" };
+/** body: what `host` (the last hop's) sent. */
+type Got = { kind: "body"; body: Uint8Array; contentType: string; host: string } | { kind: "none"; status?: number } | { kind: "later" };
 
 export class Avatars {
   /** email → data: URI, for the session. */
@@ -200,12 +201,12 @@ export class Avatars {
   }
 
   private async ask(source: AvatarSource): Promise<Result> {
-    if (source.kind === "image") return this.image(source.url, source.host, source.allow);
+    if (source.kind === "image") return this.image(source.url, source.allow);
     const notGitLab = () => {
       this.refuse(source.host, localize("Avatars: {0} did not answer as a GitLab server. If it is another kind of server, name it in linyra.avatarHosts.", source.host));
       return { kind: "none" } as const;
     };
-    const api = await this.get(source.url, source.host, source.allow, MAX_JSON_BYTES);
+    const api = await this.get(source.url, source.allow, MAX_JSON_BYTES);
     // GitLab answers every address (a placeholder when no account matches): a 404 is no GitLab API.
     if (api.kind === "none" && api.status === 404) return notGitLab();
     if (api.kind !== "body") return api.kind === "none" ? { kind: "none" } : api;
@@ -217,24 +218,28 @@ export class Avatars {
     }
     const picture = gitlabAvatar(json, source.origin);
     // The picture's URL names no author: it may come from the instance's own storage.
-    return picture ? this.image(picture, source.host, ["*"]) : { kind: "none" };
+    return picture ? this.image(picture, ["*"]) : { kind: "none" };
   }
 
-  private async image(url: string, host: string, allow: readonly string[]): Promise<Result> {
-    const got = await this.get(url, host, allow, MAX_IMAGE_BYTES);
+  private async image(url: string, allow: readonly string[]): Promise<Result> {
+    const got = await this.get(url, allow, MAX_IMAGE_BYTES);
     if (got.kind !== "body") return got;
     const uri = dataUri(got.body);
     if (uri) return { kind: "found", uri };
     // A page where a picture should be: a sign-in or portal page served as 200.
-    if (/text\/html/i.test(got.contentType)) this.refuse(host, localize("Avatars: {0} sent a sign-in page. Linyra stops asking it until the window reloads.", host));
+    if (/text\/html/i.test(got.contentType)) this.refuse(got.host, localize("Avatars: {0} sent a sign-in page. Linyra stops asking it until the window reloads.", got.host));
     return { kind: "none" };
   }
 
-  /** One GET and its redirects, through the host's breaker. */
-  private async get(url: string, host: string, allow: readonly string[], maxBytes: number): Promise<Got> {
+  /**
+   * One GET and its redirects, each through the breaker of the host it goes to: a refusal breaks
+   * the host that refused (a GitLab instance's storage, say), not the one that sent Linyra there.
+   */
+  private async get(url: string, allow: readonly string[], maxBytes: number): Promise<Got> {
     const now = () => this.deps.now?.() ?? Date.now();
     let at = url;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+      const host = new URL(at).host;
       if (!this.breakers.admit(host, now())) return this.breakers.get(host).state === "broken" ? { kind: "none" } : { kind: "later" };
       let res: AvatarResponse;
       const signal = this.requests.signal;
@@ -263,7 +268,7 @@ export class Avatars {
         at = answer.url;
         continue;
       }
-      return res.body ? { kind: "body", body: res.body, contentType: res.contentType ?? "" } : { kind: "none" };
+      return res.body ? { kind: "body", body: res.body, contentType: res.contentType ?? "", host } : { kind: "none" };
     }
     return { kind: "none" };
   }

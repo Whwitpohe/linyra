@@ -133,6 +133,15 @@ void (async () => {
     await settle();
     assert.strictEqual(h.asked.length, 2, "a page served where a picture should be breaks the host");
     assert.strictEqual(h.posts.length, 0);
+    // The instance sends its picture from its storage; the storage refusing breaks the storage, not the instance.
+    const o = setup((url) => url.includes("/api/v4/avatar") ? json({ avatar_url: UPLOAD })
+      : url.startsWith("https://gitlab.acme.test/uploads/") ? status(302, "https://storage.acme.test/avatars/7.png?sig=1") : status(403));
+    o.avatars.want([{ email: "dana@example.com", repoId: "/work/acme-api" }]);
+    await settle();
+    o.avatars.want([{ email: "rin@example.com", repoId: "/work/acme-api" }]);
+    await settle();
+    assert.deepStrictEqual(o.asked, [gitlabApi("dana@example.com"), UPLOAD, "https://storage.acme.test/avatars/7.png?sig=1", gitlabApi("rin@example.com"), UPLOAD]);
+    assert.ok(o.logs[0].includes("storage.acme.test"), o.logs[0]);
     console.log("ok - 401/403, a sign-in redirect or page, and a missing GitLab API stop Linyra asking that host this session");
   }
   {
