@@ -24,6 +24,8 @@ ${localizationScript(o.nonce)}
 }
 
 const t = (text: string) => escapeHtml(text);
+/** ✨ as the Log draws it: the sparkle codicon in the text's color, not the colored emoji. */
+const sparkled = (text: string) => t(text).replace("✨", codicon("sparkle", "ai-inline-icon"));
 
 export function renderAiSettingsBody(): string {
   const providers = PROTOCOLS.map((p) => `
@@ -52,7 +54,7 @@ export function renderAiSettingsBody(): string {
     </div>
     <div id="ai-empty" class="ai-empty" hidden>
       ${codicon("sparkle", "ai-empty-icon")}
-      <p class="ai-empty-title">${t(localize("No AI profile yet — add one to use ✨ in the Log."))}</p>
+      <p class="ai-empty-title">${sparkled(localize("No AI profile yet — add one to use ✨ in the Log."))}</p>
       <p class="ai-hint">${t(localize("A profile is a provider, its address, a model and your API key. Linyra sends nothing until you add one and turn AI features on."))}</p>
     </div>
     <ul id="ai-profiles" class="ai-profiles" aria-labelledby="ai-profiles-title"></ul>

@@ -55,6 +55,8 @@ export function effortLabel(effort: AiEffort): string {
 export function checkBaseUrl(text: string): { url: string } | { error: string } {
   const value = text.trim();
   if (!value) return { error: localize("Enter the address of the API, for example {0}.", DEFAULT_BASE_URL.openai) };
+  // localhost:11434 parses as the scheme "localhost:": what is missing is the scheme.
+  if (!/^[a-z][a-z\d+.-]*:\/\//i.test(value)) return { error: localize("This is not an address. Start it with https:// or http://.") };
   let url: URL;
   try {
     url = new URL(value);

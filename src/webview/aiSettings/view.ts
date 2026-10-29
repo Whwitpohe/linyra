@@ -2,7 +2,7 @@ import { localize } from "../../i18n";
 import { hostOf } from "../../ai/errors";
 import { DEFAULT_BASE_URL, effortLabel } from "../../ai/profileModel";
 import {
-  ADDRESS_PRESETS, addressOf, checkForm, draftOf, effortNote, effortView, filterModels, fitEffort, isDefaultAddress, keyChoice, keyNote, keyPlaceholder, keyState,
+  ADDRESS_PRESETS, addressOf, checkForm, draftName, draftOf, effortNote, effortView, filterModels, fitEffort, isDefaultAddress, keyChoice, keyNote, keyPlaceholder, keyState,
   modelDescription, modelsNote, modelsReadable, newDraft, profileFacts, removalText, showsStoredKey, storedKeyText, testReport, usesStoredKey, withProtocol,
   type FieldMessage, type FormCheck, type KeyMode, type ModelsLoad, type ReportLine, type TestReport,
 } from "../../ai/settingsModel";
@@ -33,6 +33,9 @@ interface Form {
 
 const RESULT_ICON: Record<ReportLine["status"], Codicon> = { ok: "pass", warning: "warning", failed: "error", skipped: "circle-slash" };
 const MESSAGE_ICON: Record<FieldMessage["severity"], Codicon> = { error: "error", warning: "warning", info: "info" };
+
+/** ✨ as the Log draws it: the sparkle codicon in the text's color, not the colored emoji. */
+const sparkled = (text: string): (string | SVGElement)[] => text.split("✨").flatMap((part, i) => (i === 0 ? [part] : [codiconElement("sparkle", "ai-inline-icon"), part]));
 
 /**
  * The Linyra AI page: the profiles (Use, Edit, Remove with a confirmation that says what goes),
@@ -94,6 +97,8 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
   /** A test running, and the draft it tests (its report is read against that one). */
   let testing: { seq: number; draft: DraftProfile } | undefined;
   let saving = false;
+  /** Where the removed row was: the focus goes to the row that takes its place. */
+  let removedAt: number | undefined;
 
   const protocolRadios = () => [...formEl.querySelectorAll<HTMLInputElement>('input[name="ai-protocol"]')];
   const rowOf = (id: string) => [...list.children].find((li) => (li as HTMLElement).dataset.id === id) as HTMLElement | undefined;
@@ -118,9 +123,9 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     const active = state.profiles.find((p) => p.id === state.activeId);
     enabled.checked = state.enabled;
     enabled.disabled = state.profiles.length === 0;
-    enabledNote.textContent = state.profiles.length === 0 ? localize("Add a profile first.")
+    enabledNote.replaceChildren(...sparkled(state.profiles.length === 0 ? localize("Add a profile first.")
       : !state.enabled ? localize("Off: nothing is sent to any AI provider.")
-      : active ? localize("On: ✨ uses “{0}”.", active.label) : localize("On, but no profile is in use: choose one below.");
+      : active ? localize("On: ✨ uses “{0}”.", active.label) : localize("On, but no profile is in use: choose one below.")));
     addButton.className = state.profiles.length === 0 ? "button primary" : "button secondary";
   }
 
@@ -211,8 +216,8 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
         focusRow(p.id, "confirmRemove");
         return;
       case "confirmRemove":
-        confirming = undefined;
-        button.disabled = true;
+        if (removedAt !== undefined) return;
+        removedAt = state.profiles.indexOf(p);
         post({ type: "remove", id: p.id });
         return;
       case "cancelRemove":
@@ -269,6 +274,8 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     clearTimeout(modelsTimer);
     suggest.close();
     form = undefined;
+    // The typed key goes with the form: nothing keeps it once the host has it.
+    keyInput.value = "";
     editor.hidden = true;
     renderList();
     if (!focusBack) return;
@@ -350,6 +357,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     byId("ai-key-stored-text").textContent = storedKeyText(ks);
     keyCancel.hidden = !(usesStoredKey(ks) && f.keyMode !== "auto");
     keyInput.placeholder = keyPlaceholder(d.protocol);
+    nameInput.placeholder = draftName({ ...d, label: "" });
     byId("ai-key-note").textContent = keyNote(d, ks, f.keyMode);
     renderEfforts();
     renderChecks();
@@ -491,7 +499,8 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     if (!form || target.type !== "radio") return;
     if (target.name === "ai-protocol") {
       form.draft = withProtocol(form.draft, target.value as AiProtocol);
-      form.custom = false;
+      // A gateway address the user typed stays in its field.
+      form.custom = !isDefaultAddress(form.draft);
       form.keyMode = "auto";
       form.info = undefined;
       keyInput.value = "";
@@ -686,6 +695,16 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
         }
         status(m.error ?? m.note ?? "", m.error ? "error" : "ok");
         if (m.action === "use" && m.id) focusRow(m.id, "edit");
+        if (m.action === "remove") {
+          const at = removedAt;
+          removedAt = undefined;
+          if (m.error || at === undefined) return;
+          confirming = undefined;
+          renderList();
+          const next = state.profiles[Math.min(at, state.profiles.length - 1)];
+          if (next) focusRow(next.id);
+          else addButton.focus();
+        }
         return;
     }
   });

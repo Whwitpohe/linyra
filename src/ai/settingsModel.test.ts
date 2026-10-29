@@ -103,6 +103,9 @@ const draft = (over: Partial<DraftProfile> = {}): DraftProfile => ({ ...newDraft
   assert.strictEqual(bad.ok, false);
   assert.strictEqual(bad.baseUrl?.severity, "error");
   assert.ok(bad.baseUrl?.text.includes("https://"));
+  assert.strictEqual(checkForm(draft({ baseUrl: "localhost:11434" }), [], { kind: "none" }, { kind: "none" }).baseUrl?.text,
+    "This is not an address. Start it with https:// or http://.", "a missing scheme is said as such, not as a wrong one");
+  assert.strictEqual(checkForm(draft({ baseUrl: "ftp://files.example.com" }), [], { kind: "none" }, { kind: "none" }).baseUrl?.text, "Use an https:// or http:// address.");
   assert.strictEqual(bad.model?.severity, "error");
   assert.strictEqual(checkForm(draft({ baseUrl: "https://user:pw@api.example.com" }), [], { kind: "none" }, { kind: "none" }).baseUrl?.text,
     "Leave the key out of the address: the API key field takes it.");

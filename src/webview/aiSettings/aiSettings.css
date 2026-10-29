@@ -8,6 +8,7 @@
 #ai-page button:disabled { cursor: default; opacity: 0.5; }
 #ai-page :is(button, a, [tabindex]):focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 #ai-page svg { flex: none; width: 16px; height: 16px; }
+#ai-page .ai-inline-icon { width: 14px; height: 14px; vertical-align: -2px; }
 
 .ai-main { max-width: 800px; padding: 20px 28px 48px; }
 .ai-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; font-size: 1.55em; font-weight: 600; line-height: 1.25; }
@@ -60,7 +61,7 @@
 .ai-badge { padding: 0 7px; border: 1px solid transparent; border-radius: 9px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 0.85em; line-height: 17px; white-space: nowrap; }
 .ai-badge.outline { border-color: var(--vscode-descriptionForeground); background: transparent; color: var(--vscode-descriptionForeground); }
 /* Remove… asks in the row itself: what goes, and what is used next. */
-.ai-confirm { flex: 1 0 100%; display: flex; flex-direction: column; gap: 4px; margin: 2px 0 0 26px; padding: 8px 10px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); border-radius: 3px; background: var(--vscode-inputValidation-warningBackground, transparent); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); }
+.ai-confirm { flex: 0 0 calc(100% - 26px); display: flex; flex-direction: column; gap: 4px; margin: 2px 0 0 26px; padding: 8px 10px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); border-radius: 3px; background: var(--vscode-inputValidation-warningBackground, transparent); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); }
 .ai-confirm p { margin: 0; }
 .ai-confirm-question { display: flex; align-items: flex-start; gap: 6px; font-weight: 600; }
 .ai-confirm-question svg { margin-top: 2px; }
@@ -90,7 +91,8 @@
 .ai-message svg { margin-top: 1px; }
 .ai-message.error { border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground)); background: var(--vscode-inputValidation-errorBackground, transparent); color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground)); }
 .ai-message.warning { border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); background: var(--vscode-inputValidation-warningBackground, transparent); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); }
-.ai-message.info { border-color: var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder)); background: var(--vscode-inputValidation-infoBackground, transparent); color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground)); }
+/* A note, not a problem: a plain line with its icon. */
+.ai-message.info { padding: 0; color: var(--vscode-descriptionForeground); }
 .ai-actions .ai-message { align-self: center; }
 
 /* Provider: three choices side by side, stacked when the tab is narrow. */
@@ -182,6 +184,6 @@ body.vscode-high-contrast .ai-provider:hover, body.vscode-high-contrast-light .a
 @media (max-width: 520px) {
   .ai-main { padding: 14px 16px 36px; }
   .ai-profile-actions { margin-left: 26px; }
-  .ai-confirm { margin-left: 0; }
+  .ai-confirm { flex-basis: 100%; margin-left: 0; }
   .ai-switch .link-button { margin-left: 0; }
 }
