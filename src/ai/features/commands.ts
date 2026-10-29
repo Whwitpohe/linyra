@@ -360,55 +360,6 @@ export class AiFeatures {
     }
   }
 
-  /**
-   * Stash Changes…'s message box with a ✨ button that writes the message from the repository's
-   * uncommitted work. The box is VS Code's own; while the model writes, it shows busy.
-   */
-  stashInput(repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string): Promise<string | undefined> {
-    const box = vscode.window.createInputBox();
-    box.title = localize("Stash Changes");
-    box.prompt = prompt;
-    box.placeholder = placeHolder;
-    box.value = value;
-    box.ignoreFocusOut = true;
-    const generate: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon("sparkle"), tooltip: localize("Write the stash message with AI") };
-    box.buttons = aiIfAny() ? [generate] : [];
-    let ctl: AbortController | undefined;
-    /** Configure AI… takes the screen for a moment: this box comes back after it. */
-    let away = false;
-    return new Promise<string | undefined>((resolve) => {
-      let done = false;
-      const finish = (v: string | undefined) => { if (done) return; done = true; ctl?.abort(); resolve(v); box.dispose(); };
-      box.onDidAccept(() => { if (!box.busy) { const v = box.value; box.hide(); finish(v); } });
-      box.onDidHide(() => { if (!away) finish(undefined); });
-      box.onDidTriggerButton(async (b) => {
-        if (b !== generate || box.busy) return;
-        const ai = aiIfAny();
-        if (!ai) { box.validationMessage = localize("Linyra AI is not available in this build."); return; }
-        if (!ai.configured) {
-          away = true;
-          const ok = await this.ready();
-          away = false;
-          box.show();
-          if (!ok) return;
-        }
-        ctl = new AbortController();
-        box.busy = true;
-        box.validationMessage = undefined;
-        const before = box.value;
-        try {
-          box.value = (await this.writeStash(ai, repo, untracked, ctl.signal, (text) => { box.value = text; })) || before;
-        } catch (e) {
-          box.value = before;
-          box.validationMessage = messageOf(e);
-        } finally {
-          box.busy = false;
-        }
-      });
-      box.show();
-    });
-  }
-
   // ---- 8. Changelog and release notes ----------------------------------------------------------
 
   private async presentNotes(ai: AiService, title: string, read: (signal: AbortSignal) => Promise<NotesSection[]>): Promise<void> {

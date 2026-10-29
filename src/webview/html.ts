@@ -52,7 +52,7 @@ export function renderHtml(o: HtmlOptions): string {
             <button id="match-case" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Case"))}" aria-label="${escapeHtml(localize("Match Case"))}">${codicon("case-sensitive")}</button>
             <button id="whole-word" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Whole Word"))}" aria-label="${escapeHtml(localize("Match Whole Word"))}">${codicon("whole-word")}</button>
             <button id="use-regex" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Use Regular Expression"))}" aria-label="${escapeHtml(localize("Use Regular Expression"))}">${codicon("regex")}</button>
-            <button id="match-all" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match All Words"))}" aria-label="${escapeHtml(localize("Match All Words"))}">${codicon("check-all")}</button>
+            <button id="match-all" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Require Every Word"))}" aria-label="${escapeHtml(localize("Require Every Word"))}">${codicon("check-all")}</button>
           </span>
           <span id="search-errors" class="search-errors" hidden></span>
         </span>

@@ -54,7 +54,7 @@ export class LogToolbar {
     byId<HTMLButtonElement>("toolbar-update").disabled = state.fetching;
     byId("toolbar-fetch").classList.toggle("fetching", state.fetching);
     byId("toolbar-fetch").innerHTML = state.fetching ? icons.sync : icons.fetch;
-    // Ask AI…: only while AI is on (linyra.ai.enabled); Configure AI… stays in the ⋯ menu.
+    // Ask AI…: only while AI is on (linyra.ai.enabled); Linyra AI… stays in the ⋯ menu.
     byId("toolbar-ai").hidden = !state.ai;
     this.reopen(true);
   }
@@ -91,16 +91,12 @@ export class LogToolbar {
       action("runAcross", "Run Git Command Across Repositories…"),
       action("release", "Release…"),
       ...(s.anyOperation ? [action("abortAll", "Abort in All Repositories…")] : []),
-      action("fetchAndPullAll", "Fetch and Pull All", s.fetching),
-      action("pullAllBehind", "Pull All Repositories Behind", !s.anyBehind || s.fetching),
       action("showBehind", "Show Only Repositories Behind", !s.anyBehind),
       action("profileSwitch", "Switch Profile…"),
       action("profileSave", "Save Current Repositories as Profile…"),
-      // AI: configure a provider, switch the model or thinking level, remove a profile.
+      // AI: one page for its profiles (add, switch, remove) and its settings.
       { separator: true },
-      action("aiConfigure", "Configure AI…"),
-      action("aiSwitch", "Switch AI Model…"),
-      action("aiRemove", "Remove AI Profile…"),
+      action("aiConfigure", "Linyra AI…"),
       // Where the changed files sit: one choice of three.
       { separator: true },
       ...([["auto", "Automatic Changes Layout"], ["sideBySide", "Side-by-side Layout"], ["stacked", "Stacked Layout"]] as const).map(([layout, label]): MenuEntry =>

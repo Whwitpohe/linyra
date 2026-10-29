@@ -1552,5 +1552,6 @@
   "Linyra AI: {0} of {1} conflicted files resolved and staged.": "Linyra AI：{1} 个冲突文件中已有 {0} 个解决并暂存。",
   "Open Source Control": "打开源代码管理",
   "Linyra AI is merging {0} ({1} of {2})…": "Linyra AI 正在合并 {0}（第 {1} 个，共 {2} 个）…",
-  "cancelled before the model answered.": "模型作答前已取消。"
+  "cancelled before the model answered.": "模型作答前已取消。",
+  "Linyra AI…": "Linyra AI…"
 }

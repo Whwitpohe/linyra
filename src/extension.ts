@@ -26,7 +26,7 @@ import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
 import { Ask, UncommittedActions } from "./uncommittedActions";
 import { CommitPanel } from "./commitPanel";
-import { BranchController, type BranchAction, type StashAction, type StashWriter } from "./branchController";
+import { BranchController, type BranchAction, type StashAction } from "./branchController";
 import { CommitActions } from "./commitActions";
 import { MultiRepo } from "./multiRepo";
 import { openForm } from "./formPanel";
@@ -150,9 +150,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     changed: (id) => log.branchChanged(id), concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("linyra").get(k)).maxConcurrency,
     // The integration suite answers Stash Changes… through Ask's queue: VS Code's plain input box there.
     ...(process.env.LINYRA_ITEST === "1" ? {} : {
-      // ✨ in Stash Changes…: AI writes into Linyra's box once src/ai offers stashWriter; until then its own box takes over.
-      stashWriter: () => (ai.features as { stashWriter?: () => StashWriter | undefined }).stashWriter?.(),
-      stashInput: (repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string) => ai.features.stashInput(repo, untracked, prompt, placeHolder, value),
+      // ✨ in Stash Changes…: the AI writes the message into Linyra's own box.
+      stashWriter: () => ai.features.stashWriter(),
     }),
   });
   log.branchSidebar = branchSidebar;

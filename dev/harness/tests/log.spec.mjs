@@ -95,11 +95,12 @@ for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
   });
 }
 
-test("the ⋯ menu holds Configure AI…, Switch AI Model… and Remove AI Profile…", async ({ page }) => {
+test("the ⋯ menu holds one Linyra AI… entry: its page adds, switches and removes profiles", async ({ page }) => {
   await open(page);
   await page.click("#toolbar-more");
   const menu = page.locator("#toolbar-menu");
-  for (const name of ["Configure AI…", "Switch AI Model…", "Remove AI Profile…"]) await expect(menu.getByRole("menuitem", { name, exact: true })).toBeVisible();
-  await menu.getByRole("menuitem", { name: "Configure AI…", exact: true }).click();
+  await expect(menu.getByRole("menuitem", { name: /AI/ })).toHaveText(["Linyra AI…"]);
+  await menu.getByRole("menuitem", { name: "Linyra AI…", exact: true }).click();
   await expect(menu).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.harnessMessages.filter((m) => m.type === "toolbarAction").at(-1)?.action)).toBe("aiConfigure");
 });

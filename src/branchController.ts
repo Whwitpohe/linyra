@@ -38,8 +38,6 @@ interface Deps {
   concurrency(): number;
   /** Stash Changes…'s ✨: AI writes the message into Linyra's own box (with its Include new files switch). */
   stashWriter?(): StashWriter | undefined;
-  /** The AI's own stash box, for ✨ until src/ai offers stashWriter (it takes over from Linyra's box). */
-  stashInput?(repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string): Promise<string | undefined>;
 }
 
 /** Writes a stash message for a repository's uncommitted work (new files too when untracked), streaming it through onText. */
@@ -487,37 +485,23 @@ export class BranchController implements vscode.Disposable {
   /** Stash Changes…'s one box: the message, the Include new files switch (last choice), and ✨ when AI can write it. */
   private async stashBox(repo: Repo): Promise<{ message: string; untracked: boolean } | undefined> {
     const writer = this.deps.stashWriter?.();
-    const legacy = this.deps.stashInput;
-    let handedOver: Promise<string | undefined> | undefined;
-    let handedOn = false;
     const r = await this.deps.ask.inputWithToggle({
       title: localize("Stash Changes in {0}", repo.name),
       prompt: (on) => localize(on ? "Stashes every change, new files included. Enter to stash." : "Stashes the changes to tracked files; new files stay. Enter to stash."),
       placeHolder: localize("Stash message"), value: "WIP",
       toggle: { on: this.context.globalState.get<boolean>(STASH_UNTRACKED, false), icon: (on) => (on ? "files" : "file"),
         tooltip: (on) => localize(on ? "Include new files: on (click to leave them out)" : "Include new files: off (click to include them)") },
-      extra: writer || legacy ? { icon: "sparkle", tooltip: localize("Write the stash message with AI"), run: async (box, on) => {
-        if (writer) {
-          const ctl = new AbortController();
-          const before = box.value;
-          box.busy = true;
-          box.validationMessage = undefined;
-          try { box.value = (await writer.write(repo, on, ctl.signal, (text) => { box.value = text; })) ?? before; }
-          // The writer's errors already say "Linyra AI: …" in the user's words.
-          catch (e) { box.value = before; box.validationMessage = e instanceof Error ? e.message : String(e); }
-          finally { box.busy = false; }
-          return;
-        }
-        // The AI's own box takes over (until src/ai offers a writer for this one), with this box's switch.
-        handedOn = on;
-        handedOver = legacy!(repo, on, localize("Message for the stash in {0}", repo.name), localize("Stash message"), box.value);
-        box.hide();
+      extra: writer ? { icon: "sparkle", tooltip: localize("Write the stash message with AI"), run: async (box, on) => {
+        const ctl = new AbortController();
+        const before = box.value;
+        box.busy = true;
+        box.validationMessage = undefined;
+        try { box.value = (await writer.write(repo, on, ctl.signal, (text) => { box.value = text; })) ?? before; }
+        // The writer's errors already say "Linyra AI: …" in the user's words.
+        catch (e) { box.value = before; box.validationMessage = e instanceof Error ? e.message : String(e); }
+        finally { box.busy = false; }
       } } : undefined,
     });
-    if (handedOver) {
-      const message = await handedOver;
-      return message === undefined ? undefined : { message, untracked: handedOn };
-    }
     return r ? { message: r.value, untracked: r.on } : undefined;
   }
 
