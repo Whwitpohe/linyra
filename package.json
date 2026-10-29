@@ -2038,6 +2038,7 @@
     "bundle:commit": "esbuild src/webview/commit/main.ts --bundle --outfile=out/commit.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@playwright/test": "^1.64.1",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.19.43",
