@@ -273,15 +273,22 @@ test("a typed key is sent only where it was typed: never while typing, and an ad
   await page.locator(".ai-preset", { hasText: "Ollama" }).click();
   await expect(page.locator("#ai-key")).toHaveValue("");
   await expect(page.locator("#ai-key-note")).toHaveText("The key you typed was for api.openai.com, so it was cleared. Type it again for this address.");
+  const typedKeySent = async () => (await sent(page, "models")).filter((m) => m.key.kind === "new");
   await page.locator("#ai-key").fill("sk-local-fake");
   await page.locator("#ai-base-url").fill("http://localhost:11434/v1/");
   await expect(page.locator("#ai-key"), "the same origin keeps it").toHaveValue("sk-local-fake");
+  // Past every debounce: a load the page scheduled before the key was typed must not take the key with it.
+  await page.waitForTimeout(800);
+  expect(await typedKeySent(), "nothing goes out while the key is typed").toEqual([]);
   await page.locator("#ai-base-url").fill("http://localhost:1234/v1");
   await expect(page.locator("#ai-key"), "another port is another origin").toHaveValue("");
   await page.locator("#ai-key").fill("sk-local-fake");
+  await page.waitForTimeout(800);
+  expect(await typedKeySent(), "nor after the address moved and the key was typed again").toEqual([]);
+  // Opening the list is what sends it: once, to the address it was typed for.
   await page.locator("#ai-model").focus();
-  await expect.poll(async () => (await sent(page, "models")).filter((m) => m.key.kind === "new").map((m) => [m.draft.baseUrl, m.key.value])).toEqual([["http://localhost:1234/v1", "sk-local-fake"]]);
-  expect((await sent(page, "models")).every((m) => m.key.kind !== "new" || m.draft.baseUrl === "http://localhost:1234/v1"), "a typed key only ever went where it was typed").toBe(true);
+  await expect.poll(async () => (await typedKeySent()).map((m) => [m.draft.baseUrl, m.key.value])).toEqual([["http://localhost:1234/v1", "sk-local-fake"]]);
+  await expect(page.locator("#ai-model-note")).toHaveText("4 models from localhost:1234: open the list with ↓ or type to filter.");
 });
 
 test("a model list asked for the form before is dropped when it arrives", async ({ page }) => {
