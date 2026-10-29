@@ -1,0 +1,101 @@
+/* Linyra Insights: an editor tab. Every color and font is a VS Code theme variable (CLAUDE.md constraint 2). */
+@import "../ui/authorDisc.css";
+@import "../ui/counts.css";
+
+/* VS Code pads every webview body 20px: the tab fills its editor instead. */
+html.insights-document, html.insights-document body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+body { color: var(--vscode-foreground); background: var(--vscode-editor-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+.insights * { box-sizing: border-box; }
+.insights [hidden] { display: none !important; }
+.insights button { font: inherit; color: inherit; cursor: pointer; }
+.insights :focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.insights { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+.insights-header { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; padding: 0 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); }
+
+/* The tabs: VS Code's panel titles (an underline under the shown one). */
+.insights-tabs { display: flex; gap: 2px; min-width: 0; overflow-x: auto; }
+.insights-tab { display: inline-flex; align-items: center; gap: 6px; height: 35px; padding: 0 10px; border: 0; border-bottom: 1px solid transparent; background: transparent;
+  color: var(--vscode-panelTitle-inactiveForeground, var(--vscode-descriptionForeground)); white-space: nowrap; }
+.insights-tab svg { width: 16px; height: 16px; flex: none; }
+.insights-tab:hover { color: var(--vscode-panelTitle-activeForeground, var(--vscode-foreground)); }
+.insights-tab[aria-selected="true"] { color: var(--vscode-panelTitle-activeForeground, var(--vscode-foreground)); border-bottom-color: var(--vscode-panelTitle-activeBorder, var(--vscode-focusBorder)); }
+body.vscode-high-contrast .insights-tab[aria-selected="true"] { border-bottom: 2px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+
+.insights-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 5px 0; min-width: 0; }
+.insights-field { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.insights-field-label { color: var(--vscode-descriptionForeground); }
+.insights-select { min-width: 0; max-width: 280px; height: 24px; padding: 0 4px; border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent)); border-radius: 2px;
+  color: var(--vscode-dropdown-foreground, var(--vscode-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); font: inherit; text-overflow: ellipsis; }
+
+/* A segmented control: the find widget's toggles (Match Case…), one of them on. */
+.insights-segments { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-panel-border))); border-radius: 3px; overflow: hidden; }
+.insights-segment { height: 22px; padding: 0 8px; border: 0; background: transparent; color: var(--vscode-foreground); white-space: nowrap; }
+.insights-segment + .insights-segment { border-left: 1px solid var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-panel-border))); }
+.insights-segment:hover { background: var(--vscode-toolbar-hoverBackground); }
+.insights-segment[aria-checked="true"] { color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); background: var(--vscode-inputOption-activeBackground, var(--vscode-list-activeSelectionBackground));
+  box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent); }
+
+.icon-button { flex: none; width: 24px; height: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 3px; background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.icon-button svg { width: 16px; height: 16px; }
+
+.insights-panel { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding: 8px 12px 10px; gap: 6px; }
+.insights-panel.loading > :not(.insights-summary) { opacity: 0.55; transition: opacity 0.15s 0.2s; }
+@media (prefers-reduced-motion: reduce) { .insights-panel.loading > :not(.insights-summary) { transition: none; } }
+.insights-summary { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 20px; color: var(--vscode-descriptionForeground); }
+.insights-legend { display: inline-flex; flex-wrap: wrap; gap: 2px 12px; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; color: var(--vscode-foreground); }
+.legend-swatch { width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 55%, transparent); border: 1px solid var(--accent); }
+.legend-value { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.insights-notes { flex: none; display: flex; flex-direction: column; gap: 2px; padding: 4px 8px; border-left: 2px solid var(--vscode-editorWarning-foreground, var(--vscode-focusBorder));
+  background: var(--vscode-textBlockQuote-background, transparent); }
+.insights-empty { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--vscode-descriptionForeground); }
+
+/* ── Visual History ─────────────────────────────────────────────────────── */
+.history-chart { flex: 1 1 0; min-height: 120px; position: relative; border: 1px solid transparent; border-radius: 2px; }
+.history-chart:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 0; }
+.history-scroll { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
+.history-axis { position: sticky; top: 0; z-index: 1; display: block; background: var(--vscode-editor-background); }
+.history-tick { fill: var(--vscode-descriptionForeground); font-family: var(--vscode-font-family); font-size: 11px; text-anchor: middle; }
+.history-tick-mark, .history-gridline { stroke: var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-descriptionForeground))); stroke-width: 1; }
+.history-gridline { stroke-dasharray: 2 3; }
+/* The labels lie over the plot's left margin: one coordinate system for the axis and the bubbles. */
+.history-body { position: relative; }
+.history-labels { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; }
+.history-author { height: 30px; display: flex; align-items: center; gap: 6px; padding-right: 8px; min-width: 0; }
+.history-author-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-author-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.history-plot { display: block; }
+.history-row { fill: transparent; }
+.history-row.odd { fill: var(--vscode-list-hoverBackground, transparent); fill-opacity: 0.35; }
+.bubble { fill: color-mix(in srgb, var(--accent) 45%, transparent); stroke: var(--accent); stroke-width: 1; cursor: pointer; }
+.bubble:hover { fill: color-mix(in srgb, var(--accent) 75%, transparent); }
+.bubble.focused { stroke: var(--vscode-focusBorder); stroke-width: 2.5; fill: color-mix(in srgb, var(--accent) 75%, transparent); }
+body.vscode-high-contrast .bubble { fill: color-mix(in srgb, var(--accent) 30%, var(--vscode-editor-background)); stroke-width: 1.5; }
+body.vscode-high-contrast .bubble.focused { stroke: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); stroke-width: 3; }
+
+/* ── The tooltip: VS Code's hover widget ────────────────────────────────── */
+.insights-tooltip { position: fixed; z-index: 30; max-width: min(440px, calc(100vw - 8px)); display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border-radius: 3px; pointer-events: none;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editorWidget-foreground, var(--vscode-foreground)));
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent)); box-shadow: 0 2px 8px var(--vscode-widget-shadow, transparent); }
+body.vscode-high-contrast .insights-tooltip { box-shadow: none; border-color: var(--vscode-contrastBorder, var(--vscode-editorHoverWidget-border)); }
+.tip-subject { font-weight: 600; overflow-wrap: anywhere; }
+.tip-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.tip-muted, .tip-hint { color: var(--vscode-descriptionForeground); }
+.tip-hint { font-size: 11px; }
+.tip-sha { font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
+.tip-repo { display: inline-flex; align-items: center; gap: 5px; }
+.tip-repo::before { content: ""; flex: none; width: 3px; height: 13px; border-radius: 1px; background: var(--accent); }
+
+@media (max-width: 520px) {
+  .insights-header { padding: 0 8px; }
+  .insights-panel { padding: 6px 8px 8px; }
+  .insights-tab { padding: 0 6px; }
+  .insights-tab span { display: none; }
+  .insights-select { max-width: 160px; }
+  .history-author { padding-right: 4px; }
+}

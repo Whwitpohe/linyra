@@ -928,6 +928,23 @@
         "command": "linyra.abortAm",
         "title": "%command.linyra.abortAm.title%",
         "category": "Linyra"
+      },
+      {
+        "command": "linyra.insights",
+        "title": "%command.linyra.insights.title%",
+        "category": "Linyra",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "linyra.visualHistory",
+        "title": "%command.linyra.visualHistory.title%",
+        "category": "Linyra",
+        "icon": "$(graph-scatter)"
+      },
+      {
+        "command": "linyra.revealCommit",
+        "title": "%command.linyra.revealCommit.title%",
+        "category": "Linyra"
       }
     ],
     "menus": {
@@ -1658,6 +1675,14 @@
         {
           "command": "linyra.abortAm",
           "when": "false"
+        },
+        {
+          "command": "linyra.visualHistory",
+          "when": "resourceScheme == file"
+        },
+        {
+          "command": "linyra.revealCommit",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -1767,6 +1792,10 @@
           "command": "linyra.fileHistory",
           "when": "!explorerResourceIsFolder",
           "group": "linyra@1"
+        },
+        {
+          "command": "linyra.visualHistory",
+          "group": "linyra@2"
         }
       ],
       "editor/title/context": [
@@ -1774,6 +1803,11 @@
           "command": "linyra.fileHistory",
           "when": "resourceScheme == file",
           "group": "linyra@1"
+        },
+        {
+          "command": "linyra.visualHistory",
+          "when": "resourceScheme == file",
+          "group": "linyra@2"
         }
       ],
       "editor/context": [
@@ -2470,6 +2504,11 @@
           "command": "linyra.abortAm",
           "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'am'",
           "group": "0_operation@11"
+        },
+        {
+          "command": "linyra.visualHistory",
+          "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^(file|folder)/",
+          "group": "2_history@3"
         }
       ]
     },
@@ -2710,8 +2749,8 @@
     "vscode:prepublish": "npm run check:denylist && npm run bundle",
     "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --external:@anthropic-ai/sdk --platform=node --format=cjs --target=node18",
     "bundle:anthropic": "esbuild src/ai/providers/anthropicSdk.ts --bundle --outfile=out/anthropic.js --platform=node --format=cjs --target=node18",
-    "bundle": "npm run bundle:ext -- --minify && npm run bundle:anthropic -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify && npm run bundle:commit -- --minify",
-    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:anthropic -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap && npm run bundle:commit -- --sourcemap",
+    "bundle": "npm run bundle:ext -- --minify && npm run bundle:anthropic -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify && npm run bundle:changes -- --minify && npm run bundle:commit -- --minify && npm run bundle:insights -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:anthropic -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap && npm run bundle:changes -- --sourcemap && npm run bundle:commit -- --sourcemap && npm run bundle:insights -- --sourcemap",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
@@ -2726,12 +2765,13 @@
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
     "test:ui": "playwright test -c dev/harness/playwright.config.mjs",
-    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts src/integration/commitPanel.itest.ts src/integration/marks.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
+    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts src/integration/commitPanel.itest.ts src/integration/marks.itest.ts src/integration/insights.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
     "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
     "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022",
     "bundle:changes": "esbuild src/webview/changes/main.ts --bundle --outfile=out/changes.js --platform=browser --format=iife --target=es2022",
-    "bundle:commit": "esbuild src/webview/commit/main.ts --bundle --outfile=out/commit.js --platform=browser --format=iife --target=es2022"
+    "bundle:commit": "esbuild src/webview/commit/main.ts --bundle --outfile=out/commit.js --platform=browser --format=iife --target=es2022",
+    "bundle:insights": "esbuild src/webview/insights/main.ts --bundle --outfile=out/insights.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

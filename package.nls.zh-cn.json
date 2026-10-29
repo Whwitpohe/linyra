@@ -180,5 +180,8 @@
   "command.linyra.release.title": "发布…",
   "command.linyra.showBranchSheet.title": "显示分支详情",
   "command.linyra.continueAm.title": "继续应用补丁",
-  "command.linyra.abortAm.title": "中止应用补丁…"
+  "command.linyra.abortAm.title": "中止应用补丁…",
+  "command.linyra.insights.title": "洞察",
+  "command.linyra.visualHistory.title": "可视化历史",
+  "command.linyra.revealCommit.title": "在日志中显示提交"
 }
