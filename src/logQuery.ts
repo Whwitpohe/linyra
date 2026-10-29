@@ -153,6 +153,8 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         const i = targets.indexOf(repo);
         await resolveRef(repo, signal);
         const p = progress.get(repo.id)!;
+        // A repository without a selected branch has nothing to show. With ref: too, both hold:
+        // it needs a selected branch, and walks ref:'s revisions (logArgs).
         if (branches.length && !p.refs?.length) return "";
         const o = { pageSize: wanted[i], now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs, search };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);

@@ -61,9 +61,12 @@ export class SuggestBox {
     return this.open && this.active >= 0;
   }
 
-  /** The source changed (suggestions arrived from the host): refresh an open list. */
+  /**
+   * The source changed (suggestions arrived from the host): refresh an open list, or open it if
+   * the box asked for them while it had none to show.
+   */
   refresh(): void {
-    if (this.open) this.show();
+    if (this.open || document.activeElement === this.input) this.show();
   }
 
   show(force = false): void {
