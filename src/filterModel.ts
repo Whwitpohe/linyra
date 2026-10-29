@@ -317,3 +317,8 @@ export function sameExceptText(a: FilterState, b: FilterState): boolean {
   const branches = (f: FilterState) => selectedBranches(f).sort().join("\0");
   return a.mine === b.mine && !a.matchCase === !b.matchCase && !a.regex === !b.regex && !a.wholeWord === !b.wholeWord && !a.matchAll === !b.matchAll && authors(a) === authors(b) && branches(a) === branches(b) && a.sort === b.sort && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
 }
+
+/** Nothing changed (a click on what is already shown): the Log has nothing to read again. */
+export function sameFilter(a: FilterState, b: FilterState): boolean {
+  return sameExceptText(a, b) && a.text === b.text && a.author === b.author && (a.path ?? "") === (b.path ?? "");
+}

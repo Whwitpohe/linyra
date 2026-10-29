@@ -6,7 +6,7 @@ import type { ChangesMessage } from "../changesProtocol";
 import type { ResolvedProfile } from "../profileModel";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
-import { DEFAULT_FILTER, type FilterState } from "../filterModel";
+import { DEFAULT_FILTER, sameFilter, type FilterState } from "../filterModel";
 import type { HistoryWork, HostMessage, WebviewMessage, WorkRow } from "../protocol";
 import { HistoryChip, HistoryWorkRow, type HistoryTarget } from "./history";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
@@ -447,10 +447,14 @@ function openFirstFile(): void {
 
 /** now: Enter in the search box, run without the host's typing debounce. */
 function setFilter(f: FilterState, now = false): void {
+  // A click on what is already shown: the panes still redraw (the Repo List's active row), the Log
+  // and the host have nothing to do. Enter (now) runs the search again on purpose.
+  const same = !now && sameFilter(f, state.filter);
   state.filter = f;
   filters.update(f);
   repoPane.update(state.repos, f.repoIds, state.profiles);
   repoPane.setFilter(f);
+  if (same) return;
   post({ type: "filter", filter: f, ...(now ? { now } : {}) });
   render();
 }

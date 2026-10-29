@@ -43,6 +43,9 @@ describe("Combined Changes", () => {
 
   before(async () => {
     await send({ type: "filter", filter: ALL });
+    // The suites before rewrote the repositories behind the Log's back: read them again (the same
+    // filter again reads nothing, see sameFilter).
+    await send({ type: "refresh" });
     const s = await until("six rows", (x) => x.rows.length === 6);
     web = s.repos.find((r) => r.name === "acme-web")!;
     api = s.repos.find((r) => r.name === "acme-api")!;

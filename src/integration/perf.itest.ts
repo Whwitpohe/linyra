@@ -67,7 +67,8 @@ describe("Linyra startup", () => {
     await reload(() => send({ type: "filter", filter: settled.filter }));
     const refreshed = await reload(() => send({ type: "refresh" }));
     // Paging to the end of history: the host's share (the webview's is dev/perf/webviewBench.ts).
-    await reload(() => send({ type: "filter", filter: { ...settled.filter, date: "all" } }));
+    // now: the filter may be the one shown, which reloads only on purpose (as Enter does).
+    await reload(() => send({ type: "filter", filter: { ...settled.filter, date: "all" }, now: true }));
     const beforePaging = await quiet();
     const tPaging = Date.now();
     let pagesLoaded = 0;
@@ -79,7 +80,7 @@ describe("Linyra startup", () => {
     const paged = await snapshot();
     const paging = { ms: Date.now() - tPaging, pages: pagesLoaded, rows: paged!.rows.length, byCmd: byCmd(beforePaging, paged!),
       postBytes: (paged!.posts.page?.bytes ?? 0) - (beforePaging.posts.page?.bytes ?? 0) };
-    await reload(() => send({ type: "filter", filter: settled.filter }));
+    await reload(() => send({ type: "filter", filter: settled.filter, now: true }));
     // Expand All in the Repositories tree: every repository's branches, tags and stashes.
     const beforeTree = await quiet();
     const tTree = Date.now();

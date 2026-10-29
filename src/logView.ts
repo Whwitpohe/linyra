@@ -9,7 +9,7 @@ import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { readReferences } from "./commitReferences";
 import { debounce } from "./debounce";
 import { toolbarCommand, type ToolbarState, type ChangesLayout } from "./toolbarModel";
-import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, CommitRef, HistoryWork, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
@@ -319,6 +319,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
           this.leaveHistory();
           next = { ...this.filter, text: next.text };
         }
+        // The same filter again (not Enter): every repository's log would be read again for nothing.
+        if (!leaveForHash && m.now !== true && sameFilter(next, this.filter)) return;
         const textOnly = sameExceptText(next, this.filter);
         this.filter = next;
         if (leaveForHash) this.postInit(true);
