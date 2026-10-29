@@ -32,7 +32,8 @@ async function main(): Promise<void> {
     vscodeExecutablePath: await downloadAndUnzipVSCode(process.env.LINYRA_VSCODE_VERSION ?? "stable"),
     extensionDevelopmentPath: repoRoot,
     extensionTestsPath: path.resolve(__dirname, "index.js"),
-    launchArgs: [workspaceFile, "--disable-extensions", "--disable-workspace-trust", "--no-sandbox"],
+    // Its own user data in the throwaway HOME: worktrees sharing one .vscode-test can run side by side.
+    launchArgs: [workspaceFile, "--disable-extensions", "--disable-workspace-trust", "--no-sandbox", `--user-data-dir=${path.join(home, "vscode-user")}`, `--extensions-dir=${path.join(home, "vscode-ext")}`],
     extensionTestsEnv: {
       HOME: home,
       USERPROFILE: home,
