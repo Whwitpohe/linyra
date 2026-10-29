@@ -315,7 +315,9 @@ describe("Linyra panel", () => {
       const gitCfg = () => vscode.workspace.getConfiguration("git");
       await gitCfg().update("autorefresh", false, vscode.ConfigurationTarget.Global);
       try {
-        mark = await snapshot();
+        // Changing git.autorefresh makes VS Code's Git (1.85) look at every repository once more,
+        // and report what it found: that lands before the mark, so the window holds the reload only.
+        mark = await quiet();
         await send({ type: "filter", filter: { ...ALL, date: "7d" } });
         await until("the 7-day page", (x) => x.filter.date === "7d" && x.stats.reloads > mark.stats.reloads);
         await sleep(300);
