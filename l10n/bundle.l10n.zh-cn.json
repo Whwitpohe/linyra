@@ -708,5 +708,10 @@
   "{0} deleted": "{0} 个删除",
   "{0} renamed": "{0} 个重命名",
   "{0} lines added, {1} deleted": "新增 {0} 行，删除 {1} 行",
-  "unpublished": "未发布"
+  "unpublished": "未发布",
+  "Select in the Log": "在日志中选中",
+  "Select parent commit {0} in the Log": "在日志中选中父提交 {0}",
+  "Parent:": "父提交：",
+  "Parents:": "父提交：",
+  "Commit {0} is not loaded in the Log. Load more commits, or search for its hash.": "提交 {0} 还没有加载到日志中。请加载更多提交，或搜索它的哈希。"
 }

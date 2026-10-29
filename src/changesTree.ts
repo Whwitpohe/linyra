@@ -72,6 +72,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   private allReads = new AbortController();
   /** All Files' folder reads, a few at a time: a commit can touch hundreds of folders. */
   private reads: Limiter;
+  /** Selects a commit in the Log (a parent hash in the details); false when the Log has not loaded it. */
+  selectCommit: ((repoId: string, sha: string) => Promise<boolean>) | undefined;
 
   constructor(private readonly runInRepo?: RunInRepo, allFiles = false, private readonly concurrency: () => number = () => 16) {
     this.reads = new Limiter(concurrency());
@@ -151,6 +153,13 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       else if (this.state?.commit.sha === detail.sha && this.state.status === "ready") await copyText(this.state.message || this.state.commit.subject);
       else await vscode.commands.executeCommand("linyra.commitCopyMessage", { repoId: detail.repoId, sha: detail.sha });
       this.broadcast({ type: "copied" });
+      return;
+    }
+    if (m.type === "selectCommit") {
+      // Only a parent of a commit on screen: the message is untrusted.
+      const parent = commitDetails(this.state, this.combined).some((c) => c.repoId === m.repoId && c.parents?.includes(m.sha));
+      if (!parent || !this.selectCommit || await this.selectCommit(m.repoId, m.sha)) return;
+      void vscode.window.showInformationMessage(localize("Commit {0} is not loaded in the Log. Load more commits, or search for its hash.", m.sha.slice(0, 7)));
       return;
     }
     if (m.type !== "open" && m.type !== "expand") return;
