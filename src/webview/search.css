@@ -32,8 +32,37 @@
 }
 .search-field:not(:focus-within) .search-errors { display: none; }
 
-/* The suggestions: an operator in the editor's font, what it does, its aliases at the right. */
-#search-suggestions .suggest-label { flex: 0 0 auto; font-family: var(--vscode-editor-font-family); }
-.suggest-description { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); }
-.suggest-row[aria-selected="true"] .suggest-description { color: inherit; opacity: 0.85; }
-#search-suggestions .suggest-detail { flex: 0 0 auto; font-family: var(--vscode-editor-font-family); }
+/* The suggestions, laid out like GitLens's search popup in VS Code's suggest-widget colors: a help
+   line, then rows of an icon, the operator (or value) in bold with its aliases at the right, and
+   what it gets you on a second line. The keyboard's row is the suggest widget's selection; the
+   mouse only hovers. The help line stays; the rows scroll under it. */
+#search-suggestions { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+#search-suggestions[hidden] { display: none; }
+.suggest-hint {
+  flex: 0 0 auto; padding: 5px 8px; font-size: 0.92em; line-height: 1.4; overflow-wrap: anywhere;
+  color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground));
+  background: var(--vscode-list-inactiveSelectionBackground, transparent);
+  border-bottom: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, transparent));
+}
+.suggest-hint[hidden], .suggest-options[hidden] { display: none; }
+.suggest-hint code {
+  padding: 0 3px; border-radius: 3px; font-family: var(--vscode-editor-font-family); font-size: 1em;
+  color: var(--vscode-textPreformat-foreground, inherit); background: var(--vscode-textCodeBlock-background, transparent);
+}
+body.vscode-high-contrast .suggest-hint code { background: transparent; outline: 1px solid var(--vscode-contrastBorder, transparent); outline-offset: -1px; }
+.suggest-options { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 3px 0; }
+#search-suggestions .suggest-row { height: auto; line-height: normal; align-items: center; gap: 8px; padding: 2px 8px; white-space: normal; }
+#search-suggestions .suggest-row:hover:not([aria-selected="true"]) { background: var(--vscode-list-hoverBackground); color: var(--vscode-list-hoverForeground, inherit); }
+.suggest-icon { flex: 0 0 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground); }
+#search-suggestions .suggest-row[aria-selected="true"] .suggest-icon { color: var(--vscode-editorSuggestWidget-selectedIconForeground, var(--vscode-list-activeSelectionIconForeground, inherit)); }
+.suggest-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.suggest-line { display: flex; align-items: baseline; gap: 12px; min-width: 0; line-height: 18px; }
+#search-suggestions .suggest-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-weight: 600; }
+.suggest-aside { margin-left: auto; flex: 0 0 auto; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: 0.92em; color: var(--vscode-descriptionForeground); }
+/* A long description wraps rather than losing its end in a narrow panel. */
+.suggest-description { line-height: 16px; font-size: 0.92em; overflow-wrap: anywhere; color: var(--vscode-descriptionForeground); }
+#search-suggestions .suggest-row[aria-selected="true"] :is(.suggest-description, .suggest-aside) { color: inherit; opacity: 0.85; }
+/* High contrast: outlines instead of fills, as VS Code's own lists. */
+body.vscode-high-contrast #search-suggestions .suggest-row:hover:not([aria-selected="true"]) { background: transparent; outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast #search-suggestions .suggest-row[aria-selected="true"] { outline-color: var(--vscode-list-focusOutline, var(--vscode-contrastActiveBorder)); }
+body.vscode-high-contrast #search-suggestions .suggest-row[aria-selected="true"] :is(.suggest-description, .suggest-aside) { opacity: 1; }

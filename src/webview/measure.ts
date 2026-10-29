@@ -18,6 +18,13 @@ export function fitName(font: string, name: string, maxPx: number): string {
   return fitted;
 }
 
+/** The width of "0" in `font`: CSS's ch unit, measured without touching layout. */
+export function chWidth(font: string): number {
+  if (!ctx) return 8;
+  ctx.font = font;
+  return ctx.measureText("0").width;
+}
+
 /** An element's font and horizontal padding. Read once per list, not once per row. */
 export function textStyle(el: HTMLElement): { font: string; paddingX: number } {
   const s = getComputedStyle(el);

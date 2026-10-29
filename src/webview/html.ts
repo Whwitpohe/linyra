@@ -47,7 +47,7 @@ export function renderHtml(o: HtmlOptions): string {
       <form id="filters" class="filters" role="search" aria-label="${escapeHtml(localize("Filter commits"))}">
         <span id="search-field" class="search-field">
           <button id="search-ai" class="input-toggle search-ai" type="button" aria-pressed="false" aria-disabled="true" aria-label="${escapeHtml(localize("Search in natural language with Linyra AI"))}">${codicon("sparkle")}</button>
-          <input id="search" class="search" type="search" placeholder="${escapeHtml(localize("Search commits, e.g. fix author:@me file:*.ts"))}" aria-label="${escapeHtml(localize("Search commits: words, a hash, or operators such as author: and file:"))}" aria-describedby="search-errors hash-search-note" autocomplete="off" spellcheck="false">
+          <input id="search" class="search" type="search" placeholder="${escapeHtml(localize("Search commits (↑↓ for history)"))}" aria-label="${escapeHtml(localize("Search commits: words, a hash, or operators such as author: and file:"))}" aria-describedby="search-errors hash-search-note" autocomplete="off" spellcheck="false">
           <span class="search-toggles">
             <button id="match-case" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Case"))}" aria-label="${escapeHtml(localize("Match Case"))}">${codicon("case-sensitive")}</button>
             <button id="whole-word" class="input-toggle search-toggle" type="button" aria-pressed="false" title="${escapeHtml(localize("Match Whole Word"))}" aria-label="${escapeHtml(localize("Match Whole Word"))}">${codicon("whole-word")}</button>

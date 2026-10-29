@@ -1,4 +1,5 @@
 import { localize } from "../i18n";
+import type { ChangesMode } from "../changeStats";
 import type { ChangesLayout, ToolbarAction, ToolbarState } from "../toolbarModel";
 import { codicon } from "./codicons";
 import { byId, h } from "./dom";
@@ -15,12 +16,12 @@ const icons = {
 };
 
 /** The Log's view options (the ⋯ menu), saved by the host. */
-export interface ViewOptions { highlightMine: boolean; highlightHead: boolean; hashColumn: boolean }
+export interface ViewOptions { highlightMine: boolean; highlightHead: boolean; hashColumn: boolean; changesColumn: ChangesMode }
 
 export class LogToolbar {
   private state: ToolbarState = { groupByRepo: true, compareShown: false, fetching: false, anyBehind: false };
   private layout: ChangesLayout = "auto";
-  private view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false };
+  private view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar" };
   private folds = { canCollapse: false, canExpand: false };
   private commitsShown = true;
   private readonly more = byId<HTMLButtonElement>("toolbar-more");
@@ -135,6 +136,15 @@ export class LogToolbar {
       item.addEventListener("click", () => { this.close(true); this.changeView({ [key]: !this.view[key] }); });
       this.menu.append(item);
     }
+    // The Changes column: one drawing of four, or none (GitLens's Change Visualization).
+    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
+    for (const [mode, label] of [["off", localize("No Changes Column")], ["numbers", localize("Changes as Numbers")], ["squares", localize("Changes as Squares")],
+      ["bar", localize("Changes as a Bar")], ["bipolar", localize("Changes as a Bipolar Bar")]] as const) {
+      const item = h("button", { type: "button", role: "menuitemradio", "aria-checked": String(this.view.changesColumn === mode) }, [label]);
+      item.addEventListener("click", () => { this.close(true); this.changeView({ changesColumn: mode }); });
+      this.menu.append(item);
+    }
+    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
     for (const [fold, label, enabled] of [["collapse", localize("Collapse Linear Branches"), this.folds.canCollapse], ["expand", localize("Expand Linear Branches"), this.folds.canExpand]] as const) {
       const item = h("button", { type: "button", role: "menuitem", disabled: !enabled || !this.commitsShown }, [label]);
       item.addEventListener("click", () => { this.close(true); this.changeView({ fold }); });

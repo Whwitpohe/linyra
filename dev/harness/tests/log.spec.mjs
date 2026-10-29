@@ -61,7 +61,8 @@ test("the ⋯ menu stays on screen in a short panel and holds the view options",
   expect(b.y).toBeGreaterThanOrEqual(0);
   expect(b.y + b.height).toBeLessThanOrEqual(320);
   await expect(menu.getByRole("menuitemcheckbox", { name: "Show Hash Column" })).toBeVisible();
-  await expect(menu.getByRole("menuitemradio")).toHaveCount(3);
+  // The order (3) and the Changes column (off and its four drawings).
+  await expect(menu.getByRole("menuitemradio")).toHaveCount(8);
   await menu.getByRole("menuitemcheckbox", { name: "Show Hash Column" }).click();
   await expect(page.locator("#rows .row .hash").first()).toBeVisible();
 });

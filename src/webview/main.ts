@@ -6,7 +6,7 @@ import type { ChangesMessage } from "../changesProtocol";
 import type { ResolvedProfile } from "../profileModel";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
-import { DEFAULT_FILTER, type FilterState } from "../filterModel";
+import { DEFAULT_FILTER, sameFilter, type FilterState } from "../filterModel";
 import type { HistoryWork, HostMessage, WebviewMessage, WorkRow } from "../protocol";
 import { HistoryChip, HistoryWorkRow, type HistoryTarget } from "./history";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
@@ -22,6 +22,7 @@ import { PaneWidth } from "./repoPaneModel";
 import { accentOf, assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, type EmptyAction } from "./view";
 import { renderWorkTotals, WorkList } from "./workList";
 import { AvatarFeed } from "./avatars";
+import { ChangesFeed } from "./changesColumn";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import type { ChangesLayout } from "../toolbarModel";
 import { HoverCard } from "./hoverCard";
@@ -183,16 +184,23 @@ function applyChangesLayout(): void {
 }
 const saveChangesLayout = () => post({ type: "layout", repoPaneWidth: paneWidth.shown, changesPaneWidth: changesWidth, changesPaneHeight: changesHeight, showChanges, changesLayout });
 /** View options, each repository's user.email, and the listed commits HEAD does not reach. */
-let view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false };
+let view: ViewOptions = { highlightMine: false, highlightHead: false, hashColumn: false, changesColumn: "bar" };
 let me: Readonly<Record<string, string>> = {};
 let offHead: ReadonlySet<string> = new Set();
 const toolbar = new LogToolbar((action) => post({ type: "toolbarAction", action }), (layout) => { changesLayout = layout; applyChangesLayout(); saveChangesLayout(); }, (patch) => {
   if (patch.fold) { if (patch.fold === "collapse") list.collapseAll(); else list.expandAll(); return; }
   view = { ...view, ...patch };
   toolbar.updateView(view);
-  post({ type: "layout", highlightMine: patch.highlightMine, highlightHead: patch.highlightHead, hashColumn: patch.hashColumn });
+  post({ type: "layout", highlightMine: patch.highlightMine, highlightHead: patch.highlightHead, hashColumn: patch.hashColumn, changesColumn: patch.changesColumn });
   render();
+  if (patch.changesColumn) applyChangesColumn();
 });
+/** The Changes column asks for the stats of the rows on screen (changesColumn.ts); off, it asks nothing. */
+const changesFeed = new ChangesFeed(byId("rows"), (i) => state.rows[i], post, (keys) => list.statsArrived(keys));
+function applyChangesColumn(): void {
+  changesFeed.enabled = view.changesColumn !== "off";
+  if (changesFeed.enabled) changesFeed.refresh();
+}
 changesToggle.addEventListener("click", () => { showChanges = !showChanges; applyChangesLayout(); saveChangesLayout(); });
 attachSplitter(changesSplitter, {
   get: () => changesSplitter.getBoundingClientRect().left,
@@ -251,6 +259,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "sidebarState": repoPane.applyBranchState(m.state); return;
     case "branchTree": repoPane.receiveBranches(m); return;
     case "avatars": avatars.receive(m.byEmail, m.reset); return;
+    case "stats": changesFeed.receive(m.byKey); return;
     case "init": {
       const previousNames = new Map(state.repos.map((repo) => [repo.id, repo.name]));
       if (m.repos.length !== state.repos.length || m.repos.some((repo) => previousNames.get(repo.id) !== repo.name)) {
@@ -283,8 +292,9 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       changesLayout = m.layout.changesLayout ?? "auto";
       applyChangesLayout();
       me = m.me ?? {};
-      view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true };
+      view = { highlightMine: m.layout.highlightMine === true, highlightHead: m.layout.highlightHead === true, hashColumn: m.layout.hashColumn === true, changesColumn: m.layout.changesColumn ?? "bar" };
       toolbar.updateView(view);
+      applyChangesColumn();
       break;
     }
     case "offHead":
@@ -463,10 +473,14 @@ function openFirstFile(): void {
 
 /** now: Enter in the search box, run without the host's typing debounce. */
 function setFilter(f: FilterState, now = false): void {
+  // A click on what is already shown: the panes still redraw (the Repo List's active row), the Log
+  // and the host have nothing to do. Enter (now) runs the search again on purpose.
+  const same = !now && sameFilter(f, state.filter);
   state.filter = f;
   filters.update(f);
   repoPane.update(state.repos, f.repoIds, state.profiles);
   repoPane.setFilter(f);
+  if (same) return;
   post({ type: "filter", filter: f, ...(now ? { now } : {}) });
   render();
 }
@@ -517,6 +531,7 @@ function render(): void {
   list.update({
     rows: state.rows, repoNames: names, accents, repoOrder, behind, upstream,
     me, highlightMine: view.highlightMine, offHead: view.highlightHead ? offHead : undefined, hashColumn: view.hashColumn,
+    changes: view.changesColumn === "off" ? undefined : view.changesColumn,
     historyPath: state.history?.path,
     selected: state.selected, selectedKeys, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,

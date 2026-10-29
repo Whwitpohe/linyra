@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -99,6 +99,18 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.ok(!sameExceptText({ ...ALL, repoIds: ["/a"] }, { ...ALL, repoIds: ["/b"] }));
   assert.ok(!sameExceptText({ ...ALL, date: "custom", from: "2026-09-01" }, { ...ALL, date: "custom", from: "2026-09-02" }));
   console.log("ok - sameExceptText is true only when nothing but the search changed");
+}
+
+// ── sameFilter: a click on what is already shown reads nothing again ──────
+{
+  assert.ok(sameFilter(ALL, { ...ALL }));
+  assert.ok(sameFilter({ ...ALL, repoIds: ["/a"], branches: ["main"] }, { ...ALL, repoIds: ["/a"], branches: ["main"] }));
+  assert.ok(sameFilter({ ...ALL, path: undefined }, { ...ALL, path: "" }), "no path and an empty one are the same");
+  assert.ok(!sameFilter({ ...ALL, text: "a" }, { ...ALL, text: "ab" }));
+  assert.ok(!sameFilter({ ...ALL, author: "ri" }, { ...ALL, author: "rin" }));
+  assert.ok(!sameFilter(ALL, { ...ALL, path: "src/" }));
+  assert.ok(!sameFilter(ALL, { ...ALL, repoIds: [] }));
+  console.log("ok - sameFilter is true only when nothing changed");
 }
 
 // ── Author is pushed down as --author, literal and case-insensitive ────────

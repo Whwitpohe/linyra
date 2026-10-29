@@ -1,3 +1,4 @@
+import type { ChangesMode } from "./changeStats";
 import type { ResolvedProfile } from "./profileModel";
 import type { Branches, BranchSidebarState } from "./branchModel";
 import type { FilterState } from "./filterModel";
@@ -23,6 +24,8 @@ export interface Layout {
   highlightMine?: boolean;
   highlightHead?: boolean;
   hashColumn?: boolean;
+  /** The Changes column's drawing (the ⋯ menu): off, numbers, squares, bar or bipolar. */
+  changesColumn?: ChangesMode;
 }
 
 /** Someone who committed recently, across the workspace (Author box suggestions). */
@@ -101,6 +104,8 @@ export type HostMessage =
   | { type: "setSelection"; items: CommitRef[]; focus: CommitRef }
   /** Avatars of the authors on screen (email → data: URI), a batch at a time. reset: drop those sent before (the settings changed). */
   | { type: "avatars"; byEmail: Record<string, string>; reset?: boolean }
+  /** The Changes column: [files, added, deleted] by repoId\0sha, a repository at a time (changeStatsReader.ts). */
+  | { type: "stats"; byKey: Record<string, [number, number, number]> }
   /** The hover card's commit: its git show (or why it failed), whether Explain exists, and on the HEAD row its merge target. */
   | { type: "hoverDetail"; repoId: string; sha: string; detail?: HoverDetail; error?: string; explain?: boolean; target?: MergeTarget }
   /** The search box's ✨ toggle: linyra.ai.translateSearch is registered and Linyra AI is configured. */
@@ -134,7 +139,7 @@ export type WebviewMessage =
   /** Combined Changes: two or more commits selected (Ctrl/⌘ or Shift). */
   | { type: "selectMany"; items: CommitRef[]; focus: CommitRef }
   | { type: "openFirst"; repoId: string; sha: string }
-  | { type: "layout"; repoPaneWidth?: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout; highlightMine?: boolean; highlightHead?: boolean; hashColumn?: boolean }
+  | { type: "layout"; repoPaneWidth?: number; changesPaneWidth?: number; changesPaneHeight?: number; showChanges?: boolean; changesLayout?: ChangesLayout; highlightMine?: boolean; highlightHead?: boolean; hashColumn?: boolean; changesColumn?: ChangesMode }
   | { type: "exitHistory" }
   /** File History's uncommitted row: open the file's diff, HEAD to the working tree. */
   | { type: "openHistoryWork" }
@@ -149,6 +154,8 @@ export type WebviewMessage =
   | { type: "profileSave" }
   /** The authors of the rows on screen, once they settle after a scroll (avatars are asked only for these). */
   | { type: "visibleAuthors"; authors: { email: string; repoId: string }[] }
+  /** The commits on screen whose Changes cell has no stats yet, once the rows settle. */
+  | { type: "wantStats"; commits: { repoId: string; sha: string }[] }
   /** The hover card was shown on a listed commit (the pointer rested on its row): read its detail. */
   | { type: "hover"; repoId: string; sha: string }
   /** The hover card closed: kill its read. */

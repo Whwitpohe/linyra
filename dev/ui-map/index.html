@@ -163,8 +163,11 @@ section { display: grid; gap: 16px; }
 .ux-tools > span { position: relative; padding: 0 2px; }
 .ux-pop { display: grid; gap: 4px; padding: 6px 10px; background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 4px; font-size: 12px; width: 70%; }
 .ux-pop code { color: var(--vs-mod); }
+.ux-help { color: var(--vs-dim); border-bottom: 1px solid var(--vs-border); padding-bottom: 4px; position: relative; }
+.ux-chg { display: flex; gap: 4px; align-items: center; color: var(--vs-dim); font-size: 12px; position: relative; }
+.ux-bar { display: inline-block; width: 44px; height: 6px; border-radius: 1px; background: linear-gradient(90deg, var(--vs-add) 0 38%, #c74e39 38% 52%, var(--vs-border) 52%); }
 .ux-alias { float: right; color: var(--vs-dim); font-family: var(--mono); }
-.ux-row { display: grid; grid-template-columns: 3px 70px 20px 1fr auto 44px 60px; gap: 8px; align-items: center; height: 26px; font-size: 13px; position: relative; }
+.ux-row { display: grid; grid-template-columns: 3px 70px 20px 1fr auto 44px 76px 60px; gap: 8px; align-items: center; height: 26px; font-size: 13px; position: relative; }
 .ux-strip { display: block; width: 3px; align-self: stretch; border-radius: 2px; position: relative; }
 .ux-name { white-space: nowrap; }
 .ux-disc { width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 9px; font-weight: 600; border: 1.5px solid; position: relative; }
@@ -475,6 +478,7 @@ section { display: grid; gap: 16px; }
             <span class="ux-tools"><span class="t">✨<i class="n tr">58</i></span> ⟳ ⇣ ⇡ ⋯</span>
           </div>
           <div class="ux-pop t"><i class="n tl">55</i>
+            <div class="ux-help t">Combine filters to build powerful searches, e.g. <code>@me after:1.week.ago file:*.ts</code><i class="n tr">69</i></div>
             <div><code>author:</code> by author name or email; @me is you <span class="ux-alias">@:</span></div>
             <div><code>file:</code> commits that touched a file, folder or glob <span class="ux-alias">?:</span></div>
             <div><code>ref:</code> a branch, tag or range, in the repositories that have it <span class="ux-alias">^:</span></div>
@@ -484,9 +488,9 @@ section { display: grid; gap: 16px; }
             <span class="ux-strip bg-web t"><i class="n tl">51</i></span><span class="ux-name">acme-web</span>
             <span class="ux-disc ring-web mine t">D<i class="n tr">52</i></span>
             <span class="subj">feat: add retry to uploader</span>
-            <span class="ux-pill t"><b>⎇ develop ↑1</b><span>☁ origin</span><i class="n tr">53</i></span><span class="who">dana</span><span class="when">just now</span>
+            <span class="ux-pill t"><b>⎇ develop ↑1</b><span>☁ origin</span><i class="n tr">53</i></span><span class="who">dana</span><span class="ux-chg t">7 <span class="ux-bar"></span><i class="n tr">61</i></span><span class="when">just now</span>
           </div>
-          <div class="ux-row"><span class="ux-strip bg-api"></span><span class="ux-name">acme-api</span><span class="ux-disc ring-api">R</span><span class="subj">refactor: split request builder</span><span></span><span class="who">rin</span><span class="when">1h ago</span></div>
+          <div class="ux-row"><span class="ux-strip bg-api"></span><span class="ux-name">acme-api</span><span class="ux-disc ring-api">R</span><span class="subj">refactor: split request builder</span><span></span><span class="who">rin</span><span class="ux-chg">2 <span class="ux-bar" style="background: linear-gradient(90deg, var(--vs-add) 0 20%, #c74e39 20% 30%, var(--vs-border) 30%)"></span></span><span class="when">1h ago</span></div>
           <div class="ux-card t"><i class="n tl">54</i>
             <div class="ux-card-top"><span class="ux-disc ring-web mine big">D</span><div><b>You</b> · just now (2026-09-23 20:00)<br><span class="who">acme-web · 0000303</span></div></div>
             <b>feat: add retry to uploader</b>
@@ -524,10 +528,12 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">52</i><b>Author disc</b><span>A commit's node: the author's initial (a CJK name: its last character) ringed in the repository's color; a thicker ring is your commit. An avatar covers the initial when the repository's own host has one (linyra.avatars). Merges keep the small hollow dot; hovering a disc of a linear run shows its fold box.</span></div>
     <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Click: the branch in the Repo List. Right-click: the Repo List's branch menu (and the AI items while AI is on).</span></div>
     <div class="g"><i class="num">54</i><b>Commit hover card</b><span>Opens when the pointer rests on a row for half a second: author (you, for your commits), relative and absolute time, hash, repository and pills at once; then one git show adds the message and the file and line counts. On the HEAD row: its merge target and Compare. Leaving the row kills the read.</span></div>
-    <div class="g"><i class="num">55</i><b>Operator popup</b><span>Under the Search box while it is empty or an operator is being typed: every operator with what it does and its aliases; typing a value suggests authors, branches and tags, repositories or types.</span></div>
+    <div class="g"><i class="num">55</i><b>Operator popup</b><span>Under the Search box while it is empty or an operator is being typed (GitLens's search popup): every operator with an icon, what it does and its aliases; typing a value suggests authors, branches and tags, repositories or types. ↓/↑ move, Enter or Tab picks, Esc closes.</span></div>
+    <div class="g"><i class="num">69</i><b>Search help line</b><span>The Operator popup's first line: how to combine filters, or, inside an operator's value, that operator's examples. It stays put while the rows scroll.</span></div>
     <div class="g"><i class="num">56</i><b>Whole Word and Match All</b><span>Beside Match Case and Regex. Whole Word matches whole words only; Match All needs every message term (git's --all-match), where plain words otherwise match any.</span></div>
     <div class="g"><i class="num">57</i><b>✨ in the Search box</b><span>Natural language: what you type goes to Linyra AI, which writes the operator query back into the box and runs it. Unavailable (with a way to set it up) until AI is configured.</span></div>
     <div class="g"><i class="num">58</i><b>Ask AI button</b><span>✨ in the Log header while AI is on: ask Linyra in words; read-only steps run at once, and anything that writes to a repository is listed in one prompt first.</span></div>
+    <div class="g"><i class="num">61</i><b>Changes column</b><span>In the Log, between the author and the date: each commit's files and lines as numbers, squares, a bar (the default) or a bipolar bar — the ⋯ menu picks, or turns it off. It narrows with the Log, down to a ring; one git process per repository on screen, each commit read once a session.</span></div>
     <div class="g"><i class="num">59</i><b>Change column</b><span>File History only: what each commit did to the file — its letter (A, M, D, R in Source Control's colors) and its lines added and deleted; a rename shows ← the old path.</span></div>
     <div class="g"><i class="num">60</i><b>Uncommitted changes row</b><span>File History only, above the commits when the file has uncommitted work: opens last commit ↔ working tree. No git process: it comes from the same reads as the Uncommitted side.</span></div>
     <div class="g"><i class="num">62</i><b>Uncommitted row</b><span>One repository's uncommitted work: its File counts (63) over the Meter (64), the files, the staged tag, its Work branch pill (65) and when a file was last edited.</span></div>

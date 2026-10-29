@@ -1,20 +1,56 @@
 // Suggestions for a text box (the search box's operators and values), drawn by the webview in
 // VS Code's own suggest-widget style instead of the browser's <datalist> popup. Pure: no DOM.
+import type { Codicon } from "./codicons";
 
 export interface Suggestion {
   /** What picking it puts in the box. */
   value: string;
+  /** The first line, in bold. */
   label: string;
-  /** What it does, after the label (an operator's meaning). */
+  /** The second line, in the secondary color: what an operator does, what a value means. */
   description?: string;
-  /** Dimmer text at the right (an email, a repo count, an operator's aliases). */
+  /** More about a value (an author's email): matched as well as the label, and the second line when there is no description. */
   detail?: string;
+  /** Dimmer, at the right of the first line: an operator's aliases, a value's kind. */
+  aside?: string;
+  /** At the left. */
+  icon?: Codicon;
 }
 
 export interface SuggestionMatch {
   item: Suggestion;
   /** [start, end) of the query in the label, for highlighting; null when only the detail matched. */
   label: [number, number] | null;
+  /** [start, end) of the query in the aside: an alias typed rather than the operator. */
+  aside?: [number, number];
+}
+
+/** The help line above the rows: `text` has {0}, {1}… where each of `code` goes, drawn as code. */
+export interface SuggestHint {
+  text: string;
+  code: readonly string[];
+}
+
+/** What the list shows for the box's text and caret: rows, a help line, or both. */
+export interface SuggestionList {
+  items: SuggestionMatch[];
+  hint?: SuggestHint;
+}
+
+/** The hint's text and code, in order: [text, false] or [code, true]. Unknown placeholders stay text. */
+export function hintParts(hint: SuggestHint): [string, boolean][] {
+  const parts: [string, boolean][] = [];
+  let last = 0;
+  for (const m of hint.text.matchAll(/\{(\d+)\}/g)) {
+    const code = hint.code[Number(m[1])];
+    if (code === undefined) continue;
+    const at = m.index ?? 0;
+    if (at > last) parts.push([hint.text.slice(last, at), false]);
+    parts.push([code, true]);
+    last = at + m[0].length;
+  }
+  if (last < hint.text.length) parts.push([hint.text.slice(last), false]);
+  return parts;
 }
 
 /**
