@@ -114,7 +114,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const selection = new CompareSelection();
   const mergeDocs = new MergePreviewDocs();
   const compareDeps = { context, store: compare, log, selection, mergeDocs, ask,
-    mergeEach: (title: string, plans: { repo: Repo; ref: string }[], skipped: { name: string; reason: string }[]) => multiRepo.mergeEach(title, plans, skipped) };
+    mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]) => multiRepo.mergeEach(title, plans, skipped),
+    mergeRef: (repo: Repo, ref: string) => multiRepo.mergeRef(repo, ref) };
   const compareRepos = new CompareRepos(compareDeps);
   context.subscriptions.push(mergeDocs, vscode.workspace.registerTextDocumentContentProvider(MergePreviewDocs.scheme, mergeDocs));
   const branchSidebar = new BranchController(context, {

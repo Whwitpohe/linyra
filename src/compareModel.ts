@@ -43,9 +43,8 @@ export interface Duplicate {
 }
 export type PickerItem =
   | { kind: "pair"; pair: Pair }
-  | { kind: "name"; name: string; count: number; favorite: boolean; added: boolean }
-  /** One of this side's names, in the order a repository tries them. */
-  | { kind: "candidate"; name: string; index: number };
+  /** order: its place among the side's ticked names (1 is tried first); 0 when not ticked. */
+  | { kind: "name"; name: string; count: number; favorite: boolean; order: number };
 export interface PickerGroup {
   title: string;
   items: PickerItem[];
@@ -259,20 +258,24 @@ export function pushRecent(recent: readonly Pair[], p: Pair, cap = 5): Pair[] {
 }
 
 /**
- * This side's names (not while searching), Recent pairs, Default branch (each repository's
- * origin/HEAD), Favorites, Local, Remote; a name may be in Favorites and its own group.
+ * Recent pairs (not while searching), Default branch (each repository's origin/HEAD), Favorites,
+ * Local, Remote; a name may be in Favorites and its own group. Each name says whether this side
+ * has it ticked, and in which place (`current`: the side's names, in order).
  */
 export function pickerGroups(names: readonly { name: string; count: number }[], favorites: readonly string[], recent: readonly Pair[], query: string,
   current: readonly string[] = [], defaults: readonly { name: string; count: number }[] = []): PickerGroup[] {
   const q = query.trim().toLowerCase();
   const match = (n: string) => q === "" || n.toLowerCase().includes(q);
   const fav = new Set(favorites);
-  const item = (n: { name: string; count: number }): PickerItem => ({ kind: "name", name: n.name, count: n.count, favorite: fav.has(n.name), added: current.includes(n.name) });
+  const item = (n: { name: string; count: number }): PickerItem => ({ kind: "name", name: n.name, count: n.count, favorite: fav.has(n.name), order: current.indexOf(n.name) + 1 });
   const sorted = [...names].filter((n) => match(n.name)).sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const remote = (n: string) => isRemoteName(n);
   const groups: PickerGroup[] = [];
-  if (q === "" && current.length > 1) groups.push({ title: localize("This side: each repository uses the first it has"), items: current.map((name, index) => ({ kind: "candidate", name, index })) });
   if (q === "" && recent.length > 0) groups.push({ title: localize("Recent pairs"), items: recent.map((pair) => ({ kind: "pair", pair })) });
+  // A ticked name no ticked repository has stays listed, so it can be unticked.
+  const known = new Set([...names, ...defaults].map((n) => n.name));
+  const unknown = current.filter((n) => !known.has(n) && match(n));
+  if (unknown.length > 0) groups.push({ title: localize("Not in any ticked repository"), items: unknown.map((name) => item({ name, count: 0 })) });
   const heads = defaults.filter((n) => match(n.name));
   if (heads.length > 0) groups.push({ title: localize("Default branch"), items: heads.map(item) });
   const favs = sorted.filter((n) => fav.has(n.name));
@@ -308,6 +311,35 @@ export function repoDescription(c: RepoCompare): string {
 export function repoCounts(c: RepoCompare): string {
   if (c.kind !== "differs") return repoDescription(c);
   return [c.left > 0 ? `${c.left} ◀` : "", c.right > 0 ? `${c.right} ▶` : "", c.sameLeft > 0 ? `=${c.sameLeft}` : ""].filter(Boolean).join(" · ");
+}
+
+/**
+ * Why Merge ◀ into ▶… leaves a repository out: a merge would conflict, ▶ is no local branch there,
+ * ▶ is checked out in another worktree (its files there would not follow), or ▶ moved since it was compared.
+ */
+export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "remote" | "worktree" | "moved"; into: string };
+
+/**
+ * The repositories Merge ◀ into ▶… leaves out, grouped by why: `summary` is one line for a
+ * notification ("7 repositories: develop checked out, not main"), `detail` each group and its names.
+ */
+export function mergeSkips(skipped: readonly MergeSkip[]): { summary: string; detail: string } {
+  const groups = new Map<string, { title: (n: number) => string; names: string[] }>();
+  for (const s of skipped) {
+    const key = s.why === "conflict" ? "conflict" : `${s.why}\0${s.into}`;
+    const repos = (n: number) => plural(n, "repository", "repositories");
+    const title = s.why === "conflict" ? (n: number) => localize("{0}: a merge would conflict", repos(n))
+      : s.why === "remote" ? (n: number) => localize("{0}: {1} is not a local branch", repos(n), s.into)
+      : s.why === "worktree" ? (n: number) => localize("{0}: {1} is checked out in another worktree", repos(n), s.into)
+      : (n: number) => localize("{0}: {1} moved since the comparison (Refresh)", repos(n), s.into);
+    const g = groups.get(key) ?? groups.set(key, { title, names: [] }).get(key)!;
+    g.names.push(s.why === "conflict" ? localize("{0} ({1})", s.name, plural(s.files, "file")) : s.name);
+  }
+  const list = [...groups.values()];
+  return {
+    summary: list.map((g) => g.title(g.names.length)).join(" · "),
+    detail: list.map((g) => `${g.title(g.names.length)}\n${g.names.join(", ")}`).join("\n\n"),
+  };
 }
 
 /** Copy as Release Notes: each repository's commits only on the left, as Markdown. */

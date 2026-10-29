@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import {
   bothPaths, candidates, COMMIT_PAGE, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure,
-  mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, pushRecent, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
+  mergeSkips, mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, pushRecent, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
   sidePage, repoDescription, sideCountArgs, summaryLabel, tabTitle, validPair, type RepoCompare,
 } from "./compareModel";
 
@@ -141,11 +141,12 @@ console.log("ok - recent pairs: newest first, once each, at most five");
 const names = [{ name: "origin/main", count: 68 }, { name: "main", count: 68 }, { name: "origin/release-1.4", count: 56 }, { name: "feat/billing", count: 3 }];
 const groups = pickerGroups(names, ["origin/main"], [p1], "");
 assert.deepStrictEqual(groups.map((g) => [g.title, g.items.length]), [["Recent pairs", 1], ["Favorites", 1], ["Local", 2], ["Remote", 2]]);
-// This side's names first (when it has several), each repository's default branch, and which names it already has.
-const withSide = pickerGroups(names, [], [], "", ["main", "origin/main"], [{ name: "origin/HEAD", count: 60 }]);
-assert.deepStrictEqual(withSide.map((g) => g.title), ["This side: each repository uses the first it has", "Default branch", "Local", "Remote"]);
-assert.deepStrictEqual(withSide[0].items, [{ kind: "candidate", name: "main", index: 0 }, { kind: "candidate", name: "origin/main", index: 1 }]);
-assert.deepStrictEqual(withSide[2].items.map((i) => i.kind === "name" && [i.name, i.added]), [["main", true], ["feat/billing", false]]);
+// Each repository's default branch, and each name's place among this side's ticked ones (0: not ticked).
+const withSide = pickerGroups(names, [], [], "", ["origin/main", "main"], [{ name: "origin/HEAD", count: 60 }]);
+assert.deepStrictEqual(withSide.map((g) => g.title), ["Default branch", "Local", "Remote"]);
+assert.deepStrictEqual(withSide.flatMap((g) => g.items.map((i) => i.kind === "name" && [i.name, i.order])), [["origin/HEAD", 0], ["main", 2], ["feat/billing", 0], ["origin/main", 1], ["origin/release-1.4", 0]]);
+// A ticked name no repository has is still listed, to untick.
+assert.deepStrictEqual(pickerGroups(names, [], [], "", ["develop-k", "main"]).map((g) => [g.title, g.items.length]), [["Not in any ticked repository", 1], ["Local", 2], ["Remote", 2]]);
 const searched = pickerGroups(names, ["origin/main"], [p1], "REL");
 assert.deepStrictEqual(searched.map((g) => g.title), ["Remote"]);
 assert.deepStrictEqual(pickerGroups(names, [], [], "zzz"), []);
@@ -180,3 +181,12 @@ assert.strictEqual(releaseNotes([
   { repo: "acme-web", from: "develop", into: "main", commits: [] },
 ]), "## acme-api (develop-k → main)\n\n- fix: retry on 503 (aaaaaaa, dana)\n- feat: rate limit (bbbbbbb, rin)\n");
 console.log("ok - release notes: Markdown, one section per repository with commits");
+
+// Merge ◀ into ▶ leaves repositories out once per reason, never once per repository.
+const skips = mergeSkips([
+  { name: "acme-web", why: "worktree", into: "main" }, { name: "acme-api", why: "conflict", files: 2 },
+  { name: "acme-libs", why: "worktree", into: "main" }, { name: "acme-docs", why: "remote", into: "origin/main" },
+]);
+assert.strictEqual(skips.summary, "2 repositories: main is checked out in another worktree · 1 repository: a merge would conflict · 1 repository: origin/main is not a local branch");
+assert.strictEqual(skips.detail, "2 repositories: main is checked out in another worktree\nacme-web, acme-libs\n\n1 repository: a merge would conflict\nacme-api (2 files)\n\n1 repository: origin/main is not a local branch\nacme-docs");
+console.log("ok - Merge leaves repositories out grouped by why");

@@ -188,15 +188,20 @@ export class MultiRepo {
   }
 
   /**
-   * Compare's Merge ◀ into ▶…: each plan's ref merged into its repository's checked-out branch, with
-   * the same progress, refresh and report as Branches Across Repositories; `skipped` joins the report.
+   * Compare's Merge ◀ into ▶…: each plan's merge, with the same progress, refresh and report as
+   * Branches Across Repositories; `skipped` joins the report.
    */
-  mergeEach(title: string, plans: readonly { repo: Repo; ref: string }[], skipped: readonly { name: string; reason: string }[]): Promise<MultiResult | undefined> {
+  mergeEach(title: string, plans: readonly { repo: Repo; merge: () => Promise<unknown> }[], skipped: readonly { name: string; reason: string }[]): Promise<MultiResult | undefined> {
     return this.exclusive(async () => {
-      const result = await this.each(title, plans.map((p) => p.repo), (repo) => this.git(repo, multiCommands.merge(plans.find((p) => p.repo.id === repo.id)!.ref)));
+      const result = await this.each(title, plans.map((p) => p.repo), (repo) => plans.find((p) => p.repo.id === repo.id)!.merge());
       result.skipped.push(...skipped);
       return this.report(title, result);
     });
+  }
+
+  /** `git merge` of a ref into the repository's checked-out branch (no editor, no autostash). */
+  mergeRef(repo: Repo, ref: string): Promise<string> {
+    return this.git(repo, multiCommands.merge(ref));
   }
 
   /** Each ticked repository's branches and remotes (undefined when they could not be read). */

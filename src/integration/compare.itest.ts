@@ -743,16 +743,41 @@ describe("Compare Branches", () => {
       assert.strictEqual(git(web, ["rev-parse", "HEAD~1"]), heads.web, "on the checked-out branch");
       git(web, ["reset", "-q", "--hard", heads.web]);
       await vscode.commands.executeCommand("linyra._itest.compareMode", "files");
-      // Merge ◀ into ▶: prod is checked out nowhere (main is), and acme-api would conflict: nothing merged.
+      // Merge ◀ into ▶ goes into ▶ as the boxes say, checked out or not. prod is checked out nowhere (main
+      // is): acme-api would conflict, so only acme-web is offered, and its prod moves without a checkout.
+      const prodWas = git(web, ["rev-parse", "refs/heads/prod"]);
+      const status = git(web, ["status", "--porcelain"]);
+      await vscode.commands.executeCommand("linyra._itest.answer", JSON.stringify(["acme-web"]));
       await vscode.commands.executeCommand("linyra.compareMerge");
-      assert.deepStrictEqual([git(api, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "HEAD"])], [heads.api, heads.web]);
-      // release-1.4 into main, which is checked out in both and merges cleanly there: one prompt, both merged.
+      assert.strictEqual(git(web, ["rev-parse", "refs/heads/prod"]), git(web, ["rev-parse", "release-1.4"]), "prod was behind: fast-forwarded");
+      assert.deepStrictEqual([git(api, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "HEAD"]), git(web, ["status", "--porcelain"])], [heads.api, heads.web, status], "nothing checked out, the working tree untouched");
+      // prod with its own commit: a merge commit, made without a checkout.
+      const prodOwn = commitOn(web, prodWas, { "prod.txt": "prod\n" }, "chore: prod only", T + 90);
+      git(web, ["update-ref", "refs/heads/prod", prodOwn]);
+      await viewPick({ left: "release-1.4", right: "main" });
+      await until2("another pair", repos, (x) => x.description === "release-1.4 ↔ main");
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await until2("prod read again", repos, (x) => x.description === "release-1.4 ↔ prod" && x.roots.length === 2);
+      await waitFor("acme-web's new prod", async () => ((await store()).rows.includes("acme-web ◀1 ▶1 =0") ? true : undefined));
+      await vscode.commands.executeCommand("linyra._itest.answer", JSON.stringify(["acme-web"]));
+      await vscode.commands.executeCommand("linyra.compareMerge");
+      const merge = git(web, ["rev-parse", "refs/heads/prod"]);
+      assert.deepStrictEqual(git(web, ["rev-list", "--parents", "-1", merge]).split(" ").slice(1), [prodOwn, git(web, ["rev-parse", "release-1.4"])], "a merge commit: prod, then release-1.4");
+      assert.strictEqual(git(web, ["log", "-1", "--format=%s", merge]), "Merge branch 'release-1.4' into prod");
+      assert.deepStrictEqual(git(web, ["ls-tree", "--name-only", merge]).split("\n").filter((f) => f === "billing.ts" || f === "prod.txt"), ["billing.ts", "prod.txt"]);
+      assert.deepStrictEqual([git(web, ["rev-parse", "HEAD"]), git(web, ["status", "--porcelain"])], [heads.web, status], "still nothing checked out");
+      git(web, ["update-ref", "refs/heads/prod", prodWas]);
+      // release-1.4 into main, checked out in both and clean there: a checklist, both ticked; untick acme-api.
       await viewPick({ left: "release-1.4", right: "main" });
       await until2("release-1.4 ↔ main", repos, (x) => x.description === "release-1.4 ↔ main" && x.roots.length === 2);
-      await vscode.commands.executeCommand("linyra._itest.answer", "Merge");
+      await vscode.commands.executeCommand("linyra._itest.answer", JSON.stringify(["acme-web"]));
       await vscode.commands.executeCommand("linyra.compareMerge");
-      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Merge release-1.4 into main in 2 repositories?");
-      assert.deepStrictEqual([git(api, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "HEAD"])], [git(api, ["rev-parse", "release-1.4"]), git(web, ["rev-parse", "release-1.4"])]);
+      assert.deepStrictEqual([git(api, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "HEAD"])], [heads.api, git(web, ["rev-parse", "release-1.4"])], "only the ticked one merged");
+      // One repository's right-click: that one only, after its own prompt.
+      await vscode.commands.executeCommand("linyra._itest.answer", "Merge");
+      await vscode.commands.executeCommand("linyra.compareMerge", { repoId: api });
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Merge release-1.4 into main in acme-api?");
+      assert.strictEqual(git(api, ["rev-parse", "HEAD"]), git(api, ["rev-parse", "release-1.4"]));
     } finally {
       git(api, ["reset", "-q", "--hard", heads.api]);
       git(web, ["reset", "-q", "--hard", heads.web]);

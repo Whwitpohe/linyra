@@ -1,6 +1,6 @@
 import { localize } from "../../i18n";
 import "./compare.css";
-import { ALL_REPOS, candidates, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type PickerItem, type Side } from "../../compareModel";
+import { ALL_REPOS, candidates, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type Side } from "../../compareModel";
 import type { CompareMode, CompareLayout, CRepoRow, ReposHost, ReposWebview } from "../../compareProtocol";
 import { byId, clear, h } from "../dom";
 import { codicon, codiconElement } from "../codicons";
@@ -68,30 +68,28 @@ let pairKey = "";
 const open = new Map<string, Duplicate[] | undefined>();
 
 const list = byId("repo-list");
-const picker = new BranchPicker(byId("picker"), byId<HTMLInputElement>("picker-search"), byId("picker-items"), choose, (name) => post({ type: "favorite", name }),
-  (name) => setSide(pickingSide, [...sideNames(pickingSide), name], false), (index) => setSide(pickingSide, sideNames(pickingSide).filter((_, i) => i !== index), false));
+const otherSide = (side: Side): Side => (side === "left" ? "right" : "left");
+const picker = new BranchPicker(byId("picker"), byId<HTMLInputElement>("picker-search"), byId("picker-items"), {
+  pickPair: (p) => post({ type: "pick", pair: p }),
+  setNames: (names) => setSide(pickingSide, names),
+  favorite: (name) => post({ type: "favorite", name }),
+  // Closed with this side picked and the other still empty: the other side's picker, next.
+  closed: () => { if (pair?.[pickingSide] && !pair[otherSide(pickingSide)]) openPicker(otherSide(pickingSide)); },
+});
 
 const sideNames = (side: Side) => candidates(pair?.[side] ?? "");
 
-function choose(it: PickerItem): void {
-  if (it.kind === "pair") return post({ type: "pick", pair: it.pair });
-  if (it.kind === "name") setSide(pickingSide, [it.name], true);
-}
-
-/** A side's names, in order. `next`: with the other side still empty, its picker opens. */
-function setSide(side: Side, names: string[], next: boolean): void {
-  if (names.length === 0) return;
+/** A side's ticked names, in order (the picker stays open while they change). */
+function setSide(side: Side, names: string[]): void {
   const value = sideOf(names);
-  const other = side === "left" ? pair?.right : pair?.left;
-  const p = side === "left" ? { left: value, right: other ?? "" } : { left: other ?? "", right: value };
-  picker.setCurrent(candidates(value));
+  const other = pair?.[otherSide(side)] ?? "";
+  const p = side === "left" ? { left: value, right: other } : { left: other, right: value };
   if (p.left && p.right) post({ type: "pick", pair: p });
   else {
-    // The other side is still empty: the host keeps the half pair (and its guidance); ask for the other side.
+    // A side is still empty: the host keeps the half pair (and its guidance).
     pair = p;
     renderState();
-    post({ type: "pending", pair: p });
-    if (next) openPicker(side === "left" ? "right" : "left");
+    if (p.left || p.right) post({ type: "pending", pair: p });
   }
 }
 
@@ -215,6 +213,7 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
       renderState(m.message);
       renderMissing(m.missing);
       renderRows();
+      renderConflictsButton();
       return;
     case "dups":
       if (open.has(m.repoId)) {
@@ -244,15 +243,26 @@ function renderState(message?: string): void {
   hideButton.setAttribute("aria-label", hideButton.title);
   hideButton.setAttribute("aria-pressed", String(hideSame));
   hideButton.innerHTML = codicon(hideSame ? "filter-filled" : "filter");
-  const conflictsButton = byId<HTMLButtonElement>("compare-only-conflicts");
-  conflictsButton.disabled = mode !== "files";
-  conflictsButton.title = localize(onlyConflicts ? "Show All Files" : "Show Only Conflicts");
-  conflictsButton.setAttribute("aria-label", conflictsButton.title);
-  conflictsButton.setAttribute("aria-pressed", String(onlyConflicts));
+  renderConflictsButton();
   const msg = byId("message");
   msg.hidden = message === undefined;
   msg.textContent = message ?? "";
   list.hidden = byId("summary").hidden = message !== undefined;
+}
+
+/**
+ * Show Only Conflicts: pressed while on, with how many files would conflict across the listed
+ * repositories; off and grayed out when none would (it would change nothing).
+ */
+function renderConflictsButton(): void {
+  const button = byId<HTMLButtonElement>("compare-only-conflicts");
+  const files = rows.reduce((n, r) => n + (r.conflicts ?? 0), 0);
+  button.disabled = mode !== "files" || (files === 0 && !onlyConflicts);
+  button.title = mode !== "files" ? localize("Show Only Conflicts") : files === 0 && !onlyConflicts ? localize("No file would conflict")
+    : localize(onlyConflicts ? "Show All Files" : "Show Only Conflicts");
+  button.setAttribute("aria-label", button.title);
+  button.setAttribute("aria-pressed", String(onlyConflicts));
+  button.replaceChildren(codiconElement("warning"), ...(files > 0 ? [h("span", { class: "button-count" }, [String(files)])] : []));
 }
 
 function renderMissing(missing: string[]): void {
@@ -281,7 +291,7 @@ function entries(): string[] {
 function mergeNote(conflicts: number | null): HTMLElement | null {
   if (conflicts === null) return null;
   return conflicts === 0
-    ? h("span", { class: "row-note clean", title: localize("Merges cleanly") }, [codiconElement("check")])
+    ? h("span", { class: "row-note clean", title: localize("Merges cleanly") }, [codiconElement("pass")])
     : h("span", { class: "row-note conflict", title: localize("A merge would leave {0} conflicted", localize("{0} {1}", conflicts, localize(conflicts === 1 ? "file" : "files"))) }, [codiconElement("warning"), String(conflicts)]);
 }
 

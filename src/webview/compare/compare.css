@@ -62,6 +62,9 @@ button, input { font: inherit; }
 .icon-button:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); outline: 1px dashed var(--vscode-contrastActiveBorder, transparent); }
 .seg { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; overflow: hidden; }
 .seg button { background: transparent; color: var(--vscode-foreground); border: 0; padding: 2px 10px; cursor: pointer; }
+/* A toggle that is on looks on: VS Code's own pressed option (as Match Case in a search box). */
+.cbar .icon-button[aria-pressed="true"] { background: var(--vscode-inputOption-activeBackground); border-color: var(--vscode-inputOption-activeBorder, transparent); color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); }
+.cbar .icon-button .button-count { margin-left: 2px; font-size: 11px; vertical-align: 2px; }
 .seg button[aria-pressed="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); box-shadow: inset 0 -2px 0 var(--vscode-focusBorder); }
 button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
@@ -108,19 +111,27 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 .picker-items { max-height: 300px; overflow: auto; padding-bottom: 6px; }
 .picker-group { padding: 6px 12px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--vscode-descriptionForeground); }
 .picker-row { display: flex; align-items: center; gap: 6px; padding: 3px 12px; cursor: pointer; }
-.picker-row[aria-selected="true"] { background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground)); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
-.picker-row[aria-selected="true"] .picker-count, .picker-row[aria-selected="true"] .side-mark { color: inherit; }
+.picker-row.active { background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground)); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
+.picker-row.active .picker-count, .picker-row.active .side-mark { color: inherit; }
 .picker-count { margin-left: auto; color: var(--vscode-descriptionForeground); }
 .picker mark { background: transparent; color: var(--vscode-list-highlightForeground); font-weight: 600; }
-.picker-row[aria-selected="true"] mark { color: inherit; text-decoration: underline; }
+.picker-row.active mark { color: inherit; text-decoration: underline; }
 .star { background: transparent; border: 0; padding: 0; cursor: pointer; color: var(--vscode-descriptionForeground); }
 .star.on { color: var(--vscode-charts-yellow); }
-/* This side's names, in order, and the + that adds a name after them. */
-.picker-order { min-width: 1.5em; color: var(--vscode-descriptionForeground); }
-.picker-add, .picker-remove { flex: 0 0 auto; padding: 0 4px; border: 0; background: transparent; color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer; }
-.picker-remove { margin-left: auto; }
-.picker-add:hover, .picker-remove:hover { color: var(--vscode-foreground); }
-.picker-row[aria-selected="true"] .picker-add, .picker-row[aria-selected="true"] .picker-remove, .picker-row[aria-selected="true"] .picker-order { color: inherit; }
+/* A side may tick several branches: each has its checkbox, its place in the order (1 is tried first), and ∧ ∨ to move it. */
+.picker-hint { padding: 0 12px 4px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.picker-check { flex: 0 0 16px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid var(--vscode-checkbox-border, var(--vscode-input-border, var(--vscode-foreground))); border-radius: 3px; background: var(--vscode-checkbox-background, var(--vscode-input-background)); color: var(--vscode-checkbox-foreground, var(--vscode-foreground)); }
+.picker-check svg { width: 14px; height: 14px; }
+.picker-check.on { background: var(--vscode-checkbox-selectBackground, var(--vscode-button-background)); border-color: var(--vscode-checkbox-selectBorder, var(--vscode-focusBorder)); color: var(--vscode-button-foreground); }
+.picker-order { flex: 0 0 18px; height: 16px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid transparent; border-radius: 3px; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.picker-order.on { border-color: var(--vscode-focusBorder); color: var(--vscode-foreground); }
+.picker-moves { display: inline-flex; gap: 1px; flex: 0 0 auto; }
+.picker-move { width: 18px; height: 18px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--vscode-foreground); cursor: pointer; }
+.picker-move svg { width: 14px; height: 14px; }
+.picker-move:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+.picker-move:disabled { color: var(--vscode-disabledForeground); cursor: default; }
+.picker-row.full { opacity: 0.6; cursor: default; }
+.picker-row.active .picker-order, .picker-row.active .picker-move:not(:disabled) { color: inherit; }
 .picker-empty { padding: 16px 12px; color: var(--vscode-descriptionForeground); }
 
 /* A narrow view: the two Branch boxes get the full line; Files | Commits and Refresh go below. */

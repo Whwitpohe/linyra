@@ -2,7 +2,7 @@ import { localize } from "./i18n";
 import { randomBytes } from "crypto";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
-import { candidates, COMMIT_PAGE, conflictNote, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type Pair } from "./compareModel";
+import { candidates, COMMIT_PAGE, conflictNote, mergeSkips, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type MergeSkip, type Pair } from "./compareModel";
 import type { CRepoRow, CompareLayout, ReposHost, ReposWebview } from "./compareProtocol";
 import type { CompareStore } from "./compareStore";
 import { ALL_REPOS, differing, FAVORITES, MODE, modeOf, ONLY_CONFLICTS as ONLY_CONFLICTS_KEY, onlyConflictsOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, short, shortSide, type CompareMode, type Deps, type CompareSide } from "./compareView";
@@ -14,8 +14,10 @@ import type { Ask } from "./uncommittedActions";
 /** What Compare needs beyond the side views' deps: the merge across repositories (Branches Across Repositories' machinery). */
 export interface ReposDeps extends Deps {
   ask: Ask;
-  /** Merges each plan's ref into its repository's checked-out branch, with progress and one report; `skipped` joins the report. */
-  mergeEach(title: string, plans: { repo: Repo; ref: string }[], skipped: { name: string; reason: string }[]): Promise<unknown>;
+  /** Runs each plan's merge, with progress, the repositories' refresh and one report; `skipped` joins the report. */
+  mergeEach(title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]): Promise<unknown>;
+  /** `git merge` of a ref into the repository's checked-out branch. */
+  mergeRef(repo: Repo, ref: string): Promise<unknown>;
 }
 import { renderReposHtml } from "./webview/compare/html";
 import { accentOf } from "./webview/view";
@@ -465,35 +467,63 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   /**
-   * Merge ◀ into ▶…: in each listed repository (or the one right-clicked) that merges cleanly and
-   * has ▶ checked out (or ▶ is its remote branch and the checked-out branch is at the same commit),
-   * after one prompt that names each merge and why the others are left out.
+   * Merge ◀ into ▶…: into ▶ itself, as the branch boxes say, whatever is checked out. ▶ checked out
+   * here: `git merge` (the working tree follows). ▶ not checked out: the merge is made without a
+   * checkout (CompareStore.mergeInPlace), and the working tree is not touched. Only where the
+   * merge is clean. From the toolbar, a checklist of those repositories, all ticked: untick one
+   * to leave it out. From a repository's right-click, that one only, after one prompt. Why the
+   * others are left out is said once per reason, never once per repository.
    */
   async mergeIntoRight(only?: string): Promise<void> {
     const pair = this.deps.store.pair;
     if (!pair) return;
     const targets = differing(this.deps.store).filter((x) => !only || only === ALL_REPOS || x.repo.id === only);
     if (targets.length === 0) return;
-    const plans: { repo: Repo; ref: string; into: string }[] = [];
-    const skipped: { name: string; reason: string }[] = [];
+    const plans: { repo: Repo; from: string; into: string; checkedOut: boolean; merge: () => Promise<unknown> }[] = [];
+    const skipped: MergeSkip[] = [];
     await runPool(targets, 8, async ({ repo, result }) => {
-      if (result.conflicts && result.conflicts.length > 0) { skipped.push({ name: repo.name, reason: localize("it would conflict in {0}", plural(result.conflicts.length, "file")) }); return; }
-      const [sha = "", branch = ""] = (await this.deps.log.countedRun(repo.root, ["rev-parse", "HEAD", "--abbrev-ref", "HEAD"], new AbortController().signal).catch(() => "")).split("\n").map((l) => l.trim());
+      if (result.conflicts && result.conflicts.length > 0) { skipped.push({ name: repo.name, why: "conflict", files: result.conflicts.length }); return; }
       const into = result.rightName;
-      const checkedOut = branch !== "" && branch !== "HEAD" && (into === branch || (into.endsWith(`/${branch}`) && sha === result.rightSha));
-      if (!checkedOut) { skipped.push({ name: repo.name, reason: localize("{0} is not the checked-out branch ({1})", short(into), branch && branch !== "HEAD" ? branch : localize("detached HEAD")) }); return; }
-      plans.push({ repo, ref: result.leftName, into: branch });
+      // ▶ as a local branch: where it is, and the worktree that has it checked out (if one does).
+      const out = await this.deps.log.countedRun(repo.root, ["for-each-ref", "--format=%(objectname)%00%(worktreepath)", `refs/heads/${into}`], new AbortController().signal).catch(() => "");
+      const [sha = "", worktree = ""] = out.trim().split("\0");
+      if (!sha) { skipped.push({ name: repo.name, why: "remote", into: short(into) }); return; }
+      if (sha !== result.rightSha) { skipped.push({ name: repo.name, why: "moved", into }); return; }
+      const here = worktree !== "" && samePath(worktree, repo.root);
+      if (worktree !== "" && !here) { skipped.push({ name: repo.name, why: "worktree", into }); return; }
+      const from = { name: result.leftName, sha: result.leftSha };
+      plans.push({ repo, from: result.leftName, into, checkedOut: here,
+        merge: here ? () => this.deps.mergeRef(repo, result.leftName) : () => this.deps.store.mergeInPlace(repo, from, { name: into, sha }) });
     }, new AbortController().signal);
-    plans.sort((a, b) => targets.findIndex((x) => x.repo.id === a.repo.id) - targets.findIndex((x) => x.repo.id === b.repo.id));
+    const order = (name: string) => targets.findIndex((x) => x.repo.name === name);
+    plans.sort((a, b) => order(a.repo.name) - order(b.repo.name));
+    skipped.sort((a, b) => order(a.name) - order(b.name));
     const title = localize("Merge {0} into {1}", shortSide(pair.left), shortSide(pair.right));
+    // Left out, grouped by why: one line, the names on request (never one line per repository).
+    const left = mergeSkips(skipped);
     if (plans.length === 0) {
-      void vscode.window.showInformationMessage(localize("Nothing to merge: {0}.", skipped.map((s) => `${s.name} (${s.reason})`).join(", ")));
+      const details = localize("Details");
+      void vscode.window.showInformationMessage(localize("Nothing to merge. {0}.", left.summary), details).then((pick) => {
+        if (pick === details) void vscode.window.showInformationMessage(localize("Why nothing was merged"), { modal: true, detail: left.detail });
+      });
       return;
     }
-    const detail = [...plans.map((p) => `${p.repo.name}: ${short(p.ref)} → ${p.into}`),
-      ...(skipped.length > 0 ? ["", localize("Left as they are:"), ...skipped.map((s) => `${s.name}: ${s.reason}`)] : [])].join("\n");
-    if (!(await this.deps.ask.warning(localize("Merge {0} into {1} in {2}?", shortSide(pair.left), shortSide(pair.right), plural(plans.length, "repository", "repositories")), detail, localize("Merge")))) return;
-    await this.deps.mergeEach(title, plans, skipped);
+    // Where ▶ is not checked out, the merge is made without a checkout: said on each row.
+    const how = (p: (typeof plans)[number]) => (p.checkedOut ? localize("checked out: git merge") : localize("not checked out: your working tree is not touched"));
+    let chosen = plans;
+    if (only && only !== ALL_REPOS) {
+      const p = plans[0];
+      if (!(await this.deps.ask.warning(localize("Merge {0} into {1} in {2}?", short(p.from), short(p.into), p.repo.name), `${short(p.into)} ${how(p)}`, localize("Merge")))) return;
+    } else {
+      // A checklist, as Push… has: every repository that can merge, ticked; untick one to leave it out.
+      const picked = await this.deps.ask.pickMany(plans.map((p) => ({ label: p.repo.name, description: `${short(p.from)} → ${short(p.into)}`, detail: `${short(p.into)} ${how(p)}`, picked: true })),
+        skipped.length > 0 ? localize("Untick a repository to leave it out. Not offered: {0}", left.summary) : localize("Untick a repository to leave it out"));
+      if (!picked?.length) return;
+      chosen = picked.map((i) => plans[i]);
+    }
+    // The report names each left-out repository once, with a short why.
+    await this.deps.mergeEach(title, chosen, skipped.map((s) => ({ name: s.name, reason: s.why === "conflict" ? localize("would conflict")
+      : s.why === "remote" ? localize("not a local branch") : s.why === "worktree" ? localize("checked out in another worktree") : localize("moved since the comparison") })));
   }
 
   /** Copy as Release Notes: every listed repository's commits only on ◀ (the same change on both left out), as Markdown. */
@@ -530,4 +560,10 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     clearTimeout(this.refreshTimer);
     for (const d of this.disposables) d.dispose();
   }
+}
+
+/** The same folder, however git and VS Code spell it (slashes, a drive letter's case). */
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").replace(/^([a-z]):/i, (_, d: string) => `${d.toLowerCase()}:`);
+  return process.platform === "win32" || process.platform === "darwin" ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
 }

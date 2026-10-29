@@ -14,22 +14,31 @@ const open = async (page, { theme = "dark", pair = "", width = 1400, height = 42
 };
 const sent = (page, type) => page.evaluate((t) => window.compareMessages.filter((m) => m.type === t), type);
 
-test("a side lists several names: + adds the next one to try, × removes one, the box shows them in order", async ({ page }) => {
+test("a side ticks several branches: each has its place in the order, ∧ ∨ move it, the box shows them in order", async ({ page }) => {
   await open(page);
   await page.locator("#branch-left").click();
   await expect(page.locator("#picker")).toBeVisible();
   // Default branch: each repository's origin/HEAD.
   await expect(page.locator(".picker-group", { hasText: "Default branch" })).toBeVisible();
-  await page.locator(".picker-row", { hasText: "origin/release-1.3" }).locator(".picker-add").click();
+  const row = (name) => page.locator(".picker-row.name").filter({ has: page.getByText(name, { exact: true }) }).first();
+  await expect(row("origin/release-1.4").locator(".picker-order")).toHaveText("1");
+  await expect(row("origin/release-1.3").locator(".picker-order")).toHaveText("–");
+  // A click ticks it, second; the picker stays open.
+  await row("origin/release-1.3").click();
   await expect(page.locator("#name-left")).toHaveText("origin/release-1.4, origin/release-1.3");
   await expect.poll(async () => (await sent(page, "pick")).at(-1)?.pair).toEqual({ left: "origin/release-1.4 origin/release-1.3", right: "origin/main" });
-  // The picker stays open on this side's names, in order.
-  await expect(page.locator(".picker-row.candidate")).toHaveText([/1\.\s*origin\/release-1\.4/, /2\.\s*origin\/release-1\.3/]);
-  await page.locator(".picker-row.candidate").first().locator(".picker-remove").click();
+  await expect(row("origin/release-1.3").locator(".picker-order")).toHaveText("2");
+  await expect(row("origin/release-1.3")).toHaveAttribute("aria-checked", "true");
+  // ∧ moves it first.
+  await row("origin/release-1.3").locator('.picker-move[data-move="-1"]').click();
+  await expect(page.locator("#name-left")).toHaveText("origin/release-1.3, origin/release-1.4");
+  await expect(row("origin/release-1.3").locator(".picker-order")).toHaveText("1");
+  // A click on a ticked one unticks it.
+  await row("origin/release-1.4").click();
   await expect(page.locator("#name-left")).toHaveText("origin/release-1.3");
-  // A plain pick replaces the side.
-  await page.locator(".picker-row", { hasText: "feat/billing" }).click();
-  await expect(page.locator("#name-left")).toHaveText("feat/billing");
+  await expect(page.locator("#picker")).toBeVisible();
+  await page.locator("#picker-search").press("Escape");
+  await expect(page.locator("#picker")).toBeHidden();
 });
 
 test("Repositories: each row's merge note and the names it uses; All repositories puts every one in one tree", async ({ page }) => {
@@ -62,10 +71,15 @@ test("a side's filter keeps matching rows and their folders; Ctrl/Shift-click se
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
 });
 
-test("Only Conflicts lists only the conflicted files; Merge and Release Notes reach the host", async ({ page }) => {
+test("Only Conflicts lists only the conflicted files, says how many and looks pressed; Merge and Release Notes reach the host", async ({ page }) => {
   await open(page);
   const button = page.locator("#compare-only-conflicts");
+  await expect(button).toBeEnabled();
+  await expect(button.locator(".button-count")).toHaveText("1");
+  const look = () => button.evaluate((b) => getComputedStyle(b).backgroundColor);
+  const off = await look();
   await button.click();
+  await expect.poll(look).not.toBe(off);
   await expect(button).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#compare-left-tree .compare-tree-row", { hasText: ".ts" })).toHaveText([/limits\.ts/]);
   await button.click();
@@ -89,6 +103,8 @@ for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
   test(`${theme}: Compare renders without console errors`, async ({ page }) => {
     const errors = await open(page, { theme, pair: "several" });
     await expect(page.locator(".row-note.conflict svg")).toHaveCount(2);
+    // "Merges cleanly" is a circled check: it must not read as a checkbox.
+    await expect(page.locator(".row-note.clean svg")).toHaveCount(1);
     expect(errors).toEqual([]);
   });
 }

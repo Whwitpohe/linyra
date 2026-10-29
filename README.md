@@ -112,7 +112,8 @@ the native diff; **Changes since the Split** reviews what that side introduced.
 
 - **Several names per side.** A side can list names in order (`develop, develop-k` ↔
   `main, master`, or each repository's **Default branch**): each repository uses the first
-  it has, and its row says which (`develop-k → main`). The **+** on a picker row adds a name.
+  it has, and its row says which (`develop-k → main`). Tick several in the picker; their numbers
+  are the order, and ∧ ∨ change it.
 - **Conflicts before you merge.** Each repository is merged in memory (`git merge-tree`,
   git 2.38+; nothing is written to the repository): its row shows a check or how many files
   would conflict, those files are marked, **Show Only Conflicts** lists just them, and
@@ -120,8 +121,10 @@ the native diff; **Changes since the Split** reviews what that side introduced.
 - **All repositories** at the top of the list shows every repository's files or commits in
   one tree. Each side has a filter box; Commits rows show their date.
 - **Act on it:** **Cherry-Pick** the selected commits of a side (Ctrl/Shift-click), **Merge ◀
-  into ▶…** in every repository that merges cleanly and has ▶ checked out, and **Copy ◀ Commits
-  as Release Notes** (Markdown, by repository).
+  into ▶…** (a checklist of the repositories that merge cleanly; one repository from its
+  right-click), and **Copy ◀ Commits as Release Notes** (Markdown, by repository). The merge goes
+  into ▶ as the boxes say: where ▶ is checked out, `git merge`; where it is not, the branch moves
+  without a checkout and your working tree is not touched.
 
 Log/Changes and Compare support side-by-side or stacked layouts, draggable dividers and
 explicit visibility controls. Clicking a heading or its empty space does not collapse

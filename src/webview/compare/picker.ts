@@ -1,11 +1,15 @@
 import { localize } from "../../i18n";
 import { MAX_CANDIDATES, pickerGroups, type Pair, type PickerItem } from "../../compareModel";
+import { codiconElement } from "../codicons";
 import { clear, h } from "../dom";
 
+type NameItem = Extract<PickerItem, { kind: "name" }>;
+
 /**
- * The Branch picker: a search box over this side's names, Recent pairs, Default branch, Favorites,
- * Local and Remote. A name replaces the side; its + adds it as the next name to try (Ctrl+Enter),
- * so a repository without the first uses the next. Filters in the page.
+ * The Branch picker: a search box over Recent pairs, Default branch, Favorites, Local and Remote.
+ * Each branch has a checkbox: a side may tick several, and its number says the order a repository
+ * tries them (1 first); ∧ ∨ move a ticked one up or down. A Recent pair is picked at once. Ticking
+ * keeps the picker open; it closes on Escape or a click outside. Filters in the page.
  */
 export class BranchPicker {
   private names: { name: string; count: number }[] = [];
@@ -14,7 +18,7 @@ export class BranchPicker {
   private loaded = false;
   private favorites: string[] = [];
   private recent: Pair[] = [];
-  /** The side's names, in the order a repository tries them. */
+  /** The side's ticked names, in the order a repository tries them. */
   private current: string[] = [];
   private items: PickerItem[] = [];
   private active = 0;
@@ -24,63 +28,67 @@ export class BranchPicker {
     private readonly root: HTMLElement,
     private readonly input: HTMLInputElement,
     private readonly list: HTMLElement,
-    private readonly onPick: (item: PickerItem) => void,
-    private readonly onFavorite: (name: string) => void,
-    private readonly onAdd: (name: string) => void,
-    private readonly onRemove: (index: number) => void,
+    private readonly handlers: {
+      /** A Recent pair: both sides at once. */
+      pickPair(pair: Pair): void;
+      /** The side's ticked names changed (ticked, unticked or moved). */
+      setNames(names: string[]): void;
+      favorite(name: string): void;
+      /** The picker closed (Escape, a click outside, Tab). */
+      closed(): void;
+    },
   ) {
     input.addEventListener("input", () => {
       this.active = 0;
       this.render();
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const it = this.items[this.active];
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.altKey) {
+        // Alt+↑/↓: the active ticked branch earlier or later in the order.
+        e.preventDefault();
+        if (it?.kind === "name" && it.order > 0) this.move(it.name, e.key === "ArrowUp" ? -1 : 1);
+      } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         this.active = Math.max(0, Math.min(this.items.length - 1, this.active + (e.key === "ArrowDown" ? 1 : -1)));
         this.mark();
       } else if (e.key === "Enter") {
         e.preventDefault();
-        const it = this.items[this.active];
-        // Ctrl+Enter: the name goes after the side's others instead of replacing them.
-        if (it?.kind === "name" && (e.ctrlKey || e.metaKey)) this.add(it);
-        else if (it) this.choose(it);
+        if (it) this.choose(it);
       } else if (e.key === "Escape") {
         e.preventDefault();
         this.close();
       } else if (e.key === "Tab") {
         // Leaving the search box leaves the picker.
-        this.root.hidden = true;
-        this.anchor?.setAttribute("aria-expanded", "false");
+        this.hide();
       }
     });
     // A combobox: the search box owns the list and says which row is active.
     input.setAttribute("role", "combobox");
     input.setAttribute("aria-controls", list.id);
     input.setAttribute("aria-autocomplete", "list");
+    list.setAttribute("aria-multiselectable", "true");
     list.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus in the search box
     list.addEventListener("click", (e) => {
       const target = e.target as Element;
       const star = target.closest<HTMLElement>("[data-star]");
       if (star) {
-        this.onFavorite(star.dataset.star!);
+        this.handlers.favorite(star.dataset.star!);
         return;
       }
-      const add = target.closest<HTMLElement>("[data-add]");
-      if (add) {
-        const it = this.items[Number(add.dataset.add)];
-        if (it?.kind === "name") this.add(it);
-        return;
-      }
-      const remove = target.closest<HTMLElement>("[data-remove]");
-      if (remove) {
-        this.onRemove(Number(remove.dataset.remove));
+      const move = target.closest<HTMLButtonElement>("[data-move]");
+      if (move) {
+        if (!move.disabled) this.move(move.dataset.name!, Number(move.dataset.move));
         return;
       }
       const row = target.closest<HTMLElement>("[data-i]");
-      if (row) this.choose(this.items[Number(row.dataset.i)]);
+      if (row) {
+        this.active = Number(row.dataset.i);
+        this.choose(this.items[this.active]);
+      }
     });
     document.addEventListener("mousedown", (e) => {
-      if (this.isOpen && !root.contains(e.target as Node) && !(this.anchor?.contains(e.target as Node) ?? false)) this.close();
+      if (this.isOpen && !root.contains(e.target as Node) && !(this.anchor?.contains(e.target as Node) ?? false)) this.close(false);
     });
   }
 
@@ -97,7 +105,7 @@ export class BranchPicker {
     if (this.isOpen) this.render();
   }
 
-  /** The side's names changed (a name added or removed): the picker stays open on them. */
+  /** The side's names changed (from this picker or the host): the picker stays open on them. */
   setCurrent(current: string[]): void {
     this.current = current;
     if (this.isOpen) this.render();
@@ -127,66 +135,100 @@ export class BranchPicker {
     this.list.style.maxHeight = `${Math.max(80, window.innerHeight - top - this.input.offsetHeight - 24)}px`;
   }
 
-  close(): void {
+  private hide(): void {
     if (!this.isOpen) return;
     this.root.hidden = true;
     this.anchor?.setAttribute("aria-expanded", "false");
-    this.anchor?.focus();
+    this.handlers.closed();
   }
 
+  /** `focus`: back to its box (not when a click elsewhere closed it: that click has the focus). */
+  close(focus = true): void {
+    if (!this.isOpen) return;
+    const anchor = this.anchor;
+    this.hide();
+    // Closing may have opened the other side's picker: its search box keeps the focus.
+    if (focus && !this.isOpen) anchor?.focus();
+  }
+
+  /** A pair is picked at once; a branch is ticked or unticked, and the picker stays open. */
   private choose(it: PickerItem): void {
-    // This side's own names stay as they are: picking one changes nothing.
-    if (it.kind === "candidate") return;
-    this.close();
-    this.onPick(it);
+    if (it.kind === "pair") {
+      this.close();
+      this.handlers.pickPair(it.pair);
+      return;
+    }
+    if (it.order > 0) this.setNames(this.current.filter((n) => n !== it.name));
+    else if (this.current.length < MAX_CANDIDATES) this.setNames([...this.current, it.name]);
   }
 
-  private canAdd(it: Extract<PickerItem, { kind: "name" }>): boolean {
-    return this.current.length > 0 && !it.added && this.current.length < MAX_CANDIDATES;
+  private move(name: string, by: number): void {
+    const i = this.current.indexOf(name), j = i + by;
+    if (i < 0 || j < 0 || j >= this.current.length) return;
+    const next = [...this.current];
+    [next[i], next[j]] = [next[j], next[i]];
+    this.setNames(next);
   }
 
-  private add(it: Extract<PickerItem, { kind: "name" }>): void {
-    if (this.canAdd(it)) this.onAdd(it.name);
+  private setNames(names: string[]): void {
+    this.current = names;
+    this.handlers.setNames(names);
+    this.render();
   }
 
   private render(): void {
     const q = this.input.value;
     const groups = pickerGroups(this.names, this.favorites, this.recent, q, this.current, this.defaults);
     this.items = groups.flatMap((g) => g.items);
+    this.active = Math.min(this.active, Math.max(0, this.items.length - 1));
     clear(this.list);
     if (this.items.length === 0) {
       this.list.append(h("div", { class: "picker-empty" }, [!this.loaded ? localize("Reading branch names…") : this.names.length === 0 ? localize("No branches in the ticked repositories.") : localize("No branch named \"{0}\" in any repository.", q.trim())]));
       return;
     }
+    this.list.append(h("div", { class: "picker-hint", role: "presentation" }, [localize("Tick several: each repository uses the first ticked one it has (1, 2, …).")]));
     let i = 0;
     for (const g of groups) {
       this.list.append(h("div", { class: "picker-group", role: "presentation" }, [g.title]));
       for (const it of g.items) {
-        const id = `pick-${i}`;
-        this.list.append(it.kind === "pair"
-          ? h("div", { class: "picker-row", role: "option", id, "data-i": String(i) }, [
-            h("span", { class: "side-mark left", "aria-hidden": "true" }, ["◀"]), h("span", { class: "branch-name" }, [it.pair.left.replace(/ /g, ", ")]),
-            h("span", { class: "side-mark right", "aria-hidden": "true" }, ["▶"]), h("span", { class: "branch-name" }, [it.pair.right.replace(/ /g, ", ")]),
-          ])
-          : it.kind === "candidate"
-            ? h("div", { class: "picker-row candidate", role: "option", id, "data-i": String(i), title: localize("Each repository uses the first of these it has") }, [
-              h("span", { class: "picker-order", "aria-hidden": "true" }, [`${it.index + 1}.`]), h("span", { class: "branch-name" }, [it.name]),
-              h("button", { class: "picker-remove", "data-remove": String(it.index), title: localize("Remove {0} from this side", it.name), "aria-label": localize("Remove {0} from this side", it.name), tabindex: "-1" }, ["×"]),
-            ])
-            : h("div", { class: "picker-row", role: "option", id, "data-i": String(i) }, [
-              h("button", { class: it.favorite ? "star on" : "star", "data-star": it.name, title: it.favorite ? localize("Remove from Favorites") : localize("Add to Favorites"), "aria-label": localize("Favorite {0}", it.name), "aria-pressed": String(it.favorite), tabindex: "-1" }, ["★"]),
-              highlight(it.name, q),
-              h("span", { class: "picker-count" }, [localize("in {0} {1}", it.count, localize(it.count === 1 ? "repository" : "repositories"))]),
-              this.canAdd(it) ? h("button", { class: "picker-add", "data-add": String(i), title: localize("Also try {0}, for a repository without the names before it (Ctrl+Enter)", it.name), "aria-label": localize("Add {0} as the next name to try", it.name), tabindex: "-1" }, ["+"]) : null,
-            ]));
+        this.list.append(it.kind === "pair" ? this.pairRow(it.pair, i) : this.nameRow(it, i, q));
         i++;
       }
     }
     this.mark();
   }
 
+  private pairRow(pair: Pair, i: number): HTMLElement {
+    return h("div", { class: "picker-row", role: "option", id: `pick-${i}`, "data-i": String(i) }, [
+      h("span", { class: "side-mark left", "aria-hidden": "true" }, ["◀"]), h("span", { class: "branch-name" }, [pair.left.replace(/ /g, ", ")]),
+      h("span", { class: "side-mark right", "aria-hidden": "true" }, ["▶"]), h("span", { class: "branch-name" }, [pair.right.replace(/ /g, ", ")]),
+    ]);
+  }
+
+  private nameRow(it: NameItem, i: number, q: string): HTMLElement {
+    const on = it.order > 0;
+    const full = !on && this.current.length >= MAX_CANDIDATES;
+    const arrow = (by: -1 | 1) => h("button", {
+      class: "picker-move", type: "button", tabindex: "-1", "data-move": String(by), "data-name": it.name,
+      disabled: (by < 0 ? it.order === 1 : it.order === this.current.length) ? "" : undefined,
+      title: localize(by < 0 ? "Try {0} earlier (Alt+↑)" : "Try {0} later (Alt+↓)", it.name), "aria-label": localize(by < 0 ? "Try {0} earlier (Alt+↑)" : "Try {0} later (Alt+↓)", it.name),
+    }, [codiconElement(by < 0 ? "chevron-up" : "chevron-down")]);
+    return h("div", {
+      class: `picker-row name${on ? " on" : ""}${full ? " full" : ""}`, role: "option", id: `pick-${i}`, "data-i": String(i), "aria-checked": String(on),
+      title: full ? localize("At most {0} branches per side", MAX_CANDIDATES) : undefined,
+    }, [
+      h("span", { class: `picker-check${on ? " on" : ""}`, "aria-hidden": "true" }, on ? [codiconElement("check")] : []),
+      h("span", { class: `picker-order${on ? " on" : ""}`, "aria-hidden": "true", title: on ? localize("Tried in place {0}", it.order) : undefined }, [on ? String(it.order) : "–"]),
+      highlight(it.name, q),
+      h("span", { class: "picker-count" }, [localize("in {0} {1}", it.count, localize(it.count === 1 ? "repository" : "repositories"))]),
+      on && this.current.length > 1 ? h("span", { class: "picker-moves" }, [arrow(-1), arrow(1)]) : null,
+      h("button", { class: it.favorite ? "star on" : "star", "data-star": it.name, title: it.favorite ? localize("Remove from Favorites") : localize("Add to Favorites"), "aria-label": localize("Favorite {0}", it.name), "aria-pressed": String(it.favorite), tabindex: "-1" }, ["★"]),
+    ]);
+  }
+
   private mark(): void {
-    for (const el of this.list.querySelectorAll<HTMLElement>("[data-i]")) el.setAttribute("aria-selected", String(Number(el.dataset.i) === this.active));
+    for (const el of this.list.querySelectorAll<HTMLElement>("[data-i]")) el.classList.toggle("active", Number(el.dataset.i) === this.active);
+    for (const el of this.list.querySelectorAll<HTMLElement>("[data-i]")) el.setAttribute("aria-selected", String(el.classList.contains("on") || (el.dataset.i === String(this.active) && !el.classList.contains("name"))));
     const on = this.list.querySelector<HTMLElement>(`[data-i="${this.active}"]`);
     if (on) {
       this.input.setAttribute("aria-activedescendant", on.id);

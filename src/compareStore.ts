@@ -225,6 +225,27 @@ export class CompareStore implements vscode.Disposable {
   }
 
   /**
+   * Merge ◀ into ▶ where ▶ is not checked out: the branch moves, the working tree is not touched. A
+   * fast-forward when ▶ is behind ◀; else the merge done in memory (`merge-tree`, known clean) is
+   * committed with ▶ and ◀ as parents. `git update-ref` checks ▶ is still where it was compared.
+   */
+  async mergeInPlace(repo: Repo, from: { name: string; sha: string }, into: { name: string; sha: string }): Promise<void> {
+    const signal = new AbortController().signal;
+    const run = (args: string[], input?: string) => this.deps.run(repo.root, args, signal, input === undefined ? {} : { input });
+    const ancestor = (a: string, b: string) => run(["merge-base", "--is-ancestor", a, b]).then(() => true, (e) => {
+      if (e instanceof GitError && e.exitCode === 1) return false;
+      throw e;
+    });
+    if (await ancestor(from.sha, into.sha)) return; // ◀ is in ▶ already: nothing to merge
+    let to = from.sha;
+    if (!(await ancestor(into.sha, from.sha))) {
+      const merged = parseMergeTree(await run(mergeTreeArgs(into.sha, from.sha)));
+      to = (await run(["commit-tree", merged.tree, "-p", into.sha, "-p", from.sha, "-F", "-"], `Merge branch '${from.name}' into ${into.name}\n`)).trim();
+    }
+    await run(["update-ref", "-m", `merge ${from.name}: Merge made by Linyra`, `refs/heads/${into.name}`, to, into.sha]);
+  }
+
+  /**
    * Preview Merge Result: the file as merging the two would leave it, conflict markers included
    * (undefined: this git cannot tell, or the merge has no such file).
    */
