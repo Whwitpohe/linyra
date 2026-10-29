@@ -1,5 +1,7 @@
 import { localize } from "../../i18n";
 import "./compare.css";
+// Registers <vscode-checkbox> (VS Code Elements, MIT): the same boxes as the Log's Repo List.
+import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { ALL_REPOS, candidates, manyRepos, selectionIds, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type Side } from "../../compareModel";
 import type { CompareMode, CompareLayout, CRepoRow, ReposHost, ReposWebview } from "../../compareProtocol";
 import { byId, clear, h } from "../dom";
@@ -139,8 +141,10 @@ list.addEventListener("click", (e) => {
   const row = (e.target as Element).closest<HTMLElement>("[data-repo]");
   if (!row) return;
   const id = row.dataset.repo!;
-  // Ctrl-click adds or removes a repository; Shift-click picks every one from the last clicked to it.
-  if (id !== ALL_REPOS && (e.ctrlKey || e.metaKey || e.shiftKey)) pickMany(id, e.shiftKey);
+  // As in the Log's Repo List: the box (or Ctrl-click) ticks or unticks a repository, a click on
+  // the row shows only it, Shift-click ticks every one from the last clicked to it.
+  const box = (e.target as Element).closest(".repo-check") !== null;
+  if (id !== ALL_REPOS && (box || e.ctrlKey || e.metaKey || e.shiftKey)) pickMany(id, e.shiftKey);
   else select(id, true);
 });
 list.addEventListener("keydown", (e) => {
@@ -156,6 +160,12 @@ list.addEventListener("keydown", (e) => {
     renderRows();
     return;
   }
+  // Space ticks or unticks the focused repository, as in the Repo List.
+  if (e.key === " " && anchor && anchor !== ALL_REPOS) {
+    e.preventDefault();
+    pickMany(anchor, false);
+    return;
+  }
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
   e.preventDefault();
   const ids = entries();
@@ -169,7 +179,8 @@ list.addEventListener("mousedown", (e) => { if (e.shiftKey) e.preventDefault(); 
 
 /** The repositories the selection holds (All repositories: none of them is picked on its own). */
 function pickedIds(): string[] {
-  if (!selected || selected === ALL_REPOS) return [];
+  if (!selected) return [];
+  if (selected === ALL_REPOS) return rows.filter((r) => r.status === "differs").map((r) => r.repoId);
   return selectionIds(selected) as string[];
 }
 
@@ -186,7 +197,9 @@ function pickMany(id: string, range: boolean): void {
     ids = order.filter((x) => had.has(x));
     anchor = id;
   }
-  select(manyRepos(ids), false);
+  // Every repository whose files differ ticked: that is All repositories.
+  const differ = rows.filter((r) => r.status === "differs").map((r) => r.repoId);
+  select(ids.length >= 2 && differ.length >= 2 && differ.every((x) => ids.includes(x)) && ids.length === differ.length ? ALL_REPOS : manyRepos(ids), false);
 }
 
 /** Selections sent and not yet echoed back by the host: an older echo must not undo a newer pick. */
@@ -327,34 +340,59 @@ function mergeNote(conflicts: number | null | undefined): HTMLElement | null {
     : h("span", { class: "row-note conflict", title: localize("A merge would leave {0} conflicted", localize("{0} {1}", conflicts, localize(conflicts === 1 ? "file" : "files"))) }, [codiconElement("warning"), String(conflicts)]);
 }
 
+/** A row's box: VS Code Elements' checkbox, as the Log's Repo List has it (the row takes the click). */
+function checkbox(checked: boolean, indeterminate = false): HTMLElement {
+  const box = document.createElement("vscode-checkbox") as HTMLElement & { checked: boolean; indeterminate: boolean };
+  box.className = "repo-check";
+  box.setAttribute("aria-hidden", "true");
+  box.tabIndex = -1;
+  box.checked = checked;
+  box.indeterminate = indeterminate;
+  return box;
+}
+
+/** Whether a repository's box is ticked: All ticks every one whose files differ. */
+function ticked(r: CRepoRow): boolean {
+  return selected === ALL_REPOS ? r.status === "differs" : r.repoId === selected || pickedIds().includes(r.repoId);
+}
+
+/**
+ * Repositories, drawn as the Log's Repo List: All repositories (two or more differ), then each
+ * repository with its box, color, name and merge note. The ticked ones are what the sides show.
+ */
 function renderRows(): void {
   clear(list);
   if (rows.length === 0 && empty) list.append(h("div", { class: "cempty", role: "presentation" }, [empty]));
   const ids = entries();
+  const focus = anchor ?? selected;
   if (ids[0] === ALL_REPOS) {
-    const on = selected === ALL_REPOS;
     const differ = rows.filter((r) => r.status === "differs");
     const conflicted = differ.filter((r) => (r.conflicts ?? 0) > 0).length;
-    list.append(h("div", { class: on ? "crepo all selected" : "crepo all", role: "option", id: "crepo-0", "aria-selected": String(on), "data-repo": ALL_REPOS,
+    const all = selected === ALL_REPOS || differ.every(ticked);
+    list.append(h("div", { class: `crepo all${focus === ALL_REPOS ? " focus" : ""}`, role: "option", id: "crepo-0", "aria-selected": String(all), "data-repo": ALL_REPOS,
       title: localize("Every repository whose files differ, in one tree") }, [
-      h("span", { class: "twisty", "aria-hidden": "true" }), codiconElement("repo"),
+      h("span", { class: "twisty", "aria-hidden": "true" }),
+      // Some picked, not all: a dash, as in the Repo List.
+      checkbox(all, !all),
+      h("span", { class: "repo-dot all", "aria-hidden": "true" }),
       h("span", { class: "repo-name" }, [localize("All repositories")]),
-      h("span", { class: "row-note" }, [String(differ.length)]),
       conflicted > 0 ? h("span", { class: "row-note conflict", title: localize("{0} with conflicts", conflicted) }, [codiconElement("warning"), String(conflicted)]) : null,
+      h("span", { class: "repo-count" }, [String(differ.length)]),
     ]));
   }
   const offset = ids[0] === ALL_REPOS ? 1 : 0;
   rows.forEach((r, n) => {
     const i = n + offset;
-    const on = r.repoId === selected || pickedIds().includes(r.repoId);
+    const on = ticked(r);
     const dups = r.status === "differs" && r.same > 0;
     const unfolded = open.has(r.repoId);
     list.append(h("div", {
-      class: on ? "crepo selected" : "crepo", role: "option", id: `crepo-${i}`, "aria-selected": String(on), "data-repo": r.repoId,
+      class: `crepo${focus === r.repoId ? " focus" : ""}`, role: "option", id: `crepo-${i}`, "aria-selected": String(on), "data-repo": r.repoId,
       title: r.status === "differs" ? localize("{0}: {1} only on {2}, {3} only on {4}, {5} on both (merges not counted)", r.name, r.left, pair?.left ?? "", r.right, pair?.right ?? "", r.same) : r.reason ?? r.name,
       "data-vscode-context": JSON.stringify({ webviewSection: "compareRepo", repoId: r.repoId, behind: r.behind, preventDefaultContextMenuItems: true }),
     }, [
       dups ? h("button", { class: "twisty", type: "button", tabindex: "-1", "data-twisty": r.repoId, "aria-expanded": String(unfolded), "aria-label": localize(unfolded ? "Collapse {0}" : "Expand {0}", r.name) }, [codiconElement(unfolded ? "chevron-down" : "chevron-right")]) : h("span", { class: "twisty", "aria-hidden": "true" }),
+      checkbox(on),
       h("span", { class: `repo-dot accent-${r.accent}`, "aria-hidden": "true" }),
       // A side with several names: which ones this repository uses, under its name.
       r.names ? h("span", { class: "repo-name two-line" }, [r.name, h("span", { class: "repo-names" }, [r.names])]) : h("span", { class: "repo-name" }, [r.name]),
@@ -372,7 +410,7 @@ function renderRows(): void {
       ]));
     }
   });
-  const i = ids.indexOf(selected ?? "");
+  const i = ids.indexOf(focus ?? "");
   if (i >= 0) list.setAttribute("aria-activedescendant", `crepo-${i}`);
   else list.removeAttribute("aria-activedescendant");
 }

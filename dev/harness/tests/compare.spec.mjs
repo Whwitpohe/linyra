@@ -56,22 +56,34 @@ test("Repositories: each row's merge note and the names it uses; All repositorie
   await expect(page.locator("#compare-left-tree .compare-tree-row.conflict-file").first()).toBeVisible();
 });
 
-test("Repositories: Ctrl-click picks several, Shift-click a range; the sides show the picked ones together", async ({ page }) => {
+test("Repositories look like the Repo List: a box per row; the box or Ctrl-click ticks one, a click shows only it", async ({ page }) => {
   await open(page);
   const repo = (id) => page.locator(`.crepo[data-repo="${id}"]`);
+  const ticked = page.locator('.crepo:not(.all)[aria-selected="true"]');
+  // The same box as the Log's Repo List, on every row and on All repositories.
+  await expect(page.locator(".crepo vscode-checkbox.repo-check")).toHaveCount(5);
   await repo("/work/acme-api").click();
-  // Shift-click: every repository from the last one clicked to this one.
-  await repo("/work/acme-libs").click({ modifiers: ["Shift"] });
-  await expect(page.locator(".crepo.selected")).toHaveCount(3);
-  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
-  // Ctrl-click takes one out (or adds it).
-  await repo("/work/acme-web").click({ modifiers: ["Control"] });
-  await expect(page.locator(".crepo.selected")).toHaveCount(2);
+  await expect(ticked).toHaveCount(1);
+  await expect(repo("/work/acme-web").locator(".repo-name")).toHaveCSS("color", await page.evaluate(() => getComputedStyle(document.body).getPropertyValue("--vscode-descriptionForeground").trim().replace(/^#(..)(..)(..)$/, (_, r, g, b) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`)));
+  // Its box ticks one more; the sides show both, together.
+  await repo("/work/acme-libs").locator(".repo-check").click();
+  await expect(ticked).toHaveCount(2);
   await expect.poll(async () => (await sent(page, "select")).at(-1)?.repoId).toBe("+/work/acme-api\n/work/acme-libs");
   await expect(page.locator("#compare-left-tree .compare-tree-row", { hasText: "acme-libs" })).toBeVisible();
-  // A plain click: one again.
-  await repo("/work/acme-web").click();
-  await expect(page.locator(".crepo.selected")).toHaveCount(1);
+  // Some ticked, not all: All repositories shows a dash.
+  await expect(repo("*").locator(".repo-check")).toHaveJSProperty("indeterminate", true);
+  // Ctrl-click the last one: every repository whose files differ, so All repositories.
+  await repo("/work/acme-web").click({ modifiers: ["Control"] });
+  await expect.poll(async () => (await sent(page, "select")).at(-1)?.repoId).toBe("*");
+  await expect(repo("*").locator(".repo-check")).toHaveJSProperty("checked", true);
+  // Shift-click picks rows, not their text.
+  await repo("/work/acme-api").click();
+  await repo("/work/acme-web").click({ modifiers: ["Shift"] });
+  await expect(ticked).toHaveCount(2);
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+  // A plain click: only that one.
+  await repo("/work/acme-libs").click();
+  await expect(ticked).toHaveCount(1);
 });
 
 test("a side's filter keeps matching rows and their folders; Ctrl/Shift-click selects several", async ({ page }) => {
