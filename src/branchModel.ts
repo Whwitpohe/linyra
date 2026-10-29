@@ -77,6 +77,8 @@ export const branchCommands = {
   track: (b: Branch, name: string) => ["checkout", "--track", "-b", name, b.ref, "--"],
   rename: (b: Branch, name: string) => ["branch", "-m", "--", b.name, name],
   delete: (b: Branch) => ["branch", "-d", "--", b.name],
+  /** Delete Anyway: an unmerged branch, after the user saw how many of its commits are on nothing else. */
+  forceDelete: (b: Branch) => ["branch", "-D", "--", b.name],
   merge: (b: Branch) => ["merge", "--no-edit", "--", b.ref],
   rebase: (b: Branch) => ["rebase", "--no-autostash", "--", b.ref],
   checkoutTag: (b: Branch) => ["checkout", "--detach", b.ref, "--"],

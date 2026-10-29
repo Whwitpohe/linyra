@@ -37,6 +37,7 @@ export class Ask {
   beforeAnswer: (() => Promise<void>) | undefined;
   /** Test seam: the last warning asked, and how many questions were asked. */
   lastWarning: string | undefined;
+  lastDetail: string | undefined;
   asked = 0;
 
   queue(value: string | undefined): void {
@@ -51,6 +52,7 @@ export class Ask {
       this.beforeAnswer = undefined;
       if (hook) await hook();
       this.lastWarning = message;
+      this.lastDetail = detail;
       return this.answers.shift() === button;
     }
     return (await vscode.window.showWarningMessage(message, { modal: true, detail }, button)) === button;
@@ -110,6 +112,46 @@ export class Ask {
       quick.onDidTriggerItemButton((e) => { answer = { index: quick.items.indexOf(e.item), button: true }; quick.hide(); });
       quick.onDidHide(() => { quick.dispose(); resolve(answer); });
       quick.show();
+    });
+  }
+
+  /**
+   * One input box with an on/off button in its title (Stash Changes…'s "Include new files"); the
+   * prompt line says the switch's state in words. `extra`: one more button (✨ AI), run with the box.
+   * The text and the switch, or undefined when cancelled. Testing: the text, or "text|toggle" (flipped).
+   */
+  async inputWithToggle(o: {
+    title: string; prompt: (on: boolean) => string; placeHolder: string; value: string;
+    toggle: { on: boolean; tooltip: (on: boolean) => string; icon: (on: boolean) => string };
+    extra?: { icon: string; tooltip: string; run(box: vscode.InputBox, on: boolean): Promise<void> };
+  }): Promise<{ value: string; on: boolean } | undefined> {
+    this.asked++;
+    if (this.testing && this.answers.length > 0) {
+      const a = this.answers.shift();
+      if (a === undefined || a === "Cancel") return undefined;
+      const [value, flip] = a.split("|");
+      return { value, on: flip === "toggle" ? !o.toggle.on : o.toggle.on };
+    }
+    const box = vscode.window.createInputBox();
+    let on = o.toggle.on;
+    const toggle = () => ({ iconPath: new vscode.ThemeIcon(o.toggle.icon(on)), tooltip: o.toggle.tooltip(on) });
+    const extra = o.extra ? { iconPath: new vscode.ThemeIcon(o.extra.icon), tooltip: o.extra.tooltip } : undefined;
+    let toggleButton = toggle();
+    const paint = () => { toggleButton = toggle(); box.buttons = extra ? [toggleButton, extra] : [toggleButton]; box.prompt = o.prompt(on); };
+    box.title = o.title;
+    box.placeholder = o.placeHolder;
+    box.value = o.value;
+    box.ignoreFocusOut = true;
+    paint();
+    return new Promise((resolve) => {
+      let answer: { value: string; on: boolean } | undefined;
+      box.onDidAccept(() => { if (box.busy) return; answer = { value: box.value, on }; box.hide(); });
+      box.onDidTriggerButton(async (b) => {
+        if (b === toggleButton) { on = !on; paint(); return; }
+        if (b === extra && o.extra && !box.busy) await o.extra.run(box, on);
+      });
+      box.onDidHide(() => { box.dispose(); resolve(answer); });
+      box.show();
     });
   }
 

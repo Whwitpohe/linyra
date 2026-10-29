@@ -8,6 +8,7 @@ import { checkoutStep, droppedArgs, forcePushPrompt, isProtected, multiReport, p
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
+import { gitText } from "./actionErrors";
 import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport, type CheckoutBlock } from "./smartCheckout";
 import { aheadBehindArgs, FETCH_ENV, parseAheadBehind } from "./upstream";
 
@@ -19,11 +20,7 @@ const PUSH_TIMEOUT_MS = 60_000;
 /** Several repositories at once, but few: these write, and pushes are network-bound. */
 const WRITE_CONCURRENCY = 4;
 
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const gitStderr = (e: unknown) => {
-  const s = (e as { stderr?: unknown } | undefined)?.stderr;
-  return typeof s === "string" && s.trim() ? s : messageOf(e);
-};
+
 
 export interface MultiRepoHost {
   /** The Log view: progress shows on its title. */
@@ -105,7 +102,7 @@ export class MultiRepo {
       try {
         await this.git(repo, argsOf(repo));
       } catch (e) {
-        const block = checkoutBlock(gitStderr(e));
+        const block = checkoutBlock(gitText(e));
         if (block) blocked.set(repo.id, block);
         throw e;
       }
@@ -407,7 +404,7 @@ export class MultiRepo {
     const result: MultiResult = { done: [], unchanged: [], stopped: [], skipped: [] };
     settled.forEach((s, i) => {
       if (s.status === "fulfilled") { result.done.push(repos[i].name); return; }
-      const message = gitStderr(s.reason);
+      const message = gitText(s.reason);
       // Stopped half-way: the repository is mid-merge or mid-rebase, not as it was.
       if (stoppedOnConflicts(message)) result.stopped.push({ name: repos[i].name, reason: localize(updateReason(message)) });
       else result.skipped.push({ name: repos[i].name, reason: localize(updateReason(message)), failed: true });

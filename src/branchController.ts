@@ -18,6 +18,8 @@ import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
 import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
 import { droppedArgs, forcePushPrompt, isProtected, parseDropped } from "./multiRepoModel";
+import { gitText, whyOf } from "./actionErrors";
+import { branchDone, branchFailed, deleteAnywayPrompt, deletePrompt, distanceArgs, integratePrompt, parseDistance, stashFailed, unmergedArgs } from "./branchPrompts";
 
 const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
@@ -34,9 +36,19 @@ interface Deps {
   compare(repoId: string, branch: string, current: string): Promise<void>;
   changed(repoId: string): Promise<void>;
   concurrency(): number;
-  /** Stash Changes…'s message box when AI can write it (a ✨ button); else VS Code's plain input box. */
+  /** Stash Changes…'s ✨: AI writes the message into Linyra's own box (with its Include new files switch). */
+  stashWriter?(): StashWriter | undefined;
+  /** The AI's own stash box, for ✨ until src/ai offers stashWriter (it takes over from Linyra's box). */
   stashInput?(repo: Repo, untracked: boolean, prompt: string, placeHolder: string, value: string): Promise<string | undefined>;
 }
+
+/** Writes a stash message for a repository's uncommitted work (new files too when untracked), streaming it through onText. */
+export interface StashWriter {
+  write(repo: Repo, untracked: boolean, signal: AbortSignal, onText: (text: string) => void): Promise<string | undefined>;
+}
+
+/** Stash Changes…'s Include new files, as last chosen. */
+const STASH_UNTRACKED = "linyra.stash.untracked";
 
 /** Branch metadata is read on expansion; writes happen only through explicit commands. */
 export class BranchController implements vscode.Disposable {
@@ -136,11 +148,15 @@ export class BranchController implements vscode.Disposable {
     if (this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
     const writes = !["view", "copy", "favorite", "compare", "worktreeDiff"].includes(action);
     if (writes) this.busy.add(repo.id);
+    // The branch's name for the error, and the status-bar line once it worked.
+    let label = a.ref.replace(/^refs\/(heads|remotes|tags)\//, "");
+    let done: string | undefined;
     try {
       const data = await this.load(repo.id);
       const branch = data?.branches.find((b) => b.ref === a.ref);
       if (!data || !branch) return;
       const b = branch;
+      label = b.name;
       // git's own words in English: a checkout refused for local changes is recognized whatever the system's language.
       const run = (args: string[]) => this.deps.run(repo.root, args, WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
       const native = this.deps.discovery.branchRepository(repo.root);
@@ -182,21 +198,17 @@ export class BranchController implements vscode.Disposable {
             // A tag is not a branch: its commit is checked out with HEAD detached, as the JetBrains Log does.
             if (!(await this.deps.ask.warning(localize("Check out tag {0} in {1}?", b.name, repo.name),
               localize("HEAD is detached there: new commits belong to no branch until you create one."), localize("Check Out")))) return;
-            await guard(b.name, () => (native?.checkout ? native.checkout(b.sha) : run(branchCommands.checkoutTag(b))));
+            if (!(await guard(b.name, () => (native?.checkout ? native.checkout(b.sha) : run(branchCommands.checkoutTag(b)))))) return;
+            done = branchDone("checkout", { name: b.name, repo: repo.name });
             break;
           }
           let local = b.name;
           if (b.kind === "remote") {
-            local = (await this.deps.ask.input(localize("Local branch to track {0}", b.name), localize("Branch name"), { value: b.remoteBranch ?? b.name,
-              validate: (v) => {
-                const existing = data.branches.find((x) => x.kind === "local" && x.name === v.trim());
-                const problem = newBranchProblem(v, data.branches);
-                return existing?.upstream === b.name ? undefined : problem ? localize(problem) : undefined;
-              } }))?.trim() ?? "";
-            if (!local) return;
+            // The same name as on the remote, as git switch does; New Branch from Here… is there for another name.
+            local = b.remoteBranch ?? b.name;
             const existing = data.branches.find((x) => x.kind === "local" && x.name === local);
             if (existing) {
-              if (existing.upstream !== b.name) throw new Error(localize("A local branch with this name already exists."));
+              if (existing.upstream !== b.name) throw new Error(localize("{0} already exists here and tracks {1}: to check out {2} under another name, use New Branch from Here….", local, existing.upstream || localize("no remote branch"), b.name));
               if (!(await guard(local, () => (native?.checkout ? native.checkout(local) : run(branchCommands.checkout(existing)))))) return;
             } else {
               if (newBranchProblem(local, data.branches)) throw new Error(localize("Enter a valid branch name."));
@@ -207,6 +219,7 @@ export class BranchController implements vscode.Disposable {
               }))) return;
             }
           } else if (!(await guard(local, () => (native?.checkout ? native.checkout(local) : run(branchCommands.checkout(b)))))) return;
+          done = branchDone("checkout", { name: local, repo: repo.name });
           await this.deps.view(repo.id, local); break;
         }
         case "create": {
@@ -214,6 +227,7 @@ export class BranchController implements vscode.Disposable {
           if (!next) return;
           // It checks the new branch out: Smart Checkout when local changes are in the way, as every checkout.
           if (!(await this.smart(repo, next, run, () => (native?.createBranch ? native.createBranch(next, true, b.ref) : run(branchCommands.create(b, next)))))) return;
+          done = branchDone("create", { name: b.name, to: next, repo: repo.name });
           await this.deps.view(repo.id, next); break;
         }
         case "rename": {
@@ -221,6 +235,7 @@ export class BranchController implements vscode.Disposable {
           const next = await name(localize("Rename branch {0}", b.name), b.name, b.name);
           if (!next || next === b.name) return;
           await run(branchCommands.rename(b, next));
+          done = branchDone("rename", { name: b.name, to: next, repo: repo.name });
           await this.deps.view(repo.id, next); break;
         }
         case "delete": {
@@ -228,22 +243,29 @@ export class BranchController implements vscode.Disposable {
           if (b.kind === "tag") {
             if (!(await this.deps.ask.warning(localize("Delete tag {0} in {1}?", b.name, repo.name), localize("Only the local tag is deleted; a pushed copy stays on its remote."), localize("Delete")))) return;
             await run(branchCommands.deleteTag(b));
+            done = branchDone("delete", { name: b.name, repo: repo.name });
             break;
           }
-          if (!(await this.deps.ask.warning(localize("Delete branch {0} in {1}?", b.name, repo.name),
-            localize(b.kind === "remote" ? "This deletes the branch on the remote server." : "Only a merged local branch can be deleted here."), localize("Delete")))) return;
+          const p = deletePrompt({ name: b.name, kind: b.kind, upstream: b.upstream, remote: b.remote }, repo.name);
+          if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return;
           if (b.kind === "remote") {
             if (!b.remote || !b.remoteBranch) return;
             if (native?.push) await native.push(b.remote, `:refs/heads/${b.remoteBranch}`);
             else await run(["push", "--delete", "--", b.remote, b.remoteBranch]);
-          } else if (native?.deleteBranch) await native.deleteBranch(b.name, false); else await run(branchCommands.delete(b));
+          } else if (!(await this.deleteLocal(repo, b, run))) return;
+          done = branchDone("delete", { name: b.name, repo: repo.name });
           break;
         }
-        case "fetch": if (native?.fetch) await native.fetch(b.remote); else await run(["fetch", ...(b.remote ? ["--", b.remote] : [])]); break;
+        case "fetch": {
+          if (native?.fetch) await native.fetch(b.remote); else await run(["fetch", ...(b.remote ? ["--", b.remote] : [])]);
+          done = branchDone("fetch", { name: b.remote ?? b.name, repo: repo.name });
+          break;
+        }
         case "pull": {
           if (!b.current) throw new Error(localize("Only the checked-out branch can be pulled."));
           await ensureCurrent();
           if (native?.pull) await native.pull(); else await run(["pull", "--ff-only"]);
+          done = branchDone("pull", { name: b.name, repo: repo.name });
           break;
         }
         case "push": {
@@ -251,6 +273,7 @@ export class BranchController implements vscode.Disposable {
             const index = await this.deps.ask.pick(data.remotes.map((label) => ({ label })), localize("Remote to push tag {0} to", b.name));
             if (index === undefined || index < 0 || !data.remotes[index]) return;
             await run(["push", "--", data.remotes[index], `${b.ref}:${b.ref}`]);
+            done = branchDone("push", { name: b.name, to: data.remotes[index], repo: repo.name });
             break;
           }
           if (b.kind !== "local") return;
@@ -273,23 +296,30 @@ export class BranchController implements vscode.Disposable {
             const p = forcePushPrompt([{ repo: repo.name, branch: b.name, target: `${remote}/${destination}`, behind: b.behind, dropped: parseDropped(log), me: me.trim() }]);
             if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return;
             await run(["push", `--force-with-lease=refs/heads/${destination}:${lease}`, "--", remote, refspec]);
+            done = branchDone("push", { name: b.name, to: `${remote}/${destination}`, repo: repo.name });
             break;
           }
           if (native?.push) await native.push(remote, refspec, true); else await run(["push", "--set-upstream", "--", remote, refspec]);
+          done = branchDone("push", { name: b.name, to: `${remote}/${destination}`, repo: repo.name });
           break;
         }
         case "merge": case "rebase": case "pullMerge": case "pullRebase": {
           if (b.current) return;
           const method = action === "rebase" || action === "pullRebase" ? "rebase" : "merge";
-          if (!(await this.deps.ask.warning(localize(method === "merge" ? "Merge {0} into {1} in {2}?" : "Rebase {1} onto {0} in {2}?", b.name, current, repo.name),
-            localize("The checked-out branch is {0}.", current), localize("Continue")))) return;
+          // Pull into Current: the remote branch fetched first, so the question counts what is there now.
           if (action === "pullMerge" || action === "pullRebase") {
             if (!b.remote || !b.remoteBranch) return;
             await ensureCurrent();
             const refspec = `refs/heads/${b.remoteBranch}:${b.ref}`;
             if (native?.fetch) await native.fetch(b.remote, refspec); else await run(["fetch", "--", b.remote, refspec]);
           }
-          await integrate(method); break;
+          // What moves, in counts, and the button says the action.
+          const p = integratePrompt(method, current, b.name, repo.name, parseDistance(await run(distanceArgs(b.ref)).catch(() => "")));
+          if ("nothing" in p) { void vscode.window.showInformationMessage(p.nothing); return; }
+          if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return;
+          await integrate(method);
+          done = branchDone(action, { name: b.name, current, repo: repo.name });
+          break;
         }
         case "worktree": {
           const next = await name(localize("New branch for the worktree based on {0}", b.name));
@@ -303,16 +333,40 @@ export class BranchController implements vscode.Disposable {
           void vscode.window.showInformationMessage(localize("Worktree created at {0}.", folder.fsPath)); break;
         }
       }
+      if (done) vscode.window.setStatusBarMessage(done, 8000);
     } catch (e) {
-      const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
-      void vscode.window.showErrorMessage(localize("Branch action failed in {0}: {1}", repo.name, typeof stderr === "string" && stderr.trim() ? errorLine(stderr) : e instanceof Error ? e.message : String(e)));
+      this.lastError = branchFailed(action, label, repo.name, whyOf(e));
+      void vscode.window.showErrorMessage(this.lastError);
     } finally {
       if (writes) {
         try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
-        catch (e) { void vscode.window.showErrorMessage(localize("Branch action failed in {0}: {1}", repo.name, e instanceof Error ? e.message : String(e))); }
+        catch (e) { void vscode.window.showErrorMessage(localize("Linyra could not read {0} again: {1}", repo.name, e instanceof Error ? e.message : String(e))); }
         finally { this.busy.delete(repo.id); }
       }
     }
+  }
+
+  /** The last error a branch or stash action showed (integration test seam). */
+  lastError: string | undefined;
+
+  /**
+   * Delete a local branch. git refuses one that is not merged (the normal case after a squash
+   * merge): asked once more, with how many of its commits are on nothing else, then `git branch -D`.
+   * false: declined.
+   */
+  private async deleteLocal(repo: Repo, b: Branch, run: (args: string[]) => Promise<string>): Promise<boolean> {
+    const native = this.deps.discovery.branchRepository(repo.root);
+    try {
+      if (native?.deleteBranch) await native.deleteBranch(b.name, false); else await run(branchCommands.delete(b));
+      return true;
+    } catch (e) {
+      if (!/not fully merged/i.test(gitText(e)) && (e as { gitErrorCode?: unknown }).gitErrorCode !== "BranchNotFullyMerged") throw e;
+    }
+    const unmerged = Number((await run(unmergedArgs(b.name)).catch(() => "")).trim()) || 0;
+    const p = deleteAnywayPrompt(b.name, repo.name, unmerged);
+    if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return false;
+    if (native?.deleteBranch) await native.deleteBranch(b.name, true); else await run(branchCommands.forceDelete(b));
+    return true;
   }
 
   /**
@@ -379,9 +433,10 @@ export class BranchController implements vscode.Disposable {
       if (action === "drop" && !(await this.deps.ask.warning(localize("Drop stash {0} in {1}?", s.ref, repo.name), s.subject, localize("Drop")))) return;
       await this.deps.run(repo.root, stashCommands[action](s.ref), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = gitText(e);
       const reason = stashStopped(message);
-      void vscode.window.showErrorMessage(localize("Stash action failed in {0}: {1}", repo.name, reason ? localize(reason) : message));
+      this.lastError = stashFailed(action, s.ref, repo.name, reason ? localize(reason) : whyOf(e));
+      void vscode.window.showErrorMessage(this.lastError);
     } finally {
       try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
       finally { this.busy.delete(repo.id); }
@@ -389,28 +444,64 @@ export class BranchController implements vscode.Disposable {
   }
 
   /**
-   * Stash Changes… on a repository: its uncommitted work under a message, untracked files if asked.
-   * `preset`: both already chosen and confirmed (Ask AI), so nothing is asked.
+   * Stash Changes… on a repository: one box, the message and an "Include new files" switch in its
+   * title (remembered). ✨ writes the message with AI where it is set up. `preset`: both already
+   * chosen and confirmed (Ask AI), so nothing is asked.
    */
   async stashCreate(arg: unknown, preset?: { message: string; untracked: boolean }): Promise<void> {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     const repo = this.deps.repos().find((r) => r.id === id);
     if (!repo || this.busy.has(repo.id)) return;
-    const choice = preset ? (preset.untracked ? 1 : 0) : await this.deps.ask.pick([{ label: localize("Stash tracked changes") }, { label: localize("Stash including untracked files") }], localize("Stash changes in {0}", repo.name));
-    if (choice === undefined) return;
-    const message = preset?.message ?? await (this.deps.stashInput
-      ? this.deps.stashInput(repo, choice === 1, localize("Message for the stash in {0}", repo.name), localize("Stash message"), "WIP")
-      : this.deps.ask.input(localize("Message for the stash in {0}", repo.name), localize("Stash message"), { value: "WIP" }));
-    if (message === undefined || !message.trim()) return;
+    const answer = preset ? { message: preset.message, untracked: preset.untracked } : await this.stashBox(repo);
+    if (!answer || !answer.message.trim()) return;
+    if (!preset) await this.context.globalState.update(STASH_UNTRACKED, answer.untracked);
     this.busy.add(repo.id);
     try {
-      await this.deps.run(repo.root, stashCommands.push(message, choice === 1), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+      await this.deps.run(repo.root, stashCommands.push(answer.message, answer.untracked), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+      vscode.window.setStatusBarMessage(localize(answer.untracked ? "Linyra: stashed the changes in {0}, new files included." : "Linyra: stashed the changes in {0}.", repo.name), 8000);
     } catch (e) {
-      void vscode.window.showErrorMessage(localize("Stash action failed in {0}: {1}", repo.name, e instanceof Error ? e.message : String(e)));
+      this.lastError = stashFailed("push", "", repo.name, whyOf(e));
+      void vscode.window.showErrorMessage(this.lastError);
     } finally {
       try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
       finally { this.busy.delete(repo.id); }
     }
+  }
+
+  /** Stash Changes…'s one box: the message, the Include new files switch (last choice), and ✨ when AI can write it. */
+  private async stashBox(repo: Repo): Promise<{ message: string; untracked: boolean } | undefined> {
+    const writer = this.deps.stashWriter?.();
+    const legacy = this.deps.stashInput;
+    let handedOver: Promise<string | undefined> | undefined;
+    let handedOn = false;
+    const r = await this.deps.ask.inputWithToggle({
+      title: localize("Stash Changes in {0}", repo.name),
+      prompt: (on) => localize(on ? "Stashes every change, new files included. Enter to stash." : "Stashes the changes to tracked files; new files stay. Enter to stash."),
+      placeHolder: localize("Stash message"), value: "WIP",
+      toggle: { on: this.context.globalState.get<boolean>(STASH_UNTRACKED, false), icon: (on) => (on ? "files" : "file"),
+        tooltip: (on) => localize(on ? "Include new files: on (click to leave them out)" : "Include new files: off (click to include them)") },
+      extra: writer || legacy ? { icon: "sparkle", tooltip: localize("Write the stash message with AI"), run: async (box, on) => {
+        if (writer) {
+          const ctl = new AbortController();
+          const before = box.value;
+          box.busy = true;
+          box.validationMessage = undefined;
+          try { box.value = (await writer.write(repo, on, ctl.signal, (text) => { box.value = text; })) ?? before; }
+          catch (e) { box.value = before; box.validationMessage = localize("Linyra AI: {0}", e instanceof Error ? e.message : String(e)); }
+          finally { box.busy = false; }
+          return;
+        }
+        // The AI's own box takes over (until src/ai offers a writer for this one), with this box's switch.
+        handedOn = on;
+        handedOver = legacy!(repo, on, localize("Message for the stash in {0}", repo.name), localize("Stash message"), box.value);
+        box.hide();
+      } } : undefined,
+    });
+    if (handedOver) {
+      const message = await handedOver;
+      return message === undefined ? undefined : { message, untracked: handedOn };
+    }
+    return r ? { message: r.value, untracked: r.on } : undefined;
   }
 
   /** Show Stash Changes…: pick one of its files, opened as a diff of the stash's base against it. */

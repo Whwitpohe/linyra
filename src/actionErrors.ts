@@ -25,3 +25,22 @@ export function failureReason(message: string): string | undefined {
 export function reasonOf(message: string): string {
   return (failureReason(message) ?? (errorLine(message) || message.trim())).replace(/[.\s]+$/, "");
 }
+
+/**
+ * git's own words from a failed run: its stderr (VS Code's Git keeps it there; Linyra's runner puts
+ * its main line in the message), then what it printed on stdout (a merge's CONFLICT lines).
+ */
+export function gitText(e: unknown): string {
+  const x = e as { stderr?: unknown; stdout?: unknown } | undefined;
+  const main = typeof x?.stderr === "string" && x.stderr.trim() ? x.stderr : e instanceof Error ? e.message : String(e);
+  return typeof x?.stdout === "string" && x.stdout.trim() ? `${main}\n${x.stdout}` : main;
+}
+
+/**
+ * Why an action failed, for its error message: git's refusal in a few words with what to do
+ * (reasonOf), or Linyra's own sentence as it is (an Error Linyra threw already says it plainly).
+ */
+export function whyOf(e: unknown): string {
+  const fromGit = !!e && typeof e === "object" && ["stderr", "stdout", "exitCode", "gitErrorCode"].some((k) => k in e);
+  return fromGit ? reasonOf(gitText(e)) : (e instanceof Error ? e.message : String(e)).replace(/[.\s]+$/, "");
+}

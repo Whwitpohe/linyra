@@ -1,4 +1,5 @@
 import { isValidRef } from "./filterModel";
+import { localize } from "./i18n";
 import { isSha } from "./types";
 
 /** The Log's commit-row actions that change a repository (the JetBrains Log's set). */
@@ -73,4 +74,45 @@ export function stoppedReason(action: CommitAction, stderr: string): string | un
       : "the revert stopped on conflicts. Resolve them in Source Control, then commit, or run git revert --abort";
   }
   return undefined;
+}
+
+/** What a reset moves: commits on HEAD and not on the target (they leave), and on the target only (they arrive). */
+export function resetDistanceArgs(sha: string, pushedOnly: boolean): string[] {
+  return ["rev-list", "--left-right", "--count", `HEAD...${check(sha)}`, ...(pushedOnly ? ["--not", "--remotes"] : []), "--"];
+}
+
+/**
+ * Reset Current Branch to Here's confirmation: how many commits leave the branch (and how many of
+ * them are already pushed), what arrives when the target is off the branch, and what happens to
+ * the files. Never just "Reset?".
+ */
+export function resetPrompt(o: { branch: string; target: string; repo: string; mode: ResetMode; leaving: number; pushed: number; upstream?: string; arriving: number }): { message: string; detail: string; button: string } {
+  const commits = (n: number) => localize(n === 1 ? "{0} commit" : "{0} commits", n);
+  const lines: string[] = [];
+  if (o.leaving > 0) {
+    lines.push(o.pushed > 0
+      ? localize(o.leaving === 1 ? "{0} leaves {1} (already pushed to {3})." : "{0} leave {1} ({2} already pushed to {3}).", commits(o.leaving), o.branch, String(o.pushed), o.upstream ?? localize("a remote"))
+      : localize(o.leaving === 1 ? "{0} leaves {1}." : "{0} leave {1}.", commits(o.leaving), o.branch));
+  }
+  if (o.arriving > 0) lines.push(localize("{0} gets {1} from {2}.", o.branch, commits(o.arriving), o.target));
+  if (o.leaving === 0 && o.arriving === 0) lines.push(localize("{0} is already at {1}: only the files change.", o.branch, o.target));
+  lines.push(o.mode === "hard" ? localize("Uncommitted changes are deleted. This cannot be undone.")
+    : o.mode === "soft" ? localize("Their changes stay in your files, staged.") : localize("Their changes stay in your files, unstaged."));
+  if (o.pushed > 0) lines.push(localize("Pushed commits come back with the next pull; to remove them from the remote too, the next push needs a force push."));
+  return { message: localize("Reset {0} to {1} in {2}?", o.branch, o.target, o.repo), detail: lines.join("\n"), button: o.mode === "hard" ? localize("Reset and Delete Changes") : localize("Reset") };
+}
+
+/** "Could not cherry-pick 1a2b3c4 in acme-web: …". */
+export function commitFailed(action: CommitAction, sha: string, repo: string, why: string): string {
+  switch (action) {
+    case "cherryPick": return localize("Could not cherry-pick {0} in {1}: {2}.", sha, repo, why);
+    case "revert": return localize("Could not revert {0} in {1}: {2}.", sha, repo, why);
+    case "reset": return localize("Could not reset to {0} in {1}: {2}.", sha, repo, why);
+    case "checkout": return localize("Could not check out {0} in {1}: {2}.", sha, repo, why);
+    case "newBranch": return localize("Could not create a branch at {0} in {1}: {2}.", sha, repo, why);
+    case "newTag": return localize("Could not create a tag at {0} in {1}: {2}.", sha, repo, why);
+    case "undo": return localize("Could not undo {0} in {1}: {2}.", sha, repo, why);
+    case "reword": return localize("Could not edit the message of {0} in {1}: {2}.", sha, repo, why);
+    case "pushUpTo": return localize("Could not push up to {0} in {1}: {2}.", sha, repo, why);
+  }
 }
