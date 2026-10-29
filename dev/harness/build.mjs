@@ -53,12 +53,12 @@ const contexts = await Promise.all([
 
 if (process.argv.includes("--serve")) {
   await Promise.all(contexts.map((c) => c.watch()));
-  const { port } = await contexts[0].serve({ servedir: dist, port: Number(process.env.HARNESS_PORT) || 5178 });
-  console.log(`harness:  http://localhost:${port}/?theme=dark&state=default`);
-  console.log(`gallery:  http://localhost:${port}/gallery.html?state=default`);
-  console.log(`repos:    http://localhost:${port}/repos.html?theme=dark`);
-  console.log(`commit:   http://localhost:${port}/commit.html?theme=dark`);
-  console.log(`insights: http://localhost:${port}/insights.html?theme=dark&tab=history`);
+  const { port } = await contexts[0].serve({ servedir: dist, host: "127.0.0.1", port: Number(process.env.HARNESS_PORT) || 5178 });
+  console.log(`harness:  http://127.0.0.1:${port}/?theme=dark&state=default`);
+  console.log(`gallery:  http://127.0.0.1:${port}/gallery.html?state=default`);
+  console.log(`repos:    http://127.0.0.1:${port}/repos.html?theme=dark`);
+  console.log(`commit:   http://127.0.0.1:${port}/commit.html?theme=dark`);
+  console.log(`insights: http://127.0.0.1:${port}/insights.html?theme=dark&tab=history`);
 } else {
   await Promise.all(contexts.map((c) => c.rebuild()));
   await Promise.all(contexts.map((c) => c.dispose()));
