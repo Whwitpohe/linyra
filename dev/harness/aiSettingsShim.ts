@@ -6,9 +6,9 @@ import type { AiModel } from "../../src/ai/types";
 //   theme   dark | light | hc-dark | hc-light
 //   state   profiles (default) | empty | off (AI turned off)
 //   open    list (default) | add | first: what the command opened it on
-//   models  ok (default) | fail | empty | slow (never answers)
+//   models  ok (default) | fail (nothing listening) | auth (401) | empty | slow (never answers)
 //   test    ok (default) | auth | notfound | network | level | nolist | slow
-//   save    ok (default) | fail
+//   save    ok (default) | fail | slow (answers after 600 ms)
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
 document.getElementById("theme")!.setAttribute("href", `themes/${theme}.css`);
@@ -68,7 +68,8 @@ host.acquireVsCodeApi = () => ({
       case "models": {
         const how = mode("models", "ok");
         if (how === "slow") return;
-        later(120, () => send(how === "fail" ? { type: "models", seq: m.seq, error: "Could not connect to localhost:11434: nothing is listening there. Is the server running?" }
+        later(120, () => send(how === "fail" ? { type: "models", seq: m.seq, failure: { ok: false, kind: "network", message: "Could not connect to localhost:11434: nothing is listening there. Is the server running?" } }
+          : how === "auth" ? { type: "models", seq: m.seq, failure: fail(401, "The API key was not accepted (401). Run Linyra: Configure AI… to enter it again.", "invalid x-api-key") as Extract<StepResult, { ok: false }> }
           : { type: "models", seq: m.seq, models: how === "empty" ? [] : MODELS[m.draft.protocol] }));
         return;
       }
@@ -111,7 +112,7 @@ host.acquireVsCodeApi = () => ({
           activeId = id;
           enabled = true;
         } else activeId ??= profiles.length === 1 ? id : activeId;
-        later(100, () => {
+        later(mode("save", "ok") === "slow" ? 600 : 100, () => {
           state();
           send({ type: "done", action: "save", id, note: m.use ? `Saved. Linyra AI now uses ${label}.` : `Saved “${label}”.` });
         });

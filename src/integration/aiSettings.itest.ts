@@ -3,11 +3,14 @@
 // key, never returns it); the model list and Test Connection go to a local OpenAI-compatible server
 // that takes one fake key. Puts the settings back (it runs after the ordered suites, see index.ts).
 import * as assert from "assert";
+import { execFileSync } from "child_process";
+import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
+import * as path from "path";
 import * as vscode from "vscode";
 import type { AiSettingsHostMessage, AiSettingsState, TestOutcome } from "../ai/settingsProtocol";
-import { waitFor } from "./helpers";
+import { ALL, send, snapshot, until, waitFor } from "./helpers";
 
 interface PageSnapshot { open: boolean; ready: boolean; visible: boolean; title: string | undefined; posted: AiSettingsHostMessage[] }
 
@@ -17,6 +20,8 @@ describe("Linyra AI page", () => {
   let server: http.Server;
   let base = "";
   const requests: { url: string; auth: string | undefined }[] = [];
+  /** Every chat request's body, as the server received it. */
+  const prompts: string[] = [];
   const page = () => vscode.commands.executeCommand<PageSnapshot>("linyra._itest.aiSettings");
   const tell = (m: unknown) => vscode.commands.executeCommand("linyra._itest.aiSettingsSend", m);
   const keyIs = (id: string, expected: string | undefined) => vscode.commands.executeCommand<{ stored: boolean; origin?: string; matches: boolean }>("linyra._itest.aiKeyIs", id, expected);
@@ -28,17 +33,29 @@ describe("Linyra AI page", () => {
   const draft = (over: Record<string, unknown> = {}) => ({ protocol: "openai", baseUrl: `${base}/v1`, model: "acme-coder", effort: "default", label: "", ...over });
 
   before(async () => {
+    await vscode.commands.executeCommand("linyra.open");
+    await until("the Log webview", (st) => st.readyCount >= 1 && st.repos.length === 3);
     server = http.createServer((req, res) => {
       requests.push({ url: req.url ?? "", auth: req.headers.authorization });
       const json = (status: number, body: unknown) => {
         res.writeHead(status, { "content-type": "application/json" });
         res.end(JSON.stringify(body));
       };
+      // A gateway that echoes the key it was given: the page must never see it.
+      if (req.headers.authorization?.startsWith("Bearer sk-echo")) return json(401, { error: { message: `Invalid API key: ${req.headers.authorization.slice(7)}` } });
       if (req.headers.authorization !== `Bearer ${KEY}`) return json(401, { error: { message: "Incorrect API key provided." } });
       if (req.method === "GET" && req.url === "/v1/models") return json(200, { data: [{ id: "acme-coder", context_length: 32768 }, { id: "acme-chat" }] });
       if (req.method === "POST" && req.url === "/v1/chat/completions") {
-        req.resume();
-        req.on("end", () => json(200, { id: "c1", object: "chat.completion", model: "acme-coder", choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }] }));
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString("utf8"); });
+        req.on("end", () => {
+          prompts.push(body);
+          const merging = /`ai-(one|two)\.go`/.exec(body)?.[1];
+          const content = body.includes("You name git stashes") ? "WIP: tidy the notes"
+            : merging ? `\`\`\`merged\npackage upload\n\nconst ${merging === "one" ? "One" : "Two"} = "both"\n\`\`\`\nNote: kept both sides.`
+            : "OK";
+          json(200, { id: "c1", object: "chat.completion", model: "acme-coder", choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] });
+        });
         return;
       }
       json(404, { error: { message: "not here" } });
@@ -72,7 +89,8 @@ describe("Linyra AI page", () => {
     const models = await last("models", (m) => m.seq === 1);
     assert.deepStrictEqual(models.models?.map((m) => m.id), ["acme-chat", "acme-coder"]);
     await tell({ type: "models", seq: 2, draft: draft(), key: { kind: "none" } });
-    assert.match((await last("models", (m) => m.seq === 2)).error ?? "", /401/);
+    const refused = (await last("models", (m) => m.seq === 2)).failure;
+    assert.deepStrictEqual([refused?.kind, refused?.status, refused?.detail], ["auth", 401, "Incorrect API key provided."], "the page words it from the status");
   });
 
   it("Save writes the profile to the settings and the key to SecretStorage, and turns AI on", async () => {
@@ -103,6 +121,14 @@ describe("Linyra AI page", () => {
     await tell({ type: "test", seq: 5, draft: draft({ id, baseUrl: "http://localhost:9/v1" }), key: { kind: "keep" } });
     const elsewhere = (await last("tested", (m) => m.seq === 5)).outcome;
     assert.ok(!elsewhere.list.ok && elsewhere.list.kind === "auth" && /never sent/.test(elsewhere.list.message), JSON.stringify(elsewhere));
+    // A gateway that echoes the key: what reaches the page has it cut out.
+    const echoed = "sk-echo-fake-0123456789";
+    await tell({ type: "test", seq: 7, draft: draft({ id }), key: { kind: "new", value: echoed } });
+    const cut = (await last("tested", (m) => m.seq === 7)).outcome;
+    assert.ok(!cut.list.ok && cut.list.detail === "Invalid API key: …", JSON.stringify(cut));
+    await tell({ type: "models", seq: 8, draft: draft({ id }), key: { kind: "new", value: echoed } });
+    await last("models", (m) => m.seq === 8);
+    assert.ok(!JSON.stringify((await page()).posted).includes(echoed), "no message to the page carries an echoed key");
   });
 
   it("Switch AI Model… focuses the list; Use switches the profile in use", async () => {
@@ -127,18 +153,49 @@ describe("Linyra AI page", () => {
     await last("done", (m) => m.action === "remove");
     assert.deepStrictEqual((config().get<{ id: string }[]>("profiles") ?? []).map((p) => p.id), [first]);
     assert.strictEqual(config().get("activeProfile"), first);
-    assert.deepStrictEqual(await keyIs(second, KEY), { stored: false, origin: undefined, matches: false });
+    // SecretStorage may answer from its cache for a moment after a delete: the key has to go, not at once.
+    await waitFor("the removed profile's key deleted", async () => ((await keyIs(second, KEY)).stored ? undefined : true));
     assert.deepStrictEqual(await keyIs(first, KEY), { stored: true, origin: base, matches: true }, "the other profile's copy stays");
   });
 
-  it("refuses what the webview cannot send: a bad address, a key from another provider's profile", async () => {
+  it("refuses what the webview cannot send: a bad address, another provider's key, a key for another origin", async () => {
     await tell({ type: "save", draft: draft({ baseUrl: "ftp://files.example.com" }), key: { kind: "none" }, use: false });
     assert.match((await last("done", (m) => m.action === "save" && !!m.error)).error ?? "", /https/);
     const first = (await stateNow()).profiles[0].id;
     await tell({ type: "test", seq: 6, draft: draft({ protocol: "anthropic" }), key: { kind: "from", profileId: first } });
     const outcome = (await last("tested", (m) => m.seq === 6)).outcome;
     assert.ok(!outcome.list.ok && outcome.list.kind === "auth", JSON.stringify(outcome));
+    // The same provider at another origin (the same server as localhost): the copied key is refused before any request.
+    const sent = requests.length;
+    const other = base.replace("127.0.0.1", "localhost");
+    await tell({ type: "test", seq: 9, draft: draft({ baseUrl: `${other}/v1` }), key: { kind: "from", profileId: first } });
+    const moved = (await last("tested", (m) => m.seq === 9)).outcome;
+    assert.ok(!moved.list.ok && moved.list.kind === "auth" && /never sent/.test(moved.list.message), JSON.stringify(moved));
+    await tell({ type: "save", draft: draft({ baseUrl: `${other}/v1` }), key: { kind: "from", profileId: first }, use: false });
+    assert.match((await last("done", (m) => m.action === "save" && /never sent/.test(m.error ?? ""))).error ?? "", /never sent/);
+    assert.strictEqual(requests.length, sent, "nothing reached the other origin");
     assert.strictEqual((config().get<unknown[]>("profiles") ?? []).length, 1);
+  });
+
+  it("a feature waiting for the setup goes on once AI is ready, and stops when the page is left or after its time", async () => {
+    const wait = (ms?: number) => vscode.commands.executeCommand<boolean>("linyra._itest.aiWaitReady", ms);
+    await tell({ type: "enable", on: false });
+    await waitFor("AI off", () => (config().get("enabled") === false ? true : undefined));
+    const ready = wait();
+    await waitFor("the page in front", async () => ((await page()).visible ? true : undefined));
+    await tell({ type: "enable", on: true });
+    assert.strictEqual(await ready, true, "turned on: the feature goes on");
+    await tell({ type: "enable", on: false });
+    await waitFor("AI off", () => (config().get("enabled") === false ? true : undefined));
+    const left = wait();
+    await waitFor("the page in front", async () => ((await page()).visible ? true : undefined));
+    const doc = await vscode.workspace.openTextDocument({ content: "another tab" });
+    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Active });
+    assert.strictEqual(await left, false, "left for another tab: the feature stops waiting");
+    assert.strictEqual(await wait(200), false, "and never waits more than its time");
+    await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    await tell({ type: "enable", on: true });
+    await waitFor("AI on", () => (config().get("enabled") === true ? true : undefined));
   });
 
   it("the switch turns AI off and on; the page closes like any editor tab", async () => {
@@ -149,5 +206,80 @@ describe("Linyra AI page", () => {
     await waitFor("AI on", () => (config().get("enabled") === true ? true : undefined));
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     await waitFor("the page closed", async () => ((await page()).open ? undefined : true));
+  });
+
+  it("Stash Changes…'s ✨ (a box of its own) writes the message from the work, new files only when asked", async () => {
+    await send({ type: "filter", filter: ALL });
+    const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
+    const tracked = path.join(web.root, "client.ts");
+    const original = fs.readFileSync(tracked, "utf8");
+    const fresh = path.join(web.root, "ai-stash-new.md");
+    const write = (untracked: boolean) => vscode.commands.executeCommand<{ text: string | undefined } | undefined>("linyra._itest.stashWrite", { repoId: web.id, untracked });
+    try {
+      fs.writeFileSync(tracked, `${original}export const aiStashTracked = 1;\n`);
+      fs.writeFileSync(fresh, "ai-stash untracked note\n");
+      await vscode.commands.executeCommand("linyra.refreshUncommitted");
+      await waitFor("the new file in the uncommitted work", async () =>
+        ((await vscode.commands.executeCommand<{ items: string[] }>("linyra._itest.uncommitted")).items.some((i) => i.includes("ai-stash-new.md")) ? true : undefined));
+      assert.strictEqual((await write(false))?.text, "WIP: tidy the notes");
+      assert.ok(prompts.at(-1)!.includes("aiStashTracked") && !prompts.at(-1)!.includes("ai-stash untracked note"), "a new file stays out unless asked");
+      assert.strictEqual((await write(true))?.text, "WIP: tidy the notes");
+      assert.ok(prompts.at(-1)!.includes("ai-stash untracked note"), "and goes in when asked");
+    } finally {
+      fs.writeFileSync(tracked, original);
+      fs.rmSync(fresh, { force: true });
+      await vscode.commands.executeCommand("linyra.refreshUncommitted");
+    }
+  });
+
+  it("Resolve Conflicts with AI: one choice per file; Esc skips that file and the run goes on; Stop ends it", async () => {
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    const env = { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: api.root, encoding: "utf8", env, stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const start = git("rev-parse", "HEAD");
+    const branch = git("symbolic-ref", "--short", "HEAD");
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("linyra._itest.answer", v);
+    const report = () => vscode.commands.executeCommand<string | undefined>("linyra._itest.conflictReport");
+    const file = (name: string) => path.join(api.root, name);
+    const commitBoth = (side: string) => {
+      for (const n of ["one", "two"]) fs.writeFileSync(file(`ai-${n}.go`), `package upload\n\nconst ${n === "one" ? "One" : "Two"} = "${side}"\n`);
+      git("add", "ai-one.go", "ai-two.go");
+      git("commit", "-q", "-m", `ai conflict: ${side}`);
+    };
+    const merges = () => prompts.filter((p) => p.includes("You resolve git merge conflicts")).length;
+    try {
+      git("checkout", "-q", "-b", "ai-theirs");
+      commitBoth("theirs");
+      git("checkout", "-q", branch);
+      commitBoth("ours");
+      assert.throws(() => git("merge", "ai-theirs"), "the merge stops on conflicts");
+      await vscode.commands.executeCommand("linyra.refreshUncommitted");
+      await waitFor("the conflicted files", async () =>
+        ((await vscode.commands.executeCommand<{ items: string[] }>("linyra._itest.uncommitted")).items.some((i) => i.includes("ai-two.go")) ? true : undefined));
+      // Stop on the first file: the run ends there, the second is never sent.
+      const before = merges();
+      await answer("$(debug-stop) Stop");
+      await vscode.commands.executeCommand("linyra.ai.resolveConflicts", { repoId: api.id });
+      assert.strictEqual(merges() - before, 1, "only the first file was sent");
+      assert.strictEqual(await report(), "Linyra AI: 0 of 2 conflicted files resolved and staged; stopped before the other 1. Continue the merge in Source Control once every file is resolved.");
+      // Esc on the first skips it and the run goes on; the second is accepted in one step: written and staged.
+      await answer("Escape");
+      await answer("$(check) Accept and Stage");
+      await vscode.commands.executeCommand("linyra.ai.resolveConflicts", { repoId: api.id });
+      assert.strictEqual(await report(), "Linyra AI: 1 of 2 conflicted files resolved and staged. Continue the merge in Source Control once every file is resolved.");
+      assert.deepStrictEqual(git("diff", "--name-only", "--diff-filter=U").split("\n"), ["ai-one.go"], "the skipped file is still conflicted");
+      assert.match(fs.readFileSync(file("ai-one.go"), "utf8"), /^<<<<<<< /m);
+      assert.strictEqual(fs.readFileSync(file("ai-two.go"), "utf8"), 'package upload\n\nconst Two = "both"\n');
+      assert.ok(git("diff", "--cached", "--name-only").split("\n").includes("ai-two.go"), "and the accepted one is staged");
+      assert.ok(!vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((t) => t.label.includes("AI proposal")), "no proposal is left open");
+    } finally {
+      await answer(undefined);
+      try { git("merge", "--abort"); } catch { /* not merging any more */ }
+      git("checkout", "-q", branch);
+      git("reset", "-q", "--hard", start);
+      git("branch", "-D", "ai-theirs");
+      for (const n of ["ai-one.go", "ai-two.go"]) fs.rmSync(file(n), { force: true });
+      await vscode.commands.executeCommand("linyra.refreshUncommitted");
+    }
   });
 });

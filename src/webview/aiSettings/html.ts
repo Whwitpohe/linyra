@@ -45,7 +45,8 @@ export function renderAiSettingsBody(): string {
     </div>
   </header>
 
-  <div id="ai-status" class="ai-status" role="status" aria-live="polite" hidden><span id="ai-status-icon" class="ai-status-icon" aria-hidden="true"></span><span id="ai-status-text"></span></div>
+  <div id="ai-announce" class="ai-sr" role="status" aria-live="polite"></div>
+  <div id="ai-status" class="ai-status" hidden><span id="ai-status-icon" class="ai-status-icon" aria-hidden="true"></span><span id="ai-status-text"></span></div>
 
   <section class="ai-section" aria-labelledby="ai-profiles-title">
     <div class="ai-section-head">
@@ -87,10 +88,10 @@ export function renderAiSettingsBody(): string {
 
       <div class="ai-field" id="ai-key-field">
         <label class="ai-label" for="ai-key" id="ai-key-label">${t(localize("API key"))}</label>
-        <div id="ai-key-stored" class="ai-fixed">
+        <div id="ai-key-stored" class="ai-fixed" role="group" aria-labelledby="ai-key-label ai-key-stored-text">
           ${codicon("key", "ai-key-icon")}<span id="ai-key-stored-text"></span>
-          <button id="ai-key-replace" class="button secondary small" type="button">${t(localize("Replace"))}</button>
-          <button id="ai-key-remove" class="button secondary small" type="button">${t(localize("Remove"))}</button>
+          <button id="ai-key-replace" class="button secondary small" type="button" aria-label="${t(localize("Replace the stored API key"))}">${t(localize("Replace"))}</button>
+          <button id="ai-key-remove" class="button secondary small" type="button" aria-label="${t(localize("Remove the stored API key"))}">${t(localize("Remove"))}</button>
         </div>
         <div id="ai-key-entry" class="ai-row">
           <input id="ai-key" class="ai-input ai-mono" type="password" spellcheck="false" autocomplete="off" aria-describedby="ai-key-msg ai-key-note">
@@ -131,9 +132,9 @@ export function renderAiSettingsBody(): string {
       <div class="ai-test">
         <div class="ai-row">
           <button id="ai-test" class="button secondary" type="button">${t(localize("Test Connection"))}</button>
-          <span id="ai-test-progress" class="ai-hint" aria-live="polite"></span>
+          <span id="ai-test-progress" class="ai-hint"></span>
         </div>
-        <div id="ai-test-result" class="ai-result" role="status" hidden>
+        <div id="ai-test-result" class="ai-result" hidden>
           <p id="ai-test-title" class="ai-result-title"></p>
           <ul id="ai-test-lines" class="ai-result-lines"></ul>
         </div>
@@ -142,7 +143,7 @@ export function renderAiSettingsBody(): string {
       <div class="ai-actions">
         <button id="ai-save" class="button primary" type="submit">${t(localize("Save"))}</button>
         <button id="ai-cancel" class="button secondary" type="button">${t(localize("Cancel"))}</button>
-        <span id="ai-save-error" class="ai-message error" role="alert" hidden></span>
+        <span id="ai-save-error" class="ai-message error" hidden></span>
       </div>
     </form>
   </section>

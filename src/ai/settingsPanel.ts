@@ -9,7 +9,7 @@ import { outputLog } from "../outputLog";
 import { renderAiSettingsHtml } from "../webview/aiSettings/html";
 import { asAiError } from "./errors";
 import { activeAfterRemoval, newProfileId, originOf, upsertProfile } from "./profileModel";
-import { activeAfterSave, checkDraft, checkKeyChoice, profileOf } from "./settingsModel";
+import { activeAfterSave, checkDraft, checkKeyChoice, profileOf, redactKey } from "./settingsModel";
 import type { AiSettingsHostMessage, AiSettingsState, AiSettingsView, DraftProfile, KeyChoice, StepResult } from "./settingsProtocol";
 import { readAiSettings, writeAiSettings, type AiKeys } from "./store";
 import { AiError, type AiProtocol, type AiProvider } from "./types";
@@ -24,6 +24,15 @@ export interface AiSettingsDeps {
 export interface AiSettingsSnapshot { open: boolean; ready: boolean; visible: boolean; title: string | undefined; posted: AiSettingsHostMessage[] }
 
 const POSTED_KEPT = 200;
+/** A feature waiting for AI to be set up gives up after this long: it never runs much later, unasked. */
+const WAIT_MS = 10 * 60_000;
+/** The messages to the page, kept for the integration suite only. */
+const KEEP_POSTED = process.env.LINYRA_ITEST === "1";
+
+/** A failed step for the page: its kind, status and words, never with the key in them (some gateways echo it). */
+function stepFailure(error: AiError, key: string | undefined): Extract<StepResult, { ok: false }> {
+  return { ok: false, kind: error.kind, message: redactKey(error.message, key), status: error.http?.status, detail: redactKey(error.http?.detail, key), html: error.http?.html };
+}
 
 export class AiSettingsPage implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
@@ -33,7 +42,7 @@ export class AiSettingsPage implements vscode.Disposable {
   private pending: AiSettingsView | undefined;
   private models: AbortController | undefined;
   private test: AbortController | undefined;
-  /** ensureReady() callers waiting for a profile in use (true) or the page to close (false). */
+  /** ensureReady() callers waiting for a profile in use (true), or for the page to close or be left (false). */
   private readonly waiting = new Set<(closed: boolean) => void>();
   private readonly posted: AiSettingsHostMessage[] = [];
   private readonly disposables: vscode.Disposable[] = [];
@@ -62,6 +71,8 @@ export class AiSettingsPage implements vscode.Disposable {
     this.pending = view;
     panel.iconPath = vscode.Uri.joinPath(this.deps.extensionUri, "media", "linyra.svg");
     const received = panel.webview.onDidReceiveMessage((m: unknown) => void this.onMessage(m));
+    // Left for another tab: a feature that waited for the setup stops waiting (it is run again when wanted).
+    const viewed = panel.onDidChangeViewState(() => { if (!panel.visible) this.settle(true); });
     panel.onDidDispose(() => {
       if (this.panel !== panel) return;
       this.panel = undefined;
@@ -69,6 +80,7 @@ export class AiSettingsPage implements vscode.Disposable {
       this.models?.abort();
       this.test?.abort();
       received.dispose();
+      viewed.dispose();
       this.settle(true);
     });
     panel.webview.html = renderAiSettingsHtml({ cspSource: panel.webview.cspSource, nonce: randomBytes(16).toString("hex"),
@@ -76,13 +88,19 @@ export class AiSettingsPage implements vscode.Disposable {
       styleUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(out, "aiSettings.css")).toString() });
   }
 
-  /** True once `ready()` holds (a profile in use, AI on); false if the page closes first or is not open. */
-  untilReady(ready: () => boolean): Promise<boolean> {
+  /**
+   * True once `ready()` holds (a profile in use, AI on) while the page is in front; false when the
+   * page closes, is left for another tab, or after ten minutes, so a request never goes out much
+   * later, unasked.
+   */
+  untilReady(ready: () => boolean, waitMs = WAIT_MS): Promise<boolean> {
     if (ready()) return Promise.resolve(true);
     if (!this.panel) return Promise.resolve(false);
     return new Promise((resolve) => {
-      const check = (closed: boolean) => {
-        if (!ready() && !closed) return;
+      const timer = setTimeout(() => check(true), waitMs);
+      const check = (stop: boolean) => {
+        if (!ready() && !stop) return;
+        clearTimeout(timer);
         this.waiting.delete(check);
         resolve(ready());
       };
@@ -90,8 +108,8 @@ export class AiSettingsPage implements vscode.Disposable {
     });
   }
 
-  private settle(closed: boolean): void {
-    for (const check of [...this.waiting]) check(closed);
+  private settle(stop: boolean): void {
+    for (const check of [...this.waiting]) check(stop);
   }
 
   snapshot(): AiSettingsSnapshot {
@@ -121,8 +139,10 @@ export class AiSettingsPage implements vscode.Disposable {
   }
 
   private post(m: AiSettingsHostMessage): void {
-    this.posted.push(m);
-    if (this.posted.length > POSTED_KEPT) this.posted.shift();
+    if (KEEP_POSTED) {
+      this.posted.push(m);
+      if (this.posted.length > POSTED_KEPT) this.posted.shift();
+    }
     void this.panel?.webview.postMessage(m);
   }
 
@@ -169,16 +189,17 @@ export class AiSettingsPage implements vscode.Disposable {
     const checked = checkDraft(rawDraft, { model: false });
     const choice = checkKeyChoice(rawKey);
     if ("error" in checked || !choice) {
-      this.post({ type: "models", seq, error: "error" in checked ? checked.error : localize("The form arrived incomplete. Try again.") });
+      this.post({ type: "models", seq, failure: { ok: false, kind: "badRequest", message: "error" in checked ? checked.error : localize("The form arrived incomplete. Try again.") } });
       return;
     }
     const draft = checked.draft;
+    let key: string | undefined;
     try {
-      const key = await this.keyFor(draft, choice);
+      key = await this.keyFor(draft, choice);
       const models = await this.deps.providers[draft.protocol].listModels(profileOf(draft, draft.id ?? "draft"), key, controller.signal);
       if (!controller.signal.aborted) this.post({ type: "models", seq, models: models.slice(0, 5000) });
     } catch (e) {
-      if (!controller.signal.aborted) this.post({ type: "models", seq, error: asAiError(e, controller.signal, draft.baseUrl).message });
+      if (!controller.signal.aborted) this.post({ type: "models", seq, failure: stepFailure(asAiError(e, controller.signal, draft.baseUrl), key) });
     } finally {
       if (this.models === controller) this.models = undefined;
     }
@@ -189,10 +210,8 @@ export class AiSettingsPage implements vscode.Disposable {
     this.test?.abort();
     const controller = new AbortController();
     this.test = controller;
-    const failed = (e: unknown): StepResult => {
-      const error = asAiError(e, controller.signal, typeof (rawDraft as { baseUrl?: unknown })?.baseUrl === "string" ? (rawDraft as { baseUrl: string }).baseUrl : undefined);
-      return { ok: false, kind: error.kind, message: error.message, status: error.http?.status, detail: error.http?.detail, html: error.http?.html };
-    };
+    let key: string | undefined;
+    const failed = (e: unknown): StepResult => stepFailure(asAiError(e, controller.signal, typeof (rawDraft as { baseUrl?: unknown })?.baseUrl === "string" ? (rawDraft as { baseUrl: string }).baseUrl : undefined), key);
     const checked = checkDraft(rawDraft);
     const choice = checkKeyChoice(rawKey);
     if ("error" in checked || !choice) {
@@ -211,7 +230,6 @@ export class AiSettingsPage implements vscode.Disposable {
         return failed(e);
       }
     };
-    let key: string | undefined;
     try {
       key = await this.keyFor(draft, choice);
     } catch (e) {
@@ -259,7 +277,8 @@ export class AiSettingsPage implements vscode.Disposable {
       await this.postState();
       this.post({ type: "done", action: "save", id, note: use ? localize("Saved. Linyra AI now uses {0}.", profile.label) : localize("Saved “{0}”.", profile.label) });
     } catch (e) {
-      this.post({ type: "done", action: "save", error: asAiError(e).message });
+      await this.postState();
+      this.post({ type: "done", action: "save", error: redactKey(asAiError(e).message, choice.kind === "new" ? choice.value : undefined) });
     }
   }
 
@@ -272,6 +291,7 @@ export class AiSettingsPage implements vscode.Disposable {
       await this.postState();
       this.post({ type: "done", action: "use", id: profile.id, note: localize("Linyra AI now uses {0}.", profile.label) });
     } catch (e) {
+      await this.postState();
       this.post({ type: "done", action: "use", error: asAiError(e).message });
     }
   }
@@ -286,6 +306,7 @@ export class AiSettingsPage implements vscode.Disposable {
       await this.postState();
       this.post({ type: "done", action: "remove", id: profile.id, note: localize("Removed “{0}”.", profile.label) });
     } catch (e) {
+      await this.postState();
       this.post({ type: "done", action: "remove", error: asAiError(e).message });
     }
   }
@@ -299,6 +320,8 @@ export class AiSettingsPage implements vscode.Disposable {
       await this.postState();
       this.post({ type: "done", action: "enable", note: on ? localize("Linyra AI is on.") : localize("Linyra AI is off: nothing is sent to any AI provider.") });
     } catch (e) {
+      // The switch shows what the settings say, not what was clicked.
+      await this.postState();
       this.post({ type: "done", action: "enable", error: asAiError(e).message });
     }
   }

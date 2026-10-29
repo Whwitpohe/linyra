@@ -4,8 +4,8 @@ import * as path from "path";
 import { configureI18n } from "../i18n";
 import { httpError } from "./errors";
 import {
-  activeAfterSave, checkDraft, checkForm, checkKeyChoice, contextText, draftName, draftOf, duration, effortNote, effortView, filterModels, fitEffort,
-  isDefaultAddress, keyChoice, keyMessage, keyNote, keyState, modelDescription, modelsNote, modelsReadable, newDraft, profileFacts, profileOf,
+  activeAfterSave, checkDraft, checkForm, checkKeyChoice, contextText, draftName, draftOf, droppedKeyText, duration, effortNote, effortView, filterModels, fitEffort,
+  isDefaultAddress, keyChoice, keyMessage, keyNote, keyState, modelDescription, modelsFailure, modelsNote, modelsReadable, newDraft, profileFacts, profileOf, redactKey,
   removalText, showsStoredKey, storedKeyText, testReport, withProtocol, type KeyState,
 } from "./settingsModel";
 import type { DraftProfile, ProfileRow, StepResult } from "./settingsProtocol";
@@ -92,7 +92,13 @@ const draft = (over: Partial<DraftProfile> = {}): DraftProfile => ({ ...newDraft
   assert.ok(keyNote(remote, { kind: "none" }, "auto").includes("secret storage"));
   assert.ok(keyNote(remote, { kind: "stored", origin: "https://api.anthropic.com" }, "replace").includes("keep the stored key"));
   assert.ok(keyNote(remote, { kind: "stored", origin: "https://api.anthropic.com" }, "remove").includes("deleted when you save"));
-  console.log("ok - the key field warns before a 401 and refuses characters a header cannot carry");
+  assert.ok(elsewhere?.text.includes("saving deletes it"), "Save says it deletes the key it cannot use");
+  assert.strictEqual(droppedKeyText("https://api.openai.com"), "The key you typed was for api.openai.com, so it was cleared. Type it again for this address.");
+  assert.strictEqual(redactKey("Invalid API key: sk-fake-123456 (sk-fake-123456)", "sk-fake-123456"), "Invalid API key: … (…)", "a gateway's echo of the key is cut out");
+  assert.strictEqual(redactKey("no key here", "sk-fake-123456"), "no key here");
+  assert.strictEqual(redactKey("a b", "a"), "a b", "too short to be a key: left alone");
+  assert.strictEqual(redactKey(undefined, "sk-fake-123456"), undefined);
+  console.log("ok - the key field warns before a 401 and refuses characters a header cannot carry; a key is never echoed back");
 }
 
 {
@@ -130,6 +136,15 @@ const draft = (over: Partial<DraftProfile> = {}): DraftProfile => ({ ...newDraft
   assert.ok(modelsNote({ state: "failed", error: "Not found (404)." }, "yes", "https://x.example.com")?.text.endsWith("Not found (404)."));
   assert.ok(modelsNote({ state: "idle" }, "key", "https://x.example.com")?.text.includes("API key"));
   assert.strictEqual(modelsNote({ state: "failed", error: "x" }, "address", "nope"), undefined, "the address says what is wrong");
+  assert.strictEqual(modelsNote({ state: "idle" }, "yes", "http://localhost:11434/v1")?.text, "Open the list (↓) to load the models of localhost:11434.", "a typed key waits until the list is opened");
+  const d = { protocol: "openai" as const, baseUrl: "http://localhost:11434/v1", model: "", effort: "default" as const };
+  const refused = httpError(401, "invalid key");
+  assert.strictEqual(modelsFailure({ ok: false, kind: refused.kind, message: refused.message, status: 401 }, d, true),
+    "localhost:11434 did not accept the API key (401). Check the key, or replace it with a new one from the provider's console.", "the page's words, not \"run Configure AI…\"");
+  assert.strictEqual(modelsFailure({ ok: false, kind: "badRequest", message: "x", status: 404 }, d, true),
+    "localhost:11434 has no model list at this address (404). Check the address (OpenAI-compatible servers usually end in /v1) and the model id. You can still type the model id.");
+  assert.strictEqual(modelsFailure({ ok: false, kind: "network", message: "Could not connect to localhost:11434: nothing is listening there. Is the server running?" }, d, false),
+    "The model list could not be read. Could not connect to localhost:11434: nothing is listening there. Is the server running? You can still type the model id.");
   console.log("ok - the model list loads when it can, and its line says why it cannot");
 }
 

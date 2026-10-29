@@ -13,7 +13,8 @@ const server = http.createServer((req, res) => {
     switch (req.url) {
       case "/echo":
         res.writeHead(200, { "content-type": "application/json", "x-multi": ["a", "b"] });
-        res.end(JSON.stringify({ method: req.method, body, auth: req.headers.authorization, encoding: req.headers["accept-encoding"] }));
+        res.end(JSON.stringify({ method: req.method, body, auth: req.headers.authorization, encoding: req.headers["accept-encoding"],
+          keys: ["x-api-key", "x-goog-api-key"].filter((h) => req.headers[h] !== undefined) }));
         return;
       case "/sse":
         res.writeHead(200, { "content-type": "text/event-stream" });
@@ -29,6 +30,11 @@ const server = http.createServer((req, res) => {
         return; // never ends
       case "/redirect":
         res.writeHead(307, { location: "/echo" });
+        res.end();
+        return;
+      case "/elsewhere":
+        // The same server under another origin (localhost, not 127.0.0.1).
+        res.writeHead(307, { location: `http://localhost:${(server.address() as AddressInfo).port}/echo` });
         res.end();
         return;
       case "/gzip":
@@ -56,9 +62,13 @@ const server = http.createServer((req, res) => {
       assert.strictEqual(res.status, 200);
       assert.strictEqual(res.headers.get("x-multi"), "a, b");
       const echo = await res.json() as { method: string; body: string; auth: string; encoding: string };
-      assert.deepStrictEqual(echo, { method: "POST", body: '{"q":1}', auth: "Bearer test-key", encoding: "identity" });
+      assert.deepStrictEqual(echo, { method: "POST", body: '{"q":1}', auth: "Bearer test-key", encoding: "identity", keys: [] });
       const redirected = await (await fetch(`${base}/redirect`, { method: "POST", body: "kept" })).json() as { method: string; body: string };
       assert.deepStrictEqual([redirected.method, redirected.body], ["POST", "kept"], "307 keeps the method and body");
+      const keyed = { authorization: "Bearer test-key", "x-api-key": "test-key", "x-goog-api-key": "test-key" };
+      assert.strictEqual((await (await fetch(`${base}/redirect`, { headers: keyed })).json() as { auth: string }).auth, "Bearer test-key", "the same origin keeps the key");
+      const away = await (await fetch(`${base}/elsewhere`, { headers: keyed })).json() as { auth?: string; keys: string[] };
+      assert.deepStrictEqual([away.auth, away.keys], [undefined, []], "a redirect to another origin never carries the key");
       assert.strictEqual(await (await fetch(`${base}/gzip`)).text(), "compressed text");
       const limited = await fetch(`${base}/status`);
       assert.strictEqual(limited.status, 429);

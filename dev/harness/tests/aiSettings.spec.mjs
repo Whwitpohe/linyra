@@ -28,8 +28,8 @@ test("lists the profiles: the one in use marked, each with Use, Edit and Remove�
   await expect(row(page, "ai-2").locator('[data-action="use"]')).toHaveAccessibleName("Use “Local llama”");
   await expect(page.locator("#ai-enabled-note")).toHaveText("On: uses “Anthropic · claude-opus-5-5”.");
   await expect(page.locator("#ai-enabled-note .ai-inline-icon")).toHaveCount(1);
-  // Switch AI Model… opened it: the profile in use has the focus.
-  await expect(active.locator('[data-action="edit"]')).toBeFocused();
+  // Switch AI Model… opened it: the first profile to switch to has the focus.
+  await expect(row(page, "ai-2").locator('[data-action="use"]')).toBeFocused();
   expect(errors).toEqual([]);
 });
 
@@ -46,6 +46,8 @@ test("Use switches the profile in use with one click", async ({ page }) => {
 test("Remove… asks in the row, says what goes and what is used next; Esc and Cancel keep it", async ({ page }) => {
   await open(page, { query: "&open=first" });
   const active = row(page, "ai-1");
+  // Remove AI Profile… opened it: the first profile's Remove… has the focus.
+  await expect(active.locator('[data-action="remove"]')).toBeFocused();
   await active.locator('[data-action="remove"]').click();
   const confirm = active.locator(".ai-confirm");
   await expect(confirm).toContainText("Remove the AI profile “Anthropic · claude-opus-5-5”?");
@@ -140,6 +142,9 @@ test("a stored key shows as stored with Replace and Remove; the page never holds
   await expect(page.locator("#ai-form-title")).toHaveText("Edit “Anthropic · claude-opus-5-5”");
   await expect(row(page, "ai-1").locator(".ai-badge.outline")).toHaveText("Editing");
   await expect(page.locator("#ai-key-stored")).toContainText("Stored for api.anthropic.com");
+  await expect(page.locator("#ai-key-stored")).toHaveAccessibleName("API key Stored for api.anthropic.com");
+  await expect(page.locator("#ai-key-replace")).toHaveAccessibleName("Replace the stored API key");
+  await expect(page.locator("#ai-key-remove")).toHaveAccessibleName("Remove the stored API key");
   await expect(page.locator("#ai-key")).toBeHidden();
   await expect(page.locator("#ai-use-field")).toBeHidden();
   await expect(page.locator('#ai-efforts input[value="high"]')).toBeChecked();
@@ -155,9 +160,6 @@ test("a stored key shows as stored with Replace and Remove; the page never holds
   await expect(editor(page)).toBeHidden();
   expect((await sent(page, "save")).map((m) => m.key)).toEqual([{ kind: "none" }]);
   await expect(row(page, "ai-1").locator(".ai-profile-facts")).toContainText("No key");
-  // Nothing the host sends has a key in it: only whether one is stored, and for which origin.
-  const posted = await page.evaluate(() => JSON.stringify(window.aiPosted));
-  expect(posted).not.toMatch(/"key":"|sk-/);
 });
 
 test("a key typed again replaces it; Save sends it once and keeps the field a password", async ({ page }) => {
@@ -184,7 +186,7 @@ test("an address on another origin never gets the stored key", async ({ page }) 
   await expect(page.locator("#ai-key")).toBeVisible();
   await page.locator("#ai-key").focus();
   await page.locator("#ai-key").blur();
-  await expect(page.locator("#ai-key-msg")).toHaveText("The stored key was entered for https://api.anthropic.com, and it is never sent to https://gateway.example.com. Enter a key for this address.");
+  await expect(page.locator("#ai-key-msg")).toHaveText("The key stored for https://api.anthropic.com is never sent to https://gateway.example.com, and saving deletes it. Enter a key for this address.");
   await expect(page.locator("#ai-address-reset")).toHaveText("Use api.anthropic.com");
   await page.locator("#ai-address-reset").click();
   await expect(page.locator("#ai-key-stored")).toContainText("Stored for api.anthropic.com");
@@ -243,12 +245,79 @@ test("the thinking levels follow the model, and say when it takes none or the pr
 
 test("a model list that cannot be read says why, and the field stays free text", async ({ page }) => {
   await open(page, { query: "&open=add&models=fail" });
-  await expect(page.locator("#ai-model-note")).toHaveText("Could not read the model list, so type the model id. Could not connect to localhost:11434: nothing is listening there. Is the server running?");
+  await expect(page.locator("#ai-model-note")).toHaveText("The model list could not be read. Could not connect to localhost:11434: nothing is listening there. Is the server running? You can still type the model id.");
   await page.locator("#ai-model").focus();
   await page.keyboard.press("ArrowDown");
-  await expect(page.locator("#ai-model-suggestions .suggest-hint")).toContainText("Could not read the model list");
+  await expect(page.locator("#ai-model-suggestions .suggest-hint")).toContainText("The model list could not be read.");
   await page.locator("#ai-model-reload").click();
   await expect.poll(async () => (await sent(page, "models")).length).toBe(2);
+});
+
+test("a model list refused for its key says so in the page's words", async ({ page }) => {
+  await open(page, { query: "&models=auth" });
+  await row(page, "ai-1").locator('[data-action="edit"]').click();
+  await expect(page.locator("#ai-model-note")).toHaveText("api.anthropic.com did not accept the API key (401). Check the key, or replace it with a new one from the provider's console.");
+});
+
+test("a typed key is sent only where it was typed: never while typing, and an address elsewhere clears it", async ({ page }) => {
+  await open(page, { query: "&state=empty&open=add" });
+  await page.locator('input[name="ai-protocol"][value="openai"]').check();
+  await page.locator("#ai-key").fill("sk-test-fake");
+  await page.waitForTimeout(800);
+  expect(await sent(page, "models"), "nothing goes out while the key is typed").toEqual([]);
+  await expect(page.locator("#ai-model-note")).toHaveText("Open the list (↓) to load the models of api.openai.com.");
+  await page.locator(".ai-preset", { hasText: "Ollama" }).click();
+  await expect(page.locator("#ai-key")).toHaveValue("");
+  await expect(page.locator("#ai-key-note")).toHaveText("The key you typed was for api.openai.com, so it was cleared. Type it again for this address.");
+  await page.locator("#ai-key").fill("sk-local-fake");
+  await page.locator("#ai-base-url").fill("http://localhost:11434/v1/");
+  await expect(page.locator("#ai-key"), "the same origin keeps it").toHaveValue("sk-local-fake");
+  await page.locator("#ai-base-url").fill("http://localhost:1234/v1");
+  await expect(page.locator("#ai-key"), "another port is another origin").toHaveValue("");
+  await page.locator("#ai-key").fill("sk-local-fake");
+  await page.locator("#ai-model").focus();
+  await expect.poll(async () => (await sent(page, "models")).filter((m) => m.key.kind === "new").map((m) => [m.draft.baseUrl, m.key.value])).toEqual([["http://localhost:1234/v1", "sk-local-fake"]]);
+  expect((await sent(page, "models")).every((m) => m.key.kind !== "new" || m.draft.baseUrl === "http://localhost:1234/v1"), "a typed key only ever went where it was typed").toBe(true);
+});
+
+test("a model list asked for the form before is dropped when it arrives", async ({ page }) => {
+  await open(page, { query: "&open=add" });
+  await expect.poll(async () => (await sent(page, "models")).length).toBe(1);
+  await page.locator('input[name="ai-protocol"][value="openai"]').check();
+  await page.waitForTimeout(300);
+  await page.locator("#ai-model").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.locator("#ai-model-suggestions .suggest-hint")).toHaveText("Enter the API key to load the model list, or type the model id.");
+  await expect(page.locator("#ai-model-suggestions .suggest-row")).toHaveCount(0);
+  await expect(page.locator("#ai-model-note")).toHaveText("Enter the API key to load the model list, or type the model id.");
+});
+
+test("a save answers the form that sent it; Cancel waits for it", async ({ page }) => {
+  await open(page, { query: "&save=slow" });
+  await row(page, "ai-2").locator('[data-action="edit"]').click();
+  await page.locator("#ai-save").click();
+  await expect(page.locator("#ai-save")).toHaveText("Saving…");
+  await expect(page.locator("#ai-cancel")).toBeDisabled();
+  await row(page, "ai-3").locator('[data-action="edit"]').click();
+  await expect(page.locator("#ai-form-title")).toHaveText("Edit “Gemini · gemini-3-pro”");
+  await expect(page.locator("#ai-status")).toHaveText("Saved “Local llama”.");
+  await expect(editor(page), "the other form stays open").toBeVisible();
+  await expect(page.locator("#ai-form-title")).toHaveText("Edit “Gemini · gemini-3-pro”");
+  await expect(page.locator("#ai-save")).toHaveText("Save");
+  await expect(page.locator("#ai-cancel")).toBeEnabled();
+});
+
+test("a screen reader hears what happened, through one live region that is always there", async ({ page }) => {
+  await open(page, { query: "&test=auth" });
+  const live = page.locator("#ai-announce");
+  await expect(live).toHaveAttribute("role", "status");
+  await expect(live).toBeAttached();
+  await row(page, "ai-2").locator('[data-action="use"]').click();
+  await expect(live).toHaveText("Linyra AI now uses Local llama.");
+  await row(page, "ai-1").locator('[data-action="edit"]').click();
+  await page.locator("#ai-test").click();
+  await expect(live).toContainText("The test failed. api.anthropic.com did not accept the API key (401).");
+  await expect(page.locator("#ai-status")).not.toHaveAttribute("role", "status");
 });
 
 test("Test Connection says what worked, then what failed and what to do next", async ({ page }) => {

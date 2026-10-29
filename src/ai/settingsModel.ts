@@ -118,6 +118,16 @@ export function keyNote(d: Pick<DraftProfile, "baseUrl">, state: KeyState, mode:
   return localize("It is kept in VS Code's secret storage, never in settings.");
 }
 
+/** A typed key is bound to the address it was typed for: the address moved to another origin, so it was cleared. */
+export const droppedKeyText = (origin: string): string => localize("The key you typed was for {0}, so it was cleared. Type it again for this address.", hostOf(origin));
+
+/** Text from a provider without the key in it: some gateways echo the key they were given. */
+export function redactKey(text: string, key: string | undefined): string;
+export function redactKey(text: string | undefined, key: string | undefined): string | undefined;
+export function redactKey(text: string | undefined, key: string | undefined): string | undefined {
+  return text && key && key.length >= 4 ? text.split(key).join("…") : text;
+}
+
 /** A key typed with characters a header cannot carry, or none where one is usually needed. */
 export function keyMessage(d: Pick<DraftProfile, "baseUrl">, state: KeyState, choice: KeyChoice): FieldMessage | undefined {
   if (choice.kind === "new") {
@@ -128,7 +138,7 @@ export function keyMessage(d: Pick<DraftProfile, "baseUrl">, state: KeyState, ch
   if (choice.kind !== "none") return undefined;
   const address = addressOf(d.baseUrl);
   if (state.kind === "elsewhere" && address) {
-    return { severity: "warning", text: localize("The stored key was entered for {0}, and it is never sent to {1}. Enter a key for this address.", state.origin, originOf(address)) };
+    return { severity: "warning", text: localize("The key stored for {0} is never sent to {1}, and saving deletes it. Enter a key for this address.", state.origin, originOf(address)) };
   }
   return address && !isLocalUrl(address) ? { severity: "warning", text: localize("Without a key most providers answer 401.") } : undefined;
 }
@@ -209,11 +219,11 @@ export function modelsNote(load: ModelsLoad, readable: "yes" | "address" | "key"
   if (readable === "key") return { severity: "info", text: localize("Enter the API key to load the model list, or type the model id.") };
   const host = hostOf(baseUrl);
   switch (load.state) {
-    case "idle": return undefined;
+    case "idle": return { severity: "info", text: localize("Open the list (↓) to load the models of {0}.", host) };
     case "loading": return { severity: "info", text: localize("Fetching the models of {0}…", host) };
     case "loaded": return load.count === 0 ? { severity: "warning", text: localize("{0} listed no models. Enter a model id.", host) }
       : { severity: "info", text: localize("{0} from {1}: open the list with ↓ or type to filter.", modelCount(load.count), host) };
-    case "failed": return { severity: "warning", text: localize("Could not read the model list, so type the model id. {0}", load.error) };
+    case "failed": return { severity: "warning", text: load.error };
   }
 }
 
@@ -276,6 +286,13 @@ export interface TestReport { ok: boolean; title: string; lines: ReportLine[] }
 export const duration = (ms: number): string => (ms < 1000 ? localize("{0} ms", Math.max(0, Math.round(ms))) : localize("{0} s", (ms / 1000).toFixed(1)));
 
 type Failure = Extract<StepResult, { ok: false }>;
+
+/** Why the model list could not be read, said as Test Connection says it; the id can still be typed unless the key was refused. */
+export function modelsFailure(r: Failure, d: Pick<DraftProfile, "protocol" | "baseUrl" | "model" | "effort">, keyed: boolean): string {
+  const line = failure(r, d, keyed, "list");
+  const said = r.status === undefined ? localize("The model list could not be read. {0}", line.text) : [line.text, line.next].filter(Boolean).join(" ");
+  return r.kind === "auth" ? said : `${said} ${localize("You can still type the model id.")}`;
+}
 type Tested = Pick<DraftProfile, "protocol" | "baseUrl" | "model" | "effort">;
 
 function failure(r: Failure, d: Tested, keyed: boolean, step: "list" | "send"): ReportLine {

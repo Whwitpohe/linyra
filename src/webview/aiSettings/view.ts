@@ -1,9 +1,9 @@
 import { localize } from "../../i18n";
 import { hostOf } from "../../ai/errors";
-import { DEFAULT_BASE_URL, effortLabel } from "../../ai/profileModel";
+import { DEFAULT_BASE_URL, effortLabel, originOf } from "../../ai/profileModel";
 import {
-  ADDRESS_PRESETS, addressOf, checkForm, draftName, draftOf, effortNote, effortView, filterModels, fitEffort, isDefaultAddress, keyChoice, keyNote, keyPlaceholder, keyState,
-  modelDescription, modelsNote, modelsReadable, newDraft, profileFacts, removalText, showsStoredKey, storedKeyText, testReport, usesStoredKey, withProtocol,
+  ADDRESS_PRESETS, addressOf, checkForm, draftName, draftOf, droppedKeyText, effortNote, effortView, filterModels, fitEffort, isDefaultAddress, keyChoice, keyNote, keyPlaceholder, keyState,
+  modelDescription, modelsFailure, modelsNote, modelsReadable, newDraft, profileFacts, removalText, showsStoredKey, storedKeyText, testReport, usesStoredKey, withProtocol,
   type FieldMessage, type FormCheck, type KeyMode, type ModelsLoad, type ReportLine, type TestReport,
 } from "../../ai/settingsModel";
 import type { AiSettingsHostMessage, AiSettingsState, AiSettingsView, AiSettingsWebviewMessage, DraftProfile, ProfileRow } from "../../ai/settingsProtocol";
@@ -29,6 +29,10 @@ interface Form {
   custom: boolean;
   /** Fields left once: their errors show from then on (Save and Test touch them all). */
   touched: Set<Field>;
+  /** The origin a typed key was typed for: it is sent only there, and an address on another origin clears it. */
+  keyFor?: string;
+  /** The typed key was cleared because the address moved: the origin it was for, said under the field. */
+  keyDropped?: string;
 }
 
 const RESULT_ICON: Record<ReportLine["status"], Codicon> = { ok: "pass", warning: "warning", failed: "error", skipped: "circle-slash" };
@@ -82,6 +86,8 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
   const testResult = byId("ai-test-result");
   const saveButton = byId<HTMLButtonElement>("ai-save");
   const saveError = byId("ai-save-error");
+  const cancelButton = byId<HTMLButtonElement>("ai-cancel");
+  const announcer = byId("ai-announce");
 
   let state: AiSettingsState = { type: "state", enabled: false, activeId: undefined, profiles: [] };
   let form: Form | undefined;
@@ -96,7 +102,8 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
   let testSeq = 0;
   /** A test running, and the draft it tests (its report is read against that one). */
   let testing: { seq: number; draft: DraftProfile } | undefined;
-  let saving = false;
+  /** The form whose Save is on its way: its result is for that form only. */
+  let saving: Form | undefined;
   /** Where the removed row was: the focus goes to the row that takes its place. */
   let removedAt: number | undefined;
 
@@ -112,11 +119,20 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
 
   // ── The status line, the switch and the list ────────────────────────────
 
+  /** Said to a screen reader through one live region that is always there (one shown at the same moment is often missed). */
+  let announced: ReturnType<typeof setTimeout> | undefined;
+  function announce(text: string): void {
+    clearTimeout(announced);
+    announcer.textContent = "";
+    announced = setTimeout(() => { announcer.textContent = text; }, 50);
+  }
+
   function status(text: string, kind: "ok" | "error" = "ok"): void {
     statusLine.hidden = !text;
     statusLine.className = `ai-status ${kind}`;
     byId("ai-status-icon").replaceChildren(codiconElement(kind === "ok" ? "pass" : "error"));
     byId("ai-status-text").textContent = text;
+    if (text) announce(text);
   }
 
   function renderHeader(): void {
@@ -256,10 +272,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     testResult.hidden = true;
     testProgress.textContent = "";
     saveError.hidden = true;
-    saving = false;
-    models = [];
-    load = { state: "idle" };
-    loadedFor = "";
+    invalidateModels();
     renderForm();
     renderList();
     editor.scrollIntoView({ block: "nearest" });
@@ -272,6 +285,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     const id = form.draft.id;
     stopTest();
     clearTimeout(modelsTimer);
+    invalidateModels();
     suggest.close();
     form = undefined;
     // The typed key goes with the form: nothing keeps it once the host has it.
@@ -357,13 +371,14 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     byId("ai-key-stored-text").textContent = storedKeyText(ks);
     keyCancel.hidden = !(usesStoredKey(ks) && f.keyMode !== "auto");
     keyInput.placeholder = keyPlaceholder(d.protocol);
+    keyEntry.classList.toggle("dropped", !!f.keyDropped && !keyInput.value);
     nameInput.placeholder = draftName({ ...d, label: "" });
-    byId("ai-key-note").textContent = keyNote(d, ks, f.keyMode);
+    byId("ai-key-note").textContent = f.keyDropped && !keyInput.value ? droppedKeyText(f.keyDropped) : keyNote(d, ks, f.keyMode);
     renderEfforts();
     renderChecks();
     testButton.textContent = testing ? localize("Stop Test") : localize("Test Connection");
-    saveButton.disabled = saving;
-    saveButton.textContent = saving ? localize("Saving…") : localize("Save");
+    saveButton.disabled = cancelButton.disabled = saving === f;
+    saveButton.textContent = saving === f ? localize("Saving…") : localize("Save");
   }
 
   /** Every field shown as checked (Save, Test): the first one with an error takes the focus. */
@@ -386,14 +401,46 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     modelsTimer = setTimeout(() => loadModels(false), delay);
   }
 
+  /** The model list no longer fits the form: a reply still on its way is dropped. */
+  function invalidateModels(): void {
+    models = [];
+    load = { state: "idle" };
+    loadedFor = "";
+    modelsSeq++;
+  }
+
+  /**
+   * A typed key is sent only to the origin it was typed for: an address on another origin clears
+   * it (said under the field), so a key is never sent to a host passed on the way to another.
+   */
+  function guardTypedKey(f: Form): void {
+    if (!keyInput.value.trim() || showsStoredKey(currentKeyState(f), f.keyMode)) return;
+    const address = addressOf(f.draft.baseUrl);
+    const origin = address ? originOf(address) : undefined;
+    f.keyFor ??= origin;
+    if (origin === f.keyFor) return;
+    f.keyDropped = f.keyFor;
+    f.keyFor = undefined;
+    keyInput.value = "";
+  }
+
+  /** After an address change: a stored key (bound to its origin by the host) or none loads the list itself; a typed key waits until the list is opened. */
+  function addressChanged(f: Form, delay: number): void {
+    guardTypedKey(f);
+    dropTest();
+    renderForm();
+    if (currentChoice(f).kind === "new") {
+      invalidateModels();
+      renderChecks();
+    } else scheduleModels(delay);
+  }
+
   function loadModels(force: boolean): void {
     if (!form) return;
     const d = form.draft;
     const choice = currentChoice(form);
     if (modelsReadable(d, choice) !== "yes") {
-      models = [];
-      load = { state: "idle" };
-      loadedFor = "";
+      invalidateModels();
       renderChecks();
       return;
     }
@@ -503,12 +550,11 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
       form.custom = !isDefaultAddress(form.draft);
       form.keyMode = "auto";
       form.info = undefined;
+      form.keyFor = form.keyDropped = undefined;
       keyInput.value = "";
       baseUrl.value = form.draft.baseUrl;
       modelInput.value = form.draft.model;
-      models = [];
-      load = { state: "idle" };
-      loadedFor = "";
+      invalidateModels();
       dropTest();
       renderForm();
       scheduleModels(0);
@@ -521,16 +567,20 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
   baseUrl.addEventListener("input", () => {
     if (!form) return;
     form.draft.baseUrl = baseUrl.value;
-    dropTest();
-    renderForm();
-    scheduleModels(600);
+    addressChanged(form, 600);
   });
+  // A typed key is never sent while it is typed: the list loads when it is opened (or on Test, Save).
   keyInput.addEventListener("input", () => {
     if (!form) return;
+    const address = addressOf(form.draft.baseUrl);
+    form.keyFor = keyInput.value.trim() && address ? originOf(address) : undefined;
+    form.keyDropped = undefined;
     dropTest();
-    renderChecks();
-    scheduleModels(600);
+    if (currentChoice(form).kind === "new") invalidateModels();
+    else scheduleModels(0);
+    renderForm();
   });
+  modelInput.addEventListener("focus", () => loadModels(false));
   modelInput.addEventListener("input", () => {
     if (!form) return;
     form.draft.model = modelInput.value;
@@ -563,9 +613,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     const button = (e.target as Element).closest<HTMLButtonElement>("button[data-url]");
     if (!form || !button?.dataset.url) return;
     baseUrl.value = form.draft.baseUrl = button.dataset.url;
-    dropTest();
-    renderForm();
-    scheduleModels(0);
+    addressChanged(form, 0);
   });
   addressCustom.addEventListener("click", () => {
     if (!form) return;
@@ -578,14 +626,13 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
     if (!form) return;
     form.custom = false;
     baseUrl.value = form.draft.baseUrl = DEFAULT_BASE_URL[form.draft.protocol];
-    dropTest();
-    renderForm();
-    scheduleModels(0);
+    addressChanged(form, 0);
     addressCustom.focus();
   });
   const setKeyMode = (mode: KeyMode, focus: HTMLElement) => {
     if (!form) return;
     form.keyMode = mode;
+    form.keyFor = form.keyDropped = undefined;
     keyInput.value = "";
     dropTest();
     renderForm();
@@ -599,6 +646,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
   modelOpen.addEventListener("click", () => {
     if (suggest.isOpen) return suggest.close();
     modelInput.focus();
+    loadModels(false);
     suggest.show(true);
   });
   modelReload.addEventListener("click", () => {
@@ -609,13 +657,13 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
 
   formEl.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (!form || saving || !checkAll()) return;
-    saving = true;
+    if (!form || saving === form || !checkAll()) return;
+    saving = form;
     saveError.hidden = true;
     post({ type: "save", draft: outgoing(form), key: currentChoice(form), use: !useField.hidden && useBox.checked });
     renderForm();
   });
-  byId("ai-cancel").addEventListener("click", () => closeForm());
+  cancelButton.addEventListener("click", () => closeForm());
   addButton.addEventListener("click", () => {
     const active = state.profiles.find((p) => p.id === state.activeId);
     openForm(newDraft(active?.protocol));
@@ -631,10 +679,12 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
       else openForm(newDraft(state.profiles.find((p) => p.id === state.activeId)?.protocol));
       return;
     }
-    const target = view.focus === "first" ? state.profiles[0] : state.profiles.find((p) => p.id === state.activeId) ?? state.profiles[0];
+    // Remove AI Profile…: the first profile's Remove…; Switch AI Model…: the first profile to switch to, the one in use marked.
+    const active = state.profiles.find((p) => p.id === state.activeId);
+    const target = view.focus === "first" ? state.profiles[0] : state.profiles.find((p) => p.id !== state.activeId) ?? active;
     if (!target) return addButton.focus();
-    focusRow(target.id);
-    flash(target.id);
+    focusRow(target.id, view.focus === "first" ? "remove" : target === active ? "edit" : "use");
+    flash(active?.id ?? target.id);
   }
 
   events.addEventListener("message", (event) => {
@@ -659,7 +709,7 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
           form.info ??= models.find((x) => x.id === form!.draft.model.trim());
         } else {
           models = [];
-          load = { state: "failed", error: m.error ?? "" };
+          load = { state: "failed", error: m.failure ? modelsFailure(m.failure, form.draft, currentChoice(form).kind !== "none") : "" };
         }
         renderForm();
         suggest.refresh();
@@ -673,15 +723,26 @@ export function mountAiSettings(api: AiSettingsApi, events: EventTarget = window
         testing = undefined;
         testProgress.textContent = "";
         showReport(report);
+        announce([report.title, ...report.lines.flatMap((l) => [l.text, l.next ?? ""])].filter(Boolean).join(" "));
         renderForm();
         return;
       }
       case "done":
         if (m.action === "save") {
-          saving = false;
+          // A save answers the form that sent it: after Edit on another row, it only says what happened.
+          const sent = saving;
+          saving = undefined;
           if (m.error) {
-            saveError.hidden = false;
-            saveError.textContent = m.error;
+            if (sent && sent === form) {
+              saveError.hidden = false;
+              saveError.textContent = m.error;
+              announce(m.error);
+            } else status(m.error, "error");
+            renderForm();
+            return;
+          }
+          if (sent && sent !== form) {
+            status(m.note ?? "");
             renderForm();
             return;
           }

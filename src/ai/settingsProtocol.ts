@@ -61,7 +61,8 @@ export type AiSettingsView = { view: "add" } | { view: "list"; focus?: "active" 
 export type AiSettingsHostMessage =
   | AiSettingsState
   | ({ type: "open" } & AiSettingsView)
-  | { type: "models"; seq: number; models?: AiModel[]; error?: string }
+  /** The provider's models, or why they could not be read (said in the page's words, as Test Connection says it). */
+  | { type: "models"; seq: number; models?: AiModel[]; failure?: Extract<StepResult, { ok: false }> }
   | { type: "testStep"; seq: number; step: 1 | 2 }
   | { type: "tested"; seq: number; outcome: TestOutcome }
   /** A save, a Use or a Remove went through (`note` says so on the page) or failed (`error`). */

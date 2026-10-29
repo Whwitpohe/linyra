@@ -69,6 +69,11 @@ export class LinyraAi implements AiService, vscode.Disposable {
       commands.push(
         vscode.commands.registerCommand("linyra._itest.aiSettings", () => this.page?.snapshot() ?? { open: false, ready: false, visible: false, title: undefined, posted: [] }),
         vscode.commands.registerCommand("linyra._itest.aiSettingsSend", (m: unknown) => this.settingsPage().onMessage(m)),
+        // ensureReady()'s wait, without its question: the page opens, and the answer comes when AI is ready or the page is left.
+        vscode.commands.registerCommand("linyra._itest.aiWaitReady", (ms?: number) => {
+          this.openSettings();
+          return this.settingsPage().untilReady(() => this.configured, ms);
+        }),
         vscode.commands.registerCommand("linyra._itest.aiKeyIs", async (id: string, expected: string | undefined) => {
           const saved = await this.keys.saved(id);
           return { stored: !!saved, origin: saved?.origin, matches: saved?.key === expected };
