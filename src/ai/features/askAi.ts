@@ -1,7 +1,7 @@
 // Ask AI: a request in plain words → the model calls Linyra's tools (tools.ts). Read tools run as
 // they come; write tools are only planned, and come back for one confirmation once the model is
 // done. At most MAX_TOOL_CALLS calls per request. Pure: the loop over an injected AiService.
-import type { AiResponse, AiService, AiToolCall, AiToolResult, AiTurn } from "../types";
+import { AiError, type AiResponse, type AiService, type AiToolCall, type AiToolResult, type AiTurn } from "../types";
 import { languageLine } from "./context";
 import { MAX_TOOL_CALLS, TOOLS, toolDef, type WritePlan } from "./tools";
 
@@ -60,7 +60,7 @@ export async function runAsk(ai: Pick<AiService, "ask">, host: AskHost, question
     turns.push({ role: "assistant", content: res.text, toolCalls: res.toolCalls, ...(res.raw !== undefined ? { raw: res.raw } : {}) });
     const results: AiToolResult[] = [];
     for (const call of res.toolCalls) {
-      if (o.signal.aborted) throw o.signal.reason ?? new Error("cancelled");
+      if (o.signal.aborted) throw new AiError("Cancelled.", "cancelled");
       if (result.calls.length >= max) {
         result.limited = true;
         results.push({ id: call.id, name: call.name, output: LIMIT, isError: true });
@@ -73,6 +73,8 @@ export async function runAsk(ai: Pick<AiService, "ask">, host: AskHost, question
       try {
         if (def.kind === "read") {
           results.push({ id: call.id, name: call.name, output: await host.read(call.name, call.input, o.signal) });
+        } else if (result.planned.some((p) => p.call.name === call.name && JSON.stringify(p.call.input) === JSON.stringify(call.input))) {
+          results.push({ id: call.id, name: call.name, output: "Already planned; it is listed once." });
         } else {
           const p = await host.plan(call.name, call.input, o.signal);
           if ("error" in p) results.push({ id: call.id, name: call.name, output: p.error, isError: true });

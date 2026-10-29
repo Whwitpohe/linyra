@@ -108,7 +108,8 @@ export class AiFeatures {
   /** An error as the user reads it: AiError's own words, nothing for a cancel. */
   fail(e: unknown): void {
     if (isCancel(e)) return;
-    void vscode.window.showErrorMessage(localize("Linyra AI: {0}", messageOf(e).replace(/\.?$/, ".")));
+    const text = messageOf(e).trim();
+    void vscode.window.showErrorMessage(localize("Linyra AI: {0}", /[.!?…:]$/.test(text) ? text : `${text}.`));
   }
 
   /** A streamed answer in the editor area; `write` appends. */
@@ -342,12 +343,13 @@ export class AiFeatures {
     box.value = value;
     box.ignoreFocusOut = true;
     const generate: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon("sparkle"), tooltip: localize("Write the stash message with AI") };
-    box.buttons = [generate];
+    box.buttons = aiIfAny() ? [generate] : [];
     let ctl: AbortController | undefined;
     /** Configure AI… takes the screen for a moment: this box comes back after it. */
     let away = false;
     return new Promise<string | undefined>((resolve) => {
-      const finish = (v: string | undefined) => { ctl?.abort(); resolve(v); box.dispose(); };
+      let done = false;
+      const finish = (v: string | undefined) => { if (done) return; done = true; ctl?.abort(); resolve(v); box.dispose(); };
       box.onDidAccept(() => { if (!box.busy) { const v = box.value; box.hide(); finish(v); } });
       box.onDidHide(() => { if (!away) finish(undefined); });
       box.onDidTriggerButton(async (b) => {
@@ -385,8 +387,9 @@ export class AiFeatures {
   // ---- 8. Changelog and release notes ----------------------------------------------------------
 
   private async presentNotes(ai: AiService, title: string, read: (signal: AbortSignal) => Promise<NotesSection[]>): Promise<void> {
-    // Insert puts the notes where the user was typing before the preview opened.
+    // Insert puts the notes where the user was typing before the preview opened (that editor may be behind it now).
     const editor = vscode.window.activeTextEditor;
+    const at = editor && editor.document.uri.scheme !== "output" ? { doc: editor.document, pos: editor.selection.active } : undefined;
     let markdown = "";
     await this.present(ai, title, async (write, signal) => {
       const sections = (await read(signal)).filter((s) => s.commits.length > 0);
@@ -398,10 +401,13 @@ export class AiFeatures {
     });
     if (!markdown) return;
     const copy = localize("Copy"), insert = localize("Insert into Editor");
-    const canInsert = editor && !editor.document.isClosed && vscode.window.visibleTextEditors.includes(editor);
-    const choice = await vscode.window.showInformationMessage(localize("Release notes are ready."), copy, ...(canInsert ? [insert] : []));
+    const choice = await vscode.window.showInformationMessage(localize("Release notes are ready."), copy, ...(at && !at.doc.isClosed ? [insert] : []));
     if (choice === copy) await copyText(markdown);
-    else if (choice === insert && editor) await editor.edit((e) => e.insert(editor.selection.active, markdown));
+    else if (choice === insert && at && !at.doc.isClosed) {
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(at.doc.uri, at.pos, markdown);
+      await vscode.workspace.applyEdit(edit);
+    }
   }
 
   /** linyra.ai.releaseNotes: release notes from the commits selected in the Log (or the right-clicked one). */

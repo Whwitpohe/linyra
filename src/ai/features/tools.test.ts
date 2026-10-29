@@ -128,7 +128,13 @@ const branch = (name: string, kind: "local" | "remote", current = false) => ({ r
   const ctl = new AbortController();
   const stop = fakeAi([{ stop: "tool", toolCalls: [{ id: "1", name: "list_repositories", input: {} }] }]);
   ctl.abort();
-  await assert.rejects(runAsk(stop, host, "x", { context: "", language: "en", signal: ctl.signal }));
+  await assert.rejects(runAsk(stop, host, "x", { context: "", language: "en", signal: ctl.signal }), (e: Error & { kind?: string }) => e.kind === "cancelled");
+  // The same write asked twice is planned once.
+  const twice = fakeAi([{ stop: "tool", toolCalls: [{ id: "1", name: "fetch_all", input: {} }, { id: "2", name: "fetch_all", input: {} }] }, "Fetching."]);
+  let plans = 0;
+  const once = await runAsk(twice, { read: async () => "", plan: async () => { plans++; return { plan: { tool: "fetch_all", title: "Fetch All", rows: [], skipped: [] }, run: async () => "" }; } }, "fetch", { context: "", language: "en", signal: new AbortController().signal });
+  assert.strictEqual(plans, 1);
+  assert.strictEqual(once.planned.length, 1);
   console.log("ok - Ask AI: unknown tools and failures answered as errors, 8 calls at most, bounded rounds, cancellable");
 }
 })().catch((e) => {

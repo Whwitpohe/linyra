@@ -87,6 +87,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
   private lastError: string | undefined;
   /** ✨ writing a message: ✨ again, or Esc, stops it. */
   private generating: AbortController | undefined;
+  /** Waiting for the message box's page to load (the command opened it). */
+  private readyWaiters: (() => void)[] = [];
 
   constructor(private readonly deps: CommitPanelDeps) {
     const g = deps.context.workspaceState.get<Partial<CommitGrouping>>(GROUPING_KEY);
@@ -225,6 +227,7 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     if (!m || typeof m !== "object") return; // webview input is untrusted
     switch (m.type) {
       case "ready": {
+        for (const done of this.readyWaiters.splice(0)) done();
         const draft = this.deps.context.workspaceState.get<{ text?: unknown; amend?: unknown }>(DRAFT_KEY);
         this.post({ type: "draft", text: typeof draft?.text === "string" ? draft.text : "", amend: draft?.amend === true, signOff: this.signOff, author: this.author ?? "" });
         this.postState();
@@ -261,9 +264,15 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
       return;
     }
     const ctl = (this.generating = new AbortController());
-    this.post({ type: "generating" });
-    const hint = draft ?? String(this.deps.context.workspaceState.get<{ text?: unknown }>(DRAFT_KEY)?.text ?? "");
     try {
+      // From the command with the side bar closed: open the message box first, or nothing would show the message.
+      if (!this.message) {
+        const ready = new Promise<void>((resolve) => { this.readyWaiters.push(resolve); setTimeout(resolve, 5000); });
+        await vscode.commands.executeCommand(`${CommitPanel.messageId}.focus`);
+        await ready;
+      }
+      this.post({ type: "generating" });
+      const hint = draft ?? String(this.deps.context.workspaceState.get<{ text?: unknown }>(DRAFT_KEY)?.text ?? "");
       const text = await write(plan, hint, (partial) => { if (!ctl.signal.aborted) this.post({ type: "generated", text: partial, done: false }); }, ctl.signal);
       this.post({ type: "generated", text: ctl.signal.aborted ? "" : text ?? "", done: true });
     } catch (e) {
