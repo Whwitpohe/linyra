@@ -64,9 +64,9 @@ test("each row is two lines: an icon, the operator in bold with its aliases at t
 
 test("the placeholder says how to use the box, in English and in Chinese", async ({ page }) => {
   await open(page);
-  await expect(page.locator("#search")).toHaveAttribute("placeholder", "Search commits (press Enter to search, ↑↓ for history), e.g. @me after:1.week.ago file:*.ts");
+  await expect(page.locator("#search")).toHaveAttribute("placeholder", "Search commits (↑↓ for history)");
   await open(page, { path: "/index.zh-cn.html" });
-  await expect(page.locator("#search")).toHaveAttribute("placeholder", "搜索提交（按 Enter 搜索，↑↓ 查看历史），例如 @me after:1.week.ago file:*.ts");
+  await expect(page.locator("#search")).toHaveAttribute("placeholder", "搜索提交（↑↓ 查看历史）");
   await page.click("#search");
   await expect(hint(page)).toContainText("组合多个筛选条件");
   await expect(row(page, "message:").locator(".suggest-description")).toHaveText("搜索提交信息，快速找到特定的更改或功能");

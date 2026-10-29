@@ -988,7 +988,7 @@
   "Changes as Squares": "更改：方格",
   "Changes as a Bar": "更改：条形",
   "Changes as a Bipolar Bar": "更改：双向条",
-  "Search commits (press Enter to search, ↑↓ for history), e.g. @me after:1.week.ago file:*.ts": "搜索提交（按 Enter 搜索，↑↓ 查看历史），例如 @me after:1.week.ago file:*.ts",
+  "Search commits (↑↓ for history)": "搜索提交（↑↓ 查看历史）",
   "Combine filters to build powerful searches, e.g. {0}": "组合多个筛选条件，构建更强大的搜索，例如 {0}",
   "Search using natural language": "使用自然语言搜索",
   "Describe what you're looking for and let Linyra AI build the query": "描述你要找的内容，让 Linyra AI 生成搜索条件",

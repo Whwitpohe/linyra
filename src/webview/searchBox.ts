@@ -267,7 +267,7 @@ export class SearchBox {
     this.natural = on;
     this.aiButton.setAttribute("aria-pressed", String(on));
     this.field.classList.toggle("natural", on);
-    this.input.placeholder = on ? localize("Describe the commits, e.g. my fixes in acme-web last week") : localize("Search commits (press Enter to search, ↑↓ for history), e.g. @me after:1.week.ago file:*.ts");
+    this.input.placeholder = on ? localize("Describe the commits, e.g. my fixes in acme-web last week") : localize("Search commits (↑↓ for history)");
     this.suggest.close();
     if (on) this.showMessages([]);
     else this.showErrors(true);
