@@ -130,6 +130,36 @@ body.vscode-high-contrast .header-actions .icon-button[aria-pressed="true"] { ou
 body.vscode-high-contrast .profile-row.current { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 .repo-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .repo-name .hit { color: var(--vscode-list-highlightForeground); font-weight: 600; }
+/* The branch after the name, as a tree item's description, then * + ! for uncommitted work as VS
+   Code's status bar marks a branch. The branch gives way first; the name keeps a few letters. */
+.repo-rows { container-type: inline-size; }
+.repo-row:has(.repo-branch) .repo-name { min-width: 6ch; }
+.repo-branch { flex: 0 1000 auto; min-width: 0; display: flex; align-items: center; overflow: hidden; color: var(--vscode-descriptionForeground); }
+.branch-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.repo-branch .codicon { display: none; }
+.repo-work { flex: none; margin-left: -5px; color: var(--vscode-descriptionForeground); }
+.repo-row > .repo-work:not(.repo-branch + .repo-work) { margin-left: -4px; }
+/* On another branch than most ticked repositories; bold too, so it does not rest on color alone. */
+.repo-branch.drift { color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground, var(--vscode-foreground))); font-weight: 600; }
+/* A merge, rebase, cherry-pick or revert that stopped: the conflict color, as Compare predicts conflicts. */
+.repo-op { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--vscode-list-warningForeground, var(--vscode-foreground))); }
+.repo-op.conflicted { font-weight: 600; }
+.op-count::before { content: "· "; }
+/* A repository in a merge or rebase: the badge says it (its * + ! would only repeat it). Its branch
+   when there is room; in a narrow Repo List the icon and the count, the rest in the tooltip. A
+   narrow Repo List names only a branch that differs from the rest. */
+.repo-row:has(.repo-op) .repo-work { display: none; }
+@container (max-width: 399px) {
+  .repo-row:has(.repo-op) .repo-branch { display: none; }
+}
+@container (max-width: 279px) {
+  .repo-branch:not(.drift), .op-word, .repo-row:has(.repo-op) .repo-sync { display: none; }
+  .op-count::before { content: none; }
+  /* A branch that differs: its icon, the name in the tooltip. */
+  .repo-branch.drift { flex: none; margin-left: -4px; }
+  .repo-branch.drift .codicon { display: block; }
+  .repo-branch.drift .branch-text { display: none; }
+}
 
 /* The divider: a visible theme line that lights up like VS Code's own sash. */
 .splitter { cursor: col-resize; border-left: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); touch-action: none; }

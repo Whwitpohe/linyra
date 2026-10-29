@@ -216,7 +216,8 @@ export function describeCommit(works: readonly RepoWork[], choices: Choices, acc
         id: base, kind: "repo", label: w.name, description: [branchText(w), partly(c, plural(c.files, "file"))].filter(Boolean).join(" · "),
         repoId: w.repoId, accent: accents.get(w.repoId) ?? 0, children, ...c, markdown: true,
         tooltip: paragraphs([mdText(w.canStage ? w.root : localize("{0}: Rollback needs VS Code's Git to have this repository open.", w.name)), branch, countsLine(k)]),
-        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}${addedUnder(children)}`,
+        // .conflicted: a merge or rebase stopped here (Resolve Conflicts…, and AI's).
+        contextValue: `commitRepo${behind(w.repoId) ? ".behind" : ""}${untracked ? ".unversioned" : ""}${addedUnder(children)}${(w.conflicts ?? 0) > 0 ? ".conflicted" : ""}`,
       });
     }
     if (repos.length === 0) continue;

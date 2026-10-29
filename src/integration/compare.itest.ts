@@ -793,4 +793,29 @@ describe("Compare Branches", () => {
       await vscode.commands.executeCommand("linyra._itest.compareMode", "files");
     }
   });
+
+  it("Release…: the notes first, then Merge ◀ into ▶, a tag on ▶ with that repository's notes, and the push asked last", async () => {
+    const api = roots["acme-api"], web = roots["acme-web"];
+    const prodWas = git(web, ["rev-parse", "refs/heads/prod"]);
+    try {
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await until2("listed", repos, (x) => x.description === "release-1.4 ↔ prod" && x.roots.length === 2);
+      await select("*");
+      // acme-api would conflict: only acme-web is offered. No remote in the fixture: the push is declined.
+      for (const a of [JSON.stringify(["acme-web"]), "ci-r1", "Cancel"]) await vscode.commands.executeCommand("linyra._itest.answer", a);
+      const r = await vscode.commands.executeCommand<{ merged: string[]; tagged: string[]; pushed: string[]; notes: string }>("linyra.release");
+      assert.deepStrictEqual([r?.merged, r?.tagged, r?.pushed], [["acme-web"], ["acme-web"], []]);
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Push prod and tag ci-r1 in 1 repositories?");
+      assert.match(r!.notes, /^## acme-api \(release-1\.4 → prod\)[\s\S]*## acme-web \(release-1\.4 → prod\)\n\n- feat: billing page/, "read before the merge: every repository's");
+      assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.clipboard"), r!.notes, "copied");
+      assert.strictEqual(git(web, ["rev-parse", "refs/heads/prod"]), git(web, ["rev-parse", "release-1.4"]));
+      assert.strictEqual(git(web, ["rev-parse", "ci-r1^{commit}"]), git(web, ["rev-parse", "refs/heads/prod"]), "the tag on ▶'s tip");
+      assert.match(git(web, ["tag", "-l", "-n9", "ci-r1"]), /Release ci-r1[\s\S]*feat: billing page/);
+      assert.strictEqual(git(api, ["tag", "-l", "ci-r1"]), "", "not merged there: not tagged");
+    } finally {
+      git(web, ["update-ref", "refs/heads/prod", prodWas]);
+      try { git(web, ["tag", "-d", "ci-r1"]); } catch { /* not created */ }
+      await vscode.commands.executeCommand("linyra._itest.answer", undefined);
+    }
+  });
 });

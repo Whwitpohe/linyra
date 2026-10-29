@@ -823,6 +823,96 @@
         "command": "linyra.ai.removeProfile",
         "title": "%command.linyra.ai.removeProfile.title%",
         "category": "Linyra"
+      },
+      {
+        "command": "linyra.resolveConflicts",
+        "title": "%command.linyra.resolveConflicts.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.continueMerge",
+        "title": "%command.linyra.continueMerge.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.abortMerge",
+        "title": "%command.linyra.abortMerge.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.continueRebase",
+        "title": "%command.linyra.continueRebase.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.abortRebase",
+        "title": "%command.linyra.abortRebase.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.continueCherryPick",
+        "title": "%command.linyra.continueCherryPick.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.abortCherryPick",
+        "title": "%command.linyra.abortCherryPick.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.continueRevert",
+        "title": "%command.linyra.continueRevert.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.abortRevert",
+        "title": "%command.linyra.abortRevert.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.abortAll",
+        "title": "%command.linyra.abortAll.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.tagAcross",
+        "title": "%command.linyra.tagAcross.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.applyPatch",
+        "title": "%command.linyra.applyPatch.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.worktree.open",
+        "title": "%command.linyra.worktree.open.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.worktree.reveal",
+        "title": "%command.linyra.worktree.reveal.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.worktree.copyPath",
+        "title": "%command.linyra.worktree.copyPath.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.worktree.remove",
+        "title": "%command.linyra.worktree.remove.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.runAcross",
+        "title": "%command.linyra.runAcross.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.release",
+        "title": "%command.linyra.release.title%",
+        "category": "Linyra"
       }
     ],
     "menus": {
@@ -929,7 +1019,7 @@
         },
         {
           "command": "linyra.commitPanel.rollback",
-          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.(changed|deleted)|Folder(\\.added)?|Repo(\\.behind)?(\\.added)?|List(\\.added)?)$/",
+          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.(changed|deleted)|Folder(\\.added)?|Repo(\\.behind)?(\\.added)?(\\.conflicted)?|List(\\.added)?)$/",
           "group": "inline@3"
         },
         {
@@ -964,12 +1054,12 @@
         },
         {
           "command": "linyra.commitPanel.rollback",
-          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.(changed|deleted)|Folder(\\.added)?|Repo(\\.behind)?(\\.added)?|List(\\.added)?)$/",
+          "when": "view == linyra.commit && viewItem =~ /^commit(File\\.(changed|deleted)|Folder(\\.added)?|Repo(\\.behind)?(\\.added)?(\\.conflicted)?|List(\\.added)?)$/",
           "group": "1_modification@3"
         },
         {
           "command": "linyra.commitPanel.removeFromVcs",
-          "when": "view == linyra.commit && viewItem =~ /added$/",
+          "when": "view == linyra.commit && viewItem =~ /added(\\.conflicted)?$/",
           "group": "1_modification@4"
         },
         {
@@ -1019,7 +1109,7 @@
         },
         {
           "command": "linyra.ai.resolveConflicts",
-          "when": "view == linyra.commit && viewItem =~ /^commitRepo/ && config.linyra.ai.enabled",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo.*\\.conflicted$/ && config.linyra.ai.enabled",
           "group": "5_ai@3"
         },
         {
@@ -1041,6 +1131,16 @@
           "command": "linyra.folderHistory",
           "when": "view == linyra.commit && viewItem =~ /^commitFolder/",
           "group": "3_history@2"
+        },
+        {
+          "command": "linyra.resolveConflicts",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo.*\\.conflicted$/",
+          "group": "1_modification@0"
+        },
+        {
+          "command": "linyra.applyPatch",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "group": "1_modification@7"
         }
       ],
       "commandPalette": [
@@ -1474,6 +1574,62 @@
         },
         {
           "command": "linyra.historyBlame",
+          "when": "false"
+        },
+        {
+          "command": "linyra.resolveConflicts",
+          "when": "false"
+        },
+        {
+          "command": "linyra.continueMerge",
+          "when": "false"
+        },
+        {
+          "command": "linyra.abortMerge",
+          "when": "false"
+        },
+        {
+          "command": "linyra.continueRebase",
+          "when": "false"
+        },
+        {
+          "command": "linyra.abortRebase",
+          "when": "false"
+        },
+        {
+          "command": "linyra.continueCherryPick",
+          "when": "false"
+        },
+        {
+          "command": "linyra.abortCherryPick",
+          "when": "false"
+        },
+        {
+          "command": "linyra.continueRevert",
+          "when": "false"
+        },
+        {
+          "command": "linyra.abortRevert",
+          "when": "false"
+        },
+        {
+          "command": "linyra.abortAll",
+          "when": "linyra.anyOperation"
+        },
+        {
+          "command": "linyra.worktree.open",
+          "when": "false"
+        },
+        {
+          "command": "linyra.worktree.reveal",
+          "when": "false"
+        },
+        {
+          "command": "linyra.worktree.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "linyra.worktree.remove",
           "when": "false"
         }
       ],
@@ -2197,6 +2353,81 @@
           "command": "linyra.folderHistory",
           "when": "webviewId =~ /^linyra\\.(log|changesEditor)$/ && webviewSection == 'changesRow' && viewItem =~ /^folder/",
           "group": "2_history@2"
+        },
+        {
+          "command": "linyra.resolveConflicts",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && conflicts",
+          "group": "0_operation@1"
+        },
+        {
+          "command": "linyra.continueMerge",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'merge'",
+          "group": "0_operation@2"
+        },
+        {
+          "command": "linyra.abortMerge",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'merge'",
+          "group": "0_operation@3"
+        },
+        {
+          "command": "linyra.continueRebase",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'rebase'",
+          "group": "0_operation@4"
+        },
+        {
+          "command": "linyra.abortRebase",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'rebase'",
+          "group": "0_operation@5"
+        },
+        {
+          "command": "linyra.continueCherryPick",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'cherry-pick'",
+          "group": "0_operation@6"
+        },
+        {
+          "command": "linyra.abortCherryPick",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'cherry-pick'",
+          "group": "0_operation@7"
+        },
+        {
+          "command": "linyra.continueRevert",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'revert'",
+          "group": "0_operation@8"
+        },
+        {
+          "command": "linyra.abortRevert",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'revert'",
+          "group": "0_operation@9"
+        },
+        {
+          "command": "linyra.abortAll",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation",
+          "group": "0_operation@20"
+        },
+        {
+          "command": "linyra.applyPatch",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo'",
+          "group": "1_modification@9"
+        },
+        {
+          "command": "linyra.worktree.open",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'worktree' && !worktreeMissing",
+          "group": "0_open@1"
+        },
+        {
+          "command": "linyra.worktree.reveal",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'worktree' && !worktreeMissing",
+          "group": "0_open@2"
+        },
+        {
+          "command": "linyra.worktree.copyPath",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'worktree'",
+          "group": "7_copy@1"
+        },
+        {
+          "command": "linyra.worktree.remove",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'worktree' && !worktreeMain",
+          "group": "1_modification@1"
         }
       ]
     },
@@ -2452,7 +2683,7 @@
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
     "test:ui": "playwright test -c dev/harness/playwright.config.mjs",
-    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts src/integration/commitPanel.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
+    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts src/integration/compare.itest.ts src/integration/combined.itest.ts src/integration/multiRepo.itest.ts src/integration/commitActions.itest.ts src/integration/branches.itest.ts src/integration/commitPanel.itest.ts src/integration/marks.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
     "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
     "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022",

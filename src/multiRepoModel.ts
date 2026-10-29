@@ -1,5 +1,6 @@
 import type { Branches } from "./branchModel";
 import { isValidRef } from "./filterModel";
+import { localize } from "./i18n";
 import { pullReason } from "./upstream";
 
 /**
@@ -59,9 +60,22 @@ export const multiCommands = {
   outgoing: (hasUpstream: boolean) => hasUpstream
     ? ["log", "--format=%h%x00%s", "--max-count=50", "@{upstream}..HEAD", "--"]
     : ["log", "--format=%h%x00%s", "--max-count=50", "HEAD", "--not", "--remotes", "--"],
-  push: (remote: string, branch: string, destination: string, setUpstream: boolean) =>
-    ["push", "--quiet", ...(setUpstream ? ["--set-upstream"] : []), "--", checkName(remote), `refs/heads/${checkName(branch)}:refs/heads/${checkName(destination)}`],
+  /** A tag on the checked-out commit: annotated when there is a message, lightweight when not. */
+  tag: (name: string, message: string) => (message.trim() ? ["tag", "-a", "-m", message.trim(), "--", checkName(name), "HEAD"] : ["tag", "--", checkName(name), "HEAD"]),
+  pushTag: (remote: string, name: string) => ["push", "--quiet", "--", checkName(remote), `refs/tags/${checkName(name)}`],
+  /**
+   * lease: force the push, but only while the remote branch is still at this commit (the one
+   * last fetched): --force-with-lease never drops commits somebody pushed since.
+   */
+  push: (remote: string, branch: string, destination: string, setUpstream: boolean, lease?: string) =>
+    ["push", "--quiet", ...(setUpstream ? ["--set-upstream"] : []), ...(lease ? [`--force-with-lease=refs/heads/${checkName(destination)}:${checkSha(lease)}`] : []),
+      "--", checkName(remote), `refs/heads/${checkName(branch)}:refs/heads/${checkName(destination)}`],
 };
+
+function checkSha(sha: string): string {
+  if (!/^[0-9a-f]{40,64}$/.test(sha)) throw new Error(`not a commit id: ${sha}`);
+  return sha;
+}
 
 function checkName(name: string): string {
   if (!isValidRef(name)) throw new Error(`not a valid name: ${name}`);
@@ -74,6 +88,37 @@ export interface PushPlan {
   remote: string;
   destination: string;
   setUpstream: boolean;
+  /**
+   * The remote branch has commits the branch does not (an Amend, Undo Commit or rebase rewrote
+   * pushed commits): only a force push replaces it. Its commit as last fetched, the lease.
+   */
+  lease?: string;
+}
+
+/** Push…'s confirmation before a force push: which branches replace which remote branches. */
+export function forcePushPrompt(rows: readonly { repo: string; branch: string; target: string }[]): { message: string; detail: string; button: string } {
+  const message = rows.length === 1
+    ? localize("Force push {0} to {1} in {2}?", rows[0].branch, rows[0].target, rows[0].repo)
+    : localize("Force push {0} repositories?", rows.length);
+  const names = rows.length === 1 ? "" : `${rows.map((r) => `${r.repo}: ${r.branch} → ${r.target}`).join("\n")}\n\n`;
+  return {
+    message,
+    detail: names + localize("The remote branch has commits that are not on yours (pushed commits were amended, undone or rebased). --force-with-lease replaces it only if it is still where it was at the last fetch; its commits that are not on your branch leave it."),
+    button: localize("Force Push"),
+  };
+}
+
+/** Branches never force pushed: main and master, and VS Code's git.branchProtection globs. */
+export const PROTECTED_BRANCHES = ["main", "master"];
+
+/** A glob of git.branchProtection: * within a name segment, ** across, ? one character. */
+export function branchMatches(pattern: string, name: string): boolean {
+  const re = pattern.split(/(\*\*|\*|\?)/).map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part === "?" ? "[^/]" : part.replace(/[.+^${}()|[\]\\]/g, "\\$&"))).join("");
+  return new RegExp(`^${re}$`).test(name);
+}
+
+export function isProtected(name: string, patterns: readonly string[]): boolean {
+  return [...PROTECTED_BRANCHES, ...patterns].some((p) => branchMatches(p, name));
 }
 
 /**
@@ -84,9 +129,21 @@ export function pushPlan(data: Branches): PushPlan | undefined {
   const branch = data.branches.find((b) => b.kind === "local" && b.current);
   if (!branch) return undefined;
   const upstreamRemote = [...data.remotes].sort((a, b) => b.length - a.length).find((r) => branch.upstream?.startsWith(`${r}/`));
-  if (upstreamRemote) return { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: false };
+  if (upstreamRemote) {
+    const plan: PushPlan = { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: false };
+    // Both ahead and behind: the remote branch has commits that are not on this one.
+    const remoteSha = data.branches.find((b) => b.kind === "remote" && b.name === branch.upstream)?.sha;
+    return branch.ahead > 0 && branch.behind > 0 && remoteSha ? { ...plan, lease: remoteSha } : plan;
+  }
   const remote = data.remotes.includes("origin") ? "origin" : data.remotes.length === 1 ? data.remotes[0] : undefined;
   return remote ? { branch: branch.name, remote, destination: branch.name, setUpstream: true } : undefined;
+}
+
+/** Where a repository's tags go: its branch's upstream remote, else origin, else its only remote. */
+export function tagRemote(data: Branches): string | undefined {
+  const branch = data.branches.find((b) => b.kind === "local" && b.current);
+  const upstream = [...data.remotes].sort((a, b) => b.length - a.length).find((r) => branch?.upstream?.startsWith(`${r}/`));
+  return upstream ?? (data.remotes.includes("origin") ? "origin" : data.remotes.length === 1 ? data.remotes[0] : undefined);
 }
 
 /** `git log --format=%h%x00%s` → short hash and subject per commit. */

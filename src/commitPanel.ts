@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor } from "./changesModel";
+import { splitTemplate } from "./commitMessageModel";
 import { checkedLabel, commitFiles, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
 import type { CommitHostMessage, CommitWebviewMessage } from "./commitProtocol";
 import type { RunOptions } from "./git";
@@ -168,6 +169,24 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     for (const [id, d] of this.decorations) if (!before.has(id)) changed.push(d.uri);
     if (changed.length > 0) this.decorationsChanged.fire(changed);
     this.postState();
+    if (!this.templateSent && this.message) void this.postTemplate();
+  }
+
+  /** commit.template was sent for the box as it is now (after a ready, a commit). */
+  private templateSent = false;
+
+  /**
+   * git's commit.template, read from the first repository read so far (it is usually set once for
+   * the user): one git config, then the file. Sent once the store has a repository to ask.
+   */
+  private async postTemplate(): Promise<void> {
+    if (this.templateSent) return;
+    const w = this.deps.store.works()[0];
+    if (!w) return;
+    this.templateSent = true;
+    const file = (await this.deps.run(w.root, ["config", "--path", "--get", "commit.template"], new AbortController().signal).catch(() => "")).trim();
+    const text = file ? await fs.readFile(path.resolve(w.root, file), "utf8").catch(() => undefined) : undefined;
+    if (text !== undefined) this.post({ type: "template", ...splitTemplate(text) });
   }
 
   private postState(): void {
@@ -236,6 +255,8 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
         const draft = this.deps.context.workspaceState.get<{ text?: unknown; amend?: unknown }>(DRAFT_KEY);
         this.post({ type: "draft", text: typeof draft?.text === "string" ? draft.text : "", amend: draft?.amend === true, signOff: this.signOff, author: this.author ?? "" });
         this.postState();
+        this.templateSent = false;
+        void this.postTemplate();
         return;
       }
       case "draft":
@@ -518,6 +539,9 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
       this.author = undefined;
       await this.saveDraft("", false);
       this.post({ type: "committed" });
+      // The next message starts from the template again, as git's own commit does.
+      this.templateSent = false;
+      void this.postTemplate();
     }
     this.render();
     if (push && done.length > 0) await this.deps.push(new Set(done.map((p) => p.repoId)));

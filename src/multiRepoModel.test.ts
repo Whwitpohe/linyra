@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { checkoutStep, multiCommands, parseOutgoing, pushPlan, sharedBranches, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, isProtected, multiCommands, parseOutgoing, pushPlan, sharedBranches, tagRemote, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -30,6 +30,38 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.strictEqual(updateReason("CONFLICT (content): Merge conflict in a.txt"), "conflicts: resolve them in Source Control, or abort");
   assert.strictEqual(updateReason("error: cannot rebase: You have unstaged changes."), "local changes: the rebase needs a clean working tree");
   console.log("ok - shared branch names, checkout steps and push targets are planned per repository");
+}
+
+{
+  const data = listing([line("refs/heads/develop", sha, "*", "origin/develop", "[ahead 1, behind 2]", "", ""), line("refs/remotes/origin/develop", "b".repeat(40), " ", "", "", "", "")], ["origin"]);
+  assert.deepStrictEqual(pushPlan(data), { branch: "develop", remote: "origin", destination: "develop", setUpstream: false, lease: "b".repeat(40) }, "diverged: leased on the remote branch's commit");
+  const ahead = listing([line("refs/heads/develop", sha, "*", "origin/develop", "[ahead 1]", "", ""), line("refs/remotes/origin/develop", "b".repeat(40), " ", "", "", "", "")], ["origin"]);
+  assert.strictEqual(pushPlan(ahead)?.lease, undefined, "only ahead: a plain push");
+  assert.deepStrictEqual(multiCommands.push("origin", "develop", "develop", false, "b".repeat(40)),
+    ["push", "--quiet", `--force-with-lease=refs/heads/develop:${"b".repeat(40)}`, "--", "origin", "refs/heads/develop:refs/heads/develop"]);
+  assert.throws(() => multiCommands.push("origin", "develop", "develop", false, "HEAD"), /not a commit id/);
+  assert.ok(branchMatches("release/*", "release/1.4"));
+  assert.ok(!branchMatches("release/*", "release/1.4/hotfix"), "* stays within a segment");
+  assert.ok(branchMatches("release/**", "release/1.4/hotfix"));
+  assert.ok(branchMatches("v?.x", "v1.x"));
+  assert.ok(!branchMatches("main", "main2"));
+  assert.ok(isProtected("main", []) && isProtected("master", []) && !isProtected("develop", []));
+  assert.ok(isProtected("release/1.4", ["release/*"]));
+  const one = forcePushPrompt([{ repo: "acme-web", branch: "develop", target: "origin/develop" }]);
+  assert.strictEqual(one.message, "Force push develop to origin/develop in acme-web?");
+  assert.strictEqual(one.button, "Force Push");
+  assert.match(forcePushPrompt([{ repo: "acme-web", branch: "a", target: "origin/a" }, { repo: "acme-api", branch: "b", target: "origin/b" }]).detail, /^acme-web: a → origin\/a\nacme-api: b → origin\/b\n\n/);
+  console.log("ok - a diverged branch plans a force push with a lease; protected branches by name and glob");
+  assert.deepStrictEqual(multiCommands.tag("v1.4.0", ""), ["tag", "--", "v1.4.0", "HEAD"], "no message: lightweight");
+  assert.deepStrictEqual(multiCommands.tag("v1.4.0", " Release 1.4 \n"), ["tag", "-a", "-m", "Release 1.4", "--", "v1.4.0", "HEAD"]);
+  assert.throws(() => multiCommands.tag("bad..name", ""), /not a valid name/);
+  assert.deepStrictEqual(multiCommands.pushTag("origin", "v1.4.0"), ["push", "--quiet", "--", "origin", "refs/tags/v1.4.0"]);
+  const tracked = listing([line("refs/heads/develop", sha, "*", "upstream/develop", "", "", "")], ["origin", "upstream"]);
+  assert.strictEqual(tagRemote(tracked), "upstream", "the branch's upstream remote");
+  assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork", "origin"])), "origin");
+  assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork"])), "fork", "the only remote");
+  assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["a", "b"])), undefined);
+  console.log("ok - Tag Across Repositories: annotated or lightweight, and where each repository's tag is pushed");
 }
 
 {
@@ -83,6 +115,33 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
     fs.writeFileSync(path.join(web, "a.txt"), "dirty\n");
     assert.match(updateReason(fails(web, multiCommands.update("rebase"))), /clean working tree/);
     console.log("ok - real git: track, create, push with upstream, merge and update work across two clones");
+
+    // An amended pushed commit: diverged, so Push… plans a force push leased on the fetched commit.
+    git(web, ["checkout", "-q", "acme-feature"]);
+    git(web, ["commit", "-q", "--amend", "-m", "feat: second, reworded"]);
+    const forced = pushPlan(read(web))!;
+    assert.strictEqual(forced.lease, git(web, ["rev-parse", "origin/acme-feature"]), "the lease is the remote branch as last fetched");
+    // Someone else pushed meanwhile: the lease refuses, and nothing of theirs is lost.
+    git(api, ["fetch", "-q"]);
+    git(api, ["switch", "-q", "-c", "theirs", "origin/acme-feature"]);
+    fs.writeFileSync(path.join(api, "theirs.txt"), "theirs\n");
+    git(api, ["add", "theirs.txt"]); git(api, ["commit", "-q", "-m", "feat: theirs"]);
+    git(api, ["push", "-q", "origin", "HEAD:acme-feature"]);
+    assert.match(fails(web, multiCommands.push(forced.remote, forced.branch, forced.destination, false, forced.lease)), /stale info|rejected/);
+    assert.strictEqual(git(seed, ["--git-dir", origin, "log", "-1", "--format=%s", "acme-feature"]), "feat: theirs");
+    // After a fetch the lease is the new commit, and the force push replaces it.
+    git(web, ["fetch", "-q"]);
+    const again = pushPlan(read(web))!;
+    git(web, multiCommands.push(again.remote, again.branch, again.destination, false, again.lease));
+    assert.strictEqual(git(seed, ["--git-dir", origin, "log", "-1", "--format=%s", "acme-feature"]), "feat: second, reworded");
+    assert.strictEqual(pushPlan(read(web))!.lease, undefined, "in step again: a plain push");
+    console.log("ok - real git: a diverged branch is force pushed with a lease that refuses commits pushed since");
+
+    git(web, multiCommands.tag("v1.4.0", "Release 1.4"));
+    git(web, multiCommands.pushTag(tagRemote(read(web))!, "v1.4.0"));
+    assert.strictEqual(git(seed, ["--git-dir", origin, "cat-file", "-t", "v1.4.0"]), "tag", "annotated, and on the remote");
+    assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "v1.4.0^{commit}"]), git(web, ["rev-parse", "HEAD"]));
+    console.log("ok - real git: a tag on the checked-out commit, pushed to the branch's remote");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

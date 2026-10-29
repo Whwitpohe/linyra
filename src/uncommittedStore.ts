@@ -51,7 +51,7 @@ async function newestMtime(root: string, paths: readonly string[]): Promise<numb
 /** Whether a new read shows the same work as the last one (then nobody is told). */
 function sameWork(a: RepoWork | undefined, b: RepoWork): boolean {
   if (a === undefined) return b.staged.length + b.changes.length === 0;
-  return a.head === b.head && a.editedAt === b.editedAt && JSON.stringify(a.branch) === JSON.stringify(b.branch)
+  return a.head === b.head && a.editedAt === b.editedAt && a.conflicts === b.conflicts && JSON.stringify(a.branch) === JSON.stringify(b.branch)
     && JSON.stringify(a.staged) === JSON.stringify(b.staged) && JSON.stringify(a.changes) === JSON.stringify(b.changes);
 }
 
@@ -341,7 +341,8 @@ export class UncommittedStore implements vscode.Disposable {
       editedAt = await newestMtime(r.root, present);
     }
     if (staged.length + changes.length > 0) this.dirty.add(r.id); else this.dirty.delete(r.id);
-    return { repoId: r.id, root: r.root, name: r.name, head, ...(branch ? { branch } : {}), staged, changes, editedAt, canStage: this.deps.canStage(r.root) };
+    const conflicts = split.changes.filter((e) => e.conflicted).length;
+    return { repoId: r.id, root: r.root, name: r.name, head, ...(branch ? { branch } : {}), staged, changes, ...(conflicts > 0 ? { conflicts } : {}), editedAt, canStage: this.deps.canStage(r.root) };
   }
 
   private changedSoon(): void {

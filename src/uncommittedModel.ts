@@ -16,6 +16,8 @@ export interface RepoWork {
   staged: FileChange[];
   /** What is not staged yet: the working tree against the index, untracked files included. */
   changes: FileChange[];
+  /** How many of the changes are conflicted (git status's unmerged entries); absent when none. */
+  conflicts?: number;
   /** Newest modification time (ms) of a changed file; null when unknown. */
   editedAt: number | null;
   /** VS Code's Git has the repository open: it can stage, discard and commit there. */

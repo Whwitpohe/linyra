@@ -7,6 +7,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { MultiResult } from "../multiRepo";
+import type { RunResult } from "../runAcrossModel";
 import { ALL, send, snapshot, until } from "./helpers";
 
 describe("Across repositories", () => {
@@ -38,6 +39,11 @@ describe("Across repositories", () => {
       git(r.root, ["checkout", "-f", "main", "--"]);
       git(r.root, ["reset", "-q", "--hard", heads.get(r.id)!]);
       try { git(r.root, ["branch", "-D", "ci-shared"]); } catch { /* not created */ }
+      try { git(r.root, ["branch", "-D", "ci-force"]); } catch { /* not created */ }
+      try { git(r.root, ["tag", "-d", "ci-v1"]); } catch { /* not created */ }
+      try { git(r.root, ["branch", "-D", "ci-smart"]); } catch { /* not created */ }
+      try { git(r.root, ["branch", "-D", "ci-run"]); } catch { /* not created */ }
+      for (const s of git(r.root, ["stash", "list", "--format=%gs"]).split("\n")) if (s.includes("Smart Checkout")) git(r.root, ["stash", "drop", "-q"]);
       try { git(r.root, ["remote", "remove", "ci-origin"]); } catch { /* not added */ }
     }
     await send({ type: "refresh" });
@@ -92,5 +98,96 @@ describe("Across repositories", () => {
     assert.deepStrictEqual(r?.done, ["acme-web"]);
     assert.strictEqual(git(web, ["rev-parse", "HEAD"]), tip);
     assert.deepStrictEqual(r?.skipped.map((s) => s.name).sort(), ["acme-api", "acme-libs"], "no upstream there");
+  });
+
+  it("Push… force pushes a diverged branch with a lease after asking, and never main", async () => {
+    const web = repo("acme-web").root;
+    const remote = path.join(home, "web.git");
+    // main amended after it was pushed: protected, so it is named and left as it was.
+    git(web, ["commit", "-q", "--amend", "-m", "feat: to push, amended"]);
+    let r = await run("pushAll");
+    assert.deepStrictEqual(r?.done, []);
+    assert.match(r?.skipped.find((s) => s.name === "acme-web")?.reason ?? "", /protected branch is never force pushed/);
+    assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "main"]), "feat: to push");
+    git(web, ["reset", "-q", "--hard", "ci-origin/main"]);
+
+    git(web, ["switch", "-q", "-c", "ci-force"]);
+    fs.writeFileSync(path.join(web, "force.txt"), "one\n");
+    git(web, ["add", "force.txt"]); git(web, ["commit", "-q", "-m", "feat: force"]);
+    git(web, ["push", "-q", "-u", "ci-origin", "ci-force"]);
+    git(web, ["commit", "-q", "--amend", "-m", "feat: force, amended"]);
+    await answer(JSON.stringify(["acme-web"])); await answer("Cancel");
+    r = await run("pushAll");
+    assert.strictEqual(r, undefined, "declined: nothing pushed");
+    assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "ci-force"]), "feat: force");
+
+    await answer(JSON.stringify(["acme-web"])); await answer("Force Push");
+    r = await run("pushAll");
+    assert.deepStrictEqual(r?.done, ["acme-web"]);
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Force push ci-force to ci-origin/ci-force in acme-web?");
+    assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "ci-force"]), "feat: force, amended");
+    git(web, ["switch", "-q", "main"]);
+  });
+
+  it("Tag Across Repositories… tags each checked-out commit and pushes where there is a remote", async () => {
+    await answer("ci-v1"); await answer("Release ci-v1"); await answer("Create and Push");
+    const r = await run("tagAcross");
+    assert.deepStrictEqual(r?.done, ["acme-web"]);
+    assert.deepStrictEqual(r?.skipped.map((s) => `${s.name}: ${s.reason}`).sort(), ["acme-api: tagged, but it has no remote to push to", "acme-libs: tagged, but it has no remote to push to"]);
+    for (const x of repos) {
+      assert.strictEqual(git(x.root, ["cat-file", "-t", "ci-v1"]), "tag", `${x.name}: annotated`);
+      assert.strictEqual(git(x.root, ["rev-parse", "ci-v1^{commit}"]), git(x.root, ["rev-parse", "HEAD"]));
+    }
+    assert.strictEqual(git(path.join(home, "web.git"), ["for-each-ref", "--format=%(contents:subject)", "refs/tags/ci-v1"]), "Release ci-v1");
+
+    await answer("ci-v1"); await answer("");
+    const again = await run("tagAcross");
+    assert.deepStrictEqual(again?.done, []);
+    assert.deepStrictEqual(again?.skipped.map((s) => s.reason), ["the tag already exists", "the tag already exists", "the tag already exists"], "each keeps its own");
+  });
+
+  it("Branches Across Repositories offers Smart Checkout where local changes are in the way", async () => {
+    const web = repo("acme-web").root;
+    const smart = path.join(web, "smart.txt");
+    fs.writeFileSync(smart, "1\n2\n3\n");
+    git(web, ["add", "smart.txt"]); git(web, ["commit", "-q", "-m", "test: smart base"]);
+    for (const x of repos) git(x.root, ["branch", "ci-smart"]);
+    git(web, ["switch", "-q", "ci-smart"]);
+    fs.writeFileSync(smart, "one\n2\n3\n");
+    git(web, ["commit", "-q", "-am", "test: smart branch"]);
+    git(web, ["switch", "-q", "main"]);
+    fs.writeFileSync(smart, "1\n2\nthree\n"); // in the branch's way, but not on its line
+
+    await answer("Check Out Branch…"); await answer("ci-smart"); await answer("Check Out"); await answer("Smart Checkout");
+    const r = await run("branchesAcross");
+    assert.deepStrictEqual(r?.done.sort(), ["acme-api", "acme-libs", "acme-web"]);
+    assert.deepStrictEqual(r?.skipped, []);
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Local changes in acme-web would be overwritten by checking out ci-smart.");
+    assert.ok(repos.every((x) => current(x.name) === "ci-smart"));
+    assert.strictEqual(fs.readFileSync(smart, "utf8").replace(/\r\n/g, "\n"), "one\n2\nthree\n", "the branch's line and the local edit");
+    assert.strictEqual(git(web, ["stash", "list"]), "", "put back: no stash left");
+    for (const x of repos) git(x.root, ["switch", "-q", "-f", "main"]);
+  });
+
+  it("Run Git Command Across Repositories…: a reading command at once, one that writes after asking, each repository's answer", async () => {
+    const across = (line: string) => vscode.commands.executeCommand<RunResult[] | undefined>("linyra._itest.runAcross", line);
+    const asked = () => vscode.commands.executeCommand<number>("linyra._itest.asked");
+    const before = await asked();
+    let r = await across("rev-parse --abbrev-ref HEAD");
+    assert.strictEqual(await asked(), before, "reads: nothing asked");
+    assert.deepStrictEqual(r?.map((x) => `${x.repo} ${x.code} ${x.stdout.trim()}`).sort(), ["acme-api 0 main", "acme-libs 0 main", "acme-web 0 main"]);
+
+    await answer("Cancel");
+    assert.strictEqual(await across("branch ci-run"), undefined, "declined: not run");
+    assert.ok(repos.every((x) => git(x.root, ["branch", "--list", "ci-run"]) === ""));
+    await answer("Run");
+    r = await across("branch ci-run");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Run “git branch ci-run” in 3 repositories?");
+    assert.ok(r?.every((x) => x.code === 0));
+    assert.ok(repos.every((x) => git(x.root, ["branch", "--list", "ci-run"]).endsWith("ci-run")));
+
+    await answer("Run");
+    r = await across("switch no-such-branch");
+    assert.ok(r?.every((x) => x.code !== 0 && /invalid reference|no-such-branch/.test(x.stderr)), "each repository's own error, in full");
   });
 });

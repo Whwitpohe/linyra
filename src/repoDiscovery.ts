@@ -142,6 +142,17 @@ export class RepoDiscovery implements vscode.Disposable {
     return lists.every((list) => list !== undefined && list.length === 0) ? state.HEAD.commit : undefined;
   }
 
+  /**
+   * Uncommitted work as VS Code's Git last found it in a repository it watches, as its status
+   * bar marks it (* + !); undefined when not known. Untracked files count only where it lists them.
+   */
+  workMark(root: string): { changes: boolean; staged: boolean; conflicts: number } | undefined {
+    if (!this.reportsChanges(root)) return;
+    const state = this.vsCodeGitRepo(root)?.state;
+    if (!state?.HEAD || !state.indexChanges || !state.workingTreeChanges) return;
+    return { changes: state.workingTreeChanges.length + (state.untrackedChanges?.length ?? 0) > 0, staged: state.indexChanges.length > 0, conflicts: state.mergeChanges?.length ?? 0 };
+  }
+
   /** The remote names VS Code's Git has for a repository it watches (undefined: ask git). */
   remotes(root: string): string[] | undefined {
     if (!this.reportsChanges(root)) return;

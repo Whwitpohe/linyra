@@ -1,7 +1,8 @@
 import { localize } from "../../i18n";
 import type { CommitHostMessage, CommitState, CommitWebviewMessage } from "../../commitProtocol";
 import { codiconElement } from "../codicons";
-import { byId } from "../dom";
+import { byId, h } from "../dom";
+import { messageHints } from "../../commitMessageModel";
 
 export interface CommitApi {
   postMessage(message: CommitWebviewMessage): void;
@@ -26,7 +27,18 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
   const aiStatus = byId("commit-ai-status");
   const aiText = byId("commit-ai-text");
   const aiUndo = byId<HTMLButtonElement>("commit-ai-undo");
+  const hints = byId("commit-hints");
+  const placeholder = message.placeholder;
   let state: CommitState | undefined;
+  /** The checks of the message as typed: a long subject or body line, no blank line after the subject. */
+  let hintsFor: string | undefined;
+  function renderHints(): void {
+    if (hintsFor === message.value) return;
+    hintsFor = message.value;
+    const list = generating ? [] : messageHints(message.value);
+    hints.replaceChildren(...list.map((text) => h("li", {}, [codiconElement("warning"), h("span", {}, [text])])));
+    hints.hidden = list.length === 0;
+  }
   /** ✨ is writing into the box; `before` is what the box held, for Undo. */
   let generating = false;
   let before = "";
@@ -101,6 +113,7 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
   checkbox(signOff, () => undefined);
   message.addEventListener("input", () => {
     validation.hidden = true;
+    renderHints();
     if (!replacing) hideAiStatus();
     saveDraft();
   });
@@ -159,11 +172,17 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
   events.addEventListener("message", (event) => {
     const m = (event as MessageEvent<CommitHostMessage>).data;
     if (!m || typeof m !== "object") return;
-    if (m.type === "draft") { message.value = m.text; setAmend(m.amend); setCheck(signOff, m.signOff === true); setAuthor(typeof m.author === "string" ? m.author : ""); return; }
-    if (m.type === "message") { message.value = m.text; validation.hidden = true; hideAiStatus(); saveDraft(); message.focus(); return; }
+    if (m.type === "draft") { message.value = m.text; setAmend(m.amend); setCheck(signOff, m.signOff === true); setAuthor(typeof m.author === "string" ? m.author : ""); renderHints(); return; }
+    if (m.type === "message") { message.value = m.text; validation.hidden = true; hideAiStatus(); saveDraft(); renderHints(); message.focus(); return; }
+    if (m.type === "template") {
+      message.placeholder = m.hint || placeholder;
+      if (message.value.trim() === "" && m.text) { message.value = m.text; saveDraft(); }
+      renderHints();
+      return;
+    }
     if (m.type === "author") { setAuthor(m.author); return; }
     if (m.type === "amendMessage") { if (message.value.trim() === "") { message.value = m.text; saveDraft(); } return; }
-    if (m.type === "committed") { message.value = ""; setAmend(false); setAuthor(""); validation.hidden = true; hideAiStatus(); return; }
+    if (m.type === "committed") { message.value = ""; setAmend(false); setAuthor(""); validation.hidden = true; hideAiStatus(); renderHints(); return; }
     if (m.type === "generating") { startGenerating(); return; }
     if (m.type === "generated") {
       if (!m.done) {
@@ -179,6 +198,7 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
       if (m.text) {
         replaceText(m.text);
         saveDraft();
+        renderHints();
         showAiStatus(localize("Written by AI: read it before you commit."), true);
       } else {
         hideAiStatus();

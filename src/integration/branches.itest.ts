@@ -104,6 +104,22 @@ describe("Branch sidebar", () => {
     await vscode.commands.executeCommand("linyra._itest.branchWorktreePath", path.join(home, "worktree"));
     await answer("ui-worktree"); await act("worktree", "main");
     assert.strictEqual(git(["branch", "--show-current"], path.join(home, "worktree")), "ui-worktree");
+    // The Repo List's Worktrees group lists it, read from the git dir's files.
+    const listed = (await sidebar()).repos[repoId].worktrees ?? [];
+    const linked = listed.find((w) => !w.main);
+    assert.strictEqual(linked?.branch, "ui-worktree");
+    assert.ok(listed.find((w) => w.main)?.current, "the repository's own folder is the main one");
+    // Remove…, with local changes in it: asked, then asked again before --force.
+    fs.writeFileSync(path.join(home, "worktree", "wip.txt"), "wip\n");
+    await answer("Remove"); await answer("Cancel");
+    await vscode.commands.executeCommand("linyra.worktree.remove", { repoId, path: linked!.path });
+    assert.ok(fs.existsSync(path.join(home, "worktree")), "declined the second question: kept");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Worktree worktree has changes that are not committed.");
+    await answer("Remove"); await answer("Remove Anyway");
+    await vscode.commands.executeCommand("linyra.worktree.remove", { repoId, path: linked!.path });
+    assert.ok(!fs.existsSync(path.join(home, "worktree")));
+    assert.strictEqual(git(["branch", "--list", "ui-worktree"]), "ui-worktree", "its branch stays");
+    assert.strictEqual((await sidebar()).repos[repoId].worktrees, undefined, "no linked worktree left: no group");
     await answer("Delete"); await act("delete", "branch-test/ui-renamed", "remotes");
     assert.strictEqual(git(["for-each-ref", "--format=%(refname)", "refs/heads/ui-renamed"], remote), "");
   });

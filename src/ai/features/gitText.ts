@@ -92,12 +92,5 @@ export function recentSubjectsArgs(n = 10): string[] {
   return ["log", `--max-count=${n}`, "--no-merges", "--format=%s", "HEAD", "--"];
 }
 
-/** What a repository is in the middle of, from which of git's state files exist in its git dir. */
-export type Operation = "merge" | "rebase" | "cherry-pick" | "revert";
-export function operationOf(exists: (name: string) => boolean): Operation | undefined {
-  if (exists("rebase-merge") || exists("rebase-apply")) return "rebase";
-  if (exists("MERGE_HEAD")) return "merge";
-  if (exists("CHERRY_PICK_HEAD")) return "cherry-pick";
-  if (exists("REVERT_HEAD")) return "revert";
-  return undefined;
-}
+/** What a repository is in the middle of: one model, the Repo List's (repoMarkModel). */
+export { operationOf, type Operation } from "../../repoMarkModel";

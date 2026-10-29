@@ -14,6 +14,9 @@ import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
 import { isStashRef, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
 import { compareWithWorkingTree } from "./workingTreeDiff";
+import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport } from "./smartCheckout";
+import { readWorktrees } from "./repoHead";
+import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
 
 const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
@@ -87,13 +90,16 @@ export class BranchController implements vscode.Disposable {
       // stashes), remote names from VS Code's Git when it watches the repository, and the stash
       // list only where there is one.
       const known = this.deps.discovery.remotes(repo.root);
-      const [output, remoteList] = await Promise.all([
+      const [output, remoteList, worktrees] = await Promise.all([
         this.deps.run(repo.root, [...branchArgs(), "refs/stash"], this.ctl.signal),
         known ? Promise.resolve(known.join("\n")) : this.deps.run(repo.root, ["remote"], this.ctl.signal),
+        // Its worktrees: the git dir's files, no process.
+        readWorktrees(repo.root).catch(() => []),
       ]);
       const data = parseBranches(output, remoteList.split(/\r?\n/).filter(Boolean));
       const hasStash = output.split("\n").some((line) => line.startsWith("refs/stash\0"));
       data.stashes = hasStash ? parseStashes(await this.deps.run(repo.root, stashListArgs(), this.ctl.signal).catch(() => "")) : [];
+      if (worktrees.length > 0) data.worktrees = worktrees;
       if (this.ctl.signal.aborted) return;
       this.shown.set(repoId, data);
       this.deps.post({ type: "branchTree", repoId, data });
@@ -104,6 +110,27 @@ export class BranchController implements vscode.Disposable {
     }).finally(() => this.reading.delete(repoId));
     this.reading.set(repoId, read);
     return read;
+  }
+
+  /**
+   * A checkout. When git refuses it because local changes would be overwritten, Smart Checkout is
+   * offered: stash them, check out, put them back. false: declined (nothing changed).
+   */
+  private async smart(repo: Repo, target: string, run: (args: string[]) => Promise<string>, checkout: () => Promise<unknown>): Promise<boolean> {
+    try {
+      await checkout();
+      return true;
+    } catch (e) {
+      const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
+      const block = checkoutBlock(typeof stderr === "string" ? stderr : e instanceof Error ? e.message : String(e));
+      if (!block) throw e;
+      const p = smartPrompt([repo.name], target);
+      if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return false;
+      const report = smartReport(repo.name, target, await smartCheckout(run, block, smartLabel(target), checkout));
+      if (report) void vscode.window.showWarningMessage(report);
+      else vscode.window.setStatusBarMessage(localize("Linyra: checked out {0} in {1} and put your changes back.", target, repo.name), 8000);
+      return true;
+    }
   }
 
   async refresh(repoId?: string): Promise<void> {
@@ -123,7 +150,8 @@ export class BranchController implements vscode.Disposable {
       const branch = data?.branches.find((b) => b.ref === a.ref);
       if (!data || !branch) return;
       const b = branch;
-      const run = (args: string[]) => this.deps.run(repo.root, args, WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1" } });
+      // git's own words in English: a checkout refused for local changes is recognized whatever the system's language.
+      const run = (args: string[]) => this.deps.run(repo.root, args, WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
       const native = this.deps.discovery.branchRepository(repo.root);
       const current = data.current ?? "HEAD";
       const name = async (prompt: string, initial = "", except?: string) => {
@@ -157,11 +185,13 @@ export class BranchController implements vscode.Disposable {
         case "worktreeDiff": await this.diffWorkingTree(repo, b); return;
         case "checkout": {
           if (b.current) return;
+          // Refused for local changes: offered as a Smart Checkout (stash, check out, put back).
+          const guard = (target: string, checkout: () => Promise<unknown>) => this.smart(repo, target, run, checkout);
           if (b.kind === "tag") {
             // A tag is not a branch: its commit is checked out with HEAD detached, as the JetBrains Log does.
             if (!(await this.deps.ask.warning(localize("Check out tag {0} in {1}?", b.name, repo.name),
               localize("HEAD is detached there: new commits belong to no branch until you create one."), localize("Check Out")))) return;
-            if (native?.checkout) await native.checkout(b.sha); else await run(branchCommands.checkoutTag(b));
+            await guard(b.name, () => (native?.checkout ? native.checkout(b.sha) : run(branchCommands.checkoutTag(b))));
             break;
           }
           let local = b.name;
@@ -176,15 +206,16 @@ export class BranchController implements vscode.Disposable {
             const existing = data.branches.find((x) => x.kind === "local" && x.name === local);
             if (existing) {
               if (existing.upstream !== b.name) throw new Error(localize("A local branch with this name already exists."));
-              if (native?.checkout) await native.checkout(local); else await run(branchCommands.checkout(existing));
+              if (!(await guard(local, () => (native?.checkout ? native.checkout(local) : run(branchCommands.checkout(existing)))))) return;
             } else {
               if (newBranchProblem(local, data.branches)) throw new Error(localize("Enter a valid branch name."));
               await this.deps.run(repo.root, ["check-ref-format", "--branch", local], this.ctl.signal);
-              if (native?.createBranch) { await native.createBranch(local, true, b.ref); await native.setBranchUpstream?.(local, b.ref); }
-              else await run(branchCommands.track(b, local));
+              if (!(await guard(local, async () => {
+                if (native?.createBranch) { await native.createBranch(local, true, b.ref); await native.setBranchUpstream?.(local, b.ref); }
+                else await run(branchCommands.track(b, local));
+              }))) return;
             }
-          } else if (native?.checkout) await native.checkout(local);
-          else await run(branchCommands.checkout(b));
+          } else if (!(await guard(local, () => (native?.checkout ? native.checkout(local) : run(branchCommands.checkout(b)))))) return;
           await this.deps.view(repo.id, local); break;
         }
         case "create": {
@@ -274,6 +305,51 @@ export class BranchController implements vscode.Disposable {
         catch (e) { void vscode.window.showErrorMessage(localize("Branch action failed in {0}: {1}", repo.name, e instanceof Error ? e.message : String(e))); }
         finally { this.busy.delete(repo.id); }
       }
+    }
+  }
+
+  /**
+   * A worktree row: Open in New Window, Reveal in the file explorer, Copy Path, or Remove (asks; a
+   * worktree with local changes asks again before --force; one whose folder is gone is pruned).
+   * The worktree is found again in a fresh read, so a list that moved meanwhile is not acted on blind.
+   */
+  async worktree(action: "open" | "reveal" | "copyPath" | "remove", arg: unknown): Promise<void> {
+    const a = arg as { repoId?: unknown; path?: unknown } | undefined;
+    const repo = this.deps.repos().find((r) => r.id === a?.repoId);
+    if (!repo || typeof a?.path !== "string") return;
+    const w = (await readWorktrees(repo.root)).find((x) => x.path === a.path);
+    if (!w) return;
+    const uri = vscode.Uri.file(w.path);
+    if (action === "open") { await vscode.commands.executeCommand("vscode.openFolder", uri, { forceNewWindow: true }); return; }
+    if (action === "reveal") { await vscode.commands.executeCommand("revealFileInOS", uri); return; }
+    if (action === "copyPath") { await copyText(w.path); return; }
+    if (w.main) return;
+    if (this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
+    this.busy.add(repo.id);
+    const git = (args: string[]) => this.deps.run(repo.root, args, WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+    try {
+      const name = folderName(w.path);
+      if (w.missing) {
+        if (!(await this.deps.ask.warning(localize("Forget worktree {0} of {1}?", name, repo.name), localize("Its folder {0} is gone: git worktree prune forgets it. Its branch stays.", w.path), localize("Forget")))) return;
+        await git(worktreeCommands.prune());
+        return;
+      }
+      if (!(await this.deps.ask.warning(localize("Remove worktree {0} of {1}?", name, repo.name),
+        localize("Its folder {0} is deleted. Its branch {1} stays.", w.path, w.branch ?? w.detached ?? "HEAD"), localize("Remove")))) return;
+      try {
+        await git(worktreeCommands.remove(w.path, false));
+      } catch (e) {
+        const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
+        if (!hasLocalChanges(typeof stderr === "string" ? stderr : String(e))) throw e;
+        if (!(await this.deps.ask.warning(localize("Worktree {0} has changes that are not committed.", name),
+          localize("Remove it anyway? Its uncommitted changes and untracked files are lost."), localize("Remove Anyway")))) return;
+        await git(worktreeCommands.remove(w.path, true));
+      }
+    } catch (e) {
+      const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
+      void vscode.window.showErrorMessage(localize("Linyra could not remove the worktree in {0}: {1}", repo.name, typeof stderr === "string" && stderr.trim() ? errorLine(stderr) : e instanceof Error ? e.message : String(e)));
+    } finally {
+      try { await this.refresh(repo.id); } finally { this.busy.delete(repo.id); }
     }
   }
 

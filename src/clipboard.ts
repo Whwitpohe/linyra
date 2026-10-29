@@ -12,6 +12,11 @@ export async function copyText(text: string): Promise<void> {
   else await vscode.env.clipboard.writeText(text);
 }
 
+/** The clipboard's text (in integration runs, what the suite put there). */
+export async function readText(): Promise<string> {
+  return testing ? copied : vscode.env.clipboard.readText();
+}
+
 /** Test seam: what the last copy put on the clipboard. */
 export function copiedText(): string {
   return copied;

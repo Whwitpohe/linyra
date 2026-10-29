@@ -8,6 +8,7 @@ import type { ChangesLayout, ToolbarAction, ToolbarState } from "./toolbarModel"
 import type { HoverDetail, MergeTarget } from "./hoverModel";
 import type { KindCounts } from "./changeKinds";
 import type { BranchStatus } from "./workingTree";
+import type { RepoMark } from "./repoMarkModel";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
 export interface Layout {
@@ -91,6 +92,8 @@ export type HostMessage =
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
   /** Each repository's distance from its upstream (only those ahead or behind). */
   | { type: "sync"; byRepo: Record<string, { ahead: number; behind: number }> }
+  /** Each repository's branch, its * + ! and a merge or rebase that stopped (repositories whose git dir was read). */
+  | { type: "repoMarks"; byRepo: Record<string, RepoMark> }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
   | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[]; tags?: BranchName[] }
   /** Combined Changes: the host changed the Commit list's selection (Clear Selection). */

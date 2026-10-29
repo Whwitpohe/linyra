@@ -24,6 +24,10 @@
 
 #commit-pane .commit-message { flex: 1 1 0; min-height: 36px; width: 100%; resize: none; padding: 5px 7px; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; color: var(--vscode-input-foreground, var(--vscode-foreground)); background: var(--vscode-input-background); font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size, var(--vscode-font-size)); line-height: 1.4; }
 #commit-pane .commit-message::placeholder { color: var(--vscode-input-placeholderForeground); }
+/* The message's checks (subject and body line length, the blank line after the subject): hints, never a block. */
+#commit-pane .commit-hints { flex: 0 0 auto; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+#commit-pane .commit-hints li { display: flex; align-items: flex-start; gap: 4px; }
+#commit-pane .commit-hints .codicon { flex: none; margin-top: 1px; color: var(--vscode-editorWarning-foreground, var(--vscode-list-warningForeground, var(--vscode-foreground))); }
 #commit-pane .validation { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); background: var(--vscode-inputValidation-warningBackground, var(--vscode-input-background)); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); font-size: 12px; }
 /* ✨ while it writes: the spinner stops it. Its line under the box says what happened, with Undo. */
 #commit-pane .icon-button.generating svg { animation: commit-spin 1s linear infinite; }

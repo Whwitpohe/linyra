@@ -23,6 +23,8 @@ import { outputLog } from "./outputLog";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import type { AheadBehind } from "./upstream";
 import { SyncController } from "./syncController";
+import { RepoMarks } from "./repoMarks";
+import type { RepoMark } from "./repoMarkModel";
 import { ProfileController } from "./profileController";
 import { RepoCommands } from "./repoCommands";
 import { Suggestions } from "./suggestions";
@@ -106,6 +108,8 @@ export interface LogSnapshot {
   spawnLog: { root: string; cmd: string }[];
   /** Each repository's distance from its upstream (only those with one). */
   sync: Record<string, AheadBehind>;
+  /** The Repo List's marks: each repository's branch, * + ! and stopped operation (test seam). */
+  marks: Record<string, RepoMark>;
   /** Fetch All is running. */
   fetching: boolean;
   toolbar: ToolbarState;
@@ -187,6 +191,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private firstLoad: Promise<void> | undefined;
   /** Fetch, Pull and each repository's distance from its upstream. */
   readonly upstream: SyncController;
+  /** Each repository's branch, * + ! and stopped merge or rebase (the Repo List's marks). */
+  readonly marks: RepoMarks;
   /** The Repo List's named sets of repositories. */
   readonly profiles: ProfileController;
   /** Repository and commit right-click commands that read or filter. */
@@ -209,6 +215,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       run: this.run, discovery: deps.discovery, uncommitted: deps.uncommitted, reload: () => this.reload(), remotesFetched: () => this.remotesFetched(),
       refsChanged: (id) => this.refsChanged.fire(id), toolbarChanged: () => this.toolbarChanged(), syncChanged: (byRepo) => this.postSync(byRepo),
     });
+    this.marks = new RepoMarks({
+      repos: () => this.repos, concurrency: () => this.settings().maxConcurrency,
+      changed: (byRepo) => { this.post({ type: "repoMarks", byRepo }); this.toolbarChanged(); },
+      vsCodeWork: (root) => deps.discovery.workMark(root),
+      // git status's answer, unless the Path box narrowed it to part of the repository.
+      storeWork: (id) => {
+        const w = deps.uncommitted.filtered ? undefined : deps.uncommitted.get(id);
+        return w && { changes: w.changes.length > 0, staged: w.staged.length > 0, conflicts: w.conflicts ?? 0 };
+      },
+    });
     this.profiles = new ProfileController({
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg),
       setRepoFilter: (ids) => this.setRepoFilter(ids), changed: () => this.postInit(), ask: deps.ask,
@@ -229,6 +245,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.onDidChangeRefs((id) => this.hover.refsChanged(id)),
       // The switch's badge and rows, and the Changes view while on the Uncommitted side.
       deps.uncommitted.onDidChange(() => {
+        this.marks.publish();
         this.postUncommitted();
         this.showWorkTree();
         this.postHistoryWork();
@@ -295,6 +312,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         // A re-created webview lost the suggestions it had: send them again (only then).
         this.suggestions.replay();
         if (this.upstream.byRepo().size > 0) this.postSync(Object.fromEntries(this.upstream.byRepo()));
+        this.post({ type: "repoMarks", byRepo: { ...this.marks.byRepo() } });
         this.postUncommitted();
         this.postHistoryWork(true);
         void this.postAiSearch();
@@ -487,6 +505,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return { groupByRepo: this.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
       fetching: this.upstream.fetching,
       anyBehind: this.upstream.anyBehind(),
+      anyOperation: Object.values(this.marks.byRepo()).some((m) => m.operation !== undefined),
       ai: vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false) };
   }
 
@@ -797,6 +816,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.backgroundFor = key;
     void this.loadMe();
     void this.upstream.read(undefined, true); // VS Code's Git has counted the repositories it watches
+    void this.marks.read();
     // Uncommitted work: once, after the first page (the switch's badge), then kept current by events.
     void this.deps.uncommitted.readAll();
     // Suggestions are read when their box is first focused (wantSuggestions), not here.
@@ -846,8 +866,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // processes is what they would compete for): the commit rows first, then the uncommitted work
     // (last, so on the Uncommitted side its files are what the Changes view settles on), then how
     // far each is from its upstream.
+    if (changed && this.backgroundFor !== undefined) void this.marks.read();
     if (force || changed || (this.queryState === null && !this.reloading)) await this.reload();
     if (force) {
+      void this.marks.read();
       await this.deps.uncommitted.readAll(true);
       await this.upstream.read();
     }
@@ -876,6 +898,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    */
   windowFocused(): void {
     if (this.webviewView?.visible) void this.deps.uncommitted.readUnreported();
+    // A merge stopped or a branch checked out in a terminal: files only, no git process.
+    if (this.backgroundFor !== undefined) void this.marks.read();
   }
 
   /**
@@ -940,9 +964,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   repoStateChanged(root: string, headMoved: boolean, initial = false): void {
     // vscode.git's first status of a repository is not a change: the background read covers it.
     if (!initial) this.deps.uncommitted.touch(root);
-    if (!headMoved) return;
     const repo = this.innermost(root)?.r;
     if (!repo) return;
+    // Any report: a merge that stopped or a rebase step leaves HEAD's commit where it was.
+    this.marks.touched(repo.id);
+    if (!headMoved) return;
     this.refsChanged.fire(repo.id);
     this.upstream.touched(repo.id);
   }
@@ -1020,6 +1046,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async reposChanged(repoIds: readonly string[]): Promise<void> {
     this.suggestions.branchesChanged();
     for (const id of repoIds) void this.deps.uncommitted.readRepo(id);
+    void this.marks.read(new Set(repoIds));
     await this.reload();
     await this.upstream.read(new Set(repoIds));
     this.refsChanged.fire(undefined);
@@ -1027,6 +1054,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   async branchChanged(repoId: string): Promise<void> {
     this.suggestions.branchesChanged();
+    void this.marks.read(new Set([repoId]));
     await this.reload();
     await this.deps.uncommitted.readRepo(repoId);
     await this.upstream.read(new Set([repoId]));
@@ -1161,6 +1189,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       workTotals: totals(this.deps.uncommitted.works()),
       workKnown: this.deps.uncommitted.known,
       sync: Object.fromEntries(this.upstream.byRepo()),
+      marks: { ...this.marks.byRepo() },
       fetching: this.upstream.fetching, toolbar: this.toolbarState(),
       reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
@@ -1614,6 +1643,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.detail.abort();
     this.hover.end();
     this.upstream.dispose();
+    this.marks.dispose();
     this.commands.dispose();
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();

@@ -1,6 +1,7 @@
 import { branchGroupKey, branchKey, type Branch, type Branches, type BranchSidebarState } from "../branchModel";
 import type { ResolvedProfile } from "../profileModel";
 import { stashLabel, type Stash } from "../stashModel";
+import { worktreeLabel, type Worktree } from "../worktreeModel";
 import type { Repo } from "../types";
 import { fuzzyMatch, paneRows, type PaneRow } from "./repoPaneModel";
 
@@ -11,10 +12,11 @@ import { fuzzyMatch, paneRows, type PaneRow } from "./repoPaneModel";
  */
 export type TreeRow =
   | (PaneRow & { key: string; depth: 0; expanded?: boolean })
-  | { kind: "group"; key: string; depth: 1; repo: Repo; group: "local" | "remote" | "tag" | "stash"; label: string; expanded: boolean }
+  | { kind: "group"; key: string; depth: 1; repo: Repo; group: "local" | "remote" | "tag" | "stash" | "worktree"; label: string; expanded: boolean }
   | { kind: "remote"; key: string; depth: 2; repo: Repo; label: string; expanded: boolean }
   | { kind: "branch"; key: string; depth: 2 | 3; repo: Repo; branch: Branch; label: string; favorite: boolean; parent: string }
   | { kind: "stash"; key: string; depth: 2; repo: Repo; stash: Stash; label: string; parent: string }
+  | { kind: "worktree"; key: string; depth: 2; repo: Repo; worktree: Worktree; label: string; parent: string }
   | { kind: "message"; key: string; depth: 1 | 2; repo: Repo; label: string };
 
 /** One repository's branch listing as the pane holds it. */
@@ -59,7 +61,9 @@ export function treeRows(repos: readonly Repo[], query: string, profiles: readon
     const all = item.data.branches.filter((b) => !q || byName.has(repo.id) || hit(b))
       .sort((a, b) => Number(b.current) - Number(a.current) || Number(favorites.has(branchKey(repo.id, b.ref))) - Number(favorites.has(branchKey(repo.id, a.ref))) || a.name.localeCompare(b.name));
     const stashes = (item.data.stashes ?? []).filter((s) => !q || byName.has(repo.id) || stashLabel(s).toLowerCase().includes(q));
-    if (!all.length && !stashes.length) {
+    // The repository's other worktrees (its own folder is the row above).
+    const worktrees = (item.data.worktrees ?? []).filter((w) => !w.current && (!q || byName.has(repo.id) || worktreeLabel(w).toLowerCase().includes(q)));
+    if (!all.length && !stashes.length && !worktrees.length) {
       rows.push({ kind: "message", key: `${key}\0empty`, depth: 1, repo, label: "No branches" });
       continue;
     }
@@ -89,6 +93,13 @@ export function treeRows(repos: readonly Repo[], query: string, profiles: readon
       const stashOpen = !!q || open.has(stashKey);
       rows.push({ kind: "group", key: stashKey, depth: 1, repo, group: "stash", label: "Stashes", expanded: stashOpen });
       if (stashOpen) for (const s of stashes) rows.push({ kind: "stash", key: `${stashKey}\0${s.ref}`, depth: 2, repo, stash: s, label: stashLabel(s), parent: stashKey });
+    }
+    // Worktrees, only when the repository has linked ones: open, reveal or remove each.
+    if (worktrees.length) {
+      const wtKey = branchGroupKey("worktree", repo.id);
+      const wtOpen = !!q || open.has(wtKey);
+      rows.push({ kind: "group", key: wtKey, depth: 1, repo, group: "worktree", label: "Worktrees", expanded: wtOpen });
+      if (wtOpen) for (const w of worktrees) rows.push({ kind: "worktree", key: `${wtKey}\0${w.path}`, depth: 2, repo, worktree: w, label: worktreeLabel(w), parent: wtKey });
     }
   }
   return rows;

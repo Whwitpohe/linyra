@@ -39,6 +39,7 @@ export function renderCommitBody(): string {
   </div>
   <textarea id="commit-message" class="commit-message" placeholder="${escapeHtml(localize("Commit Message"))}" aria-label="${escapeHtml(localize("Commit Message"))}" aria-describedby="commit-validation" spellcheck="true"></textarea>
   <div id="commit-validation" class="validation" role="alert" hidden></div>
+  <ul id="commit-hints" class="commit-hints" aria-live="polite" hidden></ul>
   <div id="commit-ai-status" class="commit-ai-status" aria-live="polite" hidden><span id="commit-ai-text" class="commit-ai-text"></span><button id="commit-ai-undo" class="link-button" type="button" hidden>${escapeHtml(localize("Undo"))}</button></div>
   <div class="commit-buttons">
     <button id="commit-button" class="button primary" type="button" title="${escapeHtml(localize("Commit"))} (Ctrl+Enter)">${escapeHtml(localize("Commit"))}</button>

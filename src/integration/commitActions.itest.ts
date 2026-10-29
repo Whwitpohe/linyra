@@ -217,6 +217,36 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.clearSelection");
   });
 
+  it("Apply Patch… from the clipboard: as changes, or a mailbox as its commits; one that does not fit is refused", async () => {
+    const first = child(start, "patch-one.txt", "1\n", "feat: patch one");
+    const second = child(first, "patch-two.txt", "2\n", "feat: patch two");
+    const mbox = git(["format-patch", "--stdout", `${start}..${second}`]) + "\n";
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", mbox);
+    await answer("From Clipboard"); await answer("Apply as Changes");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied the patch to acme-api (2 files).");
+    assert.strictEqual(fs.readFileSync(path.join(root, "patch-two.txt"), "utf8"), "2\n");
+    assert.strictEqual(head(), start, "changes only: no commit");
+    await until("the applied files in the uncommitted work", (s) => s.uncommitted.some((w) => w.repoId === repoId && w.changes.includes("patch-one.txt")));
+    git(["clean", "-fdq"]);
+
+    await answer("From Clipboard"); await answer("Apply as Commits");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "Linyra: applied 2 commits to acme-api.");
+    assert.strictEqual(git(["log", "-2", "--format=%s"]), "feat: patch two\nfeat: patch one");
+
+    // The same patch again no longer fits: declining the three-way merge changes nothing.
+    await answer("From Clipboard"); await answer("Apply as Changes"); await answer("Cancel");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "The patch does not apply cleanly to acme-api.");
+    assert.strictEqual(git(["status", "--porcelain"]), "");
+    await vscode.commands.executeCommand("linyra._itest.setClipboard", "not a patch");
+    await answer("From Clipboard");
+    await vscode.commands.executeCommand("linyra.applyPatch", { webviewSection: "repo", repoId });
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.patch"), "That is not a patch: no diff in it.");
+    git(["reset", "-q", "--hard", start]);
+  });
+
   it("Compare with Working Tree…: the files that differ from the commit, the one picked as a diff", async () => {
     fs.writeFileSync(path.join(root, "upload.go"), "package upload\n// compared\n");
     await answer("upload.go");

@@ -42,6 +42,8 @@ export interface RunOptions {
   tree?: boolean;
   /** Added to the environment. */
   env?: Record<string, string>;
+  /** Everything git wrote to stderr, once it exits (success or not): progress and notes a command's report shows. */
+  onStderr?: (text: string) => void;
 }
 
 /** Kills a process and everything it started: its process group on POSIX, taskkill /T on Windows. */
@@ -92,6 +94,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       // Aborted: usually rejected already by the "error" handler, but not when git had exited
       // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
       if (signal?.aborted) return reject(abortError());
+      opts.onStderr?.(Buffer.concat(err).toString("utf8"));
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
       else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || localize("git exited with code {0}", String(code)), code, Buffer.concat(out).toString("utf8")));
     });

@@ -9,13 +9,16 @@ import { ALL_REPOS, differing, FAVORITES, groupOf, MODE, modeOf, ONLY_CONFLICTS 
 import { outputLog } from "./outputLog";
 import { isAbortError, runPool } from "./pool";
 import type { Repo } from "./types";
-import type { Ask } from "./uncommittedActions";
+import { gitMessage, type Ask } from "./uncommittedActions";
+import type { MultiResult } from "./multiRepo";
+import { isValidRef } from "./filterModel";
+import { parseUpstream, releasePushArgs, releaseTagArgs, tagMessage, upstreamArgs } from "./releaseModel";
 
 /** What Compare needs beyond the side views' deps: the merge across repositories (Branches Across Repositories' machinery). */
 export interface ReposDeps extends Deps {
   ask: Ask;
   /** Runs each plan's merge, with progress, the repositories' refresh and one report; `skipped` joins the report. */
-  mergeEach(title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]): Promise<unknown>;
+  mergeEach(title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string }[]): Promise<MultiResult | undefined>;
   /** `git merge` of a ref into the repository's checked-out branch. */
   mergeRef(repo: Repo, ref: string): Promise<unknown>;
 }
@@ -484,7 +487,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
    * to leave it out. From a repository's right-click, that one only, after one prompt. Why the
    * others are left out is said once per reason, never once per repository.
    */
-  async mergeIntoRight(only?: string): Promise<void> {
+  async mergeIntoRight(only?: string): Promise<MultiResult | undefined> {
     const pair = this.deps.store.pair;
     if (!pair) return;
     // The repositories picked together (or All), when the merge comes from the toolbar or from a
@@ -495,7 +498,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const group = sel !== undefined && isGroupSelection(sel) ? groupOf(this.deps.store, sel) : undefined;
     const single = !!only && only !== ALL_REPOS && !group?.some((x) => x.repo.id === only);
     const targets = single ? differing(this.deps.store).filter((x) => x.repo.id === only) : group ?? differing(this.deps.store);
-    if (targets.length === 0) return;
+    if (targets.length === 0) return undefined;
     const plans: { repo: Repo; from: string; into: string; checkedOut: boolean; merge: () => Promise<unknown> }[] = [];
     const skipped: MergeSkip[] = [];
     await runPool(targets, 8, async ({ repo, result }) => {
@@ -523,43 +526,113 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       void vscode.window.showInformationMessage(localize("Nothing to merge. {0}.", left.summary), details).then((pick) => {
         if (pick === details) void vscode.window.showInformationMessage(localize("Why nothing was merged"), { modal: true, detail: left.detail });
       });
-      return;
+      return undefined;
     }
     // Where ▶ is not checked out, the merge is made without a checkout: said on each row.
     const how = (p: (typeof plans)[number]) => (p.checkedOut ? localize("checked out: git merge") : localize("not checked out: your working tree is not touched"));
     let chosen = plans;
     if (single) {
       const p = plans[0];
-      if (!(await this.deps.ask.warning(localize("Merge {0} into {1} in {2}?", short(p.from), short(p.into), p.repo.name), `${short(p.into)} ${how(p)}`, localize("Merge")))) return;
+      if (!(await this.deps.ask.warning(localize("Merge {0} into {1} in {2}?", short(p.from), short(p.into), p.repo.name), `${short(p.into)} ${how(p)}`, localize("Merge")))) return undefined;
     } else {
       // A checklist, as Push… has: every repository that can merge, ticked; untick one to leave it out.
       const picked = await this.deps.ask.pickMany(plans.map((p) => ({ label: p.repo.name, description: `${short(p.from)} → ${short(p.into)}`, detail: `${short(p.into)} ${how(p)}`, picked: true })),
         skipped.length > 0 ? localize("Untick a repository to leave it out. Not offered: {0}", left.summary) : localize("Untick a repository to leave it out"));
-      if (!picked?.length) return;
+      if (!picked?.length) return undefined;
       chosen = picked.map((i) => plans[i]);
     }
     // The report names each left-out repository once, with a short why.
-    await this.deps.mergeEach(title, chosen, skipped.map((s) => ({ name: s.name, reason: s.why === "conflict" ? localize("would conflict")
+    return this.deps.mergeEach(title, chosen, skipped.map((s) => ({ name: s.name, reason: s.why === "conflict" ? localize("would conflict")
       : s.why === "remote" ? localize("not a local branch") : s.why === "worktree" ? localize("checked out in another worktree") : localize("moved since the comparison") })));
   }
 
-  /** Copy as Release Notes: every listed repository's commits only on ◀ (the same change on both left out), as Markdown. */
-  async copyReleaseNotes(): Promise<string | undefined> {
+  /** Each listed repository's commits only on ◀ (the same change on both left out): the release notes' sections. */
+  private async noteSections(group = true) {
     // The repositories picked together (or All); else every one.
     const sel = this.deps.selection.repoId;
-    const targets = (sel !== undefined && isGroupSelection(sel) ? groupOf(this.deps.store, sel) : differing(this.deps.store)).filter((x) => x.result.left > 0);
-    if (targets.length === 0) {
+    const targets = (group && sel !== undefined && isGroupSelection(sel) ? groupOf(this.deps.store, sel) : differing(this.deps.store)).filter((x) => x.result.left > 0);
+    const settled = await runPool(targets, 8, ({ repo, result }) => this.deps.store.readCommits(repo.id, "left", result.left + result.sameLeft + 1), new AbortController().signal);
+    return targets.map(({ repo, result }, i) => ({ repo: repo.name, from: short(result.leftName), into: short(result.rightName),
+      commits: settled[i].status === "fulfilled" ? (settled[i] as PromiseFulfilledResult<Awaited<ReturnType<CompareStore["readCommits"]>>>).value.filter((c) => c.mark === "+") : [] }));
+  }
+
+  /** Copy as Release Notes: every listed repository's commits only on ◀, as Markdown. */
+  async copyReleaseNotes(): Promise<string | undefined> {
+    const sections = await this.noteSections();
+    if (sections.length === 0) {
       void vscode.window.showInformationMessage(localize("No commit is only on {0}.", this.deps.store.pair ? shortSide(this.deps.store.pair.left) : "◀"));
       return undefined;
     }
-    const settled = await runPool(targets, 8, ({ repo, result }) => this.deps.store.readCommits(repo.id, "left", result.left + result.sameLeft + 1), new AbortController().signal);
-    const sections = targets.map(({ repo, result }, i) => ({ repo: repo.name, from: short(result.leftName), into: short(result.rightName),
-      commits: settled[i].status === "fulfilled" ? (settled[i] as PromiseFulfilledResult<Awaited<ReturnType<CompareStore["readCommits"]>>>).value.filter((c) => c.mark === "+") : [] }));
     const text = releaseNotes(sections);
     await copyText(text);
     const n = sections.reduce((sum, s) => sum + s.commits.length, 0);
     vscode.window.setStatusBarMessage(localize("Copied release notes: {0} in {1}.", plural(n, "commit"), plural(sections.filter((s) => s.commits.length > 0).length, "repository", "repositories")), 8000);
     return text;
+  }
+
+  /**
+   * ⋯ → Release…: ◀ released into ▶ across the compared repositories, one step at a time, each
+   * asked: the release notes (◀'s own commits, read before the merge), Merge ◀ into ▶ (its
+   * checklist), a tag on ▶ where it merged (that repository's notes as its message), a push of ▶
+   * and the tag to ▶'s upstream, then the notes copied and shown. Declining a step ends there.
+   */
+  async release(): Promise<{ merged: string[]; tagged: string[]; pushed: string[]; notes: string } | undefined> {
+    const pair = this.deps.store.pair;
+    if (!pair) {
+      void vscode.window.showInformationMessage(localize("Release…: pick in Compare what to release (◀) and where it goes (▶), then run Release… again."));
+      await this.pick();
+      return undefined;
+    }
+    await this.deps.store.conflictsChecked();
+    const sections = await this.noteSections(false);
+    if (sections.every((s) => s.commits.length === 0)) {
+      void vscode.window.showInformationMessage(localize("Nothing to release: no commit is only on {0}.", shortSide(pair.left)));
+      return undefined;
+    }
+    const notes = releaseNotes(sections);
+    // ▶'s name in each repository, as compared: after the merge the comparison is read again.
+    const intoNames = new Map(differing(this.deps.store).map(({ repo, result }) => [repo.id, result.rightName]));
+    const merge = await this.mergeIntoRight();
+    if (!merge || merge.done.length === 0) return undefined;
+    const merged = this.deps.log.repoList.filter((r) => merge.done.includes(r.name));
+    const intoOf = (r: Repo) => intoNames.get(r.id) ?? "";
+    const run = (r: Repo, args: string[]) => this.deps.log.countedRun(r.root, args, new AbortController().signal, { env: { GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" } });
+    const failures: string[] = [];
+    const tag = (await this.deps.ask.input(localize("Tag the release on {0} in {1} repositories (empty: no tag)", shortSide(pair.right), merged.length), localize("Tag name, for example v1.4.0"),
+      { validate: (v) => (v.trim() === "" || isValidRef(v.trim()) ? undefined : localize("Enter a valid tag name.")) }))?.trim();
+    if (tag === undefined) return { merged: merge.done, tagged: [], pushed: [], notes: await this.finish(notes) };
+    const tagged: Repo[] = [];
+    if (tag) {
+      for (const r of merged) {
+        const section = sections.find((s) => s.repo === r.name);
+        try { await run(r, releaseTagArgs(tag, tagMessage(tag, section?.commits ?? []), intoOf(r))); tagged.push(r); }
+        catch (e) { failures.push(`${r.name} (${localize("tag")}: ${gitMessage(e)})`); }
+      }
+    }
+    const what = tag ? localize("{0} and tag {1}", shortSide(pair.right), tag) : shortSide(pair.right);
+    const pushed: string[] = [];
+    if (await this.deps.ask.warning(localize("Push {0} in {1} repositories?", what, merged.length), merged.map((r) => r.name).join(", "), localize("Push"))) {
+      await runPool(merged, 4, async (r) => {
+        const into = intoOf(r);
+        const up = parseUpstream(await run(r, upstreamArgs(into)).catch(() => ""));
+        if (!up) { failures.push(`${r.name} (${localize("{0} has no upstream", into)})`); return; }
+        try { await run(r, releasePushArgs(up.remote, into, up.ref, tagged.includes(r) ? tag : undefined)); pushed.push(r.name); }
+        catch (e) { failures.push(`${r.name} (${localize("push")}: ${gitMessage(e)})`); }
+      }, new AbortController().signal);
+    }
+    if (failures.length > 0) void vscode.window.showWarningMessage(localize("Release: {0}.", failures.join(", ")));
+    return { merged: merge.done, tagged: tagged.map((r) => r.name), pushed, notes: await this.finish(notes) };
+  }
+
+  /** The release notes on the clipboard, and open beside as Markdown. */
+  private async finish(notes: string): Promise<string> {
+    await copyText(notes);
+    if (process.env.LINYRA_ITEST !== "1") {
+      const doc = await vscode.workspace.openTextDocument({ language: "markdown", content: notes });
+      await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+    }
+    vscode.window.setStatusBarMessage(localize("Release notes copied."), 8000);
+    return notes;
   }
 
   async snapshot(): Promise<{ open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: CompareMode; roots: string[]; selected: string | undefined; accents: number[]; notes: string[] }> {

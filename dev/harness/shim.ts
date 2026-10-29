@@ -8,7 +8,7 @@ import type { ChangesPage } from "../../src/changesProtocol";
 import type { ToolbarState } from "../../src/toolbarModel";
 import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
-import { mockCommits, mockRepos, mockTopoWalk, NOW } from "./mock";
+import { mockCommits, mockMarks, mockRepos, mockTopoWalk, NOW } from "./mock";
 import { mockWork } from "./mock/worktree";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
 import { answerAvatars } from "./mock/avatars";
@@ -153,7 +153,7 @@ function handle(m: WebviewMessage): void {
       if (m.action === "select" && m.repoId && m.ref) { filter = { ...filter, repoIds: [m.repoId], branch: m.ref.replace(/^refs\/(heads|remotes)\//, "") }; send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history: null, profiles: [] }, 0); reload(); }
       return;
     }
-    case "ready": send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); send({ type: "historyWork", work: historyWork(history, params) }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode: (logMode = "commits"), profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); if (params.get("marks") !== "off") send({ type: "repoMarks", byRepo: mockMarks(repos) }, 0); send(WORK, 0); send({ type: "historyWork", work: historyWork(history, params) }, 0); reload(); return;
     case "logMode": logMode = m.mode; console.info(`[harness] ${m.type}`, m); return;
     case "selectWork": case "openHistoryWork": case "selectMany": console.info(`[harness] ${m.type}`, m); return;
     case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode, profiles: [{ name: "backend", ids: ["/work/acme-api", "/work/acme-libs"], missing: ["acme-jobs"] }] }, 0); reload(); return;

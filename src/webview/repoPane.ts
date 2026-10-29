@@ -10,6 +10,7 @@ import { fuzzyMatch, isChecked, pickOnly, toggleRepo } from "./repoPaneModel";
 import { collapseAll, expandAll, parentIndex, treeRows, wantedBranchData, type BranchTreeData, type TreeRow } from "./repoTreeModel";
 import { profileFilter, type ResolvedProfile } from "../profileModel";
 import { syncLabel, type AheadBehind } from "../upstream";
+import { drift, headText, markTitle, operationLabel, workSuffix, type RepoMark } from "../repoMarkModel";
 import { absoluteTime, accentOf, assignAccents } from "./view";
 
 /**
@@ -123,6 +124,15 @@ export class RepoPane {
     this.render(false);
   }
   private idsKey: string | null | undefined;
+  /** Each repository's branch, its * + ! and a merge or rebase that stopped. */
+  private marks: Readonly<Record<string, RepoMark>> = {};
+
+  setMarks(byRepo: Readonly<Record<string, RepoMark>>): void {
+    if (JSON.stringify(byRepo) === JSON.stringify(this.marks)) return;
+    this.marks = byRepo;
+    // Arrives on its own (a checkout anywhere): never scroll the list the user is reading.
+    this.render(false);
+  }
 
   /** Share adjacency repairs without moving the repository list's scroll position. */
   setAccents(accents: ReadonlyMap<string, number>): void {
@@ -171,7 +181,8 @@ export class RepoPane {
       return;
     }
     if (row.kind === "group" || row.kind === "remote") { this.toggle(row); return; }
-    if (row.kind === "message") return;
+    // A worktree's actions are on its right-click (Open in New Window, Remove…).
+    if (row.kind === "message" || row.kind === "worktree") return;
     const allIds = this.repos.map((r) => r.id);
     // A box ticks itself when clicked; the pane must be rebuilt even when the filter comes out
     // the same (All when all are shown, or the last repo), or the boxes stop telling the truth.
@@ -284,6 +295,8 @@ export class RepoPane {
     this.active = Math.min(this.active, this.rows.length - 1);
     const count = this.repoIds === null ? String(this.repos.length) : `${this.repoIds.length}/${this.repos.length}`;
     const shown = this.filter ? selectedBranches(this.filter) : [];
+    // The branch most ticked repositories are on: a repository on another stands out.
+    const { common, others } = drift(this.marks, this.repoIds ?? this.repos.map((r) => r.id));
     clear(this.list);
     this.rows.forEach((row, i) => {
       const base = (extra: string) => ({
@@ -301,6 +314,16 @@ export class RepoPane {
         this.list.append(indent(h("div", { ...base(" branch-row stash-row"), "aria-selected": "false", title: `${s.subject}\n${s.ref} · ${absoluteTime(s.time)}`,
           "data-vscode-context": JSON.stringify({ webviewSection: "stash", repoId: row.repo.id, ref: s.ref, preventDefaultContextMenuItems: true }),
         }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("archive")]), h("span", { class: "branch-name" }, [row.label])])));
+        return;
+      }
+      if (row.kind === "worktree") {
+        const w = row.worktree;
+        this.list.append(indent(h("div", { ...base(" branch-row worktree-row"), "aria-selected": "false",
+          title: [w.path, w.locked ? localize("Locked: git will not remove it.") : "", w.missing ? localize("Its folder is gone: Remove forgets it.") : ""].filter(Boolean).join("\n"),
+          // Right-click a worktree: Open in New Window, Reveal, Copy Path, Remove… (package.json webview/context).
+          "data-vscode-context": JSON.stringify({ webviewSection: "worktree", repoId: row.repo.id, path: w.path, worktreeMain: w.main, worktreeMissing: w.missing === true, preventDefaultContextMenuItems: true }),
+        }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("folder")]),
+          h("span", { class: `branch-name${w.missing ? " missing" : ""}` }, [row.label])])));
         return;
       }
       if (row.kind === "message") {
@@ -352,6 +375,10 @@ export class RepoPane {
       const accent = id === null ? null : accentOf(this.accents, id);
       const ab = id === null ? undefined : this.sync[id];
       const badge = ab ? syncLabel(ab) : null;
+      const mark = id === null ? undefined : this.marks[id];
+      const conflicts = mark?.work?.conflicts ?? 0;
+      const op = mark?.operation ? `${operationLabel(mark.operation)}${conflicts > 0 ? ` · ${conflicts}` : ""}` : "";
+      const suffix = mark ? workSuffix(mark.work) : "";
       // VS Code Elements' checkbox, for VS Code's own box, tick and hover. Presentational:
       // the row is the tree item and handles the click and the keyboard.
       const box = document.createElement("vscode-checkbox");
@@ -365,18 +392,27 @@ export class RepoPane {
         ...base(""),
         "aria-selected": String(checked),
         "aria-expanded": row.kind === "repo" ? String(row.expanded === true) : undefined,
-        title: id ?? localize("Show commits from every repository"),
+        title: id === null ? localize("Show commits from every repository") : [id, ...(mark ? markTitle(mark, common) : [])].join("\n"),
         // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
-        "aria-label": id === null ? `${name}, ${count}` : badge ? `${name}, ${badge.title}` : name,
+        "aria-label": id === null ? `${name}, ${count}` : [name, mark ? headText(mark) : "", op, badge?.title ?? ""].filter(Boolean).join(", "),
         // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
-        // behind: the menu offers Pull (package.json webview/context).
-        "data-vscode-context": JSON.stringify(id === null ? { webviewSection: "repoList", preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: id, behind: (ab?.behind ?? 0) > 0, preventDefaultContextMenuItems: true }),
+        // behind: the menu offers Pull; operation: Continue, Abort and Resolve Conflicts (package.json webview/context).
+        "data-vscode-context": JSON.stringify(id === null ? { webviewSection: "repoList", preventDefaultContextMenuItems: true }
+          : { webviewSection: "repo", repoId: id, behind: (ab?.behind ?? 0) > 0, ...(mark?.operation ? { operation: mark.operation } : {}), ...(conflicts > 0 ? { conflicts: true } : {}), preventDefaultContextMenuItems: true }),
       }, [
         this.twisty(row.kind === "repo" ? row.expanded === true : undefined),
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
         h("span", { class: "repo-name", "data-name": id === null ? undefined : name }, id === null ? [name] : this.highlighted(name)),
         id === null ? h("span", { class: "repo-count" }, [count]) : null,
+        // develop*+, as VS Code's status bar names a branch; in the warning color when the other
+        // ticked repositories are on another. A narrow pane names only that one; the * + ! stay.
+        mark ? h("span", { class: `repo-branch${others.has(id!) ? " drift" : ""}`, "aria-hidden": "true" }, [codiconElement("git-branch"), h("span", { class: "branch-text" }, [headText(mark)])]) : null,
+        suffix ? h("span", { class: "repo-work", "aria-hidden": "true" }, [suffix]) : null,
+        // merging · 2: a narrow pane keeps the icon and the count.
+        mark?.operation ? h("span", { class: `repo-op${conflicts > 0 ? " conflicted" : ""}`, "aria-hidden": "true" }, [
+          codiconElement("warning"), h("span", { class: "op-word" }, [operationLabel(mark.operation)]), conflicts > 0 ? h("span", { class: "op-count" }, [String(conflicts)]) : null,
+        ]) : null,
         // ↓ to pull and ↑ to push, each in its own color (as the JetBrains branch widget: incoming blue, outgoing green).
         badge && ab ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [
           ab.behind > 0 ? h("span", { class: "sync-in" }, [`↓${ab.behind}`]) : null,

@@ -99,6 +99,10 @@ export class LogToolbar {
     const s = this.state;
     const items: [ToolbarAction, string, boolean][] = [
       ["branchesAcross", localize("Branches Across Repositories…"), false],
+      ["tagAcross", localize("Tag Across Repositories…"), false],
+      ["runAcross", localize("Run Git Command Across Repositories…"), false],
+      ["release", localize("Release…"), false],
+      ...(s.anyOperation ? [["abortAll", localize("Abort in All Repositories…"), false] as [ToolbarAction, string, boolean]] : []),
       ["fetchAndPullAll", localize("Fetch and Pull All"), s.fetching],
       ["pullAllBehind", localize("Pull All Repositories Behind"), !s.anyBehind || s.fetching],
       ["showBehind", localize("Show Only Repositories Behind"), !s.anyBehind],

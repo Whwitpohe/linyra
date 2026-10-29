@@ -280,6 +280,9 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
     case "hoverDetail": hoverCard.receive(m); return;
+    case "repoMarks":
+      repoPane.setMarks(m.byRepo);
+      return;
     case "sync":
       repoPane.setSync(m.byRepo);
       upstream = m.byRepo;
