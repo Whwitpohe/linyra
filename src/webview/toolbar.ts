@@ -11,6 +11,7 @@ const icons = {
   sync: codicon("sync"),
   update: codicon("repo-pull"),
   push: codicon("repo-push"),
+  ai: codicon("sparkle"),
 };
 
 /** The Log's view options (the ⋯ menu), saved by the host. */
@@ -28,7 +29,7 @@ export class LogToolbar {
   constructor(private readonly run: (action: ToolbarAction) => void, private readonly changeLayout: (layout: ChangesLayout) => void,
     private readonly changeView: (patch: Partial<ViewOptions> & { fold?: "collapse" | "expand" }) => void = () => undefined) {
     for (const [id, action, key] of [["toolbar-repos", "toggleRepos", "repos"], ["toolbar-compare", "toggleCompare", "compare"],
-      ["toolbar-fetch", "fetchAll", "fetch"], ["toolbar-update", "updateProject", "update"], ["toolbar-push", "pushAll", "push"]] as const) {
+      ["toolbar-fetch", "fetchAll", "fetch"], ["toolbar-update", "updateProject", "update"], ["toolbar-push", "pushAll", "push"], ["toolbar-ai", "aiAsk", "ai"]] as const) {
       const button = byId<HTMLButtonElement>(id);
       button.innerHTML = icons[key];
       button.addEventListener("click", () => this.run(action));
@@ -61,6 +62,8 @@ export class LogToolbar {
     byId<HTMLButtonElement>("toolbar-update").disabled = state.fetching;
     byId("toolbar-fetch").classList.toggle("fetching", state.fetching);
     byId("toolbar-fetch").innerHTML = state.fetching ? icons.sync : icons.fetch;
+    // Ask AI…: only while AI is on (linyra.ai.enabled); Configure AI… stays in the ⋯ menu.
+    byId("toolbar-ai").hidden = !state.ai;
     if (!this.menu.hidden) this.renderMenu();
   }
 

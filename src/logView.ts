@@ -214,7 +214,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       setRepoFilter: (ids) => this.setRepoFilter(ids), untick: (id) => this.untick(id), behind: (ids) => this.upstream.behind(ids), run: this.run,
     });
     this.hover = new HoverDetails({ run: this.run, post: (m) => this.post(m), commands: vscode.commands,
-      commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined) });
+      commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined),
+      aiEnabled: () => vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false) });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
     deps.changes.selectCommit = (repoId, sha) => this.revealCommit(repoId, sha);
@@ -230,6 +231,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (["linyra.avatars", "linyra.avatarHosts", "linyra.avatarUrlTemplate"].some((key) => e.affectsConfiguration(key))) this.avatars.settingsChanged();
+        if (e.affectsConfiguration("linyra.ai.enabled")) this.toolbarChanged();
       }),
     );
   }
@@ -426,7 +428,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const flags = this.deps.toolbarFlags?.();
     return { groupByRepo: this.layout().groupByRepo, compareShown: flags?.compareShown ?? false,
       fetching: this.upstream.fetching,
-      anyBehind: this.upstream.anyBehind() };
+      anyBehind: this.upstream.anyBehind(),
+      ai: vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false) };
   }
 
   toolbarChanged(): void {

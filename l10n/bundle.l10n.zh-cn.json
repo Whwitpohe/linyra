@@ -948,5 +948,6 @@
   "Large requests cost more and take longer. Leave out files with linyra.ai.exclude, or raise the limit.": "请求越大，费用越高、耗时越长。可以用 linyra.ai.exclude 排除文件，或提高上限。",
   "The model declined this request.": "模型拒绝了这个请求。",
   "Switch AI Model…": "切换 AI 模型…",
-  "Remove AI Profile…": "删除 AI 配置…"
+  "Remove AI Profile…": "删除 AI 配置…",
+  "Ask AI…": "问 AI…"
 }

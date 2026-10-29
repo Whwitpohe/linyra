@@ -1009,22 +1009,22 @@
         },
         {
           "command": "linyra.ai.explainWip",
-          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/ && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/ && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.resolveConflicts",
-          "when": "view == linyra.commit && viewItem =~ /^commitRepo/",
+          "when": "view == linyra.commit && viewItem =~ /^commitRepo/ && config.linyra.ai.enabled",
           "group": "5_ai@3"
         },
         {
           "command": "linyra.ai.explainCommit",
-          "when": "view == linyra.changes && viewItem == commit",
+          "when": "view == linyra.changes && viewItem == commit && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
@@ -1555,27 +1555,27 @@
         },
         {
           "command": "linyra.ai.explainWip",
-          "when": "view == linyra.commit",
+          "when": "view == linyra.commit && config.linyra.ai.enabled",
           "group": "3_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "view == linyra.commit",
+          "when": "view == linyra.commit && config.linyra.ai.enabled",
           "group": "3_ai@2"
         },
         {
           "command": "linyra.ai.resolveConflicts",
-          "when": "view == linyra.commit",
+          "when": "view == linyra.commit && config.linyra.ai.enabled",
           "group": "3_ai@3"
         },
         {
           "command": "linyra.ai.compareReleaseNotes",
-          "when": "view == linyra.compare",
+          "when": "view == linyra.compare && config.linyra.ai.enabled",
           "group": "1_ai@1"
         },
         {
           "command": "linyra.ai.explainConflicts",
-          "when": "view == linyra.compare",
+          "when": "view == linyra.compare && config.linyra.ai.enabled",
           "group": "1_ai@2"
         }
       ],
@@ -2105,87 +2105,87 @@
         },
         {
           "command": "linyra.ai.explainCommit",
-          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/ && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/",
+          "when": "webviewId == 'linyra.log' && webviewSection =~ /^(commit|historyCommit)$/ && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.releaseNotes",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'commit'",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'commit' && config.linyra.ai.enabled",
           "group": "5_ai@3"
         },
         {
           "command": "linyra.ai.explainCommit",
-          "when": "webviewId =~ /^linyra.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "when": "webviewId =~ /^linyra.(log|changesEditor)$/ && webviewSection == 'commitDetails' && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "webviewId =~ /^linyra.(log|changesEditor)$/ && webviewSection == 'commitDetails'",
+          "when": "webviewId =~ /^linyra.(log|changesEditor)$/ && webviewSection == 'commitDetails' && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.explainWip",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted'",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted'",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'uncommitted' && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.explainUnpushed",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'repo'",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.explainUnpushed",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && current",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && current && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.explainBranch",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && !current && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill'",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill' && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.explainBranch",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchCurrent && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.explainUnpushed",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchCurrent",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && branchCurrent && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.review",
-          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchTag",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'branch' && !branchTag && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.compareReleaseNotes",
-          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo' && config.linyra.ai.enabled",
           "group": "5_ai@1"
         },
         {
           "command": "linyra.ai.explainConflicts",
-          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo'",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareRepo' && config.linyra.ai.enabled",
           "group": "5_ai@2"
         },
         {
           "command": "linyra.ai.explainConflicts",
-          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile.*.conflict$/",
+          "when": "webviewId == 'linyra.compare' && webviewSection == 'compareSideRow' && viewItem =~ /^compareFile.*.conflict$/ && config.linyra.ai.enabled",
           "group": "0_open@4"
         },
         {

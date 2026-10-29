@@ -82,6 +82,7 @@ export function renderHtml(o: HtmlOptions): string {
         <button id="toolbar-fetch" class="icon-button" type="button" aria-label="${escapeHtml(localize("Fetch All Repositories"))}"></button>
         <button id="toolbar-update" class="icon-button" type="button" aria-label="${escapeHtml(localize("Update Project…"))}" title="${escapeHtml(localize("Update Project…"))}"></button>
         <button id="toolbar-push" class="icon-button" type="button" aria-label="${escapeHtml(localize("Push…"))}" title="${escapeHtml(localize("Push…"))}"></button>
+        <button id="toolbar-ai" class="icon-button" type="button" aria-label="${escapeHtml(localize("Ask AI…"))}" title="${escapeHtml(localize("Ask AI…"))}" hidden></button>
         <button id="toolbar-more" class="icon-button" type="button" aria-haspopup="menu" aria-expanded="false" title="${escapeHtml(localize("More Log Actions"))}" aria-label="${escapeHtml(localize("More Log Actions"))}">${codicon("ellipsis")}</button>
       </span>
     </div>

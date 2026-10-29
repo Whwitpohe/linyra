@@ -18,6 +18,8 @@ export interface HoverHost {
   post(m: Extract<HostMessage, { type: "hoverDetail" }>): void;
   /** vscode.commands (a seam: the unit test has no VS Code). */
   commands: { getCommands(filterInternal?: boolean): PromiseLike<string[]>; executeCommand(command: string, ...rest: unknown[]): PromiseLike<unknown> };
+  /** linyra.ai.enabled: the card offers Explain only while AI is on, as the menus do. */
+  aiEnabled?: () => boolean;
 }
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -73,6 +75,7 @@ export class HoverDetails {
   }
 
   private hasExplain(): Promise<boolean> {
+    if (this.host.aiEnabled && !this.host.aiEnabled()) return Promise.resolve(false);
     return Promise.resolve(this.host.commands.getCommands(true)).then((all) => all.includes(EXPLAIN_COMMAND), () => false);
   }
 

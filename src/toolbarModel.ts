@@ -1,12 +1,14 @@
 export type ChangesLayout = "auto" | "sideBySide" | "stacked";
 export type ToolbarAction = "toggleRepos" | "toggleCompare" | "fetchAll" | "showBehind" | "fetchAndPullAll" | "pullAllBehind" | "profileSwitch" | "profileSave"
-  | "updateProject" | "pushAll" | "branchesAcross" | "aiConfigure" | "aiSwitch" | "aiRemove";
+  | "updateProject" | "pushAll" | "branchesAcross" | "aiConfigure" | "aiSwitch" | "aiRemove" | "aiAsk";
 
 export interface ToolbarState {
   groupByRepo: boolean;
   compareShown: boolean;
   fetching: boolean;
   anyBehind: boolean;
+  /** linyra.ai.enabled: the header's ✨ Ask AI… button shows. */
+  ai?: boolean;
 }
 
 /** Every old Log title action keeps its original command and implementation. */
@@ -26,6 +28,7 @@ export function toolbarCommand(action: unknown, state: ToolbarState): string | u
     case "aiConfigure": return "linyra.ai.configure";
     case "aiSwitch": return "linyra.ai.switchModel";
     case "aiRemove": return "linyra.ai.removeProfile";
+    case "aiAsk": return state.ai ? "linyra.ai.ask" : undefined;
     default: return undefined;
   }
 }
