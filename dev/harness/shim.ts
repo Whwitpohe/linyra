@@ -30,7 +30,8 @@ const PAGE = 200;
 const latency = scenario === "slow" ? 1500 : 25;
 const repos = mockRepos(scenario);
 const all = mockCommits(repos, scenario);
-let filter: FilterState = DEFAULT_FILTER;
+// ?date=all: the whole history (dev/perf/scrollBench.mjs scrolls through it).
+let filter: FilterState = params.get("date") === "all" ? { ...DEFAULT_FILTER, date: "all" } : DEFAULT_FILTER;
 let layout: Layout = { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off", ...JSON.parse(sessionStorage.getItem("linyra-layout") ?? "{}") };
 const toolbarState: ToolbarState = { groupByRepo: layout.groupByRepo, compareShown: false, fetching: false, anyBehind: true };
 let history: { repoName: string; path: string } | null = params.get("history") ? { repoName: "acme-web", path: params.get("history")! } : null;

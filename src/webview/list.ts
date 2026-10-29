@@ -4,7 +4,7 @@ import { referenceLabels } from "../commitReferences";
 import { codiconElement } from "./codicons";
 import { clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
-import { renderGraph, type FoldAction } from "./graph";
+import { hoverRail, railAt, renderGraph, type FoldAction, type RailAction } from "./graph";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
 import { absoluteTime, accentOf, moveSelection, relativeTime, separateAdjacentAccents, visibleRange } from "./view";
@@ -47,8 +47,8 @@ const SKELETON_ROWS = 8;
 export class CommitList {
   private rowHeight = 0;
   private frame = 0;
-  /** The repo column's width, read once per layout change rather than on every scroll paint. */
-  private column: number | undefined;
+  /** The repo column's width and its chips' font, read once per layout change rather than on every scroll paint. */
+  private column: { width: number; font: string; paddingX: number } | undefined;
   private graph: CommitGraph = { rows: [], columns: 0 };
   /** Each row's parents as row indexes, extended page by page instead of rebuilt (fold segments and the graph share it). */
   private parents: ParentIndex | undefined;
@@ -103,11 +103,32 @@ export class CommitList {
         this.setFold(fold.getAttribute("data-fold-collapse") ?? fold.getAttribute("data-fold-expand")!, fold.hasAttribute("data-fold-collapse"));
         return;
       }
+      // A rail into linear history folds it (found by position: a row draws its rails as a few paths).
+      const graph = (e.target as Element).closest(".commit-graph");
+      const rail = graph && !(e.ctrlKey || e.metaKey || e.shiftKey) ? railAt(graph, e.clientX, e.clientY) : undefined;
+      if (rail) {
+        e.preventDefault(); root.focus();
+        this.setFold(rail.action.id, true);
+        return;
+      }
       const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
       if (!row) return;
       root.focus();
       this.onSelect(Number(row.dataset.index), { kind: "click", ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
     });
+    // The rail under the pointer is highlighted and says that a click folds it.
+    let hovered: { graph: Element; rail: RailAction | undefined } | undefined;
+    const hover = (graph: Element | undefined, rail: RailAction | undefined) => {
+      if (hovered?.graph === graph && hovered?.rail === rail) return;
+      if (hovered && hovered.graph !== graph) hoverRail(hovered.graph, undefined);
+      if (graph) hoverRail(graph, rail);
+      hovered = graph ? { graph, rail } : undefined;
+    };
+    body.addEventListener("pointermove", (e) => {
+      const graph = (e.target as Element).closest(".commit-graph") ?? undefined;
+      hover(graph, graph ? railAt(graph, e.clientX, e.clientY) : undefined);
+    });
+    body.addEventListener("pointerleave", () => hover(undefined, undefined));
     // A right-click outside the selection selects that row first, as VS Code's lists do.
     body.addEventListener("contextmenu", (e) => {
       const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
@@ -116,9 +137,10 @@ export class CommitList {
   }
 
   update(next: ListProps): void {
-    const moved = next.selected !== this.props.selected;
-    if (next.accents !== this.props.accents) this.accents = next.accents;
-    let changed = next.rows !== this.props.rows || next.accents !== this.props.accents || next.historyPath !== this.props.historyPath || next.repoOrder !== this.props.repoOrder;
+    const prev = this.props;
+    const moved = next.selected !== prev.selected;
+    if (next.accents !== prev.accents) this.accents = next.accents;
+    let changed = next.rows !== prev.rows || next.accents !== prev.accents || next.historyPath !== prev.historyPath || next.repoOrder !== prev.repoOrder;
     if (next.rows !== this.props.rows || next.historyPath !== this.props.historyPath) {
       this.parents = indexParents(next.rows, this.parents);
       this.segments = next.historyPath ? [] : linearSegments(next.rows, this.parents);
@@ -133,9 +155,26 @@ export class CommitList {
       this.collapsed.delete(segment.id); changed = true;
     }
     if (changed) this.rebuild();
-    this.column = undefined; // the repo column may have changed with the repo list
+    // Anything else the host sends (uncommitted counts, a toolbar state) re-renders the page with
+    // the same rows: those are left as they are, and a new selection only marks the rows it moved
+    // between. Rebuilding every visible row for each such message made scrolling stutter.
+    const drawn = changed || next.repoNames !== prev.repoNames || next.behind !== prev.behind || next.me !== prev.me || next.highlightMine !== prev.highlightMine
+      || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton;
+    if (drawn) this.column = undefined; // the repo column may have changed with the repo list
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
-    this.paint();
+    if (drawn) this.paint();
+    else if (moved || next.selectedKeys !== prev.selectedKeys) { this.paintSelection(); this.paint(true); }
+  }
+
+  /** The mounted rows' selected and focused marks, as renderRow sets them. */
+  private paintSelection(): void {
+    const { rows, selected, selectedKeys } = this.props;
+    for (const [i, { el }] of this.mounted) {
+      const row = this.display.rows[i];
+      if (!row || row.segment) continue;
+      el.classList.toggle("focus", row.sourceIndex === selected);
+      el.setAttribute("aria-selected", String(selectedKeys.has(commitKey(rows[row.sourceIndex]))));
+    }
   }
 
   resetScroll(): void {
@@ -260,16 +299,17 @@ export class CommitList {
   private fitChips(rows: readonly HTMLElement[]): void {
     const first = rows[0];
     if (!first) return;
-    const column = (this.column ??= parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]));
-    if (!Number.isFinite(column)) {
-      this.column = undefined;
-      return;
-    }
     const chips = rows.flatMap((row) => [...row.querySelectorAll<HTMLElement>(".chip")]);
     if (chips.length === 0) return;
-    // Every chip shares one font and padding: read them once, then only write.
-    const { font, paddingX } = textStyle(chips[0]);
-    for (const chip of chips) chip.textContent = fitName(font, chip.dataset.name ?? "", column - paddingX);
+    // Every chip shares one font and padding: read them (and the column) once per layout, then only
+    // write. A read here forces the new rows' style mid-frame; a scroll must not pay for it.
+    if (!this.column) {
+      const width = parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]);
+      if (!Number.isFinite(width)) return;
+      this.column = { width, ...textStyle(chips[0]) };
+    }
+    const { width, font, paddingX } = this.column;
+    for (const chip of chips) chip.textContent = fitName(font, chip.dataset.name ?? "", width - paddingX);
   }
 
   /** Keep whole reference badges; summarize overflow instead of clipping the last branch. */

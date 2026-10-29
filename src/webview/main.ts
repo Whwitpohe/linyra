@@ -21,7 +21,6 @@ import { PaneWidth } from "./repoPaneModel";
 import { assignAccents, separateAdjacentAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
 import { WorkList } from "./workList";
 import { LogToolbar, type ViewOptions } from "./toolbar";
-import { codicon } from "./codicons";
 import type { ChangesLayout } from "../toolbarModel";
 
 const vscode = acquireVsCodeApi();
@@ -134,10 +133,9 @@ function applyChangesLayout(): void {
   changesPane.hidden = !showChanges;
   changesSplitter.hidden = !showChanges || stacked;
   changesVerticalSplitter.hidden = !showChanges || !stacked;
+  // Its icon says what it shows (the changed files), not where they sit: beside the Repo List's
+  // toggle, two mirrored layout icons read as one control.
   changesToggle.setAttribute("aria-pressed", String(showChanges));
-  // The icon shows where the changed files sit: the right side, or the panel below.
-  const toggleIcon = stacked ? "layout-panel" : "layout-sidebar-right";
-  if (changesToggle.dataset.icon !== toggleIcon) { changesToggle.dataset.icon = toggleIcon; changesToggle.innerHTML = codicon(toggleIcon); }
   changesSplitter.setAttribute("aria-valuenow", String(size));
   changesVerticalSplitter.setAttribute("aria-valuenow", String(size));
   toolbar.updateLayout(changesLayout);
@@ -426,9 +424,19 @@ function runEmptyAction(action: EmptyAction): void {
   }
 }
 
+/**
+ * The repositories' names and the selected keys, made again only when they change: the list
+ * repaints its rows only when something they draw is new (a render for a badge leaves them).
+ */
+let names = new Map<string, string>();
+let namesOf: typeof state.repos | undefined;
+let selectedKeys: ReadonlySet<string> = new Set();
+let keysOf: typeof state.selection.keys | undefined;
+
 function render(): void {
   toolbar.setCommitsShown(mode !== "uncommitted");
-  const names = new Map(state.repos.map((r) => [r.id, r.name]));
+  if (namesOf !== state.repos) { namesOf = state.repos; names = new Map(state.repos.map((r) => [r.id, r.name])); }
+  if (keysOf !== state.selection.keys) { keysOf = state.selection.keys; selectedKeys = new Set(keysOf); }
   const count = switchCount(work.known, work.totals.files);
   workCount.textContent = count;
   workCount.hidden = count === "";
@@ -448,7 +456,7 @@ function render(): void {
     rows: state.rows, repoNames: names, accents, repoOrder, behind,
     me, highlightMine: view.highlightMine, offHead: view.highlightHead ? offHead : undefined, hashColumn: view.hashColumn,
     historyPath: state.history?.path,
-    selected: state.selected, selectedKeys: new Set(state.selection.keys), now: state.now,
+    selected: state.selected, selectedKeys, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
   empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
