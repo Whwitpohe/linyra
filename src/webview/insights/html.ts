@@ -7,6 +7,17 @@ function tab(id: string, icon: Codicon, label: string): string {
   return `<button id="tab-${id}" class="insights-tab" role="tab" type="button" data-tab="${id}" aria-controls="panel-${id}" aria-selected="false" tabindex="-1" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${codicon(icon)}<span aria-hidden="true">${escapeHtml(label)}</span></button>`;
 }
 
+/** A treemap tab: where it is (the folder's path), its legend, the map, and the chosen file's strip. */
+function treePanel(id: string, label: string): string {
+  return `<section id="panel-${id}" class="insights-panel" role="tabpanel" aria-labelledby="tab-${id}" hidden>
+    <div class="insights-summary"><nav id="${id}-crumbs" class="insights-crumbs" aria-label="${escapeHtml(localize("Folder"))}"></nav><span id="${id}-legend" class="insights-legend"></span></div>
+    <div id="${id}-notes" class="insights-notes" hidden></div>
+    <div id="${id}-map" class="treemap" tabindex="0" role="group" aria-roledescription="${escapeHtml(localize("treemap"))}" aria-label="${escapeHtml(label)}" aria-describedby="treemap-help"></div>
+    <div id="${id}-empty" class="insights-empty" hidden></div>
+    <div id="${id}-strip" class="insights-strip" hidden></div>
+  </section>`;
+}
+
 /** Linyra Insights' markup; the extension host and the browser harness both render it. */
 export function renderInsightsHtml(o: HtmlOptions): string {
   return `<!DOCTYPE html>
@@ -23,6 +34,8 @@ export function renderInsightsHtml(o: HtmlOptions): string {
   <header class="insights-header">
     <div id="insights-tabs" class="insights-tabs" role="tablist" aria-label="${escapeHtml(localize("Insights"))}">
       ${tab("history", "history", localize("Visual History"))}
+      ${tab("files", "files", localize("Files"))}
+      ${tab("commits", "git-commit", localize("Commits"))}
     </div>
     <div class="insights-controls">
       <label class="insights-field"><span class="insights-field-label">${escapeHtml(localize("Scope"))}</span><select id="scope" class="insights-select"></select></label>
@@ -38,6 +51,9 @@ export function renderInsightsHtml(o: HtmlOptions): string {
     <div id="history-help" class="sr-only">${escapeHtml(localize("Arrow keys move between commits; Enter shows the commit in the Log."))}</div>
     <div id="history-empty" class="insights-empty" hidden></div>
   </section>
+  ${treePanel("files", localize("Tracked files by size"))}
+  ${treePanel("commits", localize("Files by commits in the range"))}
+  <div id="treemap-help" class="sr-only">${escapeHtml(localize("Arrow keys move between tiles; Enter opens a folder or chooses a file; Backspace goes up a folder."))}</div>
   <div id="insights-tooltip" class="insights-tooltip" role="tooltip" hidden></div>
   <div id="insights-status" class="sr-only" role="status" aria-live="polite"></div>
 </main>

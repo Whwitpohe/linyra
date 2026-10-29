@@ -1,9 +1,12 @@
 // Linyra Insights' webview: the tabs, the scope, range and color controls, and each tab's drawing.
-import type { BubbleCommit, HistoryData, InsightsHostMessage, InsightsRepo, InsightsWebviewMessage } from "../../insights/protocol";
+import type { BubbleCommit, HistoryData, InsightsHostMessage, InsightsRepo, InsightsWebviewMessage, TreeData, TreeTab } from "../../insights/protocol";
+import { heatLegend, type TreeNodeMsg } from "../../insights/treemap";
 import { HISTORY_LIMIT, RANGES, type ColorBy, type InsightsRange, type InsightsScope, type InsightsTab } from "../../insights/range";
 import { language, localize } from "../../i18n";
 import { byId, h } from "../dom";
+import { codiconElement } from "../codicons";
 import { commitTooltip, HistoryChart } from "./history";
+import { bytes, keyOf, TreemapView, valueText } from "./treemap";
 
 export interface InsightsApi {
   postMessage(message: InsightsWebviewMessage): void;
@@ -50,13 +53,22 @@ function segments<T extends string>(el: HTMLElement, items: { value: T; label: s
   };
 }
 
+/** Whether a chosen file is still in the shown folder's part of the tree. */
+function contains(node: TreeNodeMsg, file: TreeNodeMsg): boolean {
+  return (node.children ?? []).some((c) => (c.kind === "file" ? keyOf(c) === keyOf(file) : contains(c, file)));
+}
+
 export function mountInsights(api: InsightsApi): void {
   let init: Init | undefined;
   let history: HistoryData | undefined;
+  const trees: Partial<Record<TreeTab, TreeData>> = {};
+  /** The file chosen in each treemap: its strip shows below the map. */
+  const chosen: Partial<Record<TreeTab, TreeNodeMsg>> = {};
   const repos = new Map<string, InsightsRepo>();
   const tooltip = byId("insights-tooltip");
   const status = byId("insights-status");
   const chart = new HistoryChart(byId("history-chart"));
+  const maps: Record<TreeTab, TreemapView> = { files: new TreemapView(byId("files-map")), commits: new TreemapView(byId("commits-map")) };
   const post = (m: InsightsWebviewMessage) => api.postMessage(m);
 
   const showTip = (content: HTMLElement[] | undefined, at?: DOMRect) => {
@@ -175,6 +187,73 @@ export function mountInsights(api: InsightsApi): void {
     });
   }
 
+  /** The chosen file's strip: its path and measure, Open File and Visual History. */
+  function drawStrip(tab: TreeTab): void {
+    const strip = byId(`${tab}-strip`);
+    const n = chosen[tab];
+    maps[tab].setSelected(n && keyOf(n));
+    if (!n || n.kind !== "file" || !n.repoId || !n.path) { strip.hidden = true; strip.replaceChildren(); return; }
+    const repo = repos.get(n.repoId);
+    const open = h("button", { type: "button", class: "insights-button" }, [codiconElement("file"), localize("Open File")]);
+    open.addEventListener("click", () => post({ type: "openFile", repoId: n.repoId!, path: n.path! }));
+    const visual = h("button", { type: "button", class: "insights-button" }, [codiconElement("history"), localize("Visual History")]);
+    visual.addEventListener("click", () => post({ type: "visualHistory", repoId: n.repoId!, path: n.path!, folder: false }));
+    const close = h("button", { type: "button", class: "icon-button", title: localize("Close"), "aria-label": localize("Close") }, [codiconElement("close")]);
+    close.addEventListener("click", () => { chosen[tab] = undefined; drawStrip(tab); byId(`${tab}-map`).focus(); });
+    strip.replaceChildren(
+      h("span", { class: `strip-repo accent-${repo?.accent ?? 0}` }, [repo?.name ?? ""]),
+      h("span", { class: "strip-path", title: n.path }, [n.path]),
+      h("span", { class: "strip-value" }, [valueText(tab, n.value)]),
+      h("span", { class: "strip-actions" }, [open, visual, close]),
+    );
+    strip.hidden = false;
+  }
+
+  function drawTree(tab: TreeTab): void {
+    const d = trees[tab];
+    if (!init || !d) return;
+    byId(`panel-${tab}`).classList.remove("loading");
+    // Where the map is: the scope's root, then each folder opened; each crumb goes back there.
+    const crumbs = byId(`${tab}-crumbs`);
+    crumbs.replaceChildren(...d.crumbs.flatMap((name, i) => {
+      const last = i === d.crumbs.length - 1;
+      const label = name || localize("(root)");
+      const crumb = last ? h("span", { class: "crumb current", "aria-current": "location" }, [label])
+        : h("button", { type: "button", class: "crumb" }, [label]);
+      if (!last) crumb.addEventListener("click", () => post({ type: "drill", tab, path: d.path.slice(0, i) }));
+      return i === 0 ? [crumb] : [h("span", { class: "crumb-sep", "aria-hidden": "true" }, ["›"]), crumb];
+    }), h("span", { class: "crumb-total" }, [d.node.files ? localize("{0} in {1} files", valueText(tab, d.node.value), number(d.node.files)) : ""]));
+    const legend = byId(`${tab}-legend`);
+    if (tab === "files" && d.legend.length) {
+      legend.replaceChildren(...d.legend.map((l, i) => h("span", { class: `legend-item type-${i}`, title: bytes(l.value) }, [h("span", { class: "legend-swatch", "aria-hidden": "true" }), l.ext ? `.${l.ext}` : localize("no extension")])),
+        h("span", { class: "legend-item type-other" }, [h("span", { class: "legend-swatch", "aria-hidden": "true" }), localize("Other")]));
+    } else if (tab === "commits" && d.heat.length) {
+      legend.replaceChildren(h("span", { class: "legend-label" }, [localize("Commits per file")]),
+        ...heatLegend(d.heat).map((s) => {
+          const label = s.to === undefined ? `${number(s.from)}+` : s.to === s.from ? number(s.from) : `${number(s.from)}–${number(s.to)}`;
+          return h("span", { class: `legend-item heat-${s.level}` }, [h("span", { class: "legend-swatch square", "aria-hidden": "true" }), label]);
+        }));
+    } else legend.replaceChildren();
+    const notes = byId(`${tab}-notes`);
+    const lines = d.failures.map((f) => localize("{0} could not be read: {1}", f.name, f.reason));
+    notes.replaceChildren(...lines.map((l) => h("div", {}, [l])));
+    notes.hidden = lines.length === 0;
+    const empty = byId(`${tab}-empty`), map = byId(`${tab}-map`);
+    const none = d.node.value <= 0;
+    empty.hidden = !none;
+    empty.textContent = !none ? "" : tab === "files" ? localize("No tracked files here.") : init.range === "all" ? localize("No commits here yet.") : localize("No commits in this range. Choose a longer range above.");
+    map.hidden = none;
+    if (chosen[tab] && !contains(d.node, chosen[tab]!)) chosen[tab] = undefined;
+    maps[tab].render(d, {
+      repos,
+      drill: (p) => post({ type: "drill", tab, path: p }),
+      select: (n) => { chosen[tab] = n; drawStrip(tab); },
+      tooltip: (content, at) => showTip(content, at),
+      announce: (text) => { status.textContent = text; },
+    });
+    drawStrip(tab);
+  }
+
   window.addEventListener("message", (event: MessageEvent) => {
     const m = event.data as InsightsHostMessage;
     if (!m || typeof m !== "object") return;
@@ -196,6 +275,14 @@ export function mountInsights(api: InsightsApi): void {
         }
         history = m.data;
         drawHistory();
+        return;
+      case "tree":
+        if (m.status === "loading") {
+          byId(`panel-${m.tab}`).classList.add("loading");
+          return;
+        }
+        trees[m.tab] = m.data;
+        drawTree(m.tab);
         return;
     }
   });

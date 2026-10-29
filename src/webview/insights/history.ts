@@ -61,7 +61,7 @@ export function commitTooltip(c: BubbleCommit, repo: InsightsRepo | undefined): 
       renderLines(c.added, c.deleted),
       h("span", { class: "tip-muted" }, [localize(c.files === 1 ? "{0} file" : "{0} files", c.files)]),
     ]),
-    h("div", { class: "tip-hint" }, [localize("Click to show it in the Log")]),
+    h("div", { class: "tip-hint" }, [localize("Click or press Enter to show it in the Log")]),
   ];
 }
 

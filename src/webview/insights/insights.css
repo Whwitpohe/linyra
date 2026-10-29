@@ -77,6 +77,85 @@ body.vscode-high-contrast .insights-tab[aria-selected="true"] { border-bottom: 2
 body.vscode-high-contrast .bubble { fill: color-mix(in srgb, var(--accent) 30%, var(--vscode-editor-background)); stroke-width: 1.5; }
 body.vscode-high-contrast .bubble.focused { stroke: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); stroke-width: 3; }
 
+/* ── Files and Commits: the treemap ─────────────────────────────────────── */
+.insights-crumbs { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 3px; min-width: 0; }
+.crumb { padding: 1px 4px; border: 0; border-radius: 3px; background: transparent; color: var(--vscode-textLink-foreground); }
+.insights button.crumb { color: var(--vscode-textLink-foreground); }
+.crumb:hover { background: var(--vscode-toolbar-hoverBackground); text-decoration: underline; }
+.crumb.current { color: var(--vscode-foreground); font-weight: 600; }
+.crumb-sep { color: var(--vscode-descriptionForeground); }
+.crumb-total { margin-left: 8px; color: var(--vscode-descriptionForeground); }
+.legend-label { color: var(--vscode-descriptionForeground); }
+
+.treemap { flex: 1 1 0; min-height: 120px; position: relative; overflow: hidden; border-radius: 2px; }
+.treemap:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.tile { position: absolute; overflow: hidden; display: flex; flex-direction: column; padding: 1px 4px; font-size: 11px; line-height: 15px; color: var(--vscode-foreground); cursor: pointer; }
+.tile.leaf { background: color-mix(in srgb, var(--tile) 42%, var(--vscode-editor-background)); border: 1px solid var(--vscode-editor-background); }
+/* A folder with room for its files: a frame, its name and total in a header strip. */
+.tile.frame { flex-direction: row; align-items: flex-start; gap: 6px; padding: 1px 5px; background: color-mix(in srgb, var(--vscode-descriptionForeground) 9%, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, var(--vscode-descriptionForeground))); }
+.tile.frame > .tile-name { font-weight: 600; }
+.tile-name, .tile-value { flex: none; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.frame > .tile-name { flex: 0 1 auto; }
+.tile.frame > .tile-value { flex: 0 1 auto; color: var(--vscode-descriptionForeground); }
+.tile.leaf > .tile-value { opacity: 0.8; font-variant-numeric: tabular-nums; }
+/* A repository's frame carries its Log color along the top. */
+.tile.kind-repo { border-top: 3px solid var(--accent); }
+/* Never raised: a frame above its own tiles would hide them. A frame's hover is its border. */
+.tile.leaf:hover { outline: 1px solid var(--vscode-foreground); outline-offset: -1px; }
+.tile.frame:hover { border-color: var(--vscode-foreground); }
+.tile.selected { box-shadow: inset 0 0 0 2px var(--vscode-foreground); }
+/* The keyboard's tile: a ring laid over it, above every tile. */
+.tile-ring { position: absolute; z-index: 3; pointer-events: none; outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.treemap:not(:focus) .tile-ring { display: none; }
+.tile-folder { --tile: var(--vscode-descriptionForeground); }
+/* The smaller files of a folder, summed: hatched, so it does not read as one big file. */
+.tile.leaf.tile-rest { cursor: default; --tile: var(--vscode-descriptionForeground);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--tile) 28%, var(--vscode-editor-background)) 0 3px, var(--vscode-editor-background) 3px 6px); }
+
+/* File types: the theme's chart colors, biggest type first; the rest is Other. */
+.type-0 { --tile: var(--vscode-charts-blue); }
+.type-1 { --tile: var(--vscode-charts-green); }
+.type-2 { --tile: var(--vscode-charts-yellow); }
+.type-3 { --tile: var(--vscode-charts-purple); }
+.type-4 { --tile: var(--vscode-charts-red); }
+.type-5 { --tile: var(--vscode-terminal-ansiCyan); }
+.type-6 { --tile: var(--vscode-terminal-ansiMagenta); }
+.type-other { --tile: var(--vscode-descriptionForeground); }
+/* Commits: one hue, stronger with each heat step; every tile also names its count. */
+.heat-0 { --heat: 10%; }
+.heat-1 { --heat: 30%; }
+.heat-2 { --heat: 52%; }
+.heat-3 { --heat: 78%; }
+.tile.leaf[class*="heat-"] { background: color-mix(in srgb, var(--vscode-charts-red) var(--heat), var(--vscode-editor-background)); }
+.tile.leaf.heat-3 > .tile-name { font-weight: 600; }
+.legend-item[class*="type-"] .legend-swatch { background: color-mix(in srgb, var(--tile) 42%, var(--vscode-editor-background)); border-color: var(--tile); }
+.legend-item[class*="heat-"] .legend-swatch { background: color-mix(in srgb, var(--vscode-charts-red) var(--heat), var(--vscode-editor-background)); border-color: var(--vscode-charts-red); }
+.legend-swatch.square { border-radius: 2px; }
+
+body.vscode-high-contrast .tile.leaf { border-color: var(--vscode-contrastBorder, var(--vscode-editor-background)); }
+/* The hottest: a thicker border, in the contrast color (the focus ring keeps the active one). */
+body.vscode-high-contrast .tile.leaf.heat-3 { border: 2px solid var(--vscode-contrastBorder, var(--vscode-foreground)); }
+body.vscode-high-contrast .tile-ring { outline: 3px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); }
+
+/* The chosen file: its path, measure and what to do with it. */
+.insights-strip { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 4px 6px 4px 10px; border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent)); border-radius: 3px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+.strip-repo { display: inline-flex; align-items: center; gap: 5px; }
+.strip-repo::before { content: ""; flex: none; width: 3px; height: 13px; border-radius: 1px; background: var(--accent); }
+.strip-path { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: var(--vscode-editor-font-size, 12px); }
+.strip-value { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.strip-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+/* VS Code's secondary button. */
+.insights-button { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; white-space: nowrap;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground)); background: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background)); }
+.insights button.insights-button { color: var(--vscode-button-secondaryForeground, var(--vscode-foreground)); }
+.insights-button:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
+.insights-button svg { width: 14px; height: 14px; flex: none; }
+.insights-button.primary, .insights button.insights-button.primary { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.insights-button.primary:hover { background: var(--vscode-button-hoverBackground, var(--vscode-button-background)); }
+.insights-button:disabled { opacity: 0.5; cursor: default; }
+
 /* ── The tooltip: VS Code's hover widget ────────────────────────────────── */
 .insights-tooltip { position: fixed; z-index: 30; max-width: min(440px, calc(100vw - 8px)); display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border-radius: 3px; pointer-events: none;
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editorWidget-foreground, var(--vscode-foreground)));

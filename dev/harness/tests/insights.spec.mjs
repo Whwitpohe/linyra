@@ -127,7 +127,7 @@ test.describe("Visual History", () => {
     await expect(page.locator("#history-chart circle.bubble").first()).toBeVisible();
     await expect(page.locator(".history-author-name")).toHaveCount(0);
     await expect(page.locator(".history-author").first()).toHaveAttribute("title", /^dana <dana@example\.com> · \d+ commits$/);
-    await expect(page.locator(".insights-tab span")).toBeHidden();
+    for (const name of await page.locator(".insights-tab span").all()) await expect(name).toBeHidden();
     await expect(page.getByRole("tab", { name: "Visual History" })).toBeVisible();
     expect(await noOverflow(page)).toBe(true);
     expect(errors).toEqual([]);
@@ -138,5 +138,105 @@ test.describe("Visual History", () => {
     await expect(page.getByRole("tab", { name: "可视化历史" })).toBeVisible();
     await expect(page.locator("#range").getByRole("radio", { name: "3 个月" })).toHaveAttribute("aria-checked", "true");
     await expect(page.locator("#history-summary")).toHaveText(/^\d+ 个提交，4 位作者，3 个仓库/);
+  });
+});
+
+test.describe("Files and Commits", () => {
+  for (const theme of THEMES) {
+    test(`Files: a tile per file, colored by its type, framed by its folders, in ${theme}`, async ({ page }) => {
+      const errors = await open(page, { theme, tab: "files" });
+      const map = page.locator("#files-map");
+      await expect(map.locator(".tile.kind-repo")).toHaveCount(3);
+      await expect(map.locator(".tile.kind-file").first()).toBeVisible();
+      await expect(page.locator("#files-crumbs .crumb.current")).toHaveText("Ticked repositories (3)");
+      await expect(page.locator("#files-legend .legend-item")).toHaveCount(8);
+      await expect(page.locator("#files-legend .legend-item").first()).toHaveText(".json");
+      // The biggest file type's tiles share one color, a theme color, unlike Other's.
+      const json = await map.locator(".tile.kind-file.type-0").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      const other = await map.locator(".tile.kind-file.type-other").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(json).not.toBe(other);
+      // Tiles fill the map without overlapping their siblings.
+      const box = await map.boundingBox();
+      const tiles = await map.locator(".tile.depth-1").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()));
+      const area = tiles.reduce((s, r) => s + r.width * r.height, 0);
+      expect(area / (box.width * box.height)).toBeGreaterThan(0.97);
+      await expect(page.locator("#range")).toBeHidden();
+      expect(errors).toEqual([]);
+    });
+
+    test(`Commits: hot files stand out, every tile names its count, in ${theme}`, async ({ page }) => {
+      const errors = await open(page, { theme, tab: "commits" });
+      const map = page.locator("#commits-map");
+      await expect(map.locator(".tile.kind-file.heat-3").first()).toBeVisible();
+      const hot = await map.locator(".tile.kind-file.heat-3").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      const cold = await map.locator(".tile.kind-file.heat-0").first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(hot).not.toBe(cold);
+      await expect(map.locator(".tile.kind-file.heat-3 .tile-value").first()).toHaveText(/^\d+ commits$/);
+      await expect(page.locator("#commits-legend .legend-label")).toHaveText("Commits per file");
+      await expect(page.locator("#range")).toBeVisible();
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test("a folder opens on click, a crumb goes back; a file is chosen and its strip acts on it", async ({ page }) => {
+    await open(page, { tab: "files" });
+    const map = page.locator("#files-map");
+    await map.locator(".tile.frame.kind-repo", { hasText: "acme-api" }).locator(".tile-name").first().click();
+    await expect(page.locator("#files-crumbs .crumb.current")).toHaveText("acme-api");
+    expect((await messages(page, "drill")).at(-1)).toEqual({ type: "drill", tab: "files", path: ["/work/acme-api"] });
+    await map.locator(".tile.kind-file", { hasText: "go.sum" }).click();
+    const strip = page.locator("#files-strip");
+    await expect(strip).toBeVisible();
+    await expect(strip.locator(".strip-path")).toHaveText("go.sum");
+    await expect(strip.locator(".strip-value")).toHaveText("84 KB");
+    await expect(map.locator(".tile.selected")).toHaveCount(1);
+    await strip.getByRole("button", { name: "Open File" }).click();
+    expect((await messages(page, "openFile")).at(-1)).toEqual({ type: "openFile", repoId: "/work/acme-api", path: "go.sum" });
+    await strip.getByRole("button", { name: "Visual History" }).click();
+    expect((await messages(page, "visualHistory")).at(-1)).toEqual({ type: "visualHistory", repoId: "/work/acme-api", path: "go.sum", folder: false });
+    await expect(page.getByRole("tab", { name: "Visual History" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#scope option:checked")).toHaveText("acme-api › go.sum");
+    await page.getByRole("tab", { name: "Files" }).click();
+    await page.locator("#scope").selectOption({ label: "Ticked repositories (3)" });
+    await expect(page.locator("#files-crumbs .crumb.current")).toHaveText("Ticked repositories (3)");
+  });
+
+  test("the keyboard: arrows move between tiles, Enter opens a folder, Backspace goes back up", async ({ page }) => {
+    await open(page, { tab: "commits" });
+    const map = page.locator("#commits-map");
+    await expect(map.locator(".tile").first()).toBeVisible();
+    await map.focus();
+    const status = page.locator("#insights-status");
+    await expect(status).toHaveText(/^acme-api, \d+ commits in \d+ files$/);
+    await expect(page.locator(".tile-ring")).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#commits-crumbs .crumb.current")).toHaveText("acme-api");
+    await page.keyboard.press("ArrowRight");
+    await expect(status).not.toHaveText(/^acme-api,/);
+    await page.keyboard.press("Backspace");
+    await expect(page.locator("#commits-crumbs .crumb.current")).toHaveText("Ticked repositories (3)");
+    // A file: Enter chooses it.
+    for (let i = 0; i < 12 && !/\.\w+, \d+ commits?$/.test(await status.textContent()); i++) await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#commits-strip")).toBeVisible();
+  });
+
+  test("narrow: the map fills the width; nothing scrolls sideways", async ({ page }) => {
+    const errors = await open(page, { tab: "files", width: 420, height: 600, theme: "hc-light" });
+    await expect(page.locator("#files-map .tile").first()).toBeVisible();
+    expect(await noOverflow(page)).toBe(true);
+    const box = await page.locator("#files-map").boundingBox();
+    expect(box.width).toBeGreaterThan(380);
+    expect(errors).toEqual([]);
+  });
+
+  test("empty and failing reads say so; Chinese", async ({ page }) => {
+    await open(page, { tab: "files", query: "&state=empty" });
+    await expect(page.locator("#files-empty")).toHaveText("No tracked files here.");
+    await open(page, { tab: "commits", query: "&state=error" });
+    await expect(page.locator("#commits-notes")).toContainText("acme-libs could not be read: fatal: not a valid object name HEAD");
+    await open(page, { tab: "files", page: "insights.zh-cn.html" });
+    await expect(page.getByRole("tab", { name: "文件" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#files-crumbs .crumb-total")).toHaveText(/^1\.1 MB，共 53 个文件$/);
   });
 });

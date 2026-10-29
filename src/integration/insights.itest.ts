@@ -25,7 +25,7 @@ describe("Insights", () => {
   const mark = async () => { const s = await insights(); posted = s.posted.length; spawned = s.spawned.length; };
   const sinceMark = async () => { const s = await insights(); return { posts: s.posted.slice(posted), spawns: s.spawned.slice(spawned) }; };
   /** The latest "ready" answer of a type after the mark (that `ok` accepts: a read superseded on the way may answer first). */
-  const answer = <T extends "history">(type: T, ok: (m: Ready<T>) => boolean = () => true) => waitFor(`an Insights ${type} answer`, async () => {
+  const answer = <T extends "history" | "tree">(type: T, ok: (m: Ready<T>) => boolean = () => true) => waitFor(`an Insights ${type} answer`, async () => {
     const { posts } = await sinceMark();
     const last = posts.reverse().find((m): m is Ready<T> => m.type === type && m.status === "ready");
     return last && ok(last) ? last : undefined;
@@ -142,6 +142,52 @@ describe("Insights", () => {
     const c = h.data!.commits.find((x) => x.subject === "test: insights")!;
     assert.deepStrictEqual([c.added, c.deleted, c.files], [2, 0, 1]);
     assert.deepStrictEqual(perRepo((await sinceMark()).spawns), { "acme-web": ["log"] }, "the other repositories are not read again");
+  });
+
+  it("Files: one ls-tree of HEAD per repository, sizes of every tracked file; a folder opens without git", async () => {
+    await mark();
+    await tell({ type: "tab", tab: "files" });
+    const files = await answer("tree", (m) => m.tab === "files");
+    await quiet();
+    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), Object.fromEntries(repos.map((r) => [r.name, ["ls-tree"]])), "one process per repository");
+    assert.ok((await insights()).spawned.at(-1)!.args.join(" ").startsWith("ls-tree -r -l -z HEAD"));
+    const d = files.data!;
+    assert.strictEqual(d.node.kind, "root");
+    assert.deepStrictEqual(d.node.children!.map((c) => c.name).sort(), repos.map((r) => r.name).sort());
+    const web = d.node.children!.find((c) => c.name === "acme-web")!;
+    const client = web.children!.find((c) => c.name === "client.ts")!;
+    assert.strictEqual(client.value, fs.statSync(path.join(repo("acme-web").root, "client.ts")).size, "a file's area is its size at HEAD");
+    assert.ok(d.legend.some((l) => l.ext === "ts"));
+
+    await mark();
+    await tell({ type: "drill", tab: "files", path: [repo("acme-web").id] });
+    const opened = await answer("tree", (m) => m.tab === "files" && m.data!.path.length === 1);
+    assert.strictEqual(opened.data!.node.name, "acme-web");
+    assert.deepStrictEqual(opened.data!.crumbs, ["Ticked repositories (3)", "acme-web"]);
+    await tell({ type: "drill", tab: "files", path: ["no-such-folder"] });
+    await tell({ type: "drill", tab: "files", path: [] });
+    await answer("tree", (m) => m.tab === "files" && m.data!.path.length === 0);
+    assert.deepStrictEqual((await sinceMark()).spawns, [], "opening a folder reads nothing");
+  });
+
+  it("Commits: one git log --name-only per repository; switching tabs back reads nothing", async () => {
+    await mark();
+    await tell({ type: "tab", tab: "commits" });
+    const commits = await answer("tree", (m) => m.tab === "commits");
+    await quiet();
+    assert.deepStrictEqual(perRepo((await sinceMark()).spawns), Object.fromEntries(repos.map((r) => [r.name, ["log"]])));
+    const args = (await insights()).spawned.at(-1)!.args;
+    assert.ok(args.includes("--name-only") && args.includes("-z") && args.includes("--format=") && args.includes("--no-merges"), args.join(" "));
+    const web = commits.data!.node.children!.find((c) => c.name === "acme-web")!;
+    const touched = Number(git(repo("acme-web").root, ["rev-list", "--count", "--no-merges", "HEAD", "--", "client.ts"]));
+    assert.strictEqual(web.children!.find((c) => c.name === "client.ts")!.value, touched, "a file's area is the commits touching it");
+    assert.ok(commits.data!.heat.length > 0 || commits.data!.node.value > 0);
+
+    await mark();
+    for (const tab of ["history", "files", "commits", "files", "history"]) await tell({ type: "tab", tab });
+    await answer("history");
+    await quiet();
+    assert.deepStrictEqual((await sinceMark()).spawns, [], "every tab shows what it read, without git");
   });
 
   it("a bubble's click shows the commit in the Log", async () => {

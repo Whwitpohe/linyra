@@ -33,6 +33,45 @@ function sha(n: number): string {
   return s.slice(0, 40);
 }
 
+/** Tracked files and their sizes: a web app, a Go service and a package workspace. */
+export function mockFiles(scale = 1): Record<string, { path: string; size: number }[]> {
+  const next = random(11);
+  const many = (dir: string, names: string[], ext: string, base: number, n = names.length) =>
+    Array.from({ length: n * scale }, (_, i) => ({ path: `${dir}/${names[i % names.length]}${i >= names.length ? `-${Math.floor(i / names.length)}` : ""}.${ext}`, size: Math.floor(base * (0.3 + next() * 1.4)) }));
+  return {
+    "/work/acme-web": [
+      ...many("src/components", ["Button", "Dialog", "Table", "Toolbar", "Sidebar", "Upload", "Avatar", "Menu"], "tsx", 4200),
+      ...many("src/api", ["client", "retry", "auth", "upload"], "ts", 3100),
+      ...many("src/styles", ["theme", "layout", "table"], "css", 2600),
+      ...many("public/images", ["logo", "hero", "empty-state", "avatar-default"], "png", 48_000),
+      { path: "package-lock.json", size: 410_000 }, { path: "package.json", size: 2100 }, { path: "README.md", size: 5400 }, { path: "tsconfig.json", size: 700 },
+    ],
+    "/work/acme-api": [
+      ...many("cmd/server", ["main", "flags"], "go", 3800),
+      ...many("internal/upload", ["upload", "retry", "chunk", "store", "upload_test", "retry_test"], "go", 6100),
+      ...many("internal/auth", ["token", "session", "middleware"], "go", 4400),
+      ...many("docs", ["api", "deploy", "release-1.4"], "md", 7000),
+      { path: "go.sum", size: 86_000 }, { path: "go.mod", size: 1400 }, { path: "Makefile", size: 2200 },
+    ],
+    "/work/acme-libs": [
+      ...many("packages/core/src", ["index", "events", "format", "parse", "cache"], "ts", 5200),
+      ...many("packages/ui/src", ["Chip", "Pill", "Tooltip", "Popover"], "tsx", 3900),
+      ...many("packages/ui/assets", ["icons", "sprites"], "svg", 31_000),
+      { path: "CHANGELOG.md", size: 24_000 }, { path: "pnpm-lock.yaml", size: 240_000 },
+    ],
+  };
+}
+
+/** How many commits touched each file in the range: a few hot files, a long tail touched once. */
+export function mockTouches(files: Record<string, { path: string; size: number }[]>, weeks: number): Record<string, { path: string; value: number }[]> {
+  const next = random(23);
+  const hot = new Set(["src/api/client.ts", "src/components/Table.tsx", "internal/upload/upload.go", "internal/upload/retry.go", "packages/core/src/parse.ts", "CHANGELOG.md", "package.json", "go.mod"]);
+  return Object.fromEntries(Object.entries(files).map(([repo, list]) => [repo, list.flatMap((f) => {
+    const touched = hot.has(f.path) ? Math.ceil(weeks * (1.5 + next() * 2)) : next() < 0.45 ? Math.ceil(next() * weeks * 0.4) : 0;
+    return touched > 0 ? [{ path: f.path, value: touched }] : [];
+  })]));
+}
+
 /** About `perDay` commits a day over the last `days` days, mostly dana and rin, the odd huge one. */
 export function mockBubbles(days: number, perDay: number, authors: number = PEOPLE.length): BubbleCommit[] {
   const next = random(7);
