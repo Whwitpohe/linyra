@@ -3,7 +3,7 @@ import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { isValidRef } from "./filterModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, forcePushPrompt, isProtected, multiCommands, parseOutgoing, pushPlan, sharedBranches, tagRemote, updateReason, type UpdateMethod } from "./multiRepoModel";
+import { checkoutStep, droppedArgs, forcePushPrompt, isProtected, parseDropped, type ForcePush, multiCommands, parseOutgoing, pushPlan, sharedBranches, tagRemote, updateReason, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
@@ -162,16 +162,18 @@ export class MultiRepo {
         void vscode.window.showInformationMessage(localize("Linyra: nothing to push in the ticked repositories."));
         return { done: [], unchanged: all.map((x) => x.repo.name), skipped: [] };
       }
+      // A diverged branch is not ticked: being ahead and behind is usually someone else's push (Update Project
+      // merges it in). Ticked anyway, it is force pushed, after a confirmation naming what the remote loses.
       const chosen = await this.host.ask.pickMany(rows.map((r) => ({
-        label: r.repo.name, picked: true,
-        description: `${r.plan.branch} → ${r.plan.remote}/${r.plan.destination}${r.plan.setUpstream ? ` (${localize("new")})` : ""} · ${localize(r.commits.length === 1 ? "1 commit" : "{0} commits", r.commits.length)}${r.plan.lease ? ` · ${localize("diverged: force push")}` : ""}`,
+        label: r.repo.name, picked: !r.plan.lease,
+        description: `${r.plan.branch} → ${r.plan.remote}/${r.plan.destination}${r.plan.setUpstream ? ` (${localize("new")})` : ""} · ${localize(r.commits.length === 1 ? "1 commit" : "{0} commits", r.commits.length)}${r.plan.lease ? ` · ${localize("diverged: a force push drops {0} on the remote", r.plan.behind ?? 0)}` : ""}`,
         detail: r.commits.slice(0, 3).map((c) => `${c.sha} ${c.subject}`).join("  ·  ") + (r.commits.length > 3 ? "  …" : ""),
       })), localize("Push to {0} repositories", rows.length));
       if (!chosen?.length) return undefined;
       const picked = chosen.map((i) => rows[i]);
       const forced = picked.filter((r) => r.plan.lease);
       if (forced.length > 0) {
-        const p = forcePushPrompt(forced.map((r) => ({ repo: r.repo.name, branch: r.plan.branch, target: `${r.plan.remote}/${r.plan.destination}` })));
+        const p = forcePushPrompt(await Promise.all(forced.map((r) => this.forcePush(r.repo, r.plan.branch, r.plan.remote, r.plan.destination, r.plan.behind ?? 0))));
         if (!(await this.host.ask.warning(p.message, p.detail, p.button))) return undefined;
       }
       const result = await this.each(localize("Pushing"), picked.map((r) => r.repo), async (repo) => {
@@ -272,6 +274,15 @@ export class MultiRepo {
       result.done = result.done.filter((n) => !noRemote.includes(n));
       return this.report(localize("Tag {0}", name), result);
     });
+  }
+
+  /** What a force push of `branch` drops from `remote/destination`, and whose those commits are. */
+  async forcePush(repo: Repo, branch: string, remote: string, destination: string, behind: number): Promise<ForcePush> {
+    const [log, me] = await Promise.all([
+      this.host.run(repo.root, droppedArgs(branch, `${remote}/${destination}`), WRITE_SIGNAL).catch(() => ""),
+      this.host.run(repo.root, ["config", "user.email"], WRITE_SIGNAL).catch(() => ""),
+    ]);
+    return { repo: repo.name, branch, target: `${remote}/${destination}`, behind, dropped: parseDropped(log), me: me.trim() };
   }
 
   /** Smart Checkout in the repositories a checkout was refused in: asked once; the result moves them to done. */

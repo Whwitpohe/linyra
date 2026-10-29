@@ -24,6 +24,7 @@ import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo,
 import type { AheadBehind } from "./upstream";
 import { SyncController } from "./syncController";
 import { RepoMarks } from "./repoMarks";
+import { BranchSheet } from "./branchSheet";
 import type { RepoMark } from "./repoMarkModel";
 import { ProfileController } from "./profileController";
 import { RepoCommands } from "./repoCommands";
@@ -193,6 +194,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   readonly upstream: SyncController;
   /** Each repository's branch, * + ! and stopped merge or rebase (the Repo List's marks). */
   readonly marks: RepoMarks;
+  /** A branch pill's sheet in the Changes view's details area. */
+  readonly branchSheet: BranchSheet;
   /** The Repo List's named sets of repositories. */
   readonly profiles: ProfileController;
   /** Repository and commit right-click commands that read or filter. */
@@ -225,6 +228,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return w && { changes: w.changes.length > 0, staged: w.staged.length > 0, conflicts: w.conflicts ?? 0 };
       },
     });
+    this.branchSheet = new BranchSheet({
+      repos: () => this.repos, run: this.run, post: (m) => this.post(m),
+      ai: () => vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false),
+      currentBranch: (id) => this.marks.get(id)?.branch ?? undefined,
+      compare: (repoId, left, right) => this.hover.compare?.(repoId, left, right),
+      execute: (command, arg) => vscode.commands.executeCommand(command, arg),
+    });
     this.profiles = new ProfileController({
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg),
       setRepoFilter: (ids) => this.setRepoFilter(ids), changed: () => this.postInit(), ask: deps.ask,
@@ -243,6 +253,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       deps.discovery.onDidChange(() => this.reposChangedSoon()),
       this.onDidChangeRefs((id) => this.refreshCurrentReferences(id)),
       this.onDidChangeRefs((id) => this.hover.refsChanged(id)),
+      this.onDidChangeRefs((id) => this.branchSheet.refsChanged(id)),
       // The switch's badge and rows, and the Changes view while on the Uncommitted side.
       deps.uncommitted.onDidChange(() => {
         this.marks.publish();
@@ -295,8 +306,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!m || typeof m !== "object") return; // webview input is untrusted
     switch (m.type) {
       case "branchSidebar": await this.branchSidebar?.handle(m); return;
+      case "branchSheet":
+        if (m.action === "open") await this.branchSheet.open(m.repoId, m.ref);
+        else if (m.action === "close") this.branchSheet.close();
+        else await this.branchSheet.action(m.action, m.repoId, m.ref);
+        return;
       case "ready":
         this.branchSidebar?.ready();
+        // A new webview shows no sheet: nothing is read for one nobody sees.
+        this.branchSheet.close();
         this.avatars.webviewReset();
         this.readyCount++;
         if (!this.stats.readyAt) this.stats.readyAt = Date.now();
@@ -1620,9 +1638,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** A commit was made outside the Log (the Uncommitted view): read the first page again. */
+  /** A pill's Show Branch Details: the webview selects its row and opens the sheet, focused. */
+  showBranchSheet(arg: unknown): void {
+    const a = arg as { repoId?: unknown; ref?: unknown } | undefined;
+    if (typeof a?.repoId === "string" && typeof a.ref === "string" && this.repos.some((r) => r.id === a.repoId)) this.post({ type: "branchSheetShow", repoId: a.repoId, ref: a.ref });
+  }
+
   commitsChanged(): void {
     this.reloadSoon.cancel();
     void this.reload();
+    // A commit may have finished a merge, cherry-pick or revert: the marks follow at once, not on
+    // VS Code's Git's word (which can come late, or not at all where it does not watch the repository).
+    if (this.backgroundFor !== undefined) void this.marks.read();
   }
 
   private post(m: HostMessage): void {
@@ -1644,6 +1671,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.hover.end();
     this.upstream.dispose();
     this.marks.dispose();
+    this.branchSheet.dispose();
     this.commands.dispose();
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();

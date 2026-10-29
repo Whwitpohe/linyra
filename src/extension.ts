@@ -237,7 +237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("linyra.showRepos", () => log.setGroupByRepo(true)),
     vscode.commands.registerCommand("linyra.resolveConflicts", (arg?: unknown) => operations.resolve(arg)),
     ...OPERATIONS.flatMap((op) => {
-      const name = op === "cherry-pick" ? "CherryPick" : op[0].toUpperCase() + op.slice(1);
+      const name = op === "cherry-pick" ? "CherryPick" : op === "am" ? "Am" : op[0].toUpperCase() + op.slice(1);
       return [
         vscode.commands.registerCommand(`linyra.continue${name}`, (arg?: unknown) => operations.continue(arg, op)),
         vscode.commands.registerCommand(`linyra.abort${name}`, (arg?: unknown) => operations.abort(arg, op)),
@@ -245,6 +245,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand("linyra.abortAll", () => operations.abortAll()),
     vscode.commands.registerCommand("linyra.applyPatch", (arg?: unknown) => patches.apply(arg)),
+    vscode.commands.registerCommand("linyra.showBranchSheet", (arg?: unknown) => log.showBranchSheet(arg)),
     runAcross,
     vscode.workspace.registerTextDocumentContentProvider(RunAcross.scheme, runAcross),
     vscode.commands.registerCommand("linyra.runAcross", () => runAcross.run()),
@@ -434,6 +435,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.registerCommand("linyra._itest.lastWarning", () => uncommittedActions.ask.lastWarning),
       vscode.commands.registerCommand("linyra._itest.operationError", () => { const e = operations.lastError; operations.lastError = undefined; return e; }),
       vscode.commands.registerCommand("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
+      vscode.commands.registerCommand("linyra._itest.branchSheet", () => log.branchSheet.last),
       vscode.commands.registerCommand("linyra._itest.patch", (file?: string) => { patches.testFile = file; const m = patches.lastMessage; patches.lastMessage = undefined; return m; }),
       vscode.commands.registerCommand("linyra._itest.asked", () => uncommittedActions.ask.asked),
       vscode.commands.registerCommand("linyra._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedActions.ask.beforeAnswer = f)),

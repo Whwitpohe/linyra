@@ -112,6 +112,21 @@ describe("Commit actions", () => {
     assert.strictEqual(git(["branch", "--show-current"]), "");
     assert.strictEqual(head(), start);
     git(["checkout", "main", "--"]);
+    // A local edit in the revision's way: Smart Checkout stashes it, checks out, puts it back.
+    const rev = child(start, "upload.go", "package upload\n\nfunc Retry() {}\n\nfunc Limit() {}\n", "test: a revision that changes upload.go");
+    // On a branch, so the Log lists it (a row's action acts on listed commits only).
+    git(["update-ref", "refs/heads/ci-side", rev]);
+    await send({ type: "refresh" });
+    await listed(rev);
+    fs.writeFileSync(path.join(root, "upload.go"), "// local edit\npackage upload\n\nfunc Retry() {}\n");
+    await answer("Check Out"); await answer("Smart Checkout");
+    await act("commitCheckout", rev);
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Local changes in acme-api would be overwritten by checking out " + rev.slice(0, 7) + ".");
+    assert.strictEqual(head(), rev, "checked out");
+    assert.strictEqual(fs.readFileSync(path.join(root, "upload.go"), "utf8").replace(/\r\n/g, "\n"), "// local edit\npackage upload\n\nfunc Retry() {}\n\nfunc Limit() {}\n", "both: the revision's and the local edit");
+    assert.strictEqual(git(["stash", "list"]), "", "put back: no stash left");
+    git(["checkout", "-f", "main", "--"]);
+    git(["update-ref", "-d", "refs/heads/ci-side"]);
   });
 
   it("resets the current branch in the chosen mode after the question", async () => {

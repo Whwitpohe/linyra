@@ -5,6 +5,8 @@
 .count-added { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
 .count-modified { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
 .count-deleted { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
+/* A side with nothing (+0, −0) says so quietly: the side that changed is the one to read. */
+.line-counts .zero { color: var(--vscode-descriptionForeground); }
 .count-renamed { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
 /* On a selected row the counts keep the row's text color, as the row's other text does. */
 [aria-selected="true"] :is(.counts, .line-counts) .count, [aria-selected="true"] .line-counts > span { color: inherit; }

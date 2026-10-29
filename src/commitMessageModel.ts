@@ -10,18 +10,20 @@ const exempt = (line: string) => /\S+:\/\/\S+/.test(line) || /^[A-Za-z][\w-]*: .
 
 /**
  * What to fix before committing, at most one hint per kind: a long subject, no blank line after it,
- * a long body line. Lines git strips (# comments) are not counted. Never blocks a commit.
+ * a long body line. Every line counts as the box shows it: git keeps # lines here (the commit uses
+ * the default cleanup, which strips them only in an editor). Leading blank lines are git's to drop.
+ * Never blocks a commit.
  */
 export function messageHints(text: string): string[] {
-  const lines = text.replace(/\r\n/g, "\n").split("\n").filter((l) => !l.startsWith("#"));
-  while (lines.length > 0 && lines[0].trim() === "") lines.shift();
-  if (lines.length === 0) return [];
+  const all = text.replace(/\r\n/g, "\n").split("\n");
+  const first = all.findIndex((l) => l.trim() !== "");
+  if (first < 0) return [];
   const hints: string[] = [];
-  const subject = lines[0].trimEnd();
+  const subject = all[first].trimEnd();
   if ([...subject].length > LINE_LIMIT) hints.push(localize("The subject is {0} characters: keep it to {1}.", [...subject].length, LINE_LIMIT));
-  if (lines.length > 1 && lines[1].trim() !== "") hints.push(localize("Leave the second line empty: it separates the subject from the body."));
-  const long = lines.slice(1).findIndex((l) => [...l.trimEnd()].length > LINE_LIMIT && !exempt(l));
-  if (long >= 0) hints.push(localize("Line {0} is {1} characters: wrap the body at {2}.", long + 2, [...lines[long + 1].trimEnd()].length, LINE_LIMIT));
+  if (first + 1 < all.length && all[first + 1].trim() !== "") hints.push(localize("Leave the second line empty: it separates the subject from the body."));
+  const long = all.findIndex((l, i) => i > first && [...l.trimEnd()].length > LINE_LIMIT && !exempt(l));
+  if (long >= 0) hints.push(localize("Line {0} is {1} characters: wrap the body at {2}.", long + 1, [...all[long].trimEnd()].length, LINE_LIMIT));
   return hints;
 }
 

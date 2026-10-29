@@ -177,5 +177,8 @@
   "command.linyra.worktree.copyPath.title": "Copy Path",
   "command.linyra.worktree.remove.title": "Remove Worktree…",
   "command.linyra.runAcross.title": "Run Git Command Across Repositories…",
-  "command.linyra.release.title": "Release…"
+  "command.linyra.release.title": "Release…",
+  "command.linyra.showBranchSheet.title": "Show Branch Details",
+  "command.linyra.continueAm.title": "Continue Applying Patches",
+  "command.linyra.abortAm.title": "Abort Applying Patches…"
 }

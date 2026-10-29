@@ -16,6 +16,25 @@ export function smartPrompt(repos: readonly string[], target: string): { message
   };
 }
 
+/**
+ * A checkout, offered as a Smart Checkout when git refuses it for local changes: asked once, then
+ * stash, check out, put back. false: declined (nothing changed). `report` gets the sentence to show
+ * (undefined: the changes are simply back). One guard for every checkout of Linyra's.
+ */
+export async function guardCheckout(repo: string, target: string, git: (args: string[]) => Promise<string>, checkout: () => Promise<unknown>,
+  ask: (p: { message: string; detail: string; button: string }) => Promise<boolean>, report: (text: string | undefined) => void): Promise<boolean> {
+  try {
+    await checkout();
+    return true;
+  } catch (e) {
+    const block = checkoutBlock(stderrOf(e));
+    if (!block) throw e;
+    if (!(await ask(smartPrompt([repo], target)))) return false;
+    report(smartReport(repo, target, await smartCheckout(git, block, smartLabel(target), checkout)));
+    return true;
+  }
+}
+
 /** What became of the changes, in one sentence; undefined when they are simply back. */
 export function smartReport(repo: string, target: string, r: SmartResult): string | undefined {
   if (r.reapplied) return undefined;
@@ -53,8 +72,15 @@ const firstLine = (text: string) => text.split(/\r?\n/).map((l) => l.replace(/^(
  * the changes back where they were. `git` must run in the repository with LC_ALL=C.
  */
 export async function smartCheckout(git: (args: string[]) => Promise<string>, block: CheckoutBlock, label: string, checkout: () => Promise<unknown>): Promise<SmartResult> {
+  const top = () => git(["rev-parse", "-q", "--verify", "refs/stash"]).then((s) => s.trim(), () => "");
+  const before = await top();
   await git(["stash", "push", ...(block === "untracked" ? ["--include-untracked"] : []), "-m", label]);
-  const sha = (await git(["rev-parse", "-q", "--verify", "refs/stash"])).trim();
+  const sha = await top();
+  // Nothing was saved (the changes went away meanwhile): no stash of ours, so none is applied or dropped.
+  if (sha === before) {
+    await checkout();
+    return { reapplied: true };
+  }
   /** Our stash's place in the list now (another program may have stashed meanwhile). */
   const ref = async () => {
     const i = (await git(["stash", "list", "--format=%H"])).split(/\r?\n/).indexOf(sha);

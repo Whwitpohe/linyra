@@ -102,6 +102,14 @@ describe("Branch sidebar", () => {
     await act("fetch", "branch-test/release-1.4", "remotes"); await act("pull", "ui-tracked");
     assert.strictEqual(git(["rev-parse", "HEAD"]), incoming);
     await vscode.commands.executeCommand("linyra._itest.branchWorktreePath", path.join(home, "worktree"));
+    // Amended after it was pushed: Push Branch… asks, then force pushes with a lease.
+    git(["commit", "--amend", "-q", "-m", "feat: remote update, amended"]);
+    const amended = git(["rev-parse", "HEAD"]);
+    await answer("Cancel"); await act("push", "ui-tracked");
+    assert.strictEqual(git(["rev-parse", "refs/heads/release-1.4"], remote), incoming, "declined: the remote keeps its commit");
+    await answer("Force Push"); await act("push", "ui-tracked");
+    assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Force push ui-tracked to branch-test/release-1.4 in acme-api?");
+    assert.strictEqual(git(["rev-parse", "refs/heads/release-1.4"], remote), amended);
     await answer("ui-worktree"); await act("worktree", "main");
     assert.strictEqual(git(["branch", "--show-current"], path.join(home, "worktree")), "ui-worktree");
     // The Repo List's Worktrees group lists it, read from the git dir's files.
@@ -122,6 +130,31 @@ describe("Branch sidebar", () => {
     assert.strictEqual((await sidebar()).repos[repoId].worktrees, undefined, "no linked worktree left: no group");
     await answer("Delete"); await act("delete", "branch-test/ui-renamed", "remotes");
     assert.strictEqual(git(["for-each-ref", "--format=%(refname)", "refs/heads/ui-renamed"], remote), "");
+  });
+
+  it("a branch pill's sheet: its upstream and merge target read in at most four git processes; Review opens Compare", async () => {
+    // The remote's default branch is main: ui-tracked's merge target.
+    git(["push", "-q", "branch-test", "main"]);
+    git(["symbolic-ref", "refs/remotes/branch-test/HEAD", "refs/remotes/branch-test/main"]);
+    const sheetData = () => vscode.commands.executeCommand<{ ref: string; kind: string; current: boolean; tip: { sha: string }; upstream?: { name: string | null; ahead: number; behind: number; gone: boolean }; target?: { name: string; ahead: number; behind: number; conflicts?: number | null } } | undefined>("linyra._itest.branchSheet");
+    const spawned = async () => (await snapshot()).spawnLog.length;
+    const before = await spawned();
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action: "open", repoId, ref: "refs/heads/ui-tracked" });
+    const d = await sheetData();
+    assert.ok((await spawned()) - before <= 4, "for-each-ref, the merge target's for-each-ref and rev-list, and a merge check at most");
+    assert.deepStrictEqual([d?.kind, d?.current, d?.tip.sha], ["local", true, git(["rev-parse", "HEAD"])]);
+    assert.deepStrictEqual(d?.upstream, { name: "branch-test/release-1.4", ahead: 0, behind: 0, gone: false });
+    const [ahead, behind] = git(["rev-list", "--left-right", "--count", "HEAD...branch-test/main"]).split(/\s+/).map(Number);
+    assert.deepStrictEqual(d?.target && { name: d.target.name, ahead: d.target.ahead, behind: d.target.behind }, { name: "branch-test/main", ahead, behind });
+    if (ahead > 0 && behind > 0) assert.ok(d?.target?.conflicts === null || typeof d?.target?.conflicts === "number", "behind with commits of its own: checked");
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action: "review", repoId, ref: "refs/heads/ui-tracked" });
+    const compared = await vscode.commands.executeCommand<{ pair: { left: string; right: string } | null }>("linyra._itest.compare");
+    assert.deepStrictEqual(compared?.pair, { left: "ui-tracked", right: "branch-test/main" });
+    await vscode.commands.executeCommand("linyra.compareClose");
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action: "close", repoId, ref: "refs/heads/ui-tracked" });
+    // A branch that is gone from the repository: no data (the sheet says it no longer exists), and no error.
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSheet", action: "open", repoId, ref: "refs/heads/ui-no-such" });
+    assert.strictEqual(await sheetData(), undefined);
   });
 
   it("merge and rebase use the explicitly selected ref and refresh the current branch", async () => {

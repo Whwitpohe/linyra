@@ -14,6 +14,11 @@ export interface CompareTreeRow {
   same?: boolean;
   /** A merge of the two branches would leave this file conflicted. */
   conflict?: boolean;
+  /** A file row's parts, drawn as the Changes view draws them: lines added and deleted (none: binary or new), a rename's old name, and a note (conflict, already on both, both, new, binary). */
+  lines?: { added: number; deleted: number };
+  oldPath?: string;
+  note?: string;
+  untracked?: boolean;
   children?: CompareTreeRow[];
   loaded?: boolean;
 }

@@ -9,6 +9,7 @@ import { filterFiles } from "./fileFilterModel";
 import { referencePills } from "./referencePills";
 import { updateTreeToggle } from "../treeToggle";
 import { renderLines } from "../ui/counts";
+import { nameClass, renderStatus } from "../ui/fileStatus";
 import { renderPill } from "../ui/pill";
 
 export interface SavedState { detailHeight?: number; key?: string; collapsed?: string[]; detailsCollapsed?: boolean; fileFilter?: string }
@@ -144,7 +145,7 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
         "data-vscode-context": context(node), title: node.tooltip });
       el.style.paddingLeft = `${8 + (depth - 1) * 14}px`;
       const twisty = folder ? h("button", { class: "twisty", tabindex: "-1", "data-toggle": "true", "aria-label": localize(expanded ? "Collapse {0}" : "Expand {0}", node.label) }, [icon("twisty", "")]) : h("span", { class: "twisty" });
-      el.append(twisty, folder ? icon("folder", "folder-icon") : fileIcon(node), h("span", { class: "file-name" }, [node.label]));
+      el.append(twisty, folder ? icon("folder", "folder-icon") : fileIcon(node), h("span", { class: folder ? "file-name" : nameClass("file-name", node.status) }, [node.label]));
       if (node.oldPath) el.append(h("span", { class: "old-path", title: node.oldPath }, [`← ${node.oldPath}`]));
       if (folder || node.combined || node.unchanged || node.untracked) {
         el.append(h("span", { class: "row-stats row-description" }, [node.description]));
@@ -155,7 +156,7 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
         ]);
         el.append(stats);
       } else el.append(h("span", { class: "row-stats row-description" }, [node.description]));
-      if (!folder) el.append(h("span", { class: `status status-${node.status ?? ""}`, "aria-hidden": "true" }, [node.status ?? ""]));
+      if (!folder) el.append(renderStatus(node.status, node.untracked === true, "status"));
       elements.set(node.id, el);
       fragment.append(el);
     }

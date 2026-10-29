@@ -28,14 +28,19 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
   const aiText = byId("commit-ai-text");
   const aiUndo = byId<HTMLButtonElement>("commit-ai-undo");
   const hints = byId("commit-hints");
-  const placeholder = message.placeholder;
+  const guidance = byId("commit-guidance");
+  /** commit.template's text and its # guidance (shown under the box while the template is untouched). */
+  let template = { text: "", hint: "" };
   let state: CommitState | undefined;
   /** The checks of the message as typed: a long subject or body line, no blank line after the subject. */
   let hintsFor: string | undefined;
   function renderHints(): void {
     if (hintsFor === message.value) return;
     hintsFor = message.value;
-    const list = generating ? [] : messageHints(message.value);
+    const untouched = template.text !== "" && message.value.trim() === template.text.trim();
+    const list = generating ? [] : [...(untouched ? [localize("Still the template's text: fill it in before committing.")] : []), ...messageHints(message.value)];
+    guidance.textContent = template.hint;
+    guidance.hidden = !template.hint || !(untouched || message.value.trim() === "");
     hints.replaceChildren(...list.map((text) => h("li", {}, [codiconElement("warning"), h("span", {}, [text])])));
     hints.hidden = list.length === 0;
   }
@@ -175,8 +180,9 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
     if (m.type === "draft") { message.value = m.text; setAmend(m.amend); setCheck(signOff, m.signOff === true); setAuthor(typeof m.author === "string" ? m.author : ""); renderHints(); return; }
     if (m.type === "message") { message.value = m.text; validation.hidden = true; hideAiStatus(); saveDraft(); renderHints(); message.focus(); return; }
     if (m.type === "template") {
-      message.placeholder = m.hint || placeholder;
+      template = { text: m.text, hint: m.hint };
       if (message.value.trim() === "" && m.text) { message.value = m.text; saveDraft(); }
+      hintsFor = undefined;
       renderHints();
       return;
     }

@@ -9,6 +9,7 @@ import type { ToolbarState } from "../../src/toolbarModel";
 import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
 import { mockCommits, mockMarks, mockRepos, mockTopoWalk, NOW } from "./mock";
+import { branchSheetReply } from "./mock/branchSheet";
 import { mockWork } from "./mock/worktree";
 import { takeTopoReady, type RepoProgress } from "../../src/mergeStream";
 import { answerAvatars } from "./mock/avatars";
@@ -118,6 +119,7 @@ function handle(m: WebviewMessage): void {
   harnessWindow.harnessMessages.push(m);
   if (hoverReply(m, all)) return;
   if (handleSearch(m, send, params.get("ai") !== "off")) return;
+  if (branchSheetReply(m, send, params)) return;
   if (m.type === "ready") send({ type: "toolbar", state: toolbarState }, 0);
   if (m.type === "ready") send({ type: "sidebarState", state: branchState }, 0);
   switch (m.type) {

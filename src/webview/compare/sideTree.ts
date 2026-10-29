@@ -4,6 +4,8 @@ import { codicon, codiconElement } from "../codicons";
 import { byId, h } from "../dom";
 import { moveSelection } from "../view";
 import { updateTreeToggle } from "../treeToggle";
+import { renderLines } from "../ui/counts";
+import { nameClass, renderStatus } from "../ui/fileStatus";
 
 /** Rows that open onto others: a folder, a commit (its files), a repository (All repositories). */
 const isBranch = (node: CompareTreeRow) => node.kind === "folder" || node.kind === "commit" || node.kind === "repo";
@@ -201,7 +203,14 @@ export class CompareTree {
         icon.textContent = ext === "vue" ? "V" : ext === "json" ? "{}" : ext!.toUpperCase();
         icon.classList.add(`filetype-${ext}`);
       } else icon.innerHTML = codicon(node.kind === "folder" ? "folder" : node.kind === "commit" ? "git-commit" : node.kind === "repo" ? "repo" : "file");
-      row.append(arrow, icon, h("span", { class: `compare-node-label${node.kind === "more" ? " load-more" : ""}` }, [node.label]), h("span", { class: "compare-node-description" }, [node.description]));
+      if (node.kind === "file") {
+        // As the Changes view draws a file: the old name and the note muted, + and − in their own colors, the letter last.
+        row.append(arrow, icon, h("span", { class: nameClass("compare-node-label", node.status) }, [node.label]), h("span", { class: "compare-node-description compare-file-stats" }, [
+          node.oldPath ? h("span", { class: "compare-old-path" }, [`← ${node.oldPath}`]) : null,
+          node.note ? h("span", { class: "compare-note" }, [node.note]) : null,
+          node.lines ? renderLines(node.lines.added, node.lines.deleted) : null,
+        ]), renderStatus(node.status, node.untracked === true));
+      } else row.append(arrow, icon, h("span", { class: `compare-node-label${node.kind === "more" ? " load-more" : ""}` }, [node.label]), h("span", { class: "compare-node-description" }, [node.description]));
       this.elements.set(node.id, row);
       fragment.append(row);
     }

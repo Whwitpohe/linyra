@@ -43,7 +43,10 @@ describe("Across repositories", () => {
       try { git(r.root, ["tag", "-d", "ci-v1"]); } catch { /* not created */ }
       try { git(r.root, ["branch", "-D", "ci-smart"]); } catch { /* not created */ }
       try { git(r.root, ["branch", "-D", "ci-run"]); } catch { /* not created */ }
-      for (const s of git(r.root, ["stash", "list", "--format=%gs"]).split("\n")) if (s.includes("Smart Checkout")) git(r.root, ["stash", "drop", "-q"]);
+      // Only the stashes Smart Checkout left, by their own names (newest last, so the indexes stay right).
+      for (const [ref, subject] of git(r.root, ["stash", "list", "--format=%gd%x09%gs"]).split("\n").filter(Boolean).map((l) => l.split("\t")).reverse()) {
+        if (subject?.includes("Smart Checkout")) git(r.root, ["stash", "drop", "-q", ref]);
+      }
       try { git(r.root, ["remote", "remove", "ci-origin"]); } catch { /* not added */ }
     }
     await send({ type: "refresh" });
@@ -126,6 +129,21 @@ describe("Across repositories", () => {
     assert.deepStrictEqual(r?.done, ["acme-web"]);
     assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastWarning"), "Force push ci-force to ci-origin/ci-force in acme-web?");
     assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "ci-force"]), "feat: force, amended");
+
+    // Someone else pushed meanwhile: diverged too, but the commit dropped would be rin's.
+    const rins = execFileSync("git", ["commit-tree", "-p", "ci-origin/ci-force", "-m", "fix: rin's work", "HEAD^{tree}"], { cwd: web, encoding: "utf8",
+      env: { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" } }).trim();
+    git(web, ["push", "-q", "ci-origin", `${rins}:refs/heads/ci-force`]);
+    git(web, ["fetch", "-q", "ci-origin"]);
+    git(web, ["commit", "-q", "--amend", "-m", "feat: force, amended again"]);
+    await answer(JSON.stringify(["acme-web"])); await answer("Force Push");
+    r = await run("pushAll");
+    assert.strictEqual(r, undefined, "the button is Force Push Anyway: a plain yes is not enough");
+    assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "ci-force"]), "fix: rin's work", "rin's commit is still there");
+    await answer(JSON.stringify(["acme-web"])); await answer("Force Push Anyway");
+    r = await run("pushAll");
+    assert.deepStrictEqual(r?.done, ["acme-web"]);
+    assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "ci-force"]), "feat: force, amended again");
     git(web, ["switch", "-q", "main"]);
   });
 

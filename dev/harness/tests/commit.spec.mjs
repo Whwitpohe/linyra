@@ -115,12 +115,17 @@ test("the message's checks show as it is typed, and never stop a commit", async 
   expect(errors).toEqual([]);
 });
 
-test("commit.template fills an empty box; its # guidance is the placeholder", async ({ page }) => {
-  await open(page, { query: "&template=on" });
-  const message = page.locator("#commit-message");
+test("commit.template fills an empty box; its # guidance shows under it until the text is changed", async ({ page }) => {
+  await open(page, { query: "&template=on", height: 320 });
+  const message = page.locator("#commit-message"), guidance = page.locator("#commit-guidance");
   await expect(message).toHaveValue("feat: \n\nRefs: ACME-");
+  await expect(guidance).toHaveText("Why is this change needed?\nWhat does it do?");
+  await expect(page.locator("#commit-hints li")).toContainText(["Still the template's text: fill it in before committing."]);
+  await message.fill("feat: keyboard shortcuts\n\nRefs: ACME-7");
+  await expect(guidance).toBeHidden();
+  await expect(page.locator("#commit-hints")).toBeHidden();
   await message.fill("");
-  await expect(message).toHaveAttribute("placeholder", "Why is this change needed?\nWhat does it do?");
+  await expect(guidance).toBeVisible();
 });
 
 test("a typed draft is kept over the template", async ({ page }) => {

@@ -913,6 +913,21 @@
         "command": "linyra.release",
         "title": "%command.linyra.release.title%",
         "category": "Linyra"
+      },
+      {
+        "command": "linyra.showBranchSheet",
+        "title": "%command.linyra.showBranchSheet.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.continueAm",
+        "title": "%command.linyra.continueAm.title%",
+        "category": "Linyra"
+      },
+      {
+        "command": "linyra.abortAm",
+        "title": "%command.linyra.abortAm.title%",
+        "category": "Linyra"
       }
     ],
     "menus": {
@@ -1630,6 +1645,18 @@
         },
         {
           "command": "linyra.worktree.remove",
+          "when": "false"
+        },
+        {
+          "command": "linyra.showBranchSheet",
+          "when": "false"
+        },
+        {
+          "command": "linyra.continueAm",
+          "when": "false"
+        },
+        {
+          "command": "linyra.abortAm",
           "when": "false"
         }
       ],
@@ -2428,6 +2455,21 @@
           "command": "linyra.worktree.remove",
           "when": "webviewId == 'linyra.log' && webviewSection == 'worktree' && !worktreeMain",
           "group": "1_modification@1"
+        },
+        {
+          "command": "linyra.showBranchSheet",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'refPill'",
+          "group": "0_view@0"
+        },
+        {
+          "command": "linyra.continueAm",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'am'",
+          "group": "0_operation@10"
+        },
+        {
+          "command": "linyra.abortAm",
+          "when": "webviewId == 'linyra.log' && webviewSection == 'repo' && operation == 'am'",
+          "group": "0_operation@11"
         }
       ]
     },

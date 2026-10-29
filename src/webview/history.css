@@ -61,11 +61,8 @@ body.vscode-high-contrast .app.history .repo-row.history-repo-row { outline: 1px
 }
 
 .history-change { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
-.history-status { flex: none; width: 1.4ch; text-align: center; font-weight: 600; font-family: var(--vscode-editor-font-family); font-size: 0.92em; }
-.history-status.status-A, .history-status.status-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
-.history-status.status-M, .history-status.status-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
-.history-status.status-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
-.history-status.status-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground)); }
+/* The letter's colors are the shared ones (ui/fileStatus.css); here only its place in the cell. */
+.history-change .history-status { flex: none; width: 1.4ch; font-size: 0.92em; }
 .history-binary { color: var(--vscode-descriptionForeground); font-size: 0.92em; }
 .history-from { color: var(--vscode-descriptionForeground); }
 /* On a selected row the letter keeps the row's text color, as the line counts do (counts.css). */

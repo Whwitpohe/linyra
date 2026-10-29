@@ -281,7 +281,13 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       const common = { id: node.id, kind: node.kind, label: labelOf(item), description: String(item.description ?? ""), tooltip: typeof item.tooltip === "string" ? item.tooltip : "", contextValue: item.contextValue ?? "" };
       if (node.kind === "folder" || node.kind === "repo") return { ...common, loaded: true, children: node.children.map(row) };
       if (node.kind === "commit") return { ...common, loaded: this.commitFiles.has(node.id), children: (this.commitFiles.get(node.id) ?? []).map(row) };
-      return node.kind === "file" ? { ...common, status: node.file.status, same: node.same, conflict: node.conflict } : common;
+      if (node.kind !== "file") return common;
+      const f = node.file;
+      const note = [f.untracked ? localize("new") : f.added === null ? localize("binary") : "",
+        node.conflict ? localize("conflict") : node.same ? localize("already on both") : node.both ? localize("changed on both sides") : ""].filter(Boolean).join(" · ");
+      return { ...common, status: f.status, same: node.same, conflict: node.conflict,
+        ...(f.added !== null && !f.untracked ? { lines: { added: f.added, deleted: f.deleted ?? 0 } } : {}),
+        ...(f.oldPath ? { oldPath: f.oldPath } : {}), ...(note ? { note } : {}), ...(f.untracked ? { untracked: true } : {}) };
     };
     this.presentation = { type: "side", side: this.side, key: this.scope, description: this.view.description, message: this.view.message, rows: roots.map(row) };
     this.send?.(this.presentation);

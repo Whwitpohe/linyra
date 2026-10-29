@@ -34,7 +34,7 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
 
 {
   const data = listing([line("refs/heads/develop", sha, "*", "origin/develop", "[ahead 1, behind 2]", "", ""), line("refs/remotes/origin/develop", "b".repeat(40), " ", "", "", "", "")], ["origin"]);
-  assert.deepStrictEqual(pushPlan(data), { branch: "develop", remote: "origin", destination: "develop", setUpstream: false, lease: "b".repeat(40) }, "diverged: leased on the remote branch's commit");
+  assert.deepStrictEqual(pushPlan(data), { branch: "develop", remote: "origin", destination: "develop", setUpstream: false, lease: "b".repeat(40), behind: 2 }, "diverged: leased on the remote branch's commit");
   const ahead = listing([line("refs/heads/develop", sha, "*", "origin/develop", "[ahead 1]", "", ""), line("refs/remotes/origin/develop", "b".repeat(40), " ", "", "", "", "")], ["origin"]);
   assert.strictEqual(pushPlan(ahead)?.lease, undefined, "only ahead: a plain push");
   assert.deepStrictEqual(multiCommands.push("origin", "develop", "develop", false, "b".repeat(40)),
@@ -47,10 +47,18 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.ok(!branchMatches("main", "main2"));
   assert.ok(isProtected("main", []) && isProtected("master", []) && !isProtected("develop", []));
   assert.ok(isProtected("release/1.4", ["release/*"]));
-  const one = forcePushPrompt([{ repo: "acme-web", branch: "develop", target: "origin/develop" }]);
+  const mine = { sha: "1a2b3c4", author: "dana", email: "dana@example.com", subject: "feat: before the amend" };
+  const theirs = { sha: "5d6e7f8", author: "rin", email: "rin@example.com", subject: "fix: rin's work" };
+  const one = forcePushPrompt([{ repo: "acme-web", branch: "develop", target: "origin/develop", behind: 1, dropped: [mine], me: "DANA@example.com" }]);
   assert.strictEqual(one.message, "Force push develop to origin/develop in acme-web?");
-  assert.strictEqual(one.button, "Force Push");
-  assert.match(forcePushPrompt([{ repo: "acme-web", branch: "a", target: "origin/a" }, { repo: "acme-api", branch: "b", target: "origin/b" }]).detail, /^acme-web: a → origin\/a\nacme-api: b → origin\/b\n\n/);
+  assert.strictEqual(one.button, "Force Push", "only my own commits: the plain button");
+  assert.match(one.detail, /acme-web: develop drops 1 commit from origin\/develop:\n  1a2b3c4  dana  feat: before the amend/);
+  assert.match(one.detail, /They are all yours/);
+  const two = forcePushPrompt([{ repo: "acme-web", branch: "develop", target: "origin/develop", behind: 2, dropped: [theirs, mine], me: "dana@example.com" }]);
+  assert.strictEqual(two.button, "Force Push Anyway", "someone else's commit: the button says so");
+  assert.match(two.detail, /1 of them are by someone else\. Pull \(merge or rebase\) keeps them/);
+  assert.match(two.detail, /5d6e7f8  rin  fix: rin's work/);
+  assert.match(forcePushPrompt([one, two].map((_, i) => ({ repo: `acme-${i}`, branch: "a", target: "origin/a", behind: 7, dropped: Array(7).fill(mine), me: "dana@example.com" }))).detail, /and 2 more/);
   console.log("ok - a diverged branch plans a force push with a lease; protected branches by name and glob");
   assert.deepStrictEqual(multiCommands.tag("v1.4.0", ""), ["tag", "--", "v1.4.0", "HEAD"], "no message: lightweight");
   assert.deepStrictEqual(multiCommands.tag("v1.4.0", " Release 1.4 \n"), ["tag", "-a", "-m", "Release 1.4", "--", "v1.4.0", "HEAD"]);

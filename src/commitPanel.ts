@@ -4,6 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor } from "./changesModel";
 import { splitTemplate } from "./commitMessageModel";
+import { gitDirOf, readHead } from "./repoHead";
 import { checkedLabel, commitFiles, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
 import type { CommitHostMessage, CommitWebviewMessage } from "./commitProtocol";
 import type { RunOptions } from "./git";
@@ -170,6 +171,7 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     if (changed.length > 0) this.decorationsChanged.fire(changed);
     this.postState();
     if (!this.templateSent && this.message) void this.postTemplate();
+    if (this.message) void this.offerMergeMessage();
   }
 
   /** commit.template was sent for the box as it is now (after a ready, a commit). */
@@ -551,11 +553,43 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
    * One repository's commit of its checked files: new ones are added first, then `git commit
    * --only` takes exactly those paths (whatever else is staged stays staged, out of this commit).
    * The paths go through a file, so no command line grows with the number of files.
+   * In a merge, cherry-pick or revert that stopped, git refuses a partial commit: the checked files
+   * are staged and the commit takes the index, which finishes it (as the JetBrains Commit window does).
    */
   private async commitOne(p: CommitPlan, message: string, { amend, signOff, author }: { amend: boolean; signOff: boolean; author: string | undefined }): Promise<void> {
     if (p.add.length > 0) await this.withPaths(p.root, p.add, ["add"]);
-    await this.withPaths(p.root, p.paths, ["commit", "--only", ...(amend ? ["--amend"] : []), ...(signOff ? ["--signoff"] : []),
-      ...(author ? [`--author=${author}`] : []), "--file=-"], { input: message });
+    const options = [...(amend ? ["--amend"] : []), ...(signOff ? ["--signoff"] : []), ...(author ? [`--author=${author}`] : []), "--file=-"];
+    const op = (await readHead(p.root).catch(() => undefined))?.operation;
+    if (op === "merge" || op === "cherry-pick" || op === "revert") {
+      // Never with a file still conflicted: git add would mark it resolved, its markers and all.
+      const left = (await this.deps.run(p.root, ["diff", "--name-only", "-z", "--diff-filter=U", "--"])).split("\0").filter(Boolean).length;
+      if (left > 0) throw new Error(left === 1 ? localize("1 file still has conflicts: resolve it first (Resolve Conflicts…)") : localize("{0} files still have conflicts: resolve them first (Resolve Conflicts…)", left));
+      await this.withPaths(p.root, p.paths, ["add", "-A"]);
+      await this.deps.run(p.root, ["commit", ...options], undefined, { input: message });
+      return;
+    }
+    await this.withPaths(p.root, p.paths, ["commit", "--only", ...options], { input: message });
+  }
+
+  /** The merge messages already offered (a repository's MERGE_MSG as it was), so each is offered once. */
+  private readonly offeredMerge = new Set<string>();
+
+  /**
+   * A merge, cherry-pick or revert that stopped in a repository with work: git's prepared message
+   * (MERGE_MSG) for an empty box, its # lines as the placeholder. Read from the git dir: no process.
+   */
+  private async offerMergeMessage(): Promise<void> {
+    for (const w of this.deps.store.works()) {
+      if (w.staged.length + w.changes.length === 0) continue;
+      const dir = await gitDirOf(w.root).catch(() => undefined);
+      const text = dir ? await fs.readFile(path.join(dir, "MERGE_MSG"), "utf8").catch(() => undefined) : undefined;
+      if (text === undefined) continue;
+      const key = `${w.root}\0${text}`;
+      if (this.offeredMerge.has(key)) continue;
+      this.offeredMerge.add(key);
+      this.post({ type: "template", ...splitTemplate(text) });
+      return;
+    }
   }
 
   /** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */

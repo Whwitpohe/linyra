@@ -28,8 +28,14 @@ const state = () => send({ type: "state", pair, mode, hideSame, onlyConflicts, s
 function sides(): void {
   for (const side of ["left", "right"] as const) {
     const file = (name: string, same = false, conflict = false): CompareTreeRow => ({ id: `${selected}/${side}/${name}`, kind: "file", label: name.split("/").pop()!,
-      description: conflict ? "+12 −3 · conflict" : same ? "+1 −0 · already on both" : "+12 −3 · both", tooltip: name, contextValue: conflict ? "compareFile.conflict" : "compareFile", status: "M", same, conflict });
-    const src = onlyConflicts ? [file("src/limits.ts", false, true)] : [file("src/limits.ts", false, true), file("src/upload.ts")];
+      description: conflict ? "+12 −3 · conflict" : same ? "+1 −0 · already on both" : "+12 −3 · both", tooltip: name, contextValue: conflict ? "compareFile.conflict" : "compareFile", status: "M", same, conflict,
+      lines: same ? { added: 1, deleted: 0 } : { added: 12, deleted: 3 }, note: conflict ? "conflict" : same ? "already on both" : "both" });
+    // ?files=kinds: one file of each kind besides, as git reports them (added, deleted, renamed, binary).
+    const kind = (name: string, status: "A" | "D" | "R", lines: { added: number; deleted: number } | undefined, extra: Partial<CompareTreeRow> = {}): CompareTreeRow => ({ id: `${selected}/${side}/${name}`, kind: "file", label: name.split("/").pop()!,
+      description: "", tooltip: name, contextValue: "compareFile", status, ...(lines ? { lines } : {}), ...extra });
+    const kinds = params.get("files") === "kinds" ? [kind("src/new-client.ts", "A", { added: 40, deleted: 0 }), kind("src/old-auth.ts", "D", { added: 0, deleted: 25 }),
+      kind("src/http-client.ts", "R", { added: 2, deleted: 1 }, { oldPath: "src/http.ts" }), kind("assets/logo.png", "A", undefined, { note: "binary" })] : [];
+    const src = onlyConflicts ? [file("src/limits.ts", false, true)] : [file("src/limits.ts", false, true), file("src/upload.ts"), ...kinds];
     const tree: CompareTreeRow[] = [{ id: `${selected}/${side}-src`, kind: "folder", label: "src", description: String(src.length), tooltip: "src", contextValue: "", loaded: true,
       children: src }, ...(hideSame || onlyConflicts ? [] : [file("retry.go", true)])];
     // All repositories: each repository's rows under its name.

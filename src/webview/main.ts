@@ -25,6 +25,7 @@ import { AvatarFeed } from "./avatars";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import type { ChangesLayout } from "../toolbarModel";
 import { HoverCard } from "./hoverCard";
+import { BranchSheetView } from "./branchSheet";
 import { revealTarget, type Upstream } from "./refPills";
 
 const vscode = acquireVsCodeApi();
@@ -94,8 +95,24 @@ const revealBranch = (repoId: string, ref: string) => {
   const { key, expand } = revealTarget(repoId, ref);
   repoPane.reveal(key, expand);
 };
-list.onRevealBranch = revealBranch;
-hoverCard.onReveal = revealBranch;
+// A branch pill's click: the branch sheet in the Changes view's details area (it reveals the Repo List row too, on request).
+const branchSheet = new BranchSheetView(post, {
+  reveal: revealBranch,
+  accent: (id) => accentOf(accents, id),
+  repoName: (id) => state.repos.find((r) => r.id === id)?.name ?? id,
+  selectCommit: (repoId, sha) => post({ type: "changesView", message: { type: "selectCommit", repoId, sha } }),
+});
+list.onRevealBranch = (repoId, ref) => branchSheet.open(repoId, ref);
+// The hover card's pills too: their commit's row selected and the sheet opened, as a pill in the row does
+// (the Repo List when the row is not loaded).
+const fullRef = (r: { kind: string; name: string }) => (r.kind === "local" ? `refs/heads/${r.name}` : r.kind === "remote" ? `refs/remotes/${r.name}` : r.kind === "tag" ? `refs/tags/${r.name}` : "");
+const openSheetFor = (repoId: string, ref: string, focus: boolean) => {
+  const i = state.rows.findIndex((c) => c.repoId === repoId && (c.refs ?? []).some((r) => fullRef(r) === ref));
+  if (i < 0) { revealBranch(repoId, ref); return; }
+  gesture(i, { kind: "click", ctrl: false, shift: false });
+  branchSheet.open(repoId, ref, focus);
+};
+hoverCard.onReveal = (repoId, ref) => openSheetFor(repoId, ref, false);
 /** Each repository's distance from its upstream: the checked-out branch's pill shows it. */
 let upstream: Upstream = {};
 /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
@@ -280,6 +297,8 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
     case "hoverDetail": hoverCard.receive(m); return;
+    case "branchSheet": branchSheet.receive(m); return;
+    case "branchSheetShow": openSheetFor(m.repoId, m.ref, true); return;
     case "repoMarks":
       repoPane.setMarks(m.byRepo);
       return;
@@ -365,6 +384,8 @@ function select(index: number, andRender = true): void {
   state.selected = index;
   const c = state.rows[index];
   const key = c ? commitKey(c) : null;
+  // Another commit: its details, not the branch sheet.
+  if (key !== selectedKey) branchSheet.close();
   state.selection = key ? { keys: [key], focus: key, anchor: key } : { keys: [], focus: null, anchor: null };
   if (c && key !== selectedKey) postSelect(c);
   selectedKey = key;
@@ -375,6 +396,8 @@ function select(index: number, andRender = true): void {
 function gesture(index: number, how: Gesture): void {
   const c = state.rows[index];
   if (!c) return;
+  // A click on a row shows its commit's details (a pill's click opens the sheet right after this).
+  branchSheet.close();
   const key = commitKey(c);
   const order = list.visibleCommitIndexes().map((i) => commitKey(state.rows[i]));
   const g = how.kind === "click" ? { kind: "click" as const, key, ctrl: how.ctrl, shift: how.shift }

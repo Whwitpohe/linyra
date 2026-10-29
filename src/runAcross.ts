@@ -64,6 +64,8 @@ export class RunAcross implements vscode.TextDocumentContentProvider, vscode.Dis
     this.lastResults = results;
     const uri = vscode.Uri.from({ scheme: RunAcross.scheme, path: `/git ${args[0]} ${++this.count}.txt` });
     this.docs.set(uri.toString(), runReport(shown, results));
+    // The last few reports only: a git log -p across many repositories is not kept for the session.
+    for (const key of [...this.docs.keys()].slice(0, Math.max(0, this.docs.size - 10))) this.docs.delete(key);
     this.changedDoc.fire(uri);
     if (process.env.LINYRA_ITEST !== "1") {
       const doc = await vscode.workspace.openTextDocument(uri);
@@ -79,7 +81,8 @@ export class RunAcross implements vscode.TextDocumentContentProvider, vscode.Dis
     let stderr = "";
     try {
       const stdout = await this.host.run(repo.root, args, ctl.signal, {
-        tree: true, onStderr: (text) => { stderr = text; },
+        // stdin closed: a command that would read it (shortlog with no revision, cat-file --batch) ends at once.
+        tree: true, input: "", onStderr: (text) => { stderr = text; },
         // Never an editor or a prompt; a writing command may take the index lock.
         env: { ...FETCH_ENV, GIT_EDITOR: ":", GIT_PAGER: "cat", ...(reads ? {} : { GIT_OPTIONAL_LOCKS: "1" }) },
       });

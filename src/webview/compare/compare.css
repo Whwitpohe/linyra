@@ -44,6 +44,14 @@ button, input { font: inherit; }
 .compare-file-icon.filetype-vue { color: var(--vscode-terminal-ansiGreen, var(--vscode-charts-green)); }
 .load-more { color: var(--vscode-textLink-foreground); }
 .compare-tree-row.selected .compare-node-label, .compare-tree-row.selected .compare-node-description { color: inherit; }
+/* A file row's end, as the Changes view's: the old name and the note muted, the counts in the add and
+   delete colors (ui/counts.css), the status letter in its column (ui/fileStatus.css). */
+.compare-file-stats { display: inline-flex; align-items: center; gap: 7px; }
+.compare-old-path, .compare-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); }
+.compare-file-stats .line-counts { font-size: inherit; }
+/* Already on both: the whole row dimmed, its counts and letter too. */
+.compare-tree-row.same-file :is(.line-counts > span, .file-status, .compare-old-path, .compare-note) { color: inherit; }
+.compare-tree-row.selected :is(.line-counts > span, .compare-old-path, .compare-note) { color: inherit; }
 .mono, .branch-name { font-family: var(--vscode-editor-font-family); }
 
 .cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 8px; }

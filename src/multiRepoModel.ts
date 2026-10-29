@@ -93,20 +93,63 @@ export interface PushPlan {
    * pushed commits): only a force push replaces it. Its commit as last fetched, the lease.
    */
   lease?: string;
+  /** Diverged: how many commits the remote branch has that this one does not. */
+  behind?: number;
 }
 
-/** Push…'s confirmation before a force push: which branches replace which remote branches. */
-export function forcePushPrompt(rows: readonly { repo: string; branch: string; target: string }[]): { message: string; detail: string; button: string } {
+/** The commits a force push would drop from the remote branch: on it, not on the local one (newest first). */
+export function droppedArgs(branch: string, remoteRef: string): string[] {
+  return ["log", "--format=%h%x00%an%x00%ae%x00%s", "--max-count=20", `refs/heads/${checkName(branch)}..refs/remotes/${checkName(remoteRef)}`, "--"];
+}
+
+export interface DroppedCommit { sha: string; author: string; email: string; subject: string }
+
+export function parseDropped(out: string): DroppedCommit[] {
+  return out.split(/\r?\n/).filter(Boolean).map((line) => {
+    const [sha = "", author = "", email = "", subject = ""] = line.split("\0");
+    return { sha, author, email, subject };
+  });
+}
+
+/** A repository's force push as its confirmation shows it: what it replaces, and the commits it drops there. */
+export interface ForcePush {
+  repo: string;
+  branch: string;
+  /** "origin/develop" */
+  target: string;
+  /** How many commits the remote branch has that the local one does not (all of them are dropped). */
+  behind: number;
+  /** Up to 20 of them, newest first. */
+  dropped: readonly DroppedCommit[];
+  /** The user's own email in that repository: commits by anyone else are called out. */
+  me: string;
+}
+
+/**
+ * The confirmation before a force push: never just "Force Push?". It names the commits the remote
+ * branch loses, and calls out those by someone else (a colleague's pushed work, which a pull keeps).
+ */
+export function forcePushPrompt(rows: readonly ForcePush[]): { message: string; detail: string; button: string } {
+  const others = rows.reduce((n, r) => n + r.dropped.filter((c) => c.email.toLowerCase() !== r.me.toLowerCase()).length, 0);
   const message = rows.length === 1
     ? localize("Force push {0} to {1} in {2}?", rows[0].branch, rows[0].target, rows[0].repo)
     : localize("Force push {0} repositories?", rows.length);
-  const names = rows.length === 1 ? "" : `${rows.map((r) => `${r.repo}: ${r.branch} → ${r.target}`).join("\n")}\n\n`;
+  const lines = rows.flatMap((r) => [
+    localize("{0}: {1} drops {2} from {3}:", r.repo, r.branch, plural(r.behind), r.target),
+    ...r.dropped.slice(0, 5).map((c) => `  ${c.sha}  ${c.author}  ${c.subject}`),
+    ...(r.behind > 5 ? [`  ${localize("and {0} more", r.behind - 5)}`] : []),
+  ]);
+  const warn = others > 0
+    ? localize("{0} of them are by someone else. Pull (merge or rebase) keeps them; a force push removes them from the remote.", others)
+    : localize("They are all yours: commits you amended, undid or rebased.");
   return {
     message,
-    detail: names + localize("The remote branch has commits that are not on yours (pushed commits were amended, undone or rebased). --force-with-lease replaces it only if it is still where it was at the last fetch; its commits that are not on your branch leave it."),
-    button: localize("Force Push"),
+    detail: `${lines.join("\n")}\n\n${warn}\n${localize("--force-with-lease still refuses if the remote branch moved since the last fetch.")}`,
+    button: others > 0 ? localize("Force Push Anyway") : localize("Force Push"),
   };
 }
+
+const plural = (n: number) => localize(n === 1 ? "{0} commit" : "{0} commits", n);
 
 /** Branches never force pushed: main and master, and VS Code's git.branchProtection globs. */
 export const PROTECTED_BRANCHES = ["main", "master"];
@@ -133,7 +176,7 @@ export function pushPlan(data: Branches): PushPlan | undefined {
     const plan: PushPlan = { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: false };
     // Both ahead and behind: the remote branch has commits that are not on this one.
     const remoteSha = data.branches.find((b) => b.kind === "remote" && b.name === branch.upstream)?.sha;
-    return branch.ahead > 0 && branch.behind > 0 && remoteSha ? { ...plan, lease: remoteSha } : plan;
+    return branch.ahead > 0 && branch.behind > 0 && remoteSha ? { ...plan, lease: remoteSha, behind: branch.behind } : plan;
   }
   const remote = data.remotes.includes("origin") ? "origin" : data.remotes.length === 1 ? data.remotes[0] : undefined;
   return remote ? { branch: branch.name, remote, destination: branch.name, setUpstream: true } : undefined;

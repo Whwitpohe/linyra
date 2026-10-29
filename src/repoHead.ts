@@ -60,8 +60,10 @@ export async function readHead(root: string): Promise<Omit<RepoMark, "work"> | u
   const parsed = head === undefined ? undefined : parseHead(head);
   if (!parsed) return undefined;
   const has = new Set(names);
-  const operation = operationOf((n) => has.has(n));
+  let operation = operationOf((n) => has.has(n));
   if (!operation) return parsed;
+  // rebase-apply/applying: git am's own session, not a rebase (git rebase --continue refuses it).
+  if (operation === "rebase" && has.has("rebase-apply") && await fs.stat(path.join(dir, "rebase-apply", "applying")).then(() => true, () => false)) operation = "am";
   if (operation !== "rebase") return { ...parsed, operation };
   // A rebase detaches HEAD: the branch it is rebasing is in its head-name file.
   const headName = await fs.readFile(path.join(dir, has.has("rebase-merge") ? "rebase-merge" : "rebase-apply", "head-name"), "utf8").catch(() => undefined);

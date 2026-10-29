@@ -31,7 +31,7 @@ export function renderCounts(c: KindCounts, className = ""): HTMLElement {
 /** "+12 −3": lines added and deleted, in the add and delete colors. */
 export function renderLines(added: number, deleted: number, className = ""): HTMLElement {
   return h("span", { class: `line-counts${className ? ` ${className}` : ""}`, "aria-label": localize("{0} lines added, {1} deleted", added, deleted) }, [
-    h("span", { class: "count-added" }, [`+${added}`]),
-    h("span", { class: "count-deleted" }, [`−${deleted}`]),
+    h("span", { class: `count-added${added === 0 ? " zero" : ""}` }, [`+${added}`]),
+    h("span", { class: `count-deleted${deleted === 0 ? " zero" : ""}` }, [`−${deleted}`]),
   ]);
 }

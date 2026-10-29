@@ -9,6 +9,7 @@ import type { HoverDetail, MergeTarget } from "./hoverModel";
 import type { KindCounts } from "./changeKinds";
 import type { BranchStatus } from "./workingTree";
 import type { RepoMark } from "./repoMarkModel";
+import type { BranchSheetData, SheetAction } from "./branchSheetModel";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
 export interface Layout {
@@ -105,7 +106,11 @@ export type HostMessage =
   /** The search box's ✨ toggle: linyra.ai.translateSearch is registered and Linyra AI is configured. */
   | { type: "aiSearchAvailable"; available: boolean }
   /** What Linyra AI made of an aiSearch: the operator query for the box, or why there is none. */
-  | { type: "aiSearchResult"; text: string; query?: string; error?: string };
+  | { type: "aiSearchResult"; text: string; query?: string; error?: string }
+  /** A branch pill's sheet: the branch read (or gone, or why it could not be read). */
+  | { type: "branchSheet"; repoId: string; ref: string; data?: BranchSheetData; missing?: true; error?: string }
+  /** A pill's Show Branch Details (its right-click, the keyboard's way in): open its sheet, focused. */
+  | { type: "branchSheetShow"; repoId: string; ref: string };
 
 /** One commit of the Commit list. */
 export interface CommitRef {
@@ -153,4 +158,6 @@ export type WebviewMessage =
   /** The search box's ✨ mode: plain words for linyra.ai.translateSearch to turn into a query. */
   | { type: "aiSearch"; text: string }
   /** The ✨ toggle while Linyra AI is not available: set it up. */
-  | { type: "aiConfigure" };
+  | { type: "aiConfigure" }
+  /** The branch sheet: opened on a pill's click, closed, or one of its buttons. */
+  | { type: "branchSheet"; action: "open" | "close" | "copy" | SheetAction; repoId: string; ref: string };

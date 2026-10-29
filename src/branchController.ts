@@ -14,9 +14,10 @@ import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
 import { isStashRef, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
 import { compareWithWorkingTree } from "./workingTreeDiff";
-import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport } from "./smartCheckout";
+import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
 import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
+import { droppedArgs, forcePushPrompt, isProtected, parseDropped } from "./multiRepoModel";
 
 const STATE = "linyra.branchSidebar";
 const WRITE_SIGNAL = new AbortController().signal;
@@ -116,21 +117,11 @@ export class BranchController implements vscode.Disposable {
    * A checkout. When git refuses it because local changes would be overwritten, Smart Checkout is
    * offered: stash them, check out, put them back. false: declined (nothing changed).
    */
-  private async smart(repo: Repo, target: string, run: (args: string[]) => Promise<string>, checkout: () => Promise<unknown>): Promise<boolean> {
-    try {
-      await checkout();
-      return true;
-    } catch (e) {
-      const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
-      const block = checkoutBlock(typeof stderr === "string" ? stderr : e instanceof Error ? e.message : String(e));
-      if (!block) throw e;
-      const p = smartPrompt([repo.name], target);
-      if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return false;
-      const report = smartReport(repo.name, target, await smartCheckout(run, block, smartLabel(target), checkout));
+  private smart(repo: Repo, target: string, run: (args: string[]) => Promise<string>, checkout: () => Promise<unknown>): Promise<boolean> {
+    return guardCheckout(repo.name, target, run, checkout, (p) => this.deps.ask.warning(p.message, p.detail, p.button), (report) => {
       if (report) void vscode.window.showWarningMessage(report);
       else vscode.window.setStatusBarMessage(localize("Linyra: checked out {0} in {1} and put your changes back.", target, repo.name), 8000);
-      return true;
-    }
+    });
   }
 
   async refresh(repoId?: string): Promise<void> {
@@ -221,7 +212,8 @@ export class BranchController implements vscode.Disposable {
         case "create": {
           const next = await name(localize("Create and check out a branch from {0}", b.name));
           if (!next) return;
-          if (native?.createBranch) await native.createBranch(next, true, b.ref); else await run(branchCommands.create(b, next));
+          // It checks the new branch out: Smart Checkout when local changes are in the way, as every checkout.
+          if (!(await this.smart(repo, next, run, () => (native?.createBranch ? native.createBranch(next, true, b.ref) : run(branchCommands.create(b, next)))))) return;
           await this.deps.view(repo.id, next); break;
         }
         case "rename": {
@@ -268,6 +260,21 @@ export class BranchController implements vscode.Disposable {
           const remote = data.remotes[index];
           const destination = upstreamRemote ? b.upstream!.slice(remote.length + 1) : b.name;
           const refspec = `${b.ref}:refs/heads/${destination}`;
+          // Diverged from its upstream: a plain push is rejected. Usually someone else pushed (a pull keeps
+          // their commits); after an amend, undo or rebase of pushed commits, a force push is what is meant.
+          // The question names the commits the remote loses and whose they are; never a protected branch.
+          const lease = upstreamRemote && b.ahead > 0 && b.behind > 0 ? data.branches.find((x) => x.kind === "remote" && x.name === b.upstream)?.sha : undefined;
+          if (lease) {
+            const guarded = vscode.workspace.getConfiguration("git", vscode.Uri.file(repo.root)).get<string[]>("branchProtection", []);
+            if (isProtected(destination, Array.isArray(guarded) ? guarded : [])) {
+              throw new Error(localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", b.name, remote, destination));
+            }
+            const [log, me] = await Promise.all([run(droppedArgs(b.name, `${remote}/${destination}`)).catch(() => ""), run(["config", "user.email"]).catch(() => "")]);
+            const p = forcePushPrompt([{ repo: repo.name, branch: b.name, target: `${remote}/${destination}`, behind: b.behind, dropped: parseDropped(log), me: me.trim() }]);
+            if (!(await this.deps.ask.warning(p.message, p.detail, p.button))) return;
+            await run(["push", `--force-with-lease=refs/heads/${destination}:${lease}`, "--", remote, refspec]);
+            break;
+          }
           if (native?.push) await native.push(remote, refspec, true); else await run(["push", "--set-upstream", "--", remote, refspec]);
           break;
         }
@@ -330,7 +337,7 @@ export class BranchController implements vscode.Disposable {
     try {
       const name = folderName(w.path);
       if (w.missing) {
-        if (!(await this.deps.ask.warning(localize("Forget worktree {0} of {1}?", name, repo.name), localize("Its folder {0} is gone: git worktree prune forgets it. Its branch stays.", w.path), localize("Forget")))) return;
+        if (!(await this.deps.ask.warning(localize("Forget worktree {0} of {1}?", name, repo.name), localize("Its folder {0} is gone. git worktree prune forgets it, and any other worktree of {1} whose folder is gone; their branches stay.", w.path, repo.name), localize("Forget")))) return;
         await git(worktreeCommands.prune());
         return;
       }

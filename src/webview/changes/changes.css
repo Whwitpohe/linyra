@@ -48,12 +48,13 @@
 #changes-pane .row-stats { margin-left: auto; flex: 0 0 auto; display: inline-flex; justify-content: flex-end; gap: 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
 /* Lines added and deleted, in Source Control's add and delete colors (ui/counts.css). */
 #changes-pane .row-stats .line-counts { gap: 7px; font-size: inherit; }
-#changes-pane .status { flex: 0 0 12px; text-align: center; font-size: 11px; }
+/* The status letter: the shared one (ui/fileStatus.css), here only its column. */
+#changes-pane .file-status { flex: 0 0 12px; width: 12px; }
 #changes-pane .change-A, #changes-pane .change-C { color: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green)); }
 #changes-pane .change-M, #changes-pane .change-T { color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-yellow)); }
 #changes-pane .change-D { color: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red)); }
 #changes-pane .change-R { color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green))); }
-#changes-pane .tree-row.selected .file-name, #changes-pane .tree-row.selected .row-stats > span, #changes-pane .tree-row.selected .status { color: inherit; }
+#changes-pane .tree-row.selected .file-name, #changes-pane .tree-row.selected .row-stats > span, #changes-pane .tree-row.selected .file-status { color: inherit; }
 /* The sash between the files and the details draws no line of its own (the details' header draws
    the one line); it lights up as VS Code's sash does, and its grab area reaches into the header. */
 #changes-pane .detail-splitter { flex: 0 0 6px; cursor: row-resize; touch-action: none; position: relative; }

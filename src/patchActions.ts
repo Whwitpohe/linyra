@@ -5,6 +5,8 @@ import type { RunGit } from "./logQuery";
 import { amArgs, applyArgs, isMailbox, looksLikePatch, mailboxCommits, patchFiles } from "./patchModel";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
+import { readHead } from "./repoHead";
+import { operationName } from "./repoMarkModel";
 
 export interface PatchHost {
   /** The repositories to choose from when the command did not come from one (the ticked ones). */
@@ -95,8 +97,11 @@ export class PatchActions {
     return true;
   }
 
-  /** git am; stopped on a commit, it is aborted so nothing is left half applied. */
+  /** git am; stopped on a commit, its own session is aborted so nothing is left half applied. */
   private async applyCommits(repo: Repo, text: string): Promise<void> {
+    // A merge, rebase or patch series already in progress is the user's: refused, never aborted.
+    const busy = (await readHead(repo.root).catch(() => undefined))?.operation;
+    if (busy) return this.fail(localize("{0} is in the middle of a {1}: finish or abort it first.", repo.name, operationName(busy).toLowerCase()));
     try {
       await this.host.run(repo.root, amArgs(), WRITE_SIGNAL, { input: text, env: ENV });
       this.note(localize("Linyra: applied {0} commits to {1}.", mailboxCommits(text), repo.name));

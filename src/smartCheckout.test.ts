@@ -76,6 +76,20 @@ void (async () => {
     assert.strictEqual(fs.readFileSync(path.join(repo, "new.txt"), "utf8"), "theirs\n");
     assert.match(sync(repo, ["stash", "list"]), /Smart Checkout/, "mine is kept in the stash");
     console.log("ok - real git: Smart Checkout puts changes back (staged stays staged), or leaves the conflict and keeps the stash");
+
+    // The changes went away before the stash (nothing to save): an older stash of the user's is never
+    // applied or dropped in their place.
+    sync(repo, ["reset", "-q", "--hard"]); sync(repo, ["clean", "-fdq"]);
+    sync(repo, ["stash", "clear"]);
+    sync(repo, ["switch", "-q", main]);
+    fs.writeFileSync(path.join(repo, "b.txt"), "someone's old work\n");
+    sync(repo, ["stash", "push", "-q", "-m", "older work"]);
+    r = await smartCheckout(git(repo), "changes", "Linyra: Smart Checkout of feature/login", () => git(repo)(["switch", "feature/login"]));
+    assert.deepStrictEqual(r, { reapplied: true });
+    assert.strictEqual(sync(repo, ["branch", "--show-current"]), "feature/login");
+    assert.match(sync(repo, ["stash", "list"]), /older work/, "the older stash is untouched");
+    assert.strictEqual(fs.readFileSync(path.join(repo, "b.txt"), "utf8"), "b\n", "and not applied");
+    console.log("ok - real git: nothing to stash leaves an older stash alone");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

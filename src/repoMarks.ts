@@ -23,6 +23,9 @@ export interface MarksHost {
  */
 export class RepoMarks implements vscode.Disposable {
   private readonly heads = new Map<string, Omit<RepoMark, "work">>();
+  /** Each repository's latest read: an older read that finishes later never overwrites a newer one. */
+  private readonly readSeq = new Map<string, number>();
+  private seq = 0;
   private sent = "";
   private marks: Record<string, RepoMark> = {};
   private readonly background = new AbortController();
@@ -42,9 +45,12 @@ export class RepoMarks implements vscode.Disposable {
   async read(only?: ReadonlySet<string>): Promise<void> {
     const all = this.host.repos();
     const repos = only ? all.filter((r) => only.has(r.id)) : [...all];
+    const mine = ++this.seq;
+    for (const r of repos) this.readSeq.set(r.id, mine);
     const settled = await runPool(repos, this.host.concurrency(), (r) => readHead(r.root), this.background.signal);
     if (this.background.signal.aborted) return;
     settled.forEach((s, i) => {
+      if (this.readSeq.get(repos[i].id) !== mine) return;
       if (s.status === "fulfilled" && s.value) this.heads.set(repos[i].id, s.value);
       else this.heads.delete(repos[i].id);
     });

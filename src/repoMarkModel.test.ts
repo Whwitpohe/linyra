@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { gitEnv, makeRepo } from "./fixtures";
 import { readHead } from "./repoHead";
-import { abortArgs, abortPrompt, continueArgs, drift, headText, markTitle, operationOf, parseHead, rebasedBranch, workSuffix, type RepoMark } from "./repoMarkModel";
+import { abortArgs, abortPrompt, continueArgs, drift, headText, markTitle, operationOf, parseHead, rebasedBranch, spokenLabel, workSuffix, type RepoMark } from "./repoMarkModel";
 
 {
   assert.deepStrictEqual(parseHead("ref: refs/heads/develop\n"), { branch: "develop" });
@@ -30,7 +30,7 @@ import { abortArgs, abortPrompt, continueArgs, drift, headText, markTitle, opera
   assert.strictEqual(workSuffix({ changes: false, staged: false, conflicts: 0 }), "");
   assert.strictEqual(workSuffix({ changes: true, staged: false, conflicts: 0 }), "*");
   assert.strictEqual(workSuffix({ changes: true, staged: true, conflicts: 2 }), "*+!", "as VS Code's status bar: * changes, + staged, ! conflicts");
-  assert.strictEqual(headText({ branch: null, detached: "1a2b3c4" }), "1a2b3c4");
+  assert.strictEqual(headText({ branch: null, detached: "1a2b3c4" }), "detached 1a2b3c4", "never a bare id that reads like a branch");
   console.log("ok - uncommitted work is marked as VS Code's status bar marks a branch");
 }
 
@@ -52,9 +52,13 @@ import { abortArgs, abortPrompt, continueArgs, drift, headText, markTitle, opera
   assert.deepStrictEqual(markTitle(m, "develop"), [
     "On branch feature/login",
     "Most of the ticked repositories are on develop.",
-    "Uncommitted: changes, staged changes",
-    "Merge stopped: 2 files have conflicts. Right-click to resolve, continue or abort.",
+    "Uncommitted: modified (*), staged (+)",
+    "Merge stopped: 2 files have conflicts (!). Right-click to resolve, continue or abort.",
   ]);
+  assert.strictEqual(spokenLabel(["acme-libs", ...markTitle(m, "develop"), "2 commits not pushed"]),
+    "acme-libs, On branch feature/login, Most of the ticked repositories are on develop. Uncommitted: modified, staged, Merge stopped: 2 files have conflicts. Right-click to resolve, continue or abort. 2 commits not pushed",
+    "spoken: no glyphs, a comma only where no sentence ends");
+  assert.strictEqual(spokenLabel(["acme-web", "", "位于分支 develop", "勾选的仓库大多在 main 上。", "已修改 (*)"]), "acme-web, 位于分支 develop, 勾选的仓库大多在 main 上。 已修改");
   assert.deepStrictEqual(markTitle({ branch: null, detached: "1a2b3c4", operation: "rebase", work: { changes: false, staged: false, conflicts: 0 } }, null), [
     "HEAD detached at 1a2b3c4", "Rebase stopped. Right-click to continue or abort.",
   ]);
@@ -114,6 +118,14 @@ void (async () => {
     assert.strictEqual(detached?.branch, null);
     assert.strictEqual(detached?.detached, git(repo, ["rev-parse", "--short=7", "HEAD"]));
     git(repo, ["checkout", "-q", main]);
+
+    // git am stopped on a patch that does not apply: its own session, not a rebase.
+    const patchText = git(repo, ["format-patch", "--stdout", "-1", "feature/login"]);
+    git(repo, ["checkout", "-q", main]);
+    try { execFileSync("git", ["am", "--quiet"], { cwd: repo, input: patchText, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, stdio: ["pipe", "pipe", "pipe"] }); } catch { /* stops: expected */ }
+    assert.strictEqual((await readHead(repo))?.operation, "am", "rebase-apply/applying: git am");
+    git(repo, ["am", "--abort"]);
+    assert.strictEqual((await readHead(repo))?.operation, undefined);
 
     const linked = path.join(home, "acme-web-hotfix");
     git(repo, ["worktree", "add", "-q", "-b", "hotfix", linked]);

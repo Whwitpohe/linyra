@@ -91,6 +91,36 @@ describe("Repo List marks", () => {
     assert.strictEqual(m.marks[web.id].branch, "main");
   });
 
+  it("the Commit side bar commits a merge that stopped once it is resolved: a merge commit, not a partial one", async () => {
+    const web = repo("acme-web");
+    git(web.root, ["reset", "-q", "--hard", "HEAD~1"]);
+    stops(web.root, ["merge", "--no-edit", "ci-side"]);
+    // Still conflicted: refused, nothing committed (git add would take the markers as the resolution).
+    await send({ type: "refresh" });
+    await until("the side bar's list has the conflicted file", (s) => s.uncommitted.some((w) => w.repoId === web.id && w.changes.includes("ci-marks.txt")));
+    const stopped = git(web.root, ["rev-parse", "HEAD"]);
+    await vscode.commands.executeCommand("linyra._itest.commitSend", { type: "commit", message: "Merge branch 'ci-side'", amend: false, push: false, signOff: false });
+    const refused = await vscode.commands.executeCommand<{ lastError: string | undefined }>("linyra._itest.commitPanel");
+    assert.match(refused.lastError ?? "", /1 file still has conflicts/);
+    assert.strictEqual(git(web.root, ["rev-parse", "HEAD"]), stopped);
+    assert.ok(fs.existsSync(path.join(web.root, ".git", "MERGE_HEAD")), "still merging");
+    assert.match(fs.readFileSync(path.join(web.root, "ci-marks.txt"), "utf8"), /<<<<<<</, "the markers are not committed");
+    write("acme-web", "ci-marks.txt", "resolved\n");
+    git(web.root, ["add", "ci-marks.txt"]);
+    await send({ type: "refresh" });
+    await until("acme-web merging, resolved", (s) => s.marks[web.id]?.operation === "merge" && s.marks[web.id]?.work?.conflicts === 0);
+    // What the Commit side bar shows, as a user sees it before pressing Commit: the resolved file, staged.
+    await until("the side bar's list has the resolved file", (s) => s.uncommitted.some((w) => w.repoId === web.id && w.staged.includes("ci-marks.txt") && !w.changes.includes("ci-marks.txt")));
+    const before = git(web.root, ["rev-parse", "HEAD"]);
+    await vscode.commands.executeCommand("linyra._itest.commitSend", { type: "commit", message: "Merge branch 'ci-side'", amend: false, push: false, signOff: false });
+    const panel = await vscode.commands.executeCommand<{ items: string[]; checked: string; lastError: string | undefined }>("linyra._itest.commitPanel");
+    assert.notStrictEqual(git(web.root, ["rev-parse", "HEAD"]), before, `committed (the side bar: ${panel.checked}; ${panel.lastError ?? "no error"}; ${panel.items.join(" / ")})`);
+    await until("the merge committed", (s) => s.marks[web.id]?.operation === undefined);
+    assert.deepStrictEqual(git(web.root, ["rev-list", "--parents", "-1", "HEAD"]).split(" ").slice(1), [before, git(web.root, ["rev-parse", "ci-side"])], "a merge commit: HEAD, then ci-side");
+    assert.strictEqual(fs.readFileSync(path.join(web.root, "ci-marks.txt"), "utf8").replace(/\r\n/g, "\n"), "resolved\n");
+    assert.ok(!fs.existsSync(path.join(web.root, ".git", "MERGE_HEAD")));
+  });
+
   it("aborts after asking: the branch and the working tree go back", async () => {
     const web = repo("acme-web");
     git(web.root, ["reset", "-q", "--hard", "HEAD~1"]);

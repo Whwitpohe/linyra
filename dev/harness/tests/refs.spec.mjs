@@ -73,21 +73,29 @@ test("a pill's right-click carries the refPill context, and package.json offers 
   expect(onPill).toEqual(["linyra.branch.checkout", "linyra.branch.compare", "linyra.branch.copy", "linyra.branch.merge", "linyra.branch.pull", "linyra.branch.push", "linyra.branch.rebase"]);
 });
 
-test("clicking a pill shows its branch in the Repo List", async ({ page }) => {
+test("clicking a pill opens its branch's sheet; the sheet's Reveal shows it in the Repo List", async ({ page }) => {
   await open(page);
+  const sheetName = page.locator("#branch-sheet .sheet-name");
+  const reveal = () => page.locator('#branch-sheet button[data-action="reveal"]').click();
   await row(page, 6).locator(".row-refs > .pill").first().click();
+  await expect(sheetName).toHaveText("master");
+  // The row was selected as by any click.
+  await expect(row(page, 6)).toHaveAttribute("aria-selected", "true");
+  await reveal();
   const active = page.locator("#repo-rows .repo-row.active");
   await expect(active).toHaveClass(/branch-row/);
   await expect(active.locator(".branch-name")).toHaveText("master");
   await expect(page.locator("#repo-rows")).toBeFocused();
-  // The row was selected as by any click.
-  await expect(row(page, 6)).toHaveAttribute("aria-selected", "true");
   // A remote branch opens its repository's Remote group and its remote's row too (acme-api's origin/master).
   await row(page, 10).locator(".row-refs > .pill").click();
+  await expect(sheetName).toHaveText("origin/master");
+  await reveal();
   await expect(page.locator("#repo-rows .repo-row.active .branch-name")).toHaveText("master");
   await expect(page.locator("#repo-rows .repo-row.active")).toHaveAttribute("aria-level", "4");
-  // Joined into develop's pill, the remote part reveals the local branch the pill stands for.
+  // Joined into develop's pill, the remote part stands for the local branch.
   await row(page, 0).locator(".pill-current .pill-remote").click();
+  await expect(sheetName).toHaveText("develop");
+  await reveal();
   await expect(page.locator("#repo-rows .repo-row.active .branch-name")).toHaveText("develop");
   await expect(page.locator("#repo-rows .repo-row.active")).toHaveAttribute("aria-level", "3");
 });

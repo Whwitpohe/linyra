@@ -27,6 +27,8 @@
 /* The message's checks (subject and body line length, the blank line after the subject): hints, never a block. */
 #commit-pane .commit-hints { flex: 0 0 auto; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; color: var(--vscode-descriptionForeground); font-size: 12px; }
 #commit-pane .commit-hints li { display: flex; align-items: flex-start; gap: 4px; }
+/* commit.template's # guidance: what to write, muted, while the template is untouched. */
+#commit-pane .commit-guidance { flex: 0 0 auto; margin: 0; white-space: pre-wrap; color: var(--vscode-descriptionForeground); font-size: 12px; }
 #commit-pane .commit-hints .codicon { flex: none; margin-top: 1px; color: var(--vscode-editorWarning-foreground, var(--vscode-list-warningForeground, var(--vscode-foreground))); }
 #commit-pane .validation { flex: 0 0 auto; padding: 3px 6px; border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder)); background: var(--vscode-inputValidation-warningBackground, var(--vscode-input-background)); color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground)); font-size: 12px; }
 /* ✨ while it writes: the spinner stops it. Its line under the box says what happened, with Undo. */

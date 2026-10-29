@@ -4,9 +4,9 @@
 import { localize } from "./i18n";
 
 /** What a repository is in the middle of, from which of git's state files exist in its git dir. */
-export type Operation = "merge" | "rebase" | "cherry-pick" | "revert";
+export type Operation = "merge" | "rebase" | "cherry-pick" | "revert" | "am";
 
-export const OPERATIONS: readonly Operation[] = ["merge", "rebase", "cherry-pick", "revert"];
+export const OPERATIONS: readonly Operation[] = ["merge", "rebase", "cherry-pick", "revert", "am"];
 
 export function operationOf(exists: (name: string) => boolean): Operation | undefined {
   if (exists("rebase-merge") || exists("rebase-apply")) return "rebase";
@@ -60,9 +60,9 @@ export function workSuffix(w: WorkMark | undefined): string {
   return `${w.changes ? "*" : ""}${w.staged ? "+" : ""}${w.conflicts > 0 ? "!" : ""}`;
 }
 
-/** What the row names: the branch, or the detached commit. */
+/** What the row names: the branch, or "detached 1a2b3c4" (never a bare id that reads like a branch). */
 export function headText(m: RepoMark): string {
-  return m.branch ?? m.detached ?? "HEAD";
+  return m.branch ?? localize("detached {0}", m.detached ?? "HEAD");
 }
 
 /**
@@ -89,6 +89,7 @@ export function operationLabel(op: Operation): string {
     case "rebase": return localize("rebasing");
     case "cherry-pick": return localize("cherry-picking");
     case "revert": return localize("reverting");
+    case "am": return localize("applying patches");
   }
 }
 
@@ -98,16 +99,25 @@ export function markTitle(m: RepoMark, common: string | null): string[] {
   if (common !== null && m.branch !== common) lines.push(localize("Most of the ticked repositories are on {0}.", common));
   const w = m.work;
   if (w) {
-    const parts = [w.changes ? localize("changes") : "", w.staged ? localize("staged changes") : ""].filter(Boolean);
+    // The tooltip explains the row's glyphs.
+    const parts = [w.changes ? localize("modified (*)") : "", w.staged ? localize("staged (+)") : ""].filter(Boolean);
     if (parts.length > 0) lines.push(localize("Uncommitted: {0}", parts.join(", ")));
   }
   if (m.operation) {
     const conflicts = w?.conflicts ?? 0;
-    lines.push(conflicts > 0
-      ? localize("{0} stopped: {1} files have conflicts. Right-click to resolve, continue or abort.", operationName(m.operation), conflicts)
+    lines.push(conflicts === 1 ? localize("{0} stopped: 1 file has conflicts (!). Right-click to resolve, continue or abort.", operationName(m.operation))
+      : conflicts > 1 ? localize("{0} stopped: {1} files have conflicts (!). Right-click to resolve, continue or abort.", operationName(m.operation), conflicts)
       : localize("{0} stopped. Right-click to continue or abort.", operationName(m.operation)));
   }
   return lines;
+}
+
+/**
+ * The tooltip's lines and the row's other parts as one spoken label: the glyph hints dropped (a
+ * screen reader would spell out "(*)"), and a comma only after a part that does not end a sentence.
+ */
+export function spokenLabel(parts: string[]): string {
+  return parts.filter(Boolean).map((p) => p.replace(/ \([*+!]\)/g, "")).reduce((said, p) => (said ? `${said}${/[.!?。！？]$/.test(said) ? " " : ", "}${p}` : p), "");
 }
 
 /** "Merge", "Rebase": a sentence's subject, and the commands' titles. */
@@ -117,6 +127,7 @@ export function operationName(op: Operation): string {
     case "rebase": return localize("Rebase");
     case "cherry-pick": return localize("Cherry-pick");
     case "revert": return localize("Revert");
+    case "am": return localize("Patch series");
   }
 }
 
@@ -164,5 +175,6 @@ export function operationNoun(op: Operation): string {
     case "rebase": return localize("rebase");
     case "cherry-pick": return localize("cherry-pick");
     case "revert": return localize("revert");
+    case "am": return localize("patch series");
   }
 }

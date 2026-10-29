@@ -177,5 +177,8 @@
   "command.linyra.worktree.copyPath.title": "复制路径",
   "command.linyra.worktree.remove.title": "移除工作树…",
   "command.linyra.runAcross.title": "跨仓库运行 Git 命令…",
-  "command.linyra.release.title": "发布…"
+  "command.linyra.release.title": "发布…",
+  "command.linyra.showBranchSheet.title": "显示分支详情",
+  "command.linyra.continueAm.title": "继续应用补丁",
+  "command.linyra.abortAm.title": "中止应用补丁…"
 }
