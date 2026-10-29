@@ -56,7 +56,7 @@ const withDetail = (message: string, detail: string | undefined): string => (det
 /** A non-2xx answer. `detail` is the provider's own words (providerDetail). */
 export function httpError(status: number, detail?: string, html = false): AiError {
   const page = html ? ` ${localize("It answered with a web page instead of an API response: a proxy or sign-in page may be in the way.")}` : "";
-  const make = (message: string, kind: AiError["kind"]) => new AiError(withDetail(message, detail) + page, kind);
+  const make = (message: string, kind: AiError["kind"]) => new AiError(withDetail(message, detail) + page, kind, { status, detail, html });
   switch (status) {
     case 401: return make(localize("The API key was not accepted (401). Run Linyra: Configure AI… to enter it again."), "auth");
     case 403: return make(localize("Access denied (403): the key cannot use this model or address."), "auth");

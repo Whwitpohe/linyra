@@ -12,6 +12,7 @@ configureI18n("en");
   assert.ok(httpError(401).message.includes("Configure AI"), "the fix is named");
   assert.ok(httpError(429, "You exceeded your current quota.").message.includes("You exceeded your current quota."));
   assert.ok(httpError(403, undefined, true).message.includes("web page"));
+  assert.deepStrictEqual(httpError(429, "quota").http, { status: 429, detail: "quota", html: false }, "Test Connection reads the status and the provider's words");
   console.log("ok - HTTP statuses map to AiError kinds with the cause and the fix");
 }
 

@@ -62,7 +62,7 @@ export function checkBaseUrl(text: string): { url: string } | { error: string } 
     return { error: localize("This is not an address. Start it with https:// or http://.") };
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") return { error: localize("Use an https:// or http:// address.") };
-  if (url.username || url.password) return { error: localize("Leave the key out of the address: the next step asks for it.") };
+  if (url.username || url.password) return { error: localize("Leave the key out of the address: the API key field takes it.") };
   if (url.search || url.hash) return { error: localize("Leave out the query and the fragment (after ? or #).") };
   return { url: url.href.replace(/\/+$/, "") };
 }
