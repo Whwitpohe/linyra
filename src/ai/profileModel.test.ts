@@ -1,8 +1,10 @@
 import * as assert from "assert";
+import * as fs from "fs";
+import * as path from "path";
 import {
-  activeAfterRemoval, activeProfile, anthropicAdaptive, anthropicFallbacks, checkBaseUrl, claudeVersion, DEFAULT_EXCLUDE, effortChoices, estimateTokens,
+  activeAfterRemoval, activeProfile, anthropicAdaptive, anthropicFallbacks, checkBaseUrl, claudeVersion, DEFAULT_EXCLUDE, EFFORT_ORDER, effortChoices, estimateTokens,
   excludedBy, geminiThinking, globMatcher, isLocalUrl, isPlainRemote, jsonText, knownEfforts, newProfileId, originOf, overLimit, parseProfiles,
-  parseSavedKey, profileLabel, protocolEffort, requestChars, sameConnection, upsertProfile, withJsonInstruction, withModel,
+  parseSavedKey, profileLabel, protocolEffort, PROTOCOLS, requestChars, sameConnection, upsertProfile, withJsonInstruction, withModel,
 } from "./profileModel";
 import type { AiProfile } from "./types";
 
@@ -150,4 +152,18 @@ import type { AiProfile } from "./types";
   assert.strictEqual(globMatcher("  "), undefined);
   assert.ok(ex("dist\\win.js"), "Windows separators");
   console.log("ok - exclude globs: names at any depth, folders with a trailing /, anchored paths, ** and lockfile defaults");
+}
+
+{
+  // The manifest's defaults are the model's: the settings UI and the code agree.
+  const pkg = JSON.parse(fs.readFileSync(path.join(path.resolve(__dirname, ".."), "package.json"), "utf8")) as { contributes: { configuration: { properties: Record<string, { default?: unknown; scope?: string; items?: { properties?: Record<string, { enum?: unknown[] }> } }> } } };
+  const props = pkg.contributes.configuration.properties;
+  assert.deepStrictEqual(props["linyra.ai.exclude"].default, DEFAULT_EXCLUDE);
+  assert.deepStrictEqual(props["linyra.ai.profiles"].items?.properties?.protocol.enum, [...PROTOCOLS]);
+  assert.deepStrictEqual(props["linyra.ai.profiles"].items?.properties?.effort.enum, ["default", ...EFFORT_ORDER]);
+  for (const key of ["linyra.ai.enabled", "linyra.ai.profiles", "linyra.ai.activeProfile"]) {
+    assert.strictEqual(props[key].scope, "application", `${key}: a workspace cannot redirect a saved key`);
+  }
+  assert.strictEqual(props["linyra.ai.enabled"].default, false);
+  console.log("ok - the manifest's AI settings match the model: exclude defaults, protocols, levels, application scope");
 }

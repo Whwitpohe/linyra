@@ -107,6 +107,13 @@ export class LogToolbar {
       item.addEventListener("click", () => { this.close(true); this.run(action); });
       return item;
     }));
+    // AI: configure a provider, switch the model or thinking level, remove a profile.
+    this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
+    for (const [action, label] of [["aiConfigure", localize("Configure AI…")], ["aiSwitch", localize("Switch AI Model…")], ["aiRemove", localize("Remove AI Profile…")]] as const) {
+      const item = h("button", { type: "button", role: "menuitem" }, [label]);
+      item.addEventListener("click", () => { this.close(true); this.run(action); });
+      this.menu.append(item);
+    }
     // Where the changed files sit: one choice of three (they were two toolbar buttons and a menu item).
     this.menu.append(h("div", { class: "toolbar-menu-separator", role: "separator" }));
     for (const [layout, label] of [["auto", localize("Automatic Changes Layout")], ["sideBySide", localize("Side-by-side Layout")], ["stacked", localize("Stacked Layout")]] as const) {

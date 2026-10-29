@@ -13,3 +13,5 @@ assert.strictEqual(toolbarCommand("pullAllBehind", shown), undefined, "pull cann
 assert.strictEqual(toolbarCommand("showBehind", hidden), undefined);
 for (const action of [null, {}, "constructor", "__proto__", "vscode.openFolder", "delete"]) assert.strictEqual(toolbarCommand(action, hidden), undefined, "only named toolbar actions can execute commands");
 console.log("ok - all 13 old Log toolbar commands remain reachable with state guards and no arbitrary command execution");
+assert.deepStrictEqual(["aiConfigure", "aiSwitch", "aiRemove"].map((action) => toolbarCommand(action, hidden)), ["linyra.ai.configure", "linyra.ai.switchModel", "linyra.ai.removeProfile"]);
+console.log("ok - the ⋯ menu's AI items run Configure AI…, Switch AI Model… and Remove AI Profile…");
