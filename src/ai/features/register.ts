@@ -22,6 +22,19 @@ export function registerAiFeatures(deps: AiCommandDeps): { features: AiFeatures;
     ["linyra.ai.explainConflicts", (arg) => features.explainConflicts(arg)],
     ["linyra.ai.ask", (text) => askAi.run(text)],
   ];
+  // Test seam for the integration suite only: Stash Changes…'s ✨ for a repository, as a box of its own calls it.
+  if (process.env.LINYRA_ITEST === "1") {
+    commands.push(["linyra._itest.stashWrite", async (arg) => {
+      const { repoId, untracked } = arg as { repoId: string; untracked: boolean };
+      const repo = deps.log.repoList.find((r) => r.id === repoId);
+      const writer = features.stashWriter();
+      if (!repo || !writer) return undefined;
+      const streamed: string[] = [];
+      const text = await writer.write(repo, untracked, new AbortController().signal, (t) => streamed.push(t));
+      return { text, streamed };
+    }]);
+    commands.push(["linyra._itest.conflictReport", () => features.lastConflictReport]);
+  }
   for (const [id, run] of commands) deps.context.subscriptions.push(vscode.commands.registerCommand(id, run));
   return { features, askAi };
 }
