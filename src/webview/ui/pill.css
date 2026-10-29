@@ -25,5 +25,5 @@
 body.vscode-light .pill-part { background: color-mix(in srgb, var(--part) 16%, transparent); }
 body.vscode-light .pill-current .pill-part.pill-local { background: color-mix(in srgb, var(--part) 28%, transparent); }
 body.vscode-high-contrast .pill { outline: 1px solid var(--vscode-contrastBorder); outline-offset: -1px; }
-body.vscode-high-contrast .pill-part { background: transparent; }
+body.vscode-high-contrast .pill-part, body.vscode-high-contrast .pill-current .pill-part.pill-local { background: transparent; }
 [aria-selected="true"] .pill-status { color: inherit; }
