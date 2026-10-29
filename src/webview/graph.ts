@@ -1,6 +1,7 @@
 import { localize } from "../i18n";
 import type { Commit } from "../types";
 import type { GraphRail, GraphRow } from "./graphModel";
+import { authorDiscSvg } from "./ui/authorDisc";
 
 export interface FoldAction { id: string; count: number; expand?: boolean }
 export interface GraphFoldOptions {
@@ -59,12 +60,31 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributes: Record<st
 }
 
 /**
+ * Lanes: the first sits 9px in, so the disc on it (radius 7.5, plus its ring) is not cut at the
+ * graph's edge, and lanes are 16px apart, one disc wide. A graph squeezed below 12px a lane (many
+ * repositories, a narrow Log) draws plain dots: discs would cover the neighboring lanes.
+ */
+export const GRAPH_INSET = 9;
+export const LANE_WIDTH = 16;
+const DISC_LANE = 12;
+
+/** The graph column's width for `columns` lanes, at most `room` (and never under 28px). */
+export function graphWidthFor(columns: number, room: number): number {
+  return Math.max(28, Math.min(2 * GRAPH_INSET + Math.max(0, columns - 1) * LANE_WIDTH, room));
+}
+
+/**
  * One row's SVG reaches its exact top/bottom, joining adjacent virtual rows. Its rails are one
  * path per color (and per dashed style): a merged log of many repositories runs dozens of lanes
  * through every row, and an element per lane made each row ~90 nodes to build while scrolling.
+ *
+ * A commit is its author's disc (the ring in the lane's color, thicker for `mine`); a merge keeps
+ * the small hollow dot. A run of linear history that can fold shows its ⊟ only while the pointer
+ * is on the node (CSS); a folded run's ⊞ always shows. A disc row is about eight elements.
  */
-export function renderGraph(row: GraphRow, commit: Commit, columns: number, width: number, height: number, folds: GraphFoldOptions = {}): SVGSVGElement {
-  const x = (column: number) => 6 + column * Math.min(16, (width - 12) / Math.max(1, columns - 1));
+export function renderGraph(row: GraphRow, commit: Commit, columns: number, width: number, height: number, folds: GraphFoldOptions = {}, mine = false): SVGSVGElement {
+  const step = Math.min(LANE_WIDTH, (width - 2 * GRAPH_INSET) / Math.max(1, columns - 1));
+  const x = (column: number) => GRAPH_INSET + column * step;
   const middle = height / 2;
   const root = svg("svg", { class: "commit-graph", viewBox: `0 0 ${width} ${height}`, width, height, role: "gridcell",
     "aria-label": folds.folded ? localize("Expand {0} hidden commits", folds.folded.count) : localize("Commit {0}; parents: {1}", commit.sha.slice(0, 7), commit.parents.map((p) => p.slice(0, 7)).join(", ") || "—") });
@@ -97,20 +117,26 @@ export function renderGraph(row: GraphRow, commit: Commit, columns: number, widt
   const title = svg("title", {});
   title.textContent = action ? label : `${commit.sha.slice(0, 7)} · ${commit.subject}`;
   point.append(title);
-  if (action) {
-    const cx = x(row.node.column);
-    point.append(svg("rect", { class: "graph-hit", x: cx - 8, y: middle - 8, width: 16, height: 16 }));
-    point.append(svg("rect", { class: `graph-fold-box accent-${row.node.accent}`, x: cx - 5.5, y: middle - 5.5, width: 11, height: 11, rx: 1.5 }));
-    point.append(svg("path", { class: `graph-fold-sign accent-${row.node.accent}`,
-      d: `M ${cx - 3} ${middle} H ${cx + 3}${expanding ? ` M ${cx} ${middle - 3} V ${middle + 3}` : ""}` }));
-    root.append(point);
-    return root;
+  const cx = x(row.node.column), accent = row.node.accent;
+  const merge = commit.parents.length > 1;
+  const disc = !merge && (columns <= 1 || step >= DISC_LANE);
+  // The commit itself, unless this node only stands for a folded run (its ⊞ is all it shows).
+  if (!expanding) {
+    // The disc is its own hit target; a dot is too small to aim at.
+    if (disc) point.append(authorDiscSvg({ name: commit.author, email: commit.email, accent, mine }, cx, middle));
+    else {
+      if (!action) point.append(svg("circle", { class: "graph-hit", cx, cy: middle, r: 7 }));
+      const marked = merge || commit.refs?.some((ref) => ref.kind === "head" || ref.kind === "local" || ref.kind === "remote");
+      point.append(svg("circle", { class: `graph-node accent-${accent}${marked ? " graph-merge" : ""}`, cx, cy: middle, r: marked ? 4.5 : 3.2 }));
+      if (merge) point.append(svg("circle", { class: `graph-node accent-${accent}`, cx, cy: middle, r: 1.6 }));
+    }
   }
-  point.append(svg("circle", { class: "graph-hit", cx: x(row.node.column), cy: middle, r: 7 }));
-  const marked = commit.parents.length > 1 || commit.refs?.some((ref) => ref.kind === "head" || ref.kind === "local" || ref.kind === "remote");
-  point.append(svg("circle", { class: `graph-node accent-${row.node.accent}${marked ? " graph-merge" : ""}`,
-    cx: x(row.node.column), cy: middle, r: marked ? 4.5 : 3.2 }));
-  if (commit.parents.length > 1) point.append(svg("circle", { class: `graph-node accent-${row.node.accent}`, cx: x(row.node.column), cy: middle, r: 1.6 }));
+  if (action) {
+    if (expanding || !disc) point.append(svg("rect", { class: "graph-hit", x: cx - 8, y: middle - 8, width: 16, height: 16 }));
+    point.append(svg("rect", { class: `graph-fold-box accent-${accent}`, x: cx - 5.5, y: middle - 5.5, width: 11, height: 11, rx: 1.5 }));
+    point.append(svg("path", { class: `graph-fold-sign accent-${accent}`,
+      d: `M ${cx - 3} ${middle} H ${cx + 3}${expanding ? ` M ${cx} ${middle - 3} V ${middle + 3}` : ""}` }));
+  }
   root.append(point);
   return root;
 }
