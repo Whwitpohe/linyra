@@ -21,9 +21,9 @@ describe("Linyra panel", () => {
     assert.strictEqual(s.profiles.length, 0, "retired Polylog profiles are ignored");
     assert.strictEqual(vscode.workspace.getConfiguration("linyra").inspect("excludeRepos")?.workspaceValue, undefined, "activation does not migrate old settings");
     const properties = vscode.extensions.getExtension(EXTENSION_ID)!.packageJSON.contributes.configuration.properties;
-    // 6 Log settings, 3 for avatars (linyra.avatars, avatarHosts, avatarUrlTemplate) and 6 for AI
-    // (enabled, profiles, activeProfile, exclude, maxPromptTokens, commitMessageInstructions).
-    assert.strictEqual(Object.keys(properties).length, 15);
+    // 7 Log settings (Update Project's method among them), 3 for avatars (linyra.avatars, avatarHosts,
+    // avatarUrlTemplate) and 6 for AI (enabled, profiles, activeProfile, exclude, maxPromptTokens, commitMessageInstructions).
+    assert.strictEqual(Object.keys(properties).length, 16);
     assert.ok(Object.keys(properties).every((key) => key.startsWith("linyra.")), "only Linyra settings are registered");
   });
 
@@ -729,7 +729,7 @@ describe("Linyra panel", () => {
       await waitFor("client.ts restored", () => (fs.readFileSync(at("client.ts"), "utf8") === `${committed}\n` ? true : undefined));
       assert.strictEqual(git("status", "--porcelain"), "", "nothing staged, nothing changed");
 
-      // The whole repository: a staged edit, a staged new file, an edit, an untracked file.
+      // The whole repository: a staged edit, a staged new file, and two untracked files (acme-web tracks client.ts only).
       fs.writeFileSync(at("client.ts"), "export const ok = 3;\n");
       fs.writeFileSync(at("added.ts"), "export {};\n");
       git("add", "client.ts", "added.ts");
@@ -741,9 +741,9 @@ describe("Linyra panel", () => {
       await vscode.commands.executeCommand("linyra._itest.answer", "Discard Changes");
       await vscode.commands.executeCommand("linyra.discardAll", { repoId: web.id });
       assert.strictEqual(await vscode.commands.executeCommand("linyra._itest.lastDetail"),
-        "This can't be undone. Staged changes are discarded too. The added file leaves version control and stays on disk as a new file. The new file stays: Delete… removes it.");
-      await waitFor("only the new files left", () => (git("status", "--porcelain").split("\n").sort().join(",") === "?? added.ts,?? loose.md" ? true : undefined));
-      assert.ok(fs.existsSync(at("added.ts")) && fs.existsSync(at("loose.md")), "no file deleted");
+        "This can't be undone. Staged changes are discarded too. The added file leaves version control and stays on disk as a new file. The 2 new files stay: Delete… removes them.");
+      await waitFor("only the new files left", () => (git("status", "--porcelain").split("\n").sort().join(",") === "?? CHANGELOG.md,?? added.ts,?? loose.md" ? true : undefined));
+      assert.ok(fs.existsSync(at("added.ts")) && fs.existsSync(at("loose.md")) && fs.existsSync(at("CHANGELOG.md")), "no file deleted");
       // Delete… on the repository: its new files, after its own prompt.
       await vscode.commands.executeCommand("linyra._itest.answer", "Delete");
       await vscode.commands.executeCommand("linyra.deleteNew", { repoId: web.id });

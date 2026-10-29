@@ -166,8 +166,8 @@ export class Ask {
     this.asked++;
     if (this.testing && this.answers.length > 0) {
       const a = this.answers.shift();
-      if (a === undefined || a === "Cancel") return undefined;
       this.lastForm = { spec, problems: {} };
+      if (a === undefined || a === "Cancel") return undefined;
       const values = checkValues(spec, { ...initialValues(spec), ...(JSON.parse(a) as FormValues) });
       if (!values) throw new Error(`the queued answer does not fill the form ${spec.id}: ${a}`);
       // Refused by the host's own check: the form would stay open, saying why; here, nothing runs.
