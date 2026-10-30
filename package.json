@@ -2764,19 +2764,22 @@
         "command": "linyra.updateProject",
         "key": "ctrl+t",
         "mac": "cmd+t",
-        "when": "focusedView == linyra.log"
+        "when": "focusedView == linyra.log",
+        "args": { "surface": "log", "anchor": "toolbar-update" }
       },
       {
         "command": "linyra.pushAll",
         "key": "ctrl+shift+k",
         "mac": "cmd+shift+k",
-        "when": "focusedView == linyra.log"
+        "when": "focusedView == linyra.log",
+        "args": { "surface": "log", "anchor": "toolbar-push" }
       },
       {
         "command": "linyra.branchesAcross",
         "key": "ctrl+shift+`",
         "mac": "cmd+shift+`",
-        "when": "focusedView == linyra.log"
+        "when": "focusedView == linyra.log",
+        "args": { "surface": "log", "anchor": "toolbar-more" }
       },
       {
         "command": "linyra.commitPanel.rollback",

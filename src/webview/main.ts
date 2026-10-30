@@ -26,6 +26,8 @@ import { ChangesFeed } from "./changesColumn";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import { HoverCard } from "./hoverCard";
 import { RowActions } from "./rowActions";
+import { placed, trackGestures } from "./promptHost";
+import { promptChecked, promptUpdated, showPrompt } from "./ui/prompt";
 import { workSummary } from "./workSummary";
 import { isoDay } from "./searchBox";
 import { BranchSheetView } from "./branchSheet";
@@ -34,7 +36,9 @@ import { HostRoutes } from "./hostRoutes";
 import { PanelLayout } from "./panelLayout";
 
 const vscode = acquireVsCodeApi();
-const post = (m: WebviewMessage): void => vscode.postMessage(m);
+// A message a click or key sent carries where that was, when it can lead to a question (promptHost.ts).
+const post = (m: WebviewMessage): void => vscode.postMessage(placed(m));
+trackGestures("log");
 const changesEvents = new EventTarget();
 
 /** A 25 ms query should never flash a skeleton. */
@@ -275,7 +279,15 @@ routes
   .on("toolbar", (m) => { toolbar.update(m.state); refreshHeader(); })
   .on("focusChanges", () => byId("file-tree").focus())
   .on("changesView", (m) => changesEvents.dispatchEvent(new MessageEvent("message", { data: m.message })))
-  .on("branchSheetShow", (m) => openSheetFor(m.repoId, m.ref, true));
+  .on("branchSheetShow", (m) => openSheetFor(m.repoId, m.ref, true))
+  // A question asked where the user acted (ui/prompt.ts): its answer goes back by its id.
+  .on("prompt", (m) => showPrompt(m.id, m.request, m.at, {
+    answer: (answer) => post({ type: "promptAnswer", id: m.id, ...(answer ? { answer } : {}) }),
+    typed: (value) => post({ type: "promptInput", id: m.id, value }),
+    extra: (on) => post({ type: "promptExtra", id: m.id, on }),
+  }))
+  .on("promptCheck", (m) => promptChecked(m.id, m.check))
+  .on("promptUpdate", (m) => promptUpdated(m.id, m.update));
 window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
   const m = e.data;
   if (routes.dispatch(m)) return;

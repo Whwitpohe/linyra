@@ -16,7 +16,8 @@ import { formatBytes, formatNumber } from "./format";
 import { gitDirFacts, unbornHead } from "./gitDir";
 import { assess, commandText, confirmText, isConfigKey, maintenanceStart, taskInfo, TASKS, writePlan, type ConfigKey, type FormatOptions, type HealthAction, type HealthFacts, type MaintenanceTask, type WritePlan } from "./health";
 import { HEALTH_CONFIG_REGEXP, HISTORY_FORMAT, parseConfig, parseCountObjects, parseHistory, parseTouches, parseTree, type HistoryCommit } from "./parse";
-import { isTreeTab, type HistoryData, type InsightsHostMessage, type InsightsWebviewMessage, type ReadFailure, type TreeData, type TreeTab } from "./protocol";
+import { INSIGHTS_PROMPT_MESSAGES, isTreeTab, type HistoryData, type InsightsHostMessage, type InsightsWebviewMessage, type ReadFailure, type TreeData, type TreeTab } from "./protocol";
+import { PromptPort } from "../promptPort";
 import { DEFAULT_RANGE, HISTORY_LIMIT, isColorBy, isRange, isTab, logPathspec, readKey, safePath, sanitizeScope, sinceOf, TABS, treePath, type ColorBy, type InsightsRange, type InsightsScope, type InsightsTab } from "./range";
 import { TabReads, type Answer } from "./reads";
 import { buildTree, findNode, heatSteps, keysOf, pruneTree, rankExtensions, type TreeNode } from "./treemap";
@@ -116,6 +117,8 @@ export class InsightsPanel implements vscode.Disposable {
         this.showSoon();
       }),
       deps.onDidChangeAccents(() => { if (this.panel) this.postInit(); }),
+      // Run Maintenance…'s checklist is asked in the tab, under its button (promptPort.ts).
+      deps.ask.addSurface("insights", this.prompts),
     );
   }
 
@@ -155,6 +158,8 @@ export class InsightsPanel implements vscode.Disposable {
       subscriptions.forEach((s) => s.dispose());
       if (this.panel !== panel) return;
       this.panel = undefined;
+      this.pageReady = false;
+      this.prompts.cancel();
       this.showSoon.cancel();
       // Closing the tab drops what it read.
       for (const t of TABS) this.readsOf(t).forget();
@@ -226,11 +231,24 @@ export class InsightsPanel implements vscode.Disposable {
     if (this.panel?.visible) this.showSoon();
   }
 
+  /** Run Maintenance…'s checklist, asked in the tab under its button (Ask's "insights" surface). */
+  readonly prompts = new PromptPort("insights", (m) => this.post(m), () => this.panel?.visible === true && this.pageReady);
+  private pageReady = false;
+
   async onMessage(value: unknown): Promise<void> {
     if (!value || typeof value !== "object") return;
     const m = value as InsightsWebviewMessage;
+    // Sent right after a click or a key there: its question is asked at that place (Ask.withAnchor).
+    await this.deps.ask.withAnchor(INSIGHTS_PROMPT_MESSAGES.has(m.type) ? this.prompts.anchorOf(m) : undefined, () => this.handle(m));
+  }
+
+  private async handle(m: InsightsWebviewMessage): Promise<void> {
     switch (m.type) {
+      case "promptAnswer": this.prompts.answered(m.id, m.answer); return;
+      case "promptInput": this.prompts.typed(m.id, m.value); return;
       case "ready":
+        this.prompts.cancel();
+        this.pageReady = true;
         this.postInit();
         await this.show();
         return;

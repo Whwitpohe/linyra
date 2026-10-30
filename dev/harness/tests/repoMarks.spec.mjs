@@ -90,7 +90,8 @@ test("a stopped merge has its own row under the repository: what stopped, Resolv
   // Its buttons ask the host for the matching command; the list's cursor does not move for them.
   const asked = () => page.evaluate(() => window.harnessMessages.filter((m) => m.type === "operation"));
   await op.locator(".op-action", { hasText: "Abort…" }).click();
-  await expect.poll(async () => (await asked()).at(-1)).toEqual({ type: "operation", action: "abort", repoId: "/work/acme-libs" });
+  // With where its button was: Abort in All Repositories… asks its checklist there (promptHost.ts).
+  await expect.poll(async () => (await asked()).at(-1)).toMatchObject({ type: "operation", action: "abort", repoId: "/work/acme-libs", at: { w: expect.any(Number), h: expect.any(Number) } });
   // A click on the row itself, or Space, only puts the cursor there: no step runs by accident.
   await op.locator(".op-text").click();
   await expect(op).toHaveClass(/active/);
@@ -104,7 +105,7 @@ test("a stopped merge has its own row under the repository: what stopped, Resolv
   for (let i = 0; i < index; i++) await page.keyboard.press("ArrowDown");
   await expect(op).toHaveClass(/active/);
   await page.keyboard.press("Enter");
-  await expect.poll(async () => (await asked()).at(-1)).toEqual({ type: "operation", action: "resolve", repoId: "/work/acme-libs" });
+  await expect.poll(async () => (await asked()).at(-1)).toMatchObject({ type: "operation", action: "resolve", repoId: "/work/acme-libs", at: { w: expect.any(Number), h: expect.any(Number) } });
   expect(errors).toEqual([]);
 });
 

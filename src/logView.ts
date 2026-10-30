@@ -35,6 +35,8 @@ import { CommitGraphHint } from "./commitGraphHint";
 import { wantsCommitGraphHint } from "./commitGraphModel";
 import type { UncommittedStore } from "./uncommittedStore";
 import { openHeadDiff, openWorkDiff, type Ask } from "./uncommittedActions";
+import { ANCHORED_MESSAGES } from "./promptModel";
+import { PromptPort } from "./promptPort";
 import { folderFilter, historyWorkOf, revisionPair } from "./historyModel";
 import type { ResolvedProfile } from "./profileModel";
 import { renderHtml } from "./webview/html";
@@ -255,6 +257,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       repos: () => this.repos, repoIds: () => this.filter.repoIds, contextRepo: (arg) => this.contextRepo(arg), contextCommit: (arg) => this.contextCommit(arg),
       setRepoFilter: (ids) => this.setRepoFilter(ids), untick: (id) => this.untick(id), behind: (ids) => this.upstream.behind(ids), run: this.run,
     });
+    // Questions from what was started in the Log are asked in it, where the user acted (promptModel.ts).
+    this.disposables.push(deps.ask.addSurface("log", this.prompts));
     this.hover = new HoverDetails({ run: this.run, post: (m) => this.post(m), commands: vscode.commands,
       commit: (repoId, sha) => (typeof repoId === "string" && typeof sha === "string" ? this.findCommit(repoId, sha) : undefined),
       aiEnabled: () => vscode.workspace.getConfiguration("linyra.ai").get<boolean>("enabled", false) });
@@ -270,6 +274,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       .on("visibleAuthors", (m) => this.avatars.want(visibleAuthors(m.authors, (id) => this.repos.some((r) => r.id === id))))
       .on("operation", (m) => this.runOperation(m))
       .on("rowAction", (m) => this.rowAction(m))
+      .on("promptAnswer", (m) => this.prompts.answered(m.id, m.answer))
+      .on("promptInput", (m) => this.prompts.typed(m.id, m.value))
+      .on("promptExtra", (m) => this.prompts.extra(m.id, m.on))
       .onReady({ before: () => { this.branchSidebar?.ready(); this.avatars.webviewReset(); } });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
@@ -322,16 +329,25 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
       view.onDidDispose(() => {
         if (this.webviewView === view) this.webviewView = undefined;
+        this.prompts.cancel();
       }),
     ];
   }
 
-
   async onMessage(m: WebviewMessage): Promise<void> {
     if (!m || typeof m !== "object") return; // webview input is untrusted
+    // Sent right after a click or a key there: a question its handler asks is asked at that place (Ask.withAnchor).
+    await this.deps.ask.withAnchor(ANCHORED_MESSAGES.has(m.type) ? this.prompts.anchorOf(m) : undefined, () => this.handle(m));
+  }
+
+  /** Questions asked in the Log, where the user acted (Ask's "log" surface); while it is hidden or loading, VS Code's picker asks. */
+  readonly prompts = new PromptPort("log", (m) => this.post(m), () => this.webviewView?.visible === true && this.readyCount > 0);
+
+  private async handle(m: WebviewMessage): Promise<void> {
     if (await this.routes.dispatch(m)) return;
     switch (m.type) {
       case "ready":
+        this.prompts.cancel();
         await this.routes.ready("before");
         this.readyCount++;
         if (!this.stats.readyAt) this.stats.readyAt = Date.now();

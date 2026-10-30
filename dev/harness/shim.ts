@@ -6,6 +6,7 @@ import type { HostMessage, WebviewMessage } from "../../src/protocol";
 import type { Commit } from "../../src/types";
 import type { ChangesPage } from "../../src/changesProtocol";
 import type { CommitReference } from "../../src/commitReferences";
+import type { PromptCheck, PromptRect, PromptRequest } from "../../src/promptModel";
 import type { ToolbarState } from "../../src/toolbarModel";
 import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
@@ -46,6 +47,28 @@ const toolbarState: ToolbarState = { groupByRepo: layout.groupByRepo, compareSho
 let history: { repoId: string; repoName: string; path: string } | null = params.get("history") ? { repoId: "/work/acme-web", repoName: "acme-web", path: params.get("history")! } : null;
 let matched: Commit[] = [];
 let offset = 0;
+
+/** Questions asked in the page (ui/prompt.ts), as the host's Ask asks them: the last one, and its answers. */
+let promptSeq = 0;
+const asked: { id: number; request: PromptRequest }[] = [];
+const UPDATE_WAYS: PromptRequest = { kind: "pick", title: "Update 3 repositories: how? (the pin beside a way: don't ask again)", pin: "Use this way, don't ask again", items: [
+  { label: "Rebase onto incoming changes", description: "your commits replayed on top; needs a clean working tree" },
+  { label: "Merge incoming changes", description: "a merge commit where they have diverged" },
+  { label: "Fast-forward only", description: "only branches with no commits of their own; diverged ones are left as they are" },
+] };
+function ask(request: PromptRequest, at: PromptRect | string): void {
+  const id = ++promptSeq;
+  asked.push({ id, request });
+  send({ type: "prompt", id, request, at }, 0);
+}
+/** An asked name's check, as a branch name's: no spaces, not empty, a warning past 40 characters. */
+function checkName(value: string): PromptCheck | undefined {
+  if (!value.trim()) return { message: "Type a name.", blocking: true };
+  if (/\s/.test(value)) return { message: "A branch name cannot contain spaces.", blocking: true };
+  if (value.length > 40) return { message: "Long names are hard to read in the Log.", blocking: false };
+  return undefined;
+}
+(window as unknown as { harnessAsk: typeof ask }).harnessAsk = ask;
 
 function send(m: HostMessage, delay = latency): void {
   setTimeout(() => window.postMessage(m, "*"), delay);
@@ -138,11 +161,36 @@ function handle(m: WebviewMessage): void {
   if (m.type === "ready") send({ type: "sidebarState", state: branchState }, 0);
   switch (m.type) {
     case "toolbarAction": {
+      // Update Project asks its way where the button was clicked (or under it, for Ctrl+T), as the host's Ask does.
+      if (m.action === "updateProject") { ask(UPDATE_WAYS, (m as { at?: PromptRect }).at ?? "toolbar-update"); return; }
       if (m.action === "toggleRepos") { layout.groupByRepo = !layout.groupByRepo; toolbarState.groupByRepo = layout.groupByRepo; }
       if (m.action === "toggleCompare") toolbarState.compareShown = !toolbarState.compareShown;
       if (m.action === "fetchAll") { toolbarState.fetching = true; setTimeout(() => { toolbarState.fetching = false; send({ type: "toolbar", state: toolbarState }, 0); }, 600); }
       send({ type: "toolbar", state: toolbarState }, 0);
       send({ type: "init", repos, filter, hasMe: true, me: ME, layout, history, logMode, profiles: [] }, 0);
+      return;
+    }
+    case "promptInput": {
+      // Only a branch name is checked (as the host's commands check theirs); a stash message is not.
+      const q = asked.find((a) => a.id === m.id);
+      const check = q?.request.kind === "input" && q.request.placeholder === "Branch name" ? checkName(m.value) : undefined;
+      send({ type: "promptCheck", id: m.id, ...(check ? { check } : {}) }, 0);
+      return;
+    }
+    // ✨ beside a name's box: written as the host's PromptPort writes it, busy, the text in two parts, done.
+    case "promptExtra": {
+      const id = m.id, words = m.on ? "Save the upload retry, new files too" : "Save the upload retry";
+      send({ type: "promptUpdate", id, update: { busy: true, message: null } }, 0);
+      send({ type: "promptUpdate", id, update: { value: words.slice(0, 9) } }, 60);
+      send({ type: "promptUpdate", id, update: { value: words } }, 120);
+      send({ type: "promptUpdate", id, update: { busy: false } }, 160);
+      return;
+    }
+    case "promptAnswer": {
+      // A refused name is not taken: the box says why, as LogView.promptAnswered does.
+      const q = asked.find((a) => a.id === m.id);
+      const value = (m.answer as { value?: unknown } | undefined)?.value;
+      if (q?.request.kind === "input" && q.request.placeholder === "Branch name" && typeof value === "string" && checkName(value)?.blocking) send({ type: "promptCheck", id: m.id, check: checkName(value) }, 0);
       return;
     }
     case "changesView":

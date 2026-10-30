@@ -1,5 +1,7 @@
 // Linyra Insights' webview: the tabs, the scope, range and color controls, and each tab's drawing.
-import type { BubbleCommit, HealthData, HistoryData, InsightsHostMessage, InsightsRepo, InsightsWebviewMessage, TreeData, TreeTab } from "../../insights/protocol";
+import { INSIGHTS_PROMPT_MESSAGES, type BubbleCommit, type HealthData, type HistoryData, type InsightsHostMessage, type InsightsRepo, type InsightsWebviewMessage, type TreeData, type TreeTab } from "../../insights/protocol";
+import { placed, trackGestures } from "../promptHost";
+import { promptChecked, showPrompt } from "../ui/prompt";
 import { heatLegend, type TreeNodeMsg } from "../../insights/treemap";
 import { HISTORY_LIMIT, RANGES, type ColorBy, type InsightsRange, type InsightsScope, type InsightsTab } from "../../insights/range";
 import { language, localize } from "../../i18n";
@@ -71,7 +73,9 @@ export function mountInsights(api: InsightsApi): void {
   const chart = new HistoryChart(byId("history-chart"));
   const maps: Record<TreeTab, TreemapView> = { files: new TreemapView(byId("files-map")), commits: new TreemapView(byId("commits-map")) };
   const health = new HealthView(byId("health-table"), byId("health-details"), byId("health-toolbar"));
-  const post = (m: InsightsWebviewMessage) => api.postMessage(m);
+  // Health's buttons carry where they were: Run Maintenance…'s checklist opens under its button (promptHost.ts).
+  trackGestures("insights");
+  const post = (m: InsightsWebviewMessage) => api.postMessage(placed(m, INSIGHTS_PROMPT_MESSAGES));
 
   const showTip = (content: HTMLElement[] | undefined, at?: DOMRect) => {
     if (!content || !at) { tooltip.hidden = true; return; }
@@ -283,6 +287,10 @@ export function mountInsights(api: InsightsApi): void {
     const m = event.data as InsightsHostMessage;
     if (!m || typeof m !== "object") return;
     switch (m.type) {
+      case "prompt":
+        showPrompt(m.id, m.request, m.at, { answer: (answer) => post({ type: "promptAnswer", id: m.id, ...(answer ? { answer } : {}) }), typed: (value) => post({ type: "promptInput", id: m.id, value }) });
+        return;
+      case "promptCheck": promptChecked(m.id, m.check); return;
       case "init": {
         const colors = !init || JSON.stringify(init.repos) !== JSON.stringify(m.repos);
         const redraw = colors || init?.colorBy !== m.colorBy;

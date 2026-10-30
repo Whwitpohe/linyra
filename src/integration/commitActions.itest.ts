@@ -6,7 +6,8 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ALL, send, snapshot, until, waitFor } from "./helpers";
+import { ALL, send, sleep, snapshot, until, waitFor } from "./helpers";
+import type { WebviewMessage } from "../protocol";
 
 describe("Commit actions", () => {
   let root: string, repoId: string, start: string;
@@ -169,6 +170,43 @@ describe("Commit actions", () => {
     git(["reset", "-q", "--hard", start]);
   });
 
+  it("a question from a click in the Log is asked there (promptModel.ts); a refused answer leaves it asked; a right-click's place comes with its command", async () => {
+    type Asked = { id: number; request: { kind: string; value?: string }; at: unknown };
+    const lastPrompt = () => vscode.commands.executeCommand<Asked | undefined>("linyra._itest.lastPrompt");
+    const reply = (id: number, answer?: unknown) => vscode.commands.executeCommand("linyra._itest.promptAnswer", id, answer);
+    await answer(undefined);
+    fs.writeFileSync(path.join(root, "asked.txt"), "asked\n");
+    git(["add", "asked.txt"]);
+    git(["commit", "-q", "-m", "feat: asked in the Log"]);
+    const made = head();
+    await send({ type: "refresh" });
+    await listed(made);
+    const before = (await lastPrompt())?.id ?? 0;
+    // The row's ✎ button, clicked at this place: the question is asked in the Log, under it.
+    const at = { x: 700, y: 120, w: 22, h: 22 };
+    const done = send({ type: "rowAction", action: "reword", repoId, sha: made, at } as WebviewMessage);
+    const asked = await waitFor("the question in the Log", async () => { const p = await lastPrompt(); return p && p.id > before ? p : undefined; });
+    assert.deepStrictEqual(asked.at, at);
+    assert.deepStrictEqual([asked.request.kind, asked.request.value], ["input", "feat: asked in the Log"]);
+    // An empty subject is refused by the command's own check: the question stays, nothing is written.
+    await reply(asked.id, { value: "  " });
+    await sleep(200);
+    assert.strictEqual(head(), made, "a refused answer runs nothing");
+    await reply(asked.id, { value: "feat: answered in the Log" });
+    await done;
+    assert.strictEqual(git(["log", "-1", "--format=%s"]), "feat: answered in the Log");
+    const reworded = head();
+    await listed(reworded);
+    // From a right-click: the webview wrote its place into the menu's context, which the command gets.
+    const viaMenu = vscode.commands.executeCommand("linyra.commitReword", { webviewSection: "commit", repoId, sha: reworded, preventDefaultContextMenuItems: true, at: [320, 240], surface: "log" });
+    const fromMenu = await waitFor("the right-click's question", async () => { const p = await lastPrompt(); return p && p.id > asked.id ? p : undefined; });
+    assert.deepStrictEqual(fromMenu.at, { x: 320, y: 240, w: 0, h: 0 });
+    await reply(fromMenu.id); // cancelled: nothing changes
+    await viaMenu;
+    assert.strictEqual(head(), reworded);
+    git(["reset", "-q", "--hard", start]);
+  });
+
   it("a row's own buttons (webview/rowActions.ts) run the menu's Edit Commit Message and Undo Commit on that commit", async () => {
     fs.writeFileSync(path.join(root, "row.txt"), "row\n");
     git(["add", "row.txt"]);
@@ -207,6 +245,41 @@ describe("Commit actions", () => {
     assert.ok(fs.existsSync(path.join(root, "one.txt")) && fs.existsSync(path.join(root, "two.txt")));
     git(["reset", "-q", "--hard", before]);
     await vscode.commands.executeCommand("linyra.clearSelection");
+  });
+
+  it("Stash Changes… from a right-click asks in the Log: its switch under the box, the answer's state taken", async () => {
+    type Asked = { id: number; request: { kind: string; title: string; toggle?: { on: boolean; says: string[] } }; at: unknown };
+    const lastPrompt = () => vscode.commands.executeCommand<Asked | undefined>("linyra._itest.lastPrompt");
+    const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
+    await answer(undefined);
+    fs.writeFileSync(path.join(root, "asked-stash.txt"), "new\n");
+    const before = (await lastPrompt())?.id ?? 0;
+    const done = vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId, at: [40, 300], surface: "log" });
+    const asked = await waitFor("Stash Changes… in the Log", async () => { const p = await lastPrompt(); return p && p.id > before ? p : undefined; });
+    assert.deepStrictEqual(asked.at, { x: 40, y: 300, w: 0, h: 0 });
+    assert.strictEqual(asked.request.kind, "input");
+    assert.strictEqual(asked.request.toggle?.on, false, "Include new files starts as it was last left: off");
+    assert.strictEqual(asked.request.toggle?.says.length, 2, "what Enter does, in each state of the switch");
+    // Switched on in the webview: the new file goes into the stash too.
+    await vscode.commands.executeCommand("linyra._itest.promptAnswer", asked.id, { value: "asked stash", on: true });
+    await done;
+    assert.ok(!fs.existsSync(path.join(root, "asked-stash.txt")), "the new file is in the stash");
+    await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
+    assert.match((await stashes())[0]?.subject ?? "", /asked stash/);
+    git(["stash", "pop", "-q"]);
+    // The switch is remembered: asked again (a tracked file changed too), it starts on. Switched off,
+    // the new file stays out of the stash, and off is what is remembered for the tests after this one.
+    const tracked = git(["ls-files"]).split("\n")[0];
+    fs.appendFileSync(path.join(root, tracked), "changed\n");
+    const again = vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId, at: [40, 300], surface: "log" });
+    const second = await waitFor("Stash Changes… again", async () => { const p = await lastPrompt(); return p && p.id > asked.id ? p : undefined; });
+    assert.strictEqual(second.request.toggle?.on, true, "the last answer's switch is remembered");
+    await vscode.commands.executeCommand("linyra._itest.promptAnswer", second.id, { value: "tracked only", on: false });
+    await again;
+    assert.ok(fs.existsSync(path.join(root, "asked-stash.txt")), "switched off: the new file stays");
+    git(["stash", "pop", "-q"]);
+    git(["checkout", "--", tracked]);
+    fs.rmSync(path.join(root, "asked-stash.txt"), { force: true });
   });
 
   it("stashes changes, lists the stash in the tree's data, applies, pops and drops it", async () => {

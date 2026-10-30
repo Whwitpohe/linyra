@@ -185,6 +185,8 @@ section { display: grid; gap: 16px; }
 .ux-pill > * { padding: 0 6px; background: color-mix(in srgb, var(--c-docs) 22%, transparent); }
 .ux-row.hovered { background: var(--vs-hover); }
 .ux-wip-row { border-bottom: 1px dashed var(--vs-border); }
+.ux-ask { width: 54%; margin-left: auto; }
+.ux-ask-on { background: var(--vs-sel); border-radius: 3px; padding: 1px 4px; }
 .ux-wip-row .ux-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ux-strip.ux-dashed { background: repeating-linear-gradient(var(--vs-dim) 0 3px, transparent 3px 6px); }
 .ux-disc.ux-dashed-disc { background: transparent; border: 1.5px dashed var(--vs-dim); color: transparent; }
@@ -535,6 +537,12 @@ section { display: grid; gap: 16px; }
             <div class="who">Merge target origin/main · 2 ahead · <u>Compare</u></div>
             <div class="ux-links"><u>Copy Hash</u> <u>Open on Remote</u> <u class="t">Explain<i class="n tr">67</i></u></div>
           </div>
+          <div class="ux-card ux-ask t"><i class="n tl">85</i>
+            <div class="who">Update 3 repositories: how? (the pin beside a way: don't ask again)</div>
+            <div class="ux-ask-on"><b>Rebase onto incoming changes</b> <span class="who">your commits replayed on top</span></div>
+            <div><b>Merge incoming changes</b> <span class="who">a merge commit where they have diverged</span></div>
+            <div><b>Fast-forward only</b> <span class="who">only branches with no commits of their own</span></div>
+          </div>
           <div class="ux-work t"><i class="n l">62</i>
             <span class="chip web">acme-web</span>
             <span class="ux-counts t"><span class="add">+143</span> <span class="mod">✎3</span><i class="n tr">63</i><span class="ux-meter t"><i class="n r">64</i></span></span>
@@ -565,6 +573,7 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">53</i><b>Branch pill</b><span>A branch and the remotes whose branch of that name is at the same commit, in one pill (develop | origin); the checked-out branch bold, with ↑/↓ from its upstream; tags their own pill. Each part is its own: the one under the pointer deepens, and its tooltip names it (Branch develop, checked out; Remote branch origin/develop). Click a part: that branch's Branch sheet (70) in the Changes view, the part deepened and outlined while the sheet is open. Right-click a part: that branch's menu from the Repo List (and the AI items while AI is on). In the Commit details the checked-out branch's pill starts with HEAD, and the branches listed under it are only the ones the pills do not already name.</span></div>
     <div class="g"><i class="num">77</i><b>Row buttons</b><span>The row under the pointer: a pointer cursor, its Author disc (52) a little larger, and buttons over the row's end. On the checked-out commit: Undo Commit… and Edit Commit Message…; on every row: ⋯, the row's right-click menu (26). The keyboard reaches the same commands through that menu.</span></div>
     <div class="g"><i class="num">84</i><b>Uncommitted summary row</b><span>Above the newest commit while the ticked repositories have uncommitted work, in the commits' columns: a dashed node, "Uncommitted changes", the files by kind, the lines in the Changes column, the latest edit in the date column. Several repositories: a dashed strip, "N repositories" and a chip each. A click (or ↑ from the newest commit, or Home) selects it: the Changes view shows that work, the most recently edited repository's or the clicked chip's, and the Commits side stays. Hover: Commit…, the Commit side bar (that repository's files alone when there is one). Right-click: the Uncommitted side's menu (a chip's, with several). Gone during a search, or with an author, a file or a date range that ended.</span></div>
+    <div class="g"><i class="num">85</i><b>Question popup</b><span>A choice, several choices or a name a Linyra action asks for, under the button that was clicked or at the right-click (Update Project's ways under its button, Ctrl+T too), instead of VS Code's picker at the top of the window: the choices with their descriptions, a filter past eight, a pin for "don't ask again", OK for several, a name checked as it is typed (Stash Changes…: its switch and ✨ too). ↑↓ Enter Esc; a click outside cancels. From the Command Palette, VS Code's picker still asks; confirmations stay VS Code's dialogs. In the Log, the Commit side bar, Compare and Insights.</span></div>
     <div class="g"><i class="num">54</i><b>Commit hover card</b><span>Opens when the pointer rests on a row for half a second: author (you, for your commits), relative and absolute time, hash, repository and pills at once; then one git show adds the message and the file and line counts. On the HEAD row: its merge target and Compare. Leaving the row kills the read.</span></div>
     <div class="g"><i class="num">55</i><b>Operator popup</b><span>Under the Search box while it is empty or an operator is being typed (GitLens's search popup): every operator with an icon, what it does and its aliases; typing a value suggests authors, branches and tags, repositories or types. ↓/↑ move, Enter or Tab picks, Esc closes.</span></div>
     <div class="g"><i class="num">69</i><b>Search help line</b><span>The Operator popup's first line: how to combine filters, or, inside an operator's value, that operator's examples. It stays put while the rows scroll.</span></div>

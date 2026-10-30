@@ -65,13 +65,15 @@ export class AskAi {
     return this.deps.log.repoList.find((x) => x.id === r.id)!;
   }
 
-  /** linyra.ai.ask: a request in plain words, from an input box (or the argument). */
+  /**
+   * linyra.ai.ask: a request in plain words, from a box (or the argument): under the Log's ✨
+   * button when started there, at the top of the window from the Command Palette (Ask.input).
+   */
   async run(text?: unknown): Promise<AskResult | undefined> {
-    const question = typeof text === "string" && text.trim() ? text.trim() : (await vscode.window.showInputBox({
-      title: localize("Ask AI"), ignoreFocusOut: true,
-      prompt: localize("Ask about these repositories, or say what to do. Changes to a repository wait for your confirmation."),
-      placeHolder: localize("For example: dana's commits in acme-api since Monday"),
-    }))?.trim();
+    const question = typeof text === "string" && text.trim() ? text.trim() : (await this.deps.ask.input(
+      localize("Ask about these repositories, or say what to do. Changes to a repository wait for your confirmation."),
+      localize("For example: dana's commits in acme-api since Monday"), { title: localize("Ask AI") },
+    ))?.trim();
     if (!question) return undefined;
     const ai = await this.deps.features.ready();
     if (!ai) return undefined;

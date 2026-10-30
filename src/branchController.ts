@@ -489,7 +489,7 @@ export class BranchController implements vscode.Disposable {
       title: localize("Stash Changes in {0}", repo.name),
       prompt: (on) => localize(on ? "Stashes every change, new files included. Enter to stash." : "Stashes the changes to tracked files; new files stay. Enter to stash."),
       placeHolder: localize("Stash message"), value: "WIP",
-      toggle: { on: this.context.globalState.get<boolean>(STASH_UNTRACKED, false), icon: (on) => (on ? "files" : "file"),
+      toggle: { label: localize("Include new files"), on: this.context.globalState.get<boolean>(STASH_UNTRACKED, false), icon: (on) => (on ? "files" : "file"),
         tooltip: (on) => localize(on ? "Include new files: on (click to leave them out)" : "Include new files: off (click to include them)") },
       // ✨ stops when the box closes (Esc while it writes): no request runs on for a box nobody sees.
       extra: writer ? { icon: "sparkle", tooltip: localize("Write the stash message with AI"), run: async (box, on, closed) => {

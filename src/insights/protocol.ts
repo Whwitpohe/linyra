@@ -1,4 +1,5 @@
 // Messages between the Insights tab and the extension host.
+import type { PromptHostMessage } from "../promptPort";
 import type { ColorBy, InsightsRange, InsightsScope, InsightsTab } from "./range";
 import type { HealthRow } from "./health";
 import type { TreeNodeMsg } from "./treemap";
@@ -63,7 +64,9 @@ export type InsightsHostMessage =
   | { type: "init"; repos: InsightsRepo[]; ticked: string[]; scope: InsightsScope; range: InsightsRange; tab: InsightsTab; colorBy: ColorBy; platform: string }
   | { type: "history"; status: "loading" | "ready"; data?: HistoryData }
   | { type: "tree"; tab: TreeTab; status: "loading" | "ready"; data?: TreeData }
-  | { type: "health"; status: "loading" | "ready"; data?: HealthData };
+  | { type: "health"; status: "loading" | "ready"; data?: HealthData }
+  /** Run Maintenance…'s checklist, asked in the tab under its button (promptPort.ts). */
+  | PromptHostMessage;
 
 export type InsightsWebviewMessage =
   | { type: "ready" }
@@ -76,4 +79,10 @@ export type InsightsWebviewMessage =
   | { type: "openFile"; repoId: string; path: string }
   | { type: "visualHistory"; repoId: string; path: string; folder: boolean }
   | { type: "drill"; tab: TreeTab; path: string[] }
-  | { type: "health"; action: HealthActionKind; repoIds: string[]; key?: string; value?: boolean };
+  | { type: "health"; action: HealthActionKind; repoIds: string[]; key?: string; value?: boolean }
+  /** A question asked in the tab answered, or a name in it typed (promptPort.ts). */
+  | { type: "promptAnswer"; id: number; answer?: unknown }
+  | { type: "promptInput"; id: number; value: string };
+
+/** The tab's messages that can lead to a question: they carry where their button was (webview/promptHost.ts). */
+export const INSIGHTS_PROMPT_MESSAGES: ReadonlySet<string> = new Set(["health"]);

@@ -7,7 +7,8 @@ import { decorationFor } from "./changesModel";
 import { splitTemplate } from "./commitMessageModel";
 import { gitDirOf, readHead } from "./repoHead";
 import { checkedLabel, checkOnly, commitFiles, commitPartly, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
-import type { CommitHostMessage, CommitWebviewMessage } from "./commitProtocol";
+import { COMMIT_PROMPT_MESSAGES, type CommitHostMessage, type CommitWebviewMessage } from "./commitProtocol";
+import { PromptPort } from "./promptPort";
 import type { RunOptions } from "./git";
 import { localize } from "./i18n";
 import { runPool } from "./pool";
@@ -107,7 +108,9 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     this.tree.title = localize("Commit");
     this.disposables.push(this.tree, this.treeChanged, this.decorationsChanged, deps.store.onDidChange(() => this.render()),
       this.tree.onDidChangeVisibility(() => { if (this.tree.visible) deps.shown(); }),
-      this.tree.onDidChangeCheckboxState((e) => this.check(e.items.map(([row]) => row), e.items[0]?.[1] === vscode.TreeItemCheckboxState.Checked)));
+      this.tree.onDidChangeCheckboxState((e) => this.check(e.items.map(([row]) => row), e.items[0]?.[1] === vscode.TreeItemCheckboxState.Checked)),
+      // History's pick and Author…'s name are asked in the box, under their buttons (promptPort.ts).
+      deps.ask.addSurface("commit", this.prompts));
     this.render();
     if (this.tree.visible) deps.shown();
   }
@@ -131,7 +134,11 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     this.messageDisposables = [
       view.webview.onDidReceiveMessage((m: CommitWebviewMessage) => void this.onMessage(m)),
       view.onDidChangeVisibility(() => { if (view.visible) this.deps.shown(); }),
-      view.onDidDispose(() => { if (this.message === view) this.message = undefined; }),
+      view.onDidDispose(() => {
+        if (this.message === view) this.message = undefined;
+        this.messageReady = false;
+        this.prompts.cancel();
+      }),
     ];
     if (view.visible) this.deps.shown();
   }
@@ -263,10 +270,23 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
     this.render();
   }
 
+  /** History's pick and Author…'s name, asked in the box under their buttons (Ask's "commit" surface). */
+  readonly prompts = new PromptPort("commit", (m) => this.post(m), () => this.message?.visible === true && this.messageReady);
+  private messageReady = false;
+
   async onMessage(m: CommitWebviewMessage): Promise<void> {
     if (!m || typeof m !== "object") return; // webview input is untrusted
+    // Sent right after a click or a key there: its question is asked at that place (Ask.withAnchor).
+    await this.deps.ask.withAnchor(COMMIT_PROMPT_MESSAGES.has(m.type) ? this.prompts.anchorOf(m) : undefined, () => this.handle(m));
+  }
+
+  private async handle(m: CommitWebviewMessage): Promise<void> {
     switch (m.type) {
+      case "promptAnswer": this.prompts.answered(m.id, m.answer); return;
+      case "promptInput": this.prompts.typed(m.id, m.value); return;
       case "ready": {
+        this.prompts.cancel();
+        this.messageReady = true;
         for (const done of this.readyWaiters.splice(0)) done();
         const draft = this.deps.context.workspaceState.get<{ text?: unknown; amend?: unknown }>(DRAFT_KEY);
         this.post({ type: "draft", text: typeof draft?.text === "string" ? draft.text : "", amend: draft?.amend === true, signOff: this.signOff, author: this.author ?? "" });

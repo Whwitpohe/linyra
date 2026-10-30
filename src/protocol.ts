@@ -13,6 +13,7 @@ import type { RepoMark } from "./repoMarkModel";
 import type { ColumnPrefs } from "./webview/logColumns";
 import type { AcrossRow } from "./branchSheetModel";
 import type { BranchSheetData, SheetAction } from "./branchSheetModel";
+import type { PromptHostMessage } from "./promptPort";
 
 /** The Log view's own layout: the Repositories pane's width and whether it is shown. */
 export interface Layout {
@@ -87,6 +88,8 @@ export interface HistoryWork {
 /** Extension host → webview. */
 export type HostMessage =
   | { type: "toolbar"; state: ToolbarState }
+  /** A question asked where the user acted, a typed name's check, the host writing into its box (promptPort.ts, webview/ui/prompt.ts). */
+  | PromptHostMessage
   | { type: "focusChanges" }
   | { type: "changesView"; message: ChangesPage | { type: "copied" } }
   | { type: "sidebarState"; state: BranchSidebarState }
@@ -170,6 +173,12 @@ export type WebviewMessage =
   | { type: "hoverAction"; action: "copySha" | "openOnRemote" | "compare" | "explain"; repoId: string; sha: string }
   /** A Log row's own button (webview/rowActions.ts): the checked-out commit's Undo Commit or Edit Commit Message. */
   | { type: "rowAction"; action: "undo" | "reword"; repoId: string; sha: string }
+  /** A question asked in the Log (promptModel.ts) answered: the answer as the webview gives it (checked by the host), or none for cancelled. */
+  | { type: "promptAnswer"; id: number; answer?: unknown }
+  /** What is typed in an asked name, to be checked (the host answers with promptCheck). */
+  | { type: "promptInput"; id: number; value: string }
+  /** The button beside an asked name's box (✨) pressed, its switch as `on` (the host writes into the box: promptUpdate). */
+  | { type: "promptExtra"; id: number; on: boolean }
   /** The Log's summary row of uncommitted work selected (webview/workSummary.ts): that work in the Changes view; repoId: a chip's, else the most recently edited. */
   | { type: "showWork"; repoId?: string }
   /** The summary row's Commit…: the Commit side bar, for that repository alone when one is named. */

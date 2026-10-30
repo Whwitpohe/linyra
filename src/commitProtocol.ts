@@ -1,4 +1,5 @@
 // Messages between the Commit side bar's message box (a webview below the native tree) and the host.
+import type { PromptHostMessage } from "./promptPort";
 
 export interface CommitState {
   type: "state";
@@ -32,7 +33,9 @@ export type CommitHostMessage =
    */
   | { type: "generated"; text: string; done: boolean; error?: string }
   /** ✨ started (from the button, or the command): the box keeps what it had, for Undo. */
-  | { type: "generating" };
+  | { type: "generating" }
+  /** History and Author… ask in the box, under their buttons (promptPort.ts). */
+  | PromptHostMessage;
 
 export type CommitWebviewMessage =
   | { type: "ready" }
@@ -46,4 +49,10 @@ export type CommitWebviewMessage =
   /** ✨ pressed: a message for the checked files; `text`, the box's text, is the user's hint. */
   | { type: "generate"; text: string }
   /** ✨ pressed again (or Esc) while it writes. */
-  | { type: "generateStop" };
+  | { type: "generateStop" }
+  /** A question asked in the box answered, or a name in it typed (promptPort.ts). */
+  | { type: "promptAnswer"; id: number; answer?: unknown }
+  | { type: "promptInput"; id: number; value: string };
+
+/** The box's messages that can lead to a question: they carry where their button was (webview/promptHost.ts). */
+export const COMMIT_PROMPT_MESSAGES: ReadonlySet<string> = new Set(["history", "author"]);

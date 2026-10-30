@@ -13,7 +13,7 @@ const NAMES = [
   "repo", "arrow-down", "arrow-right", "arrow-up", "calendar", "check-all", "cloud", "cloud-upload", "comment-discussion",
   "diff-added", "diff-modified", "diff-removed", "diff-renamed", "edit", "key", "lightbulb", "loading", "search", "settings-gear", "sparkle", "target", "wand",
   "whole-word", "repo-pull", "repo-push", "sort-precedence", "split-horizontal", "split-vertical", "star-empty", "star-full", "symbol-misc", "sync", "tag", "warning",
-  "add", "error", "info", "circle-slash",
+  "add", "error", "info", "circle-slash", "pin",
 ];
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");

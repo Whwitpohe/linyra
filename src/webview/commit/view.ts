@@ -1,5 +1,7 @@
 import { localize } from "../../i18n";
-import type { CommitHostMessage, CommitState, CommitWebviewMessage } from "../../commitProtocol";
+import { COMMIT_PROMPT_MESSAGES, type CommitHostMessage, type CommitState, type CommitWebviewMessage } from "../../commitProtocol";
+import { placed, trackGestures } from "../promptHost";
+import { promptChecked, showPrompt } from "../ui/prompt";
 import { codiconElement } from "../codicons";
 import { byId, h } from "../dom";
 import { messageHints } from "../../commitMessageModel";
@@ -14,7 +16,9 @@ export interface CommitApi {
  * says what the buttons will take.
  */
 export function mountCommit(api: CommitApi, events: EventTarget = window): void {
-  const post = (m: CommitWebviewMessage) => api.postMessage(m);
+  // History and Author… carry where their button was: their questions open under it (promptHost.ts).
+  trackGestures("commit");
+  const post = (m: CommitWebviewMessage) => api.postMessage(placed(m, COMMIT_PROMPT_MESSAGES));
   const message = byId<HTMLTextAreaElement>("commit-message");
   const amend = byId("commit-amend");
   const signOff = byId("commit-signoff");
@@ -187,6 +191,11 @@ export function mountCommit(api: CommitApi, events: EventTarget = window): void 
       return;
     }
     if (m.type === "author") { setAuthor(m.author); return; }
+    if (m.type === "prompt") {
+      showPrompt(m.id, m.request, m.at, { answer: (answer) => post({ type: "promptAnswer", id: m.id, ...(answer ? { answer } : {}) }), typed: (value) => post({ type: "promptInput", id: m.id, value }) });
+      return;
+    }
+    if (m.type === "promptCheck") { promptChecked(m.id, m.check); return; }
     if (m.type === "amendMessage") { if (message.value.trim() === "") { message.value = m.text; saveDraft(); } return; }
     if (m.type === "committed") { message.value = ""; setAmend(false); setAuthor(""); validation.hidden = true; hideAiStatus(); renderHints(); return; }
     if (m.type === "generating") { startGenerating(); return; }

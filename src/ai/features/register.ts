@@ -35,6 +35,7 @@ export function registerAiFeatures(deps: AiCommandDeps): { features: AiFeatures;
     }]);
     commands.push(["linyra._itest.conflictReport", () => features.lastConflictReport]);
   }
-  for (const [id, run] of commands) deps.context.subscriptions.push(vscode.commands.registerCommand(id, run));
+  // As extension.ts's commands: started in a Linyra webview, their questions are asked there (Ask.from).
+  for (const [id, run] of commands) deps.context.subscriptions.push(vscode.commands.registerCommand(id, (...args: unknown[]) => deps.ask.from(args[0], () => run(...args))));
   return { features, askAi };
 }

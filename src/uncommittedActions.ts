@@ -5,6 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { checkValues, initialValues, type FormSpec, type FormValues } from "./formModel";
+import { anchorOf, ANCHOR_TTL_MS, type PromptAnchor, type PromptAnswer, type PromptCheck, type PromptItem, type PromptRequest } from "./promptModel";
 import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
@@ -26,11 +27,60 @@ export function gitMessage(e: unknown): string {
 }
 const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
 
+/** What a name's extra (✨) writes into: VS Code's InputBox, or a webview's box standing in for it (promptPort.ts). */
+export interface PromptBox { value: string; busy: boolean; validationMessage: string | { message: string } | undefined }
+export type PromptExtra = (box: PromptBox, on: boolean, signal: AbortSignal) => Promise<void>;
+
+/**
+ * A webview that asks at a place in it (the Log): the answer, or undefined when it cannot now
+ * (hidden, still loading), and VS Code's own picker asks instead.
+ */
+export interface PromptSurface {
+  ask(req: PromptRequest, at: PromptAnchor["at"], opts?: { check?: (value: string) => PromptCheck | undefined; extra?: PromptExtra }): Promise<PromptAnswer> | undefined;
+}
+
+const promptItem = (x: vscode.QuickPickItem): PromptItem =>
+  ({ label: x.label, ...(x.description ? { description: x.description } : {}), ...(x.detail ? { detail: x.detail } : {}), ...(x.picked ? { picked: true } : {}) });
+
 /**
  * VS Code's prompts, in one place: the integration suite answers them through a queue
- * (LINYRA_ITEST only), since a modal dialog cannot be clicked from a test.
+ * (LINYRA_ITEST only), since a modal dialog cannot be clicked from a test. A command started in
+ * a Linyra webview (a button, a right-click, a shortcut naming its button) asks its choices and
+ * names there, under what was clicked (promptModel.ts); anything else, at the top of the window.
+ * Confirmations stay VS Code's modal dialogs.
  */
 export class Ask {
+  /** Where the running command was started, while it runs (withAnchor). */
+  private anchor: PromptAnchor | undefined;
+  private readonly surfaces = new Map<string, PromptSurface>();
+
+  /** A webview that can ask at a place in it, by the name commands give it (`surface`). */
+  addSurface(name: string, surface: PromptSurface): vscode.Disposable {
+    this.surfaces.set(name, surface);
+    return new vscode.Disposable(() => { if (this.surfaces.get(name) === surface) this.surfaces.delete(name); });
+  }
+
+  /** Runs a command's work with the place it was started from: its questions are asked there. */
+  async withAnchor<T>(anchor: PromptAnchor | undefined, run: () => T | Promise<T>): Promise<T> {
+    if (!anchor) return run();
+    const before = this.anchor;
+    this.anchor = anchor;
+    try { return await run(); } finally { this.anchor = before; }
+  }
+
+  /** A command's argument: a right-click's place or a shortcut's button (anchorOf); the work runs with it. */
+  from<T>(arg: unknown, run: () => T | Promise<T>): T | Promise<T> {
+    const anchor = anchorOf(arg, Date.now());
+    return anchor ? this.withAnchor(anchor, run) : run();
+  }
+
+  /** The question asked where the command was started, or undefined: VS Code's picker asks it. */
+  private here(req: PromptRequest, opts?: { check?: (value: string) => PromptCheck | undefined; extra?: PromptExtra }): Promise<PromptAnswer> | undefined {
+    const a = this.anchor;
+    if (!a || Date.now() - a.since > ANCHOR_TTL_MS) return undefined;
+    return this.surfaces.get(a.surface)?.ask(req, a.at, opts);
+  }
+
   private readonly answers: (string | undefined)[] = [];
   private readonly testing = process.env.LINYRA_ITEST === "1";
   /** Test seam: runs once, as if while the dialog is open, before a queued answer is given. */
@@ -58,13 +108,22 @@ export class Ask {
     return (await vscode.window.showWarningMessage(message, { modal: true, detail }, button)) === button;
   }
 
-  async input(prompt: string, placeHolder: string, opts: { value?: string; validate?: (v: string) => string | vscode.InputBoxValidationMessage | undefined } = {}): Promise<string | undefined> {
+  /** `title`: VS Code's box's title (from the Command Palette); asked in a webview, the prompt is the popup's title. */
+  async input(prompt: string, placeHolder: string, opts: { value?: string; title?: string; validate?: (v: string) => string | vscode.InputBoxValidationMessage | undefined } = {}): Promise<string | undefined> {
     this.asked++;
     if (this.testing && this.answers.length > 0) {
       const a = this.answers.shift();
       return a === "Cancel" ? undefined : a;
     }
-    return vscode.window.showInputBox({ prompt, placeHolder, value: opts.value, validateInput: opts.validate, ignoreFocusOut: true });
+    const check = opts.validate && ((v: string): PromptCheck | undefined => {
+      const r = opts.validate!(v);
+      if (!r) return undefined;
+      if (typeof r === "string") return { message: r, blocking: true };
+      return { message: r.message, blocking: r.severity === vscode.InputBoxValidationSeverity.Error };
+    });
+    const here = this.here({ kind: "input", title: prompt, placeholder: placeHolder, ...(opts.value !== undefined ? { value: opts.value } : {}) }, { check });
+    if (here) { const a = await here; return a && "value" in a ? a.value : undefined; }
+    return vscode.window.showInputBox({ ...(opts.title ? { title: opts.title } : {}), prompt, placeHolder, value: opts.value, validateInput: opts.validate, ignoreFocusOut: true });
   }
 
   /** One item; its index. Testing: the queued answer is the item's label. */
@@ -75,6 +134,8 @@ export class Ask {
       const i = items.findIndex((x) => x.label === answer);
       return i < 0 ? undefined : i;
     }
+    const here = this.here({ kind: "pick", title: placeHolder, items: items.map(promptItem) });
+    if (here) { const a = await here; return a && "index" in a ? a.index : undefined; }
     const chosen = await vscode.window.showQuickPick([...items], { placeHolder });
     return chosen ? items.indexOf(chosen) : undefined;
   }
@@ -88,6 +149,8 @@ export class Ask {
       const labels = JSON.parse(a) as string[];
       return items.flatMap((x, i) => (labels.includes(x.label) ? [i] : []));
     }
+    const here = this.here({ kind: "pickMany", title: placeHolder, items: items.map(promptItem) });
+    if (here) { const a = await here; return a && "indexes" in a ? a.indexes : undefined; }
     const chosen = await vscode.window.showQuickPick([...items], { placeHolder, canPickMany: true });
     return chosen ? chosen.map((c) => items.indexOf(c)) : undefined;
   }
@@ -103,6 +166,8 @@ export class Ask {
       const i = items.findIndex((x) => x.label === label);
       return i < 0 ? undefined : { index: i, button: extra === "button" };
     }
+    const here = this.here({ kind: "pick", title: placeHolder, items: items.map(promptItem), pin: button.tooltip ?? "" });
+    if (here) { const a = await here; return a && "index" in a ? { index: a.index, button: a.pin === true } : undefined; }
     const quick = vscode.window.createQuickPick<vscode.QuickPickItem>();
     quick.items = items.map((x) => ({ ...x, buttons: [button] }));
     quick.placeholder = placeHolder;
@@ -123,8 +188,8 @@ export class Ask {
    */
   async inputWithToggle(o: {
     title: string; prompt: (on: boolean) => string; placeHolder: string; value: string;
-    toggle: { on: boolean; tooltip: (on: boolean) => string; icon: (on: boolean) => string };
-    extra?: { icon: string; tooltip: string; run(box: vscode.InputBox, on: boolean, signal: AbortSignal): Promise<void> };
+    toggle: { label: string; on: boolean; tooltip: (on: boolean) => string; icon: (on: boolean) => string };
+    extra?: { icon: string; tooltip: string; run: PromptExtra };
   }): Promise<{ value: string; on: boolean } | undefined> {
     this.asked++;
     if (this.testing && this.answers.length > 0) {
@@ -133,6 +198,11 @@ export class Ask {
       const [value, flip] = a.split("|");
       return { value, on: flip === "toggle" ? !o.toggle.on : o.toggle.on };
     }
+    // Asked in the webview where it was started: the switch under the box, ✨ beside it.
+    const here = this.here({ kind: "input", title: o.title, placeholder: o.placeHolder, value: o.value,
+      toggle: { label: o.toggle.label, on: o.toggle.on, says: [o.prompt(false), o.prompt(true)] }, ...(o.extra ? { extra: o.extra.tooltip } : {}) },
+    { ...(o.extra ? { extra: o.extra.run } : {}) });
+    if (here) { const a = await here; return a && "value" in a ? { value: a.value, on: a.on ?? o.toggle.on } : undefined; }
     const box = vscode.window.createInputBox();
     let on = o.toggle.on;
     const toggle = () => ({ iconPath: new vscode.ThemeIcon(o.toggle.icon(on)), tooltip: o.toggle.tooltip(on) });

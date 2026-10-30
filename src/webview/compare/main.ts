@@ -3,7 +3,9 @@ import "./compare.css";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the same boxes as the Log's Repo List.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { ALL_REPOS, candidates, manyRepos, selectionIds, setRemoteNames, sideLabel, sideOf, type Duplicate, type Pair, type Side } from "../../compareModel";
-import type { CompareMode, CompareLayout, CRepoRow, ReposHost, ReposWebview } from "../../compareProtocol";
+import { COMPARE_PROMPT_MESSAGES, type CompareMode, type CompareLayout, type CRepoRow, type ReposHost, type ReposWebview } from "../../compareProtocol";
+import { placed, trackGestures } from "../promptHost";
+import { promptChecked, showPrompt } from "../ui/prompt";
 import { byId, clear, h } from "../dom";
 import { codicon, codiconElement } from "../codicons";
 import { BranchPicker } from "./picker";
@@ -12,7 +14,9 @@ import { attachSplitter } from "../splitter";
 
 declare function acquireVsCodeApi(): { postMessage(m: ReposWebview): void };
 const vscodeApi = acquireVsCodeApi();
-const post = (m: ReposWebview) => vscodeApi.postMessage(m);
+// Merge ◀ into ▶… carries where its button was: its checklist opens under it (promptHost.ts).
+trackGestures("compare");
+const post = (m: ReposWebview) => vscodeApi.postMessage(placed(m, COMPARE_PROMPT_MESSAGES));
 const sideTrees = { left: new CompareTree("left", post), right: new CompareTree("right", post) };
 const workspace = byId("compare-workspace"), sidesElement = byId("compare-sides");
 let layout: CompareLayout = { repositoriesWidth: 240, leftWidth: 480, leftHeight: 180, sidesHeight: 280, orientation: "auto" };
@@ -220,6 +224,10 @@ function select(repoId: string, single: boolean): void {
 window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
   const m = e.data;
   switch (m.type) {
+    case "prompt":
+      showPrompt(m.id, m.request, m.at, { answer: (answer) => post({ type: "promptAnswer", id: m.id, ...(answer ? { answer } : {}) }), typed: (value) => post({ type: "promptInput", id: m.id, value }) });
+      return;
+    case "promptCheck": promptChecked(m.id, m.check); return;
     case "side": sideTrees[m.side].receive(m); renderEmptyAction(m.side, m.emptyAction); return;
     case "focusSide": sideTrees[m.side].focus(); return;
     case "state":

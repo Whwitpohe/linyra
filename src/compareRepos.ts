@@ -3,7 +3,8 @@ import { randomBytes } from "crypto";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
 import { candidates, COMMIT_PAGE, conflictNote, isGroupSelection, manyRepos, MANY_PREFIX, mergeSkips, selectionIds, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type MergeSkip, type Pair } from "./compareModel";
-import type { CRepoRow, CompareLayout, ReposHost, ReposWebview } from "./compareProtocol";
+import { COMPARE_PROMPT_MESSAGES, type CRepoRow, type CompareLayout, type ReposHost, type ReposWebview } from "./compareProtocol";
+import { PromptPort } from "./promptPort";
 import type { CompareStore } from "./compareStore";
 import { ALL_REPOS, differing, FAVORITES, groupOf, MODE, modeOf, ONLY_CONFLICTS as ONLY_CONFLICTS_KEY, onlyConflictsOf, PAIR, plural, RECENT, resultOf, SHOWN, hideSameOf, short, shortSide, type CompareMode, type Deps, type CompareSide } from "./compareView";
 import { outputLog } from "./outputLog";
@@ -50,6 +51,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       deps.log.onDidChangeRefs((id) => this.refsMoved(id)),
       // Each repository keeps the color it has in the Log, also when the Log separates neighbors.
       deps.log.onDidChangeAccents(() => this.changed()),
+      // Merge ◀ into ▶…'s checklist is asked in the tab, under its button (promptPort.ts).
+      deps.ask.addSurface("compare", this.prompts),
     );
     void this.setContext();
     // The Linyra Compare tab is hidden until Compare Branches is clicked (remembered per workspace).
@@ -107,10 +110,16 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     view.onDidDispose(() => {
       if (this.view !== view) return;
       this.view = undefined;
+      this.viewReady = false;
+      this.prompts.cancel();
       this.stop();
     });
     this.view = view;
   }
+
+  /** Merge ◀ into ▶…'s checklist, asked in the tab under its button (Ask's "compare" surface). */
+  readonly prompts = new PromptPort("compare", (m) => this.post(m), () => this.view?.visible === true && this.viewReady);
+  private viewReady = false;
 
   /** The last message of each type posted to the page (integration test seam). */
   readonly posted: Partial<Record<ReposHost["type"], ReposHost>> = {};
@@ -365,8 +374,15 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   async onMessage(m: ReposWebview): Promise<void> {
+    // Sent right after a click or a key there: its question is asked at that place (Ask.withAnchor).
+    await this.deps.ask.withAnchor(m && COMPARE_PROMPT_MESSAGES.has(m.type) ? this.prompts.anchorOf(m) : undefined, () => this.handle(m));
+  }
+
+  private async handle(m: ReposWebview): Promise<void> {
     try {
       switch (m?.type) {
+        case "promptAnswer": this.prompts.answered(m.id, m.answer); return;
+        case "promptInput": this.prompts.typed(m.id, m.value); return;
         case "sideReady":
           this.sides?.left.visibilityChanged();
           this.sides?.right.visibilityChanged();
@@ -406,6 +422,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
           return;
         }
         case "ready":
+          this.prompts.cancel();
+          this.viewReady = true;
           this.postState();
           this.changed();
           // Pick Branches… asked before the page was ready: open the picker now, not after the read.

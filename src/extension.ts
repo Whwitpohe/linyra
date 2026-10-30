@@ -160,33 +160,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   log.branchSidebar = branchSidebar;
   const multiRepo = new MultiRepo({ viewId: LogView.id, repos: () => log.tickedRepos(), run: log.countedRun, ask,
     fetchAll: () => log.upstream.fetchAll(), changed: (ids) => log.reposChanged(ids), state: context.globalState });
+  // Every command runs with the place it was started from, when its argument names one (a right-click
+  // in a Linyra webview, a shortcut naming its button): its choices and names are asked there (Ask.from).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const command = (id: string, run: (...args: any[]) => unknown): vscode.Disposable =>
+    vscode.commands.registerCommand(id, (...args: unknown[]) => ask.from(args[0], () => run(...args)));
   context.subscriptions.push(
     // { name }: the branch sheet's Check Out Everywhere… (asks first); else the picker of all three.
-    vscode.commands.registerCommand("linyra.branchesAcross", (arg?: { name?: unknown }) => (typeof arg?.name === "string" ? multiRepo.checkoutNamed(arg.name) : multiRepo.branches())),
-    vscode.commands.registerCommand("linyra.pushAll", () => multiRepo.push()),
-    vscode.commands.registerCommand("linyra.tagAcross", () => multiRepo.tags()),
-    vscode.commands.registerCommand("linyra.updateProject", () => multiRepo.update()),
+    command("linyra.branchesAcross", (arg?: { name?: unknown }) => (typeof arg?.name === "string" ? multiRepo.checkoutNamed(arg.name) : multiRepo.branches())),
+    command("linyra.pushAll", () => multiRepo.push()),
+    command("linyra.tagAcross", () => multiRepo.tags()),
+    command("linyra.updateProject", () => multiRepo.update()),
   );
   const commitActions = new CommitActions({ commit: (arg) => log.listedCommit(arg), selection: () => log.selectedCommits(), run: log.countedRun, discovery, ask, changed: (id) => log.branchChanged(id) });
-  for (const [command, action] of [["linyra.commitCherryPick", "cherryPick"], ["linyra.commitRevert", "revert"], ["linyra.commitReset", "reset"],
+  for (const [id, action] of [["linyra.commitCherryPick", "cherryPick"], ["linyra.commitRevert", "revert"], ["linyra.commitReset", "reset"],
     ["linyra.commitCheckout", "checkout"], ["linyra.commitNewBranch", "newBranch"], ["linyra.commitNewTag", "newTag"],
     ["linyra.commitUndo", "undo"], ["linyra.commitReword", "reword"], ["linyra.commitPushUpTo", "pushUpTo"]] satisfies [string, CommitAction][]) {
-    context.subscriptions.push(vscode.commands.registerCommand(command, (arg: unknown) => commitActions.run(action, arg)));
+    context.subscriptions.push(command(id, (arg: unknown) => commitActions.run(action, arg)));
   }
   context.subscriptions.push(
-    vscode.commands.registerCommand("linyra.commitCompareLocal", (arg: unknown) => commitActions.compareLocal(arg)),
-    vscode.commands.registerCommand("linyra.commitCreatePatch", (arg: unknown) => commitActions.createPatch(arg)),
+    command("linyra.commitCompareLocal", (arg: unknown) => commitActions.compareLocal(arg)),
+    command("linyra.commitCreatePatch", (arg: unknown) => commitActions.createPatch(arg)),
   );
   for (const action of ["view", "copy", "favorite", "compare", "worktreeDiff", "checkout", "create", "rename", "delete", "fetch", "pull", "push", "merge", "rebase", "worktree", "pullMerge", "pullRebase", "upstream"] satisfies BranchAction[]) {
-    context.subscriptions.push(vscode.commands.registerCommand(`linyra.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
+    context.subscriptions.push(command(`linyra.branch.${action}`, (arg: unknown) => branchSidebar.action(action, arg)));
   }
   context.subscriptions.push(branchSidebar, log.onDidChangeRefs((id) => void branchSidebar.refresh(id)));
   for (const action of ["show", "apply", "pop", "drop"] satisfies StashAction[]) {
-    context.subscriptions.push(vscode.commands.registerCommand(`linyra.stash.${action}`, (arg: unknown) => branchSidebar.stash(action, arg)));
+    context.subscriptions.push(command(`linyra.stash.${action}`, (arg: unknown) => branchSidebar.stash(action, arg)));
   }
-  context.subscriptions.push(vscode.commands.registerCommand("linyra.stash.create", (arg: unknown) => branchSidebar.stashCreate(arg)));
+  context.subscriptions.push(command("linyra.stash.create", (arg: unknown) => branchSidebar.stashCreate(arg)));
   for (const action of ["open", "reveal", "copyPath", "remove"] as const) {
-    context.subscriptions.push(vscode.commands.registerCommand(`linyra.worktree.${action}`, (arg: unknown) => branchSidebar.worktree(action, arg)));
+    context.subscriptions.push(command(`linyra.worktree.${action}`, (arg: unknown) => branchSidebar.worktree(action, arg)));
   }
   const sides = { left: new CompareSide("left", compareDeps), right: new CompareSide("right", compareDeps) };
   compareNode = (arg: unknown): unknown => {
@@ -226,36 +231,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     discovery,
     changes,
     changesPanel,
-    vscode.commands.registerCommand("linyra.openChangesEditor", () => changesPanel.open()),
-    vscode.commands.registerCommand("linyra.changes.focus", () => log.showChanges(true, true)),
-    vscode.commands.registerCommand("linyra.changes.removeView", () => log.showChanges(false)),
+    command("linyra.openChangesEditor", () => changesPanel.open()),
+    command("linyra.changes.focus", () => log.showChanges(true, true)),
+    command("linyra.changes.removeView", () => log.showChanges(false)),
     vscode.window.registerFileDecorationProvider(changes),
-    vscode.commands.registerCommand("linyra.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
+    command("linyra.fileHistory", (arg?: unknown) => log.fileHistory(compareFile(arg))),
     // A folder of the Changes view or the Commit side bar: the Log's Path filter for it.
-    vscode.commands.registerCommand("linyra.folderHistory", (arg?: unknown) => log.folderHistory(fileRow(arg))),
+    command("linyra.folderHistory", (arg?: unknown) => log.folderHistory(fileRow(arg))),
     // A File History row's right-click: the file at that commit, with the Log's blame.
-    vscode.commands.registerCommand("linyra.historyBlame", (arg?: unknown) => log.blameAt(arg)),
-    vscode.commands.registerCommand("linyra.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
-    vscode.commands.registerCommand("linyra.copyFilePath", async (arg?: unknown) => {
+    command("linyra.historyBlame", (arg?: unknown) => log.blameAt(arg)),
+    command("linyra.openWorkingFile", (arg?: unknown) => log.openWorkingFile(compareFile(arg))),
+    command("linyra.copyFilePath", async (arg?: unknown) => {
       const f = fileRow(arg);
       if (f) await copyText(path.join(f.root, ...f.path.split("/")));
     }),
-    vscode.commands.registerCommand("linyra.copyRelativePath", async (arg?: unknown) => {
+    command("linyra.copyRelativePath", async (arg?: unknown) => {
       const f = fileRow(arg);
       if (f) await copyText(f.path);
     }),
-    vscode.commands.registerCommand("linyra.showRepos", () => log.setGroupByRepo(true)),
-    vscode.commands.registerCommand("linyra.resolveConflicts", (arg?: unknown) => operations.resolve(arg)),
+    command("linyra.showRepos", () => log.setGroupByRepo(true)),
+    command("linyra.resolveConflicts", (arg?: unknown) => operations.resolve(arg)),
     ...OPERATIONS.flatMap((op) => [
-      vscode.commands.registerCommand(operationCommand(op, "continue"), (arg?: unknown) => operations.continue(arg, op)),
-      vscode.commands.registerCommand(operationCommand(op, "abort"), (arg?: unknown) => operations.abort(arg, op)),
+      command(operationCommand(op, "continue"), (arg?: unknown) => operations.continue(arg, op)),
+      command(operationCommand(op, "abort"), (arg?: unknown) => operations.abort(arg, op)),
     ]),
-    vscode.commands.registerCommand("linyra.abortAll", () => operations.abortAll()),
-    vscode.commands.registerCommand("linyra.applyPatch", (arg?: unknown) => patches.apply(arg)),
-    vscode.commands.registerCommand("linyra.showBranchSheet", (arg?: unknown) => log.showBranchSheet(arg)),
+    command("linyra.abortAll", () => operations.abortAll()),
+    command("linyra.applyPatch", (arg?: unknown) => patches.apply(arg)),
+    command("linyra.showBranchSheet", (arg?: unknown) => log.showBranchSheet(arg)),
     runAcross,
     vscode.workspace.registerTextDocumentContentProvider(RunAcross.scheme, runAcross),
-    vscode.commands.registerCommand("linyra.runAcross", () => runAcross.run()),
+    command("linyra.runAcross", () => runAcross.run()),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("linyra.excludeRepos") || e.affectsConfiguration("linyra.scanDepth")) void log.reposSettingChanged();
       if (e.affectsConfiguration("linyra.profiles")) log.profilesChanged();
@@ -272,51 +277,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sides.right,
     vscode.window.registerFileDecorationProvider(sides.left),
     vscode.window.registerFileDecorationProvider(sides.right),
-    vscode.commands.registerCommand("linyra.compareBranches", () => compareRepos.open()),
+    command("linyra.compareBranches", () => compareRepos.open()),
     // { name }: the branch sheet's Compare… (that branch on ◀, the other side picked); else the Branch box's.
-    vscode.commands.registerCommand("linyra.compareWith", (arg?: { name?: unknown }) => {
+    command("linyra.compareWith", (arg?: { name?: unknown }) => {
       const left = typeof arg?.name === "string" ? arg.name : log.branchBox;
       return left ? compareRepos.compareWith(left) : compareRepos.pick();
     }),
-    vscode.commands.registerCommand("linyra.comparePick", () => compareRepos.pick()),
-    vscode.commands.registerCommand("linyra.compareClose", () => compareRepos.close()),
+    command("linyra.comparePick", () => compareRepos.pick()),
+    command("linyra.compareClose", () => compareRepos.close()),
     // The Log toolbar's toggles: the outline icon shows a view, the filled one (shown) hides it.
-    vscode.commands.registerCommand("linyra.compareShow", () => compareRepos.open()),
-    vscode.commands.registerCommand("linyra.compareHide", () => compareRepos.close()),
-    vscode.commands.registerCommand("linyra.compareSwap", () => compareRepos.swap()),
-    vscode.commands.registerCommand("linyra.compareShowCommits", () => compareRepos.setMode("commits")),
-    vscode.commands.registerCommand("linyra.compareShowFiles", () => compareRepos.setMode("files")),
-    vscode.commands.registerCommand("linyra.compareHideSame", () => setHideSame(true)),
-    vscode.commands.registerCommand("linyra.compareShowSame", () => setHideSame(false)),
-    vscode.commands.registerCommand("linyra.compareRefresh", () => compareRepos.refresh()),
-    vscode.commands.registerCommand("linyra.compareOpenFile", (arg?: unknown) => {
+    command("linyra.compareShow", () => compareRepos.open()),
+    command("linyra.compareHide", () => compareRepos.close()),
+    command("linyra.compareSwap", () => compareRepos.swap()),
+    command("linyra.compareShowCommits", () => compareRepos.setMode("commits")),
+    command("linyra.compareShowFiles", () => compareRepos.setMode("files")),
+    command("linyra.compareHideSame", () => setHideSame(true)),
+    command("linyra.compareShowSame", () => setHideSame(false)),
+    command("linyra.compareRefresh", () => compareRepos.refresh()),
+    command("linyra.compareOpenFile", (arg?: unknown) => {
       const value = compareNode(arg) as { side?: unknown } | undefined;
       return value?.side === "left" || value?.side === "right" ? sides[value.side].openFile(value) : undefined;
     }),
-    vscode.commands.registerCommand("linyra.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {
+    command("linyra.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {
       // From the tree's right-click the argument is the row; from a test, { side, repoId, path }.
       const value = compareNode(arg) as typeof arg;
       const side = value?.side === "left" || value?.side === "right" ? value.side : undefined;
       return side ? sides[side].openSinceSplit(value) : undefined;
     }),
-    vscode.commands.registerCommand("linyra.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
-    vscode.commands.registerCommand("linyra.compareMergePreview", (arg?: { side?: unknown }) => {
+    command("linyra.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
+    command("linyra.compareMergePreview", (arg?: { side?: unknown }) => {
       const value = compareNode(arg) as typeof arg;
       return value?.side === "left" || value?.side === "right" ? sides[value.side].previewMerge(value) : undefined;
     }),
-    vscode.commands.registerCommand("linyra.compareCherryPick", (arg?: { compareSide?: unknown }) => {
+    command("linyra.compareCherryPick", (arg?: { compareSide?: unknown }) => {
       const side = arg?.compareSide === "left" || arg?.compareSide === "right" ? sides[arg.compareSide] : undefined;
       const t = side?.cherryPickTargets(arg);
       return t ? commitActions.cherryPickCommits(t.repo, t.commits) : undefined;
     }),
-    vscode.commands.registerCommand("linyra.compareMerge", (arg?: { repoId?: unknown }) => compareRepos.mergeIntoRight(typeof arg?.repoId === "string" ? arg.repoId : undefined)),
-    vscode.commands.registerCommand("linyra.compareReleaseNotes", () => compareRepos.copyReleaseNotes()),
-    vscode.commands.registerCommand("linyra.release", () => compareRepos.release()),
-    vscode.commands.registerCommand("linyra.compareOnlyConflicts", () => compareRepos.setOnlyConflicts(true)),
-    vscode.commands.registerCommand("linyra.compareAllConflicts", () => compareRepos.setOnlyConflicts(false)),
+    command("linyra.compareMerge", (arg?: { repoId?: unknown }) => compareRepos.mergeIntoRight(typeof arg?.repoId === "string" ? arg.repoId : undefined)),
+    command("linyra.compareReleaseNotes", () => compareRepos.copyReleaseNotes()),
+    command("linyra.release", () => compareRepos.release()),
+    command("linyra.compareOnlyConflicts", () => compareRepos.setOnlyConflicts(true)),
+    command("linyra.compareAllConflicts", () => compareRepos.setOnlyConflicts(false)),
     ...(["left", "right"] as const).flatMap((side) => [
-      vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
-      vscode.commands.registerCommand(`linyra.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),
+      command(`linyra.compare${side === "left" ? "Left" : "Right"}.focus`, () => compareRepos.setSideShown(side, true, true)),
+      command(`linyra.compare${side === "left" ? "Left" : "Right"}.removeView`, () => compareRepos.setSideShown(side, false)),
     ]),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath, true)),
     // Back from another program (a terminal, a Git client): what VS Code's Git does not watch may have changed.
@@ -333,77 +338,77 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     discovery.onDidChangeWatched(() => commitPanel.refresh()),
     log.upstream.onDidChange(() => commitPanel.refresh()),
     log.onDidChangeAccents(() => commitPanel.refresh()),
-    vscode.commands.registerCommand("linyra.focusUncommitted", () => log.showUncommitted()),
-    vscode.commands.registerCommand("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
-    vscode.commands.registerCommand("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
-    vscode.commands.registerCommand("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.discard(arg, many)),
-    vscode.commands.registerCommand("linyra.commitPanel.add", (arg?: unknown, many?: unknown) => commitPanel.addToVcs(arg, many)),
-    vscode.commands.registerCommand("linyra.commitPanel.removeFromVcs", (arg?: unknown, many?: unknown) => commitPanel.removeFromVcs(arg, many)),
-    vscode.commands.registerCommand("linyra.commitPanel.delete", (arg?: unknown, many?: unknown) => commitPanel.deleteFiles(arg, many)),
-    vscode.commands.registerCommand("linyra.commitPanel.ignore", (arg?: unknown, many?: unknown) => commitPanel.ignore(arg, many)),
-    vscode.commands.registerCommand("linyra.commitPanel.history", () => commitPanel.history()),
-    vscode.commands.registerCommand("linyra.commitPanel.groupRepoOn", () => commitPanel.setGrouping("repo", true)),
-    vscode.commands.registerCommand("linyra.commitPanel.groupRepoOff", () => commitPanel.setGrouping("repo", false)),
-    vscode.commands.registerCommand("linyra.commitPanel.groupDirOn", () => commitPanel.setGrouping("dir", true)),
-    vscode.commands.registerCommand("linyra.commitPanel.groupDirOff", () => commitPanel.setGrouping("dir", false)),
+    command("linyra.focusUncommitted", () => log.showUncommitted()),
+    command("linyra.refreshUncommitted", () => uncommitted.readAll(true)),
+    command("linyra.commitPanel.diff", (arg?: unknown) => commitPanel.diff(arg)),
+    command("linyra.commitPanel.rollback", (arg?: unknown, many?: unknown) => commitPanel.discard(arg, many)),
+    command("linyra.commitPanel.add", (arg?: unknown, many?: unknown) => commitPanel.addToVcs(arg, many)),
+    command("linyra.commitPanel.removeFromVcs", (arg?: unknown, many?: unknown) => commitPanel.removeFromVcs(arg, many)),
+    command("linyra.commitPanel.delete", (arg?: unknown, many?: unknown) => commitPanel.deleteFiles(arg, many)),
+    command("linyra.commitPanel.ignore", (arg?: unknown, many?: unknown) => commitPanel.ignore(arg, many)),
+    command("linyra.commitPanel.history", () => commitPanel.history()),
+    command("linyra.commitPanel.groupRepoOn", () => commitPanel.setGrouping("repo", true)),
+    command("linyra.commitPanel.groupRepoOff", () => commitPanel.setGrouping("repo", false)),
+    command("linyra.commitPanel.groupDirOn", () => commitPanel.setGrouping("dir", true)),
+    command("linyra.commitPanel.groupDirOff", () => commitPanel.setGrouping("dir", false)),
     // From the Changes view a file row stands for both halves: Stage takes its unstaged one, Unstage its staged one.
     // `many` is the selection when the right-clicked row is in it.
-    vscode.commands.registerCommand("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedActions.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
-    vscode.commands.registerCommand("linyra.unstage", (arg?: unknown, many?: unknown[]) => uncommittedActions.unstage(inGroup(arg, "staged"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "staged")))),
-    vscode.commands.registerCommand("linyra.discard", (arg?: unknown, many?: unknown[]) => uncommittedActions.discard(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
+    command("linyra.stage", (arg?: unknown, many?: unknown[]) => uncommittedActions.stage(inGroup(arg, "changes"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "changes")))),
+    command("linyra.unstage", (arg?: unknown, many?: unknown[]) => uncommittedActions.unstage(inGroup(arg, "staged"), changes.commandSelection(arg, many)?.map((m) => inGroup(m, "staged")))),
+    command("linyra.discard", (arg?: unknown, many?: unknown[]) => uncommittedActions.discard(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
     // A repository row (the Uncommitted view, the Log's Uncommitted side, or the Changes view's root): every file it lists.
-    vscode.commands.registerCommand("linyra.discardAll", (arg?: unknown) => uncommittedActions.discard({ repoId: repoOf(arg) })),
-    vscode.commands.registerCommand("linyra.stageAll", (arg?: unknown) => uncommittedActions.stage({ repoId: repoOf(arg), group: "changes" })),
-    vscode.commands.registerCommand("linyra.unstageAll", (arg?: unknown) => uncommittedActions.unstage({ repoId: repoOf(arg), group: "staged" })),
+    command("linyra.discardAll", (arg?: unknown) => uncommittedActions.discard({ repoId: repoOf(arg) })),
+    command("linyra.stageAll", (arg?: unknown) => uncommittedActions.stage({ repoId: repoOf(arg), group: "changes" })),
+    command("linyra.unstageAll", (arg?: unknown) => uncommittedActions.unstage({ repoId: repoOf(arg), group: "staged" })),
     // Commit… on the Uncommitted side or in the Changes view: the Commit side bar, that repository's files checked.
-    vscode.commands.registerCommand("linyra.commitRepo", (arg?: unknown) => commitPanel.openFor(((changesTarget(arg) ?? arg) as { repoId?: unknown } | undefined)?.repoId ?? repoOf(arg))),
-    vscode.commands.registerCommand("linyra.deleteNew", (arg?: unknown, many?: unknown[]) => uncommittedActions.deleteNew(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
+    command("linyra.commitRepo", (arg?: unknown) => commitPanel.openFor(((changesTarget(arg) ?? arg) as { repoId?: unknown } | undefined)?.repoId ?? repoOf(arg))),
+    command("linyra.deleteNew", (arg?: unknown, many?: unknown[]) => uncommittedActions.deleteNew(changesTarget(arg) ?? arg, changes.commandSelection(arg, many)?.map((m) => changesTarget(m) ?? m))),
     // Delete New Files…: a folder's, or a whole repository's (the Uncommitted side's row, the Changes view's root).
-    vscode.commands.registerCommand("linyra.deleteNewAll", (arg?: unknown) => uncommittedActions.deleteNew(changesTarget(arg) ?? { repoId: repoOf(arg) })),
-    vscode.commands.registerCommand("linyra.openUncommittedDiff", (arg?: unknown) => uncommittedActions.openDiff(arg)),
-    vscode.commands.registerCommand("linyra.hideRepos", () => log.setGroupByRepo(false)),
+    command("linyra.deleteNewAll", (arg?: unknown) => uncommittedActions.deleteNew(changesTarget(arg) ?? { repoId: repoOf(arg) })),
+    command("linyra.openUncommittedDiff", (arg?: unknown) => uncommittedActions.openDiff(arg)),
+    command("linyra.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
-    vscode.commands.registerCommand("linyra.fetchAll", () => log.upstream.fetchAll()),
+    command("linyra.fetchAll", () => log.upstream.fetchAll()),
     // The spinning button while Fetch All runs: already fetching, nothing more to do.
-    vscode.commands.registerCommand("linyra.fetching", () => undefined),
+    command("linyra.fetching", () => undefined),
     // Right-click a commit row in the Log.
-    vscode.commands.registerCommand("linyra.commitCopySha", (arg?: unknown) => log.commands.copySha(commitArg(arg))),
-    vscode.commands.registerCommand("linyra.commitCopyMessage", (arg?: unknown) => log.commands.copyMessage(commitArg(arg))),
-    vscode.commands.registerCommand("linyra.commitOpenOnRemote", (arg?: unknown) => log.commands.openOnRemote(commitArg(arg))),
-    vscode.commands.registerCommand("linyra.showBehind", () => log.commands.showBehind()),
-    vscode.commands.registerCommand("linyra.pullAllBehind", () => log.upstream.pullAllBehind()),
-    vscode.commands.registerCommand("linyra.fetchAndPullAll", () => log.upstream.fetchAndPullAll()),
-    vscode.commands.registerCommand("linyra.repoPull", (arg?: unknown) => { const repo = log.contextRepo(arg); return repo && log.upstream.pull(repo); }),
-    vscode.commands.registerCommand("linyra.repoShowOnly", (arg?: unknown) => log.commands.showOnly(arg)),
-    vscode.commands.registerCommand("linyra.repoHide", (arg?: unknown) => log.commands.hide(arg)),
-    vscode.commands.registerCommand("linyra.repoShowAll", () => log.commands.showAll()),
-    vscode.commands.registerCommand("linyra.repoExclude", (arg?: unknown) => log.commands.exclude(arg)),
-    vscode.commands.registerCommand("linyra.repoOpenFolder", (arg?: unknown) => log.commands.openFolder(arg)),
-    vscode.commands.registerCommand("linyra.repoCopyPath", (arg?: unknown) => log.commands.copyPath(arg)),
-    vscode.commands.registerCommand("linyra.profileSwitch", () => log.profiles.switch()),
-    vscode.commands.registerCommand("linyra.profileShow", (arg?: unknown) => log.profiles.show(arg)),
-    vscode.commands.registerCommand("linyra.profileSave", () => log.profiles.save()),
-    vscode.commands.registerCommand("linyra.profileUpdate", (arg?: unknown) => log.profiles.update(arg)),
-    vscode.commands.registerCommand("linyra.profileRename", (arg?: unknown) => log.profiles.rename(arg)),
-    vscode.commands.registerCommand("linyra.profileDelete", (arg?: unknown) => log.profiles.delete(arg)),
-    vscode.commands.registerCommand("linyra.repoProfiles", (arg?: unknown) => log.profiles.forRepo(arg)),
+    command("linyra.commitCopySha", (arg?: unknown) => log.commands.copySha(commitArg(arg))),
+    command("linyra.commitCopyMessage", (arg?: unknown) => log.commands.copyMessage(commitArg(arg))),
+    command("linyra.commitOpenOnRemote", (arg?: unknown) => log.commands.openOnRemote(commitArg(arg))),
+    command("linyra.showBehind", () => log.commands.showBehind()),
+    command("linyra.pullAllBehind", () => log.upstream.pullAllBehind()),
+    command("linyra.fetchAndPullAll", () => log.upstream.fetchAndPullAll()),
+    command("linyra.repoPull", (arg?: unknown) => { const repo = log.contextRepo(arg); return repo && log.upstream.pull(repo); }),
+    command("linyra.repoShowOnly", (arg?: unknown) => log.commands.showOnly(arg)),
+    command("linyra.repoHide", (arg?: unknown) => log.commands.hide(arg)),
+    command("linyra.repoShowAll", () => log.commands.showAll()),
+    command("linyra.repoExclude", (arg?: unknown) => log.commands.exclude(arg)),
+    command("linyra.repoOpenFolder", (arg?: unknown) => log.commands.openFolder(arg)),
+    command("linyra.repoCopyPath", (arg?: unknown) => log.commands.copyPath(arg)),
+    command("linyra.profileSwitch", () => log.profiles.switch()),
+    command("linyra.profileShow", (arg?: unknown) => log.profiles.show(arg)),
+    command("linyra.profileSave", () => log.profiles.save()),
+    command("linyra.profileUpdate", (arg?: unknown) => log.profiles.update(arg)),
+    command("linyra.profileRename", (arg?: unknown) => log.profiles.rename(arg)),
+    command("linyra.profileDelete", (arg?: unknown) => log.profiles.delete(arg)),
+    command("linyra.repoProfiles", (arg?: unknown) => log.profiles.forRepo(arg)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root))),
     blame,
-    vscode.commands.registerCommand("linyra.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
-    vscode.commands.registerCommand("linyra.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
-    vscode.commands.registerCommand("linyra.openCombinedDiff", (o: CombinedOpen) => log.openCombinedDiff(o)),
-    vscode.commands.registerCommand("linyra.clearSelection", () => log.clearSelection()),
-    vscode.commands.registerCommand("linyra.openRevision", (arg?: unknown) => log.openRevision(arg)),
-    vscode.commands.registerCommand("linyra.changesShowAll", () => setAllFiles(true)),
-    vscode.commands.registerCommand("linyra.changesShowChanged", () => setAllFiles(false)),
-    vscode.commands.registerCommand("linyra.copySha", () => {
+    command("linyra.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
+    command("linyra.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
+    command("linyra.openCombinedDiff", (o: CombinedOpen) => log.openCombinedDiff(o)),
+    command("linyra.clearSelection", () => log.clearSelection()),
+    command("linyra.openRevision", (arg?: unknown) => log.openRevision(arg)),
+    command("linyra.changesShowAll", () => setAllFiles(true)),
+    command("linyra.changesShowChanged", () => setAllFiles(false)),
+    command("linyra.copySha", () => {
       const s = changes.current();
       if (s) void copyText(s.commit.sha);
     }),
-    vscode.commands.registerCommand("linyra.copyMessage", () => {
+    command("linyra.copyMessage", () => {
       const s = changes.current();
       if (s) void copyText(s.message || s.commit.subject);
     }),
@@ -435,13 +440,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return { root: found.repo.root, path: found.path, folder: !!stat && (stat.type & vscode.FileType.Directory) !== 0 };
   };
   context.subscriptions.push(insights,
-    vscode.commands.registerCommand("linyra.insights", () => insights.open()),
-    vscode.commands.registerCommand("linyra.visualHistory", async (arg?: unknown) => {
+    command("linyra.insights", () => insights.open()),
+    command("linyra.visualHistory", async (arg?: unknown) => {
       if (log.repoList.length === 0) await insights.open();
       return insights.visualHistory(await visualTarget(arg));
     }),
     // A commit in the Log (Insights' bubbles): selected where listed, else found by its hash.
-    vscode.commands.registerCommand("linyra.revealCommit", async (arg?: unknown) => {
+    command("linyra.revealCommit", async (arg?: unknown) => {
       const a = arg as { repoId?: unknown; sha?: unknown } | undefined;
       if (typeof a?.repoId === "string" && isSha(a.sha)) await log.showCommit(a.repoId, a.sha);
     }),
@@ -449,50 +454,53 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Test seam for the integration suite only; never registered for users.
   if (process.env.LINYRA_ITEST === "1") {
     context.subscriptions.push(
-      vscode.commands.registerCommand("linyra._itest.insights", () => insights.snapshot()),
-      vscode.commands.registerCommand("linyra._itest.insightsSend", (m: unknown) => insights.onMessage(m)),
+      command("linyra._itest.insights", () => insights.snapshot()),
+      command("linyra._itest.insightsSend", (m: unknown) => insights.onMessage(m)),
     );
     context.subscriptions.push(
-      vscode.commands.registerCommand("linyra._itest.branches", () => branchSidebar.snapshot()),
-      vscode.commands.registerCommand("linyra._itest.branchError", () => branchSidebar.lastError),
-      vscode.commands.registerCommand("linyra._itest.lastDetail", () => uncommittedActions.ask.lastDetail),
-      vscode.commands.registerCommand("linyra._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
-      vscode.commands.registerCommand("linyra._itest.snapshot", () => log.snapshot()),
-      vscode.commands.registerCommand("linyra._itest.blame", () => blame.last),
-      vscode.commands.registerCommand("linyra._itest.send", (m: WebviewMessage) => log.onMessage(m)),
-      vscode.commands.registerCommand("linyra._itest.uncommitted", () => uncommittedActions.snapshot()),
-      vscode.commands.registerCommand("linyra._itest.commitPanel", () => commitPanel.snapshot()),
-      vscode.commands.registerCommand("linyra._itest.commitSend", (m: CommitWebviewMessage) => commitPanel.onMessage(m)),
-      vscode.commands.registerCommand("linyra._itest.commitCheck", (ids: string[], on: boolean) => commitPanel.check(ids.map((id) => ({ id })), on)),
-      vscode.commands.registerCommand("linyra._itest.compareStore", () => ({
+      command("linyra._itest.branches", () => branchSidebar.snapshot()),
+      command("linyra._itest.branchError", () => branchSidebar.lastError),
+      command("linyra._itest.lastDetail", () => uncommittedActions.ask.lastDetail),
+      command("linyra._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
+      command("linyra._itest.snapshot", () => log.snapshot()),
+      command("linyra._itest.blame", () => blame.last),
+      command("linyra._itest.send", (m: WebviewMessage) => log.onMessage(m)),
+      // A question asked in the Log (promptModel.ts), and its answer as the webview would give it.
+      command("linyra._itest.lastPrompt", () => log.prompts.last),
+      command("linyra._itest.promptAnswer", (id: number, answer: unknown) => log.prompts.answered(id, answer)),
+      command("linyra._itest.uncommitted", () => uncommittedActions.snapshot()),
+      command("linyra._itest.commitPanel", () => commitPanel.snapshot()),
+      command("linyra._itest.commitSend", (m: CommitWebviewMessage) => commitPanel.onMessage(m)),
+      command("linyra._itest.commitCheck", (ids: string[], on: boolean) => commitPanel.check(ids.map((id) => ({ id })), on)),
+      command("linyra._itest.compareStore", () => ({
         // The merge checks after a read count as reading here: a test waits for the whole answer.
         pair: compare.pair, reading: compare.reading || compare.checking, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
       })),
-      vscode.commands.registerCommand("linyra._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
-      vscode.commands.registerCommand("linyra._itest.compareRefresh", () => compare.refresh()),
-      vscode.commands.registerCommand("linyra._itest.compareSwap", () => compare.swap()),
-      vscode.commands.registerCommand("linyra._itest.compare", () => compareRepos.snapshot()),
-      vscode.commands.registerCommand("linyra._itest.compareSide", (s: "left" | "right") => sides[s].snapshot()),
-      vscode.commands.registerCommand("linyra._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
-      vscode.commands.registerCommand("linyra._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
-      vscode.commands.registerCommand("linyra._itest.compareSelect", (id: string) => compareRepos.select(id)),
-      vscode.commands.registerCommand("linyra._itest.comparePosted", () => compareRepos.posted),
-      vscode.commands.registerCommand("linyra._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
-      vscode.commands.registerCommand("linyra._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
-      vscode.commands.registerCommand("linyra._itest.changesMessage", (message: unknown, viewId?: unknown) => changes.onMessage(message, viewId === "editor" ? "editor" : "main")),
-      vscode.commands.registerCommand("linyra._itest.clipboard", () => copiedText()),
-      vscode.commands.registerCommand("linyra._itest.setClipboard", (text: string) => setCopiedText(text)),
-      vscode.commands.registerCommand("linyra._itest.answer", (v: string | undefined) => uncommittedActions.ask.queue(v)),
-      vscode.commands.registerCommand("linyra._itest.lastWarning", () => uncommittedActions.ask.lastWarning),
-      vscode.commands.registerCommand("linyra._itest.lastForm", () => uncommittedActions.ask.lastForm),
-      vscode.commands.registerCommand("linyra._itest.operationError", () => { const e = operations.lastError; operations.lastError = undefined; return e; }),
-      vscode.commands.registerCommand("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
-      vscode.commands.registerCommand("linyra._itest.branchSheet", () => log.branchSheet.last),
-      vscode.commands.registerCommand("linyra._itest.branchSheetAcross", () => log.branchSheet.lastAcross),
-      vscode.commands.registerCommand("linyra._itest.branchSheetAcrossReads", () => log.branchSheet.acrossReads),
-      vscode.commands.registerCommand("linyra._itest.patch", (file?: string) => { patches.testFile = file; const m = patches.lastMessage; patches.lastMessage = undefined; return m; }),
-      vscode.commands.registerCommand("linyra._itest.asked", () => uncommittedActions.ask.asked),
-      vscode.commands.registerCommand("linyra._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedActions.ask.beforeAnswer = f)),
+      command("linyra._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
+      command("linyra._itest.compareRefresh", () => compare.refresh()),
+      command("linyra._itest.compareSwap", () => compare.swap()),
+      command("linyra._itest.compare", () => compareRepos.snapshot()),
+      command("linyra._itest.compareSide", (s: "left" | "right") => sides[s].snapshot()),
+      command("linyra._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
+      command("linyra._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
+      command("linyra._itest.compareSelect", (id: string) => compareRepos.select(id)),
+      command("linyra._itest.comparePosted", () => compareRepos.posted),
+      command("linyra._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
+      command("linyra._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
+      command("linyra._itest.changesMessage", (message: unknown, viewId?: unknown) => changes.onMessage(message, viewId === "editor" ? "editor" : "main")),
+      command("linyra._itest.clipboard", () => copiedText()),
+      command("linyra._itest.setClipboard", (text: string) => setCopiedText(text)),
+      command("linyra._itest.answer", (v: string | undefined) => uncommittedActions.ask.queue(v)),
+      command("linyra._itest.lastWarning", () => uncommittedActions.ask.lastWarning),
+      command("linyra._itest.lastForm", () => uncommittedActions.ask.lastForm),
+      command("linyra._itest.operationError", () => { const e = operations.lastError; operations.lastError = undefined; return e; }),
+      command("linyra._itest.runAcross", (line: string) => runAcross.run(line)),
+      command("linyra._itest.branchSheet", () => log.branchSheet.last),
+      command("linyra._itest.branchSheetAcross", () => log.branchSheet.lastAcross),
+      command("linyra._itest.branchSheetAcrossReads", () => log.branchSheet.acrossReads),
+      command("linyra._itest.patch", (file?: string) => { patches.testFile = file; const m = patches.lastMessage; patches.lastMessage = undefined; return m; }),
+      command("linyra._itest.asked", () => uncommittedActions.ask.asked),
+      command("linyra._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedActions.ask.beforeAnswer = f)),
     );
   }
 }

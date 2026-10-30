@@ -1,4 +1,5 @@
 // Messages between the Repositories view (a webview in the Linyra Compare tab) and the host.
+import type { PromptHostMessage } from "./promptPort";
 import type { Duplicate, Pair } from "./compareModel";
 import type { ChangeStatus } from "./types";
 
@@ -62,6 +63,8 @@ export interface CRepoRow {
 /** Host → Repositories page. */
 export type ReposHost =
   | CompareSidePage
+  /** Merge ◀ into ▶…'s checklist, asked in the Compare tab under its button (promptPort.ts). */
+  | PromptHostMessage
   | { type: "focusSide"; side: "left" | "right" }
   | { type: "state"; pair: Pair | null; mode: CompareMode; recent: Pair[]; favorites: string[]; message?: string; hideSame?: boolean; onlyConflicts?: boolean; showLeft?: boolean; showRight?: boolean; layout?: CompareLayout }
   /**
@@ -101,4 +104,10 @@ export type ReposWebview =
   | { type: "select"; repoId: string }
   | { type: "favorite"; name: string }
   | { type: "wantBranches" }
-  | { type: "wantDups"; repoId: string };
+  | { type: "wantDups"; repoId: string }
+  /** A question asked in the tab answered, or a name in it typed (promptPort.ts). */
+  | { type: "promptAnswer"; id: number; answer?: unknown }
+  | { type: "promptInput"; id: number; value: string };
+
+/** The tab's messages that can lead to a question: they carry where their button was (webview/promptHost.ts). */
+export const COMPARE_PROMPT_MESSAGES: ReadonlySet<string> = new Set(["merge"]);
