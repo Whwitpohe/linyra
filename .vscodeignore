@@ -11,6 +11,8 @@
 !out/changes.css
 !out/commit.js
 !out/commit.css
+!out/aiSettings.js
+!out/aiSettings.css
 !out/form.js
 !out/form.css
 !out/insights.js
