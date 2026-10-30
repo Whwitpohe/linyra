@@ -146,7 +146,8 @@ test("selected when everything is committed: the row goes and the newest commit 
   await hostSays(page, nothing);
   await expect(summary(page)).toBeHidden();
   await expect(page.locator('#rows .row[aria-selected="true"]')).toHaveCount(1);
-  expect((await sent(page, "select")).length).toBe(before + 1);
+  // Posted after the row is drawn selected: polled, as a loaded machine posts it a frame later.
+  await expect.poll(async () => (await sent(page, "select")).length).toBe(before + 1);
 });
 
 test("it scrolls away with the commits; the last commit is still reachable; it coming or going keeps the commits in place", async ({ page }) => {
