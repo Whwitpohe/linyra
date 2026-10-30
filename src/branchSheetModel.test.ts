@@ -64,7 +64,8 @@ const labels = (c: ReturnType<typeof upstreamCard>) => c?.buttons.map((b) => `${
 
 {
   // Real git: the one for-each-ref line of a local branch (diverged, then gone), a remote branch and an annotated tag.
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-sheet-"));
+  // Its real path: git names worktrees by theirs (macOS' /private/var, Windows' long names).
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "linyra-sheet-")));
   const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
   const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   try {

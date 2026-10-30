@@ -17,7 +17,8 @@ import { folderName, hasLocalChanges, worktreeCommands, worktreeLabel } from "./
 }
 
 void (async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-worktrees-"));
+  // Its real path: git writes worktree paths as theirs (macOS' /private/var, Windows' long names).
+  const home = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "linyra-worktrees-")));
   const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
   const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
   const fails = (cwd: string, args: string[]) => {
