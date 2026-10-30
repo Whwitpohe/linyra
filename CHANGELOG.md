@@ -9,6 +9,151 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-10-30
+
+The Log learns GitLens's search and looks, each branch gets a sheet of its own, the Repo List
+shows every repository's state, and more of the everyday work runs in every repository at once —
+plus optional AI on a model of your own, and Insights over the history.
+
+### Added
+
+- **Search like GitLens's Commit Graph.** `message:`, `-message:`, `author:` (`@me`),
+  `committer:`, `commit:`, `file:`, `change:`, `type:` (`merge`, `tip`, `wip`), `after:`,
+  `before:`, `ref:` (a branch, tag or range) and Linyra's `repo:`, with GitLens's aliases. Each
+  becomes `git log`'s own flags (`--grep`, `--invert-grep`, `--author`, pathspecs, `-S`/`-G`,
+  `--merges`, `--since`/`--until`, revisions with `--ignore-missing`), so a repository without a
+  ref skips it at no extra git process. The popup under the box lists every operator with an
+  example and suggests authors, branches, tags and repositories; ↑/↓ recall recent searches;
+  Whole Word and Match All join Match Case and Regex.
+- **Author discs and avatars.** A commit's node is its author's initial ringed in the
+  repository's color, a thicker ring for your own. A picture covers it when the repository's own
+  host has one (`linyra.avatars`, `linyra.avatarHosts`, `linyra.avatarUrlTemplate`): asked only
+  for the rows on screen, only of the hosts your remotes name, and kept in memory; a host that
+  refuses is not asked again until the window reloads.
+- **Branch pills.** A branch and the remotes at the same commit share one pill (`develop |
+  origin`); the checked-out one is bold with its ↑/↓; tags get their own. Each part is its own
+  target: a click opens its branch sheet, a right-click its Repo List menu.
+- **A hover card** when the pointer rests on a row: author, times, hash, repository and pills at
+  once, then the message and the file and line counts from one `git show`.
+- **A Changes column**: each commit's files and lines as numbers, squares, a bar or a bipolar
+  bar; one git process per repository on screen, each commit read once a session.
+- **A column header** over the commits: drag a column's edge (double-click for its automatic
+  width), hide Repository Name, Hash, Author, Changes or Date, set the Graph's order (by commit
+  date, or by branch structure) and folding, and the Date's relative or absolute time.
+- **Row buttons**: the row under the pointer offers Undo Commit… and Edit Commit Message… on the
+  checked-out commit and ⋯ (its menu) on every row.
+- **An Uncommitted changes row** above the newest commit while the ticked repositories have
+  work: the files by kind, the lines, the latest edit, a chip per repository. Click it for that
+  work in the Changes view; hover for Commit….
+- **File History in the Log**: the path's history in the Log itself, each row's change to the
+  file (its letter and lines), its uncommitted change on top; Folder History; Blame at This
+  Revision.
+- **The branch sheet.** Click a branch pill (or Show Branch Details) for one branch, tag or
+  remote branch in the Changes view: its upstream (to push, to pull, diverged, gone, not
+  published), its merge target with the commits each way and the merge's conflicts predicted
+  with `git merge-tree` without writing, next steps that are never empty, and on request the
+  same branch in every ticked repository with Check Out Everywhere…, Push… and Update Project….
+  At most four git processes; the branch it shows is marked in the Log.
+- **Repository state in the Repo List.** Each repository's branch with VS Code's `*` `+` `!`
+  for uncommitted work, and a mark where it is on another branch than the others, read from the
+  git directory's files without a git process. Each local branch shows its own ↓ (to pull,
+  blue) and ↑ (to push, green) against its upstream.
+- **Stopped operations.** A merge, rebase, cherry-pick, revert or patch series that stopped
+  shows a badge ("2 conflicts") and a row under its repository: Resolve Conflicts… (VS Code's
+  merge editor), Continue (git's own `--continue`, with the message it prepared), Abort… and
+  Abort in All Repositories….
+- **A Worktrees group** in the Repo List: Open in New Window, Reveal, Copy Path and Remove
+  Worktree… (asked again before `--force`; a vanished folder is pruned).
+- **Smart Checkout**: a checkout refused for local changes stashes them, checks out and applies
+  them back (staged stays staged); conflicts are left to resolve, with the stash kept. In the
+  Repo List and in Branches Across Repositories.
+- **Push… sends branches that are not checked out.** Every local branch ahead of its upstream
+  — a develop merged into master, master not checked out — is listed under its own heading,
+  ticked, and pushed without a checkout.
+- **Push… force pushes a rewritten branch with a lease.** A branch whose pushed commits were
+  amended, undone or rebased is listed apart and unticked; ticked, it is pushed with
+  `--force-with-lease` on the commit last fetched, after one confirmation that names what the
+  remote loses (Force Push Anyway when another author's commit would go). Never main, master or
+  VS Code's `git.branchProtection`.
+- **Update Project fast-forwards branches that are only behind**, without a checkout (`git
+  fetch . <upstream>:<branch>`, which refuses anything but a fast-forward and a branch checked
+  out in another worktree), and reports which moved. `linyra.updateMethod` keeps merge, rebase
+  or fast-forward only (the pin beside a method).
+- **Tag Across Repositories…**: one tag on each ticked repository's checked-out commit,
+  annotated when given a message, pushed when asked.
+- **Run Git Command Across Repositories…**: one command, never through a shell, in every ticked
+  repository; each one's output and exit code in one read-only document. Anything that may write
+  is confirmed first.
+- **Release…**: Compare's ◀ into ▶ as a release, in one reviewed form — the notes, the merge, a
+  tag on ▶ carrying that repository's notes, and the push.
+- **Apply Patch…** from a file or the clipboard, in the repository its files belong to: as
+  changes (a three-way merge offered when the context moved), or a mailbox as its commits (`git
+  am`, aborted if it stops).
+- **Commit message hints**: a line over 72 characters, or no blank line after the subject, is
+  pointed out without blocking; the box starts from git's `commit.template`. The Commit side bar
+  names each repository's branch.
+- **Linyra AI, off until you turn it on.** The Linyra AI page (Configure AI…) holds profiles for
+  OpenAI and any OpenAI-compatible server (Ollama, LM Studio), Anthropic and Gemini, with the
+  provider's model list, a thinking level and Test Connection; keys stay in VS Code's secret
+  storage, bound to the address they were entered for. Then: Explain a commit, uncommitted
+  changes, unpushed commits, a branch or conflicts; Review commits (findings by severity, with
+  file:line links); Write Release Notes from commits or Compare; Generate Commit Message
+  (`linyra.ai.commitMessageInstructions`) and a stash's name; Resolve Conflicts with AI… (a
+  proposal per file, written after a confirmation); ✨ in the search box turns a question into
+  operators; Ask AI… runs read-only steps at once and lists anything that writes in one
+  confirmation first. Nothing is sent while it is off; `linyra.ai.exclude` keeps lockfiles,
+  built files and secrets out, and `linyra.ai.maxPromptTokens` asks before a large request.
+- **Insights** (Linyra: Insights, or Visual History on a file or folder): **Visual History**, a
+  bubble per commit sized by its lines, a row per author, a click shows it in the Log; **Files**
+  and **Commits** treemaps of the tracked files, by size or by how often the range touched them;
+  **Repository Health**, one row per repository (commit-graph, objects, untracked cache, file
+  system monitor, many files, maintenance) with a recommendation each. Write Commit-Graph, Run
+  Maintenance…, Turn On/Off and Optimize Selected… name every command in one confirmation first.
+- **Untick** and **Always Hide (Settings)** on a Repo List row.
+
+### Changed
+
+- **Questions are asked where you acted.** A choice, a checklist or a name opens under the
+  button you clicked, or where you right-clicked, instead of VS Code's picker at the top of the
+  window: with section headings, a filter past eight, and a pin for "don't ask again". From the
+  Command Palette VS Code's picker still asks; confirmations stay VS Code's dialogs.
+- **Every popup closes on a click outside it**, elsewhere in VS Code too.
+- **The commit details read like a VS Code pane**: a pane header, the body as written, parent
+  links that select the parent. The checked-out branch's pill starts with HEAD, and the
+  branches listed under it are only those the pills do not name.
+- **The repository column is a strip** in the repository's color, one unbroken strip for a run
+  of its commits.
+- **Uncommitted rows look like GitLens's working changes**: files by kind, a meter, the staged
+  tag, the branch with its ↑/↓, the last edit.
+- **One file tree everywhere** (the Changes view and Compare's sides): VS Code's rows and keys,
+  type-to-find, and a changed file drawn the same in every view.
+- **Commit… opens the Commit side bar**, and Discard Changes never deletes a new file (Delete New
+  Files… does).
+- **Prompts say what will happen, errors name the action and what to do next**, and a command
+  across repositories ends with one grouped report: done, up to date, stopped, and skipped with
+  the reason.
+- **Compare names its merge**, and an empty side says how to get back.
+- **One Chinese vocabulary** across the extension (签出, 拣选, 储藏, 提交信息…).
+
+### Fixed
+
+- **The search box's placeholder fits**, and no longer says Enter is needed.
+- **A narrow File History keeps room for the subject**: fewer columns, and only the status
+  letter below 440 px.
+- **Collapse Linear Branches draws its folded rows when the selected commit is inside a run**;
+  the selection moves to the run's top instead of the hidden commits simply vanishing.
+
+### Performance
+
+- **The Repo List redraws only the rows that changed:** 68 repositories at a 4× slower CPU,
+  opening a repository 176 → 45 ms to the next frame, an arrow key 46 → 4.7 ms.
+- **Scrolling the Log reads no layout and rebuilds only what changed:** 68 repositories, 2,000
+  rows, CPU ×4: frames over 50 ms 115–161 → 26–48, work per frame 58–65 → 43–47 ms.
+- **A filter that did not change reads nothing again:** clicking what the Log already shows used
+  to run `git log` in every ticked repository (68 processes on the benchmark workspace).
+- **Activation loads less:** the Anthropic SDK is a bundle of its own, loaded the first time
+  Anthropic is used (the extension bundle's load 25.8 → 17.3 ms).
+
 ## [1.6.0] — 2026-10-29
 
 The JetBrains Commit window comes to Linyra's side bar, and Compare Branches learns to tell a
