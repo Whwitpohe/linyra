@@ -60,6 +60,8 @@ export interface WorkRow {
   tags: string[];
   /** "edited 2m ago", or "" */
   edited: string;
+  /** The same edit as a time (ms), or null when not known: the Log's summary row shows it as the commits show theirs. */
+  editedAt: number | null;
   /** VS Code's Git has the repository open: its menu offers Commit…, Stage/Unstage All and Discard All Changes. */
   canStage: boolean;
   /** Something is staged (Unstage All), something is not (Stage All). */
@@ -168,6 +170,10 @@ export type WebviewMessage =
   | { type: "hoverAction"; action: "copySha" | "openOnRemote" | "compare" | "explain"; repoId: string; sha: string }
   /** A Log row's own button (webview/rowActions.ts): the checked-out commit's Undo Commit or Edit Commit Message. */
   | { type: "rowAction"; action: "undo" | "reword"; repoId: string; sha: string }
+  /** The Log's summary row of uncommitted work selected (webview/workSummary.ts): that work in the Changes view; repoId: a chip's, else the most recently edited. */
+  | { type: "showWork"; repoId?: string }
+  /** The summary row's Commit…: the Commit side bar, for that repository alone when one is named. */
+  | { type: "commitWork"; repoId?: string }
   /** The search box's ✨ mode: plain words for linyra.ai.translateSearch to turn into a query. */
   | { type: "aiSearch"; text: string }
   /** The ✨ toggle while Linyra AI is not available: set it up. */

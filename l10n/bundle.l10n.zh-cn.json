@@ -355,6 +355,8 @@
   "Edit Commit Message…": "编辑提交信息…",
   "More Actions…": "更多操作…",
   "Commit actions": "提交操作",
+  "Commit…": "提交…",
+  "Show the uncommitted changes in {0}": "显示 {0} 中未提交的更改",
   "Sidebar mode": "侧栏模式",
   "Refresh branches": "刷新分支",
   "Search repositories or branches": "搜索仓库或分支",

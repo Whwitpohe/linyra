@@ -9,12 +9,14 @@ import { graphWidthFor, hoverRail, railAt, renderGraph, type FoldAction, type Ra
 import { historyChangeCell, historySubjectNotes } from "./history";
 import { linearSegments, projectFolds, segmentNodes, type FoldProjection, type LinearSegment } from "./graphFoldModel";
 import { indexParents, layoutGraph, type CommitGraph, type ParentIndex } from "./graphModel";
-import { absoluteTime, accentOf, moveSelection, relativeTime, repoColumnChars, separateAdjacentAccents, visibleRange } from "./view";
+import { absoluteTime, accentOf, relativeTime, repoColumnChars, separateAdjacentAccents, visibleRange } from "./view";
 import { DEFAULT_COLUMNS, layoutColumns, type ColumnId, type ColumnLayout, type ColumnPrefs, type SizedColumn } from "./logColumns";
 import { avatarKey } from "./ui/authorDisc";
 import type { ChangesMode } from "../changeStats";
 import type { ChangesStage } from "./changeViz";
 import { changesCell, statsFor, statsKeyOf } from "./changesColumn";
+import { moveWithWork, summaryKey, type WorkSummary } from "./workSummary";
+import { workContext, workRowCells, workRowLabel } from "./workRow";
 
 /** How a row was selected: a click (with Ctrl/⌘ or Shift), a key, or a right-click. */
 export type Gesture = { kind: "click"; ctrl: boolean; shift: boolean } | { kind: "arrow"; shift: boolean } | { kind: "context" };
@@ -47,6 +49,12 @@ export interface ListProps {
   changes?: Exclude<ChangesMode, "off">;
   /** The column header's widths, hidden columns and date format. */
   columns?: ColumnPrefs;
+  /** The summary row of uncommitted work above the newest commit (workSummary.ts); none: no row. */
+  work?: WorkSummary | null;
+  /** The summary row is the selection (the Changes view shows its work); `selected` is then -1. */
+  workSelected?: boolean;
+  /** Whose work the Changes view shows (a chip in the row); undefined: the most recently edited. */
+  workRepo?: string;
 }
 
 const SKELETON_ROWS = 8;
@@ -98,6 +106,17 @@ export class CommitList {
   private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, selectedKeys: new Set(), now: 0, skeleton: false };
   /** A branch pill was clicked: show that branch in the Repo List (main.ts). */
   onRevealBranch: (repoId: string, ref: string) => void = () => undefined;
+  /**
+   * The summary row of uncommitted work, between the column header and the rows: it scrolls with
+   * them, one row high (lead()), and the rows' positions are counted after it.
+   */
+  private readonly workEl = h("div", { class: "work-summary", role: "row", id: "row-work", hidden: true });
+  /** What the summary row was last built from (renderWork). */
+  private workKey = "";
+  /** The summary row was chosen (a click, a repository's chip, ↑ from the newest commit): main.ts shows its work. */
+  onWork: (repoId?: string) => void = () => undefined;
+  /** Its Commit… button: the Commit side bar, for that repository alone when there is one. */
+  onCommitWork: (repoId?: string) => void = () => undefined;
   /** The branch whose sheet is open: its pills are marked wherever its rows are drawn. */
   private openBranch: { repoId: string; ref: string } | undefined;
   /** The columns (logColumns.ts), worked out at each full paint; the column header draws them too. */
@@ -197,6 +216,13 @@ export class CommitList {
       hover(graph, graph ? railAt(graph, e.clientX, e.clientY) : undefined);
     });
     body.addEventListener("pointerleave", () => hover(undefined, undefined));
+    this.workEl.addEventListener("click", (e) => {
+      const t = e.target as Element, work = this.props.work;
+      if (!work) return;
+      root.focus();
+      if (t.closest(".summary-commit")) { this.onCommitWork(work.repos.length === 1 ? work.repos[0].repoId : undefined); return; }
+      this.onWork(t.closest<HTMLElement>("[data-work-repo]")?.dataset.workRepo);
+    });
     // A right-click outside the selection selects that row first, as VS Code's lists do.
     body.addEventListener("contextmenu", (e) => {
       const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
@@ -217,8 +243,12 @@ export class CommitList {
       const available = new Set(this.segments.map((segment) => segment.id));
       for (const id of this.collapsed) if (!available.has(id)) this.collapsed.delete(id);
     }
+    const hadWork = this.lead() > 0;
     this.props = next;
     this.root.classList.toggle("hash-column", next.hashColumn === true);
+    // The summary row came or went: the commits move one row; a scrolled list keeps them where they were.
+    const leadChanged = hadWork !== this.lead() > 0;
+    if (leadChanged && this.top > 0) this.setTop(this.top + (hadWork ? -1 : 1) * this.height());
     // A host-driven selection (or a refresh) can reveal a previously hidden commit.
     for (const segment of this.segments) if (this.collapsed.has(segment.id) && segment.hidden.some((i) => next.selectedKeys.has(commitKey(next.rows[i])))) {
       this.collapsed.delete(segment.id); changed = true;
@@ -229,10 +259,11 @@ export class CommitList {
     // between. Rebuilding every visible row for each such message made scrolling stutter.
     const drawn = changed || next.repoNames !== prev.repoNames || next.behind !== prev.behind || next.me !== prev.me || next.highlightMine !== prev.highlightMine
       || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton
-      || next.upstream !== prev.upstream || next.changes !== prev.changes || next.columns !== prev.columns;
+      || next.upstream !== prev.upstream || next.changes !== prev.changes || next.columns !== prev.columns || leadChanged;
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
     if (drawn) this.paint();
-    else if (moved || next.selectedKeys !== prev.selectedKeys) { this.paintSelection(); this.paint(true); }
+    else if (moved || next.selectedKeys !== prev.selectedKeys || next.workSelected !== prev.workSelected) { this.paintSelection(); this.paint(true); }
+    if (!drawn) this.renderWork();
   }
 
   /**
@@ -272,7 +303,7 @@ export class CommitList {
   /** Scrolls to `value` (kept within the list), remembering it: the scroll event will not read it back. */
   private setTop(value: number): void {
     const room = this.clientHeight();
-    const max = Math.max(0, (this.headerHeight ?? 0) + this.display.rows.length * this.height() - room);
+    const max = Math.max(0, (this.headerHeight ?? 0) + this.lead() + this.display.rows.length * this.height() - room);
     const next = Math.max(0, Math.min(max, value));
     if (next === this.top && !this.unplaced) return;
     this.top = next;
@@ -349,15 +380,17 @@ export class CommitList {
   }
 
   private changeFolds(next: ReadonlySet<string>): void {
-    const first = Math.floor(this.top / this.height());
-    const anchor = this.display.rows[first]?.sourceIndex;
-    const offset = this.top - first * this.height();
+    // Counted after the summary row; scrolled no further than it, the list stays where it is.
+    const lead = this.lead(), below = this.top >= lead;
+    const first = Math.floor(this.rowTop() / this.height());
+    const anchor = below ? this.display.rows[first]?.sourceIndex : undefined;
+    const offset = this.rowTop() - first * this.height();
     this.collapsed.clear(); for (const id of next) this.collapsed.add(id);
     this.rebuild();
     if (anchor !== undefined) {
       let row = this.display.sourceToDisplay.get(anchor);
       if (row === undefined) row = this.display.rows.findIndex((item) => item.segment?.hidden.includes(anchor));
-      if (row !== undefined && row >= 0) this.setTop(row * this.height() + offset);
+      if (row !== undefined && row >= 0) this.setTop(lead + row * this.height() + offset);
     }
     const selected = this.segments.find((segment) => this.collapsed.has(segment.id) && segment.hidden.some((i) => this.props.selectedKeys.has(commitKey(this.props.rows[i]))));
     if (selected) { this.onSelect(selected.top, { kind: "click", ctrl: false, shift: false }); return; }
@@ -377,6 +410,46 @@ export class CommitList {
       for (const i of segment.hidden) this.edgeActions.set(commitKey(this.props.rows[i]), action);
     }
     this.onFoldStats({ available: this.segments.length, collapsed: this.collapsed.size, hidden: this.display.hiddenCount });
+  }
+
+  /** The summary row's height (one row), or 0 without it: the rows start that much lower. */
+  private lead(): number {
+    return this.props.work && !this.props.skeleton ? this.height() : 0;
+  }
+
+  private workRows(): number {
+    return this.lead() > 0 ? 1 : 0;
+  }
+
+  /** The scroll position over the rows themselves: the list's, less the summary row above them. */
+  private rowTop(): number {
+    return Math.max(0, this.top - this.lead());
+  }
+
+  /** The summary row (workRow.ts), placed right before the rows and built again only when what it draws changes. */
+  private renderWork(): void {
+    if (this.workEl.nextElementSibling !== this.body) this.body.before(this.workEl);
+    const w = this.lead() ? this.props.work! : null;
+    const shownRepo = w ? (w.repos.some((r) => r.repoId === this.props.workRepo) ? this.props.workRepo : w.repos[0].repoId) : undefined;
+    const names = (id: string) => this.props.repoNames.get(id) ?? id;
+    // By the clock now, not the page's: work is edited after the commits were read.
+    const when = w?.editedAt != null ? relativeTime(Math.floor(Date.now() / 1000), Math.floor(w.editedAt / 1000)) : "";
+    const key = w ? JSON.stringify([summaryKey(w), w.repos.map((r) => [names(r.repoId), accentOf(this.accents, r.repoId), this.props.behind?.has(r.repoId)]),
+      shownRepo, [...this.shown], this.graphWidth, this.height(), this.layout?.repoName != null, this.props.changes, this.changesStage, when]) : "";
+    const selected = String(this.props.workSelected === true);
+    if (this.workEl.getAttribute("aria-selected") !== selected) this.workEl.setAttribute("aria-selected", selected);
+    if (key === this.workKey) return;
+    this.workKey = key;
+    this.workEl.hidden = !w;
+    if (!w) { this.workEl.replaceChildren(); return; }
+    const options = { summary: w, name: names, accent: (id: string) => accentOf(this.accents, id), shown: this.shown, graphWidth: this.graphWidth,
+      rowHeight: this.height(), repoNames: this.layout?.repoName != null, shownRepo, behind: (id: string) => this.props.behind?.has(id) === true,
+      changes: this.props.changes ? { mode: this.props.changes, stage: this.changesStage } : undefined, when };
+    this.workEl.setAttribute("aria-rowindex", "2");
+    this.workEl.setAttribute("aria-label", workRowLabel(options));
+    // One repository: its own menu, as on the Uncommitted side; several: each chip has its repository's.
+    this.workEl.setAttribute("data-vscode-context", JSON.stringify(w.repos.length === 1 ? workContext(w.repos[0], options.behind(w.repos[0].repoId)) : { preventDefaultContextMenuItems: true }));
+    this.workEl.replaceChildren(...workRowCells(options));
   }
 
   private height(): number {
@@ -405,6 +478,7 @@ export class CommitList {
       this.listWidth = this.root.clientWidth;
       this.writeColumns(this.columnLayout(this.props.columns ?? DEFAULT_COLUMNS));
       this.onLayout(this.layout!);
+      this.renderWork();
       this.mounted.clear();
       clear(this.body);
       // Read once per layout change, with no rows to lay out.
@@ -424,11 +498,12 @@ export class CommitList {
       return;
     }
     this.fitBody(this.display.rows.length * rh);
-    // The column header is the grid's first row: the commits are numbered after it.
-    this.root.setAttribute("aria-rowcount", String(this.display.rows.length + 1));
-    const { start, end } = visibleRange(this.top, this.viewHeight(), rh, this.display.rows.length);
-    const top = Math.floor(this.top / rh);
-    this.paintTop = this.top;
+    // The column header is the grid's first row (and the summary row the second): the commits are numbered after them.
+    this.root.setAttribute("aria-rowcount", String(this.display.rows.length + 1 + this.workRows()));
+    const rowTop = this.rowTop();
+    const { start, end } = visibleRange(rowTop, this.viewHeight(), rh, this.display.rows.length);
+    const top = Math.floor(rowTop / rh);
+    this.paintTop = rowTop;
     for (const [i, m] of this.mounted) {
       if (i >= start && i < end && m.top === (i === top)) continue;
       m.el.remove();
@@ -451,7 +526,8 @@ export class CommitList {
     this.fitReferences(built);
     // Rows are built only here: new ones start unmarked.
     if (this.openBranch) for (const el of built) this.markPills(el);
-    if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
+    if (this.props.workSelected && this.workRows()) this.root.setAttribute("aria-activedescendant", "row-work");
+    else if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
     else this.root.removeAttribute("aria-activedescendant");
   }
 
@@ -616,7 +692,7 @@ export class CommitList {
       class: `row${focus ? " focus" : ""}${mine ? " mine" : ""}${offHead ? " off-head" : ""}`,
       role: "row",
       id: `row-${i}`,
-      "aria-rowindex": String(displayIndex + 2),
+      "aria-rowindex": String(displayIndex + 2 + this.workRows()),
       "aria-selected": String(this.props.selectedKeys.has(commitKey(c))),
       "data-index": String(i),
       // Right-click: the commit's and its repository's menu (package.json webview/context), not
@@ -677,7 +753,7 @@ export class CommitList {
     const c = this.display.rows[index].commit, name = this.props.repoNames.get(c.repoId) ?? c.repoId;
     const start = this.display.rows[index - 1]?.commit.repoId !== c.repoId;
     const end = this.display.rows[index + 1]?.commit.repoId !== c.repoId;
-    return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 2), "aria-selected": "false",
+    return h("div", { class: "row folded-row", role: "row", "aria-rowindex": String(index + 2 + this.workRows()), "aria-selected": "false",
       "data-vscode-context": JSON.stringify({ webviewSection: "graphFold", preventDefaultContextMenuItems: true }) }, [
       h("span", { class: `repo-band accent-${accentOf(this.accents, c.repoId)}${start ? " band-start" : ""}${end ? " band-end" : ""}`, role: "gridcell", "aria-label": name, title: name },
         start && this.layout?.repoName != null ? [h("span", { class: "repo-label", "data-name": name }, [name])] : []),
@@ -705,20 +781,28 @@ export class CommitList {
     }
     const page = Math.max(1, Math.floor(this.viewHeight() / this.height()) - 1);
     const order = this.visibleCommitIndexes();
-    const next = moveSelection(e.key, order.indexOf(this.props.selected), order.length, page);
+    const work = this.workRows() > 0, onWork = work && this.props.workSelected === true;
+    const next = moveWithWork(e.key, onWork ? -1 : order.indexOf(this.props.selected), order.length, page, work);
     if (next === null) return;
     e.preventDefault();
+    if (next < 0) {
+      // The summary row: into view, and chosen unless it already is.
+      this.setTop(0);
+      if (!onWork) this.onWork();
+      return;
+    }
     // Scrolled first, while nothing in this task has touched the page: the scroll needs no early layout.
     this.scrollToIndex(order[next]);
-    this.onSelect(order[next], { kind: "arrow", shift: e.shiftKey });
+    // From the summary row a range has nowhere to start: Shift moves as a plain arrow does.
+    this.onSelect(order[next], { kind: "arrow", shift: e.shiftKey && !onWork });
   }
 
   private scrollToIndex(i: number): void {
     const rh = this.height();
     const displayIndex = this.display.sourceToDisplay.get(i);
     if (displayIndex === undefined) return;
-    // Rows sit under the sticky column header: the room they show in is the list's less its height.
-    const top = displayIndex * rh, room = this.viewHeight();
+    // Rows sit under the sticky column header, after the summary row: the room they show in is the list's less the header.
+    const top = this.lead() + displayIndex * rh, room = this.viewHeight();
     if (top < this.top) this.setTop(top);
     else if (top + rh > this.top + room) this.setTop(top + rh - room);
   }

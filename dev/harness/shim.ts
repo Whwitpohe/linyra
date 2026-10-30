@@ -90,7 +90,14 @@ function reload(): void {
 }
 
 /** The Log's Uncommitted side: sample work, built by the host's own model. */
-const WORK = mockWork(repos, NOW);
+/** ?work=off: nothing uncommitted; one: one repository's work; default: several (the Log's summary row has a chip each). */
+const WORK = ((all) => {
+  const kind = params.get("work");
+  if (kind === "off") return { ...all, totals: { files: 0, repos: 0, added: 0, deleted: 0 }, rows: [] };
+  if (kind !== "one") return all;
+  const [first] = all.rows, c = first.counts;
+  return { ...all, totals: { files: c.added + c.modified + c.deleted + c.renamed, repos: 1, added: 12, deleted: 3 }, rows: [first] };
+})(mockWork(repos, NOW));
 
 let logMode: "commits" | "uncommitted" = "commits";
 /** The harness user is dana in every repository (her commits' discs have the thicker ring). */
@@ -171,6 +178,14 @@ function handle(m: WebviewMessage): void {
     case "refresh": reload(); return;
     case "loadMore": page(true); return;
     case "select": selectedCommit = all.find((c) => c.repoId === m.repoId && c.sha === m.sha) ?? selectedCommit; postChanges(); return;
+    // The summary row: a repository's work in the Changes view, as the host's showWorkTree shows it.
+    case "showWork": {
+      const repo = repos.find((r) => r.id === (m.repoId ?? WORK.rows[0]?.repoId));
+      if (repo) send({ type: "changesView", message: { type: "changes", key: `work/${repo.id}`, description: `${repo.name} · Uncommitted changes`, details: [],
+        roots: [{ id: "work-app", kind: "file", label: "app.ts", path: "src/app.ts", description: "+4 −1", tooltip: "src/app.ts", contextValue: "file", status: "M", added: 4, deleted: 1 }] } }, 0);
+      return;
+    }
+    case "commitWork": return;
     case "openFirst": console.info(`[harness] ${m.type}`, m); return;
     case "accents": accents = m.accents; postChanges(); return;
     case "openSettings": console.info("[harness] openSettings"); return;

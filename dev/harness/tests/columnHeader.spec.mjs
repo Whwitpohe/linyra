@@ -44,12 +44,14 @@ test("columns: Repository, Graph, Message, Author, Changes, Date; narrow: the re
   expect(await header(page).locator(".column-head").evaluateAll((els) => els.map((e) => e.dataset.column))).toEqual(["repo", "graph", "message", "author", "changes", "date"]);
   await expect(header(page)).toHaveAttribute("role", "row");
   await expect(header(page).locator('[role="columnheader"]')).toHaveCount(6);
-  // The header is the grid's first row; the commits are numbered after it, and counted with it.
+  // The header is the grid's first row, the summary row of uncommitted work the second; the commits
+  // are numbered after them, and counted with them.
   await expect(header(page)).toHaveAttribute("aria-rowindex", "1");
-  await expect(page.locator('#rows .row[data-index="0"]')).toHaveAttribute("aria-rowindex", "2");
+  await expect(page.locator(".work-summary")).toHaveAttribute("aria-rowindex", "2");
+  await expect(page.locator('#rows .row[data-index="0"]')).toHaveAttribute("aria-rowindex", "3");
   const shown = await page.evaluate(() => document.querySelectorAll("#rows .row[data-index]").length);
   expect(shown).toBeGreaterThan(0);
-  expect(Number(await page.locator("#list").getAttribute("aria-rowcount"))).toBeGreaterThan(shown);
+  expect(Number(await page.locator("#list").getAttribute("aria-rowcount"))).toBeGreaterThan(shown + 1);
   await page.setViewportSize({ width: 700, height: 640 });
   await expect.poll(() => header(page).locator(".column-head").evaluateAll((els) => els.map((e) => e.dataset.column))).toEqual(["repo", "graph", "message", "changes", "date"]);
   expect(await width(head(page, "repo"))).toBeLessThanOrEqual(4);
@@ -236,11 +238,17 @@ test("one Tab stop: ← → move between the header's buttons; the rows still sc
   await page.locator("#list").focus();
   await page.keyboard.press("End");
   await expect.poll(async () => (await header(page).boundingBox()).y).toBe(top);
+  // Home: the summary row of uncommitted work, first under the header; ↓: the newest commit, under it.
   await page.keyboard.press("Home");
+  const work = page.locator('.work-summary[aria-selected="true"]');
+  await expect(work).toBeVisible();
+  const h = await header(page).boundingBox(), w = await work.boundingBox();
+  expect(w.y).toBeGreaterThanOrEqual(h.y + h.height - 1);
+  await page.keyboard.press("ArrowDown");
   const selected = page.locator("#rows .row.focus");
   await expect(selected).toBeVisible();
-  const h = await header(page).boundingBox(), r = await selected.boundingBox();
-  expect(r.y).toBeGreaterThanOrEqual(h.y + h.height - 1);
+  const r = await selected.boundingBox();
+  expect(r.y).toBeGreaterThanOrEqual(w.y + w.height - 1);
 });
 
 test("File History: its own change column, lined up with the uncommitted row and the commits", async ({ page }) => {

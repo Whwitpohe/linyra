@@ -387,10 +387,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         await this.loadMore();
         return;
       case "select":
+        this.leaveWork();
         await this.showDetail(m.repoId, m.sha);
         return;
       case "selectMany":
+        this.leaveWork();
         await this.selectMany(m.items, m.focus);
+        return;
+      case "showWork":
+        this.showWork(m.repoId);
+        return;
+      case "commitWork":
+        if (typeof m.repoId === "string") await vscode.commands.executeCommand("linyra.commitRepo", { repoId: m.repoId });
+        // Several repositories: the Commit side bar as it is, every file it has ticked.
+        else await vscode.commands.executeCommand("linyra.commit.focus");
         return;
       case "openFirst":
         await this.openFirst(m.repoId, m.sha);
@@ -1272,18 +1282,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * to come back instead of replacing them.
    */
   private commitTree(): ReturnType<ChangesTree["current"]> {
-    return this.logMode === "uncommitted" ? this.commitsTree : this.deps.changes.current();
+    return this.showingWork() ? this.commitsTree : this.deps.changes.current();
   }
 
   private setCommitTree(state: ReturnType<ChangesTree["current"]>): void {
-    if (this.logMode === "uncommitted") {
+    if (this.showingWork()) {
       this.commitsTree = state;
       this.commitsCombined = null;
     } else this.deps.changes.set(state);
   }
 
   private setCombinedTree(state: CombinedState): void {
-    if (this.logMode === "uncommitted") {
+    if (this.showingWork()) {
       this.commitsTree = null;
       this.commitsCombined = state;
     } else this.deps.changes.setCombined(state);
@@ -1397,6 +1407,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async revealCommit(repoId: string, sha: string): Promise<boolean> {
     if (!this.findCommit(repoId, sha)) return false;
+    this.leaveWork();
     const ref = { repoId, sha };
     this.post({ type: "setSelection", items: [ref], focus: ref });
     await this.showDetail(repoId, sha);
@@ -1516,8 +1527,37 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private logMode: "commits" | "uncommitted" = "commits";
   /** The repository whose files the Changes view shows on the Uncommitted side. */
   private workRepo: string | undefined;
-  /** What the Changes view showed before the switch went to Uncommitted (it comes back). */
+  /** What the Changes view showed before the switch went to Uncommitted, or the summary row was selected (it comes back). */
   private commitsTree: ReturnType<ChangesTree["current"]> = null;
+  /** The Commits side's summary row of uncommitted work is selected: the Changes view shows that work (showWork). */
+  private workShown = false;
+
+  /** The Changes view shows uncommitted work: a commit's files wait aside (commitsTree) instead of replacing it. */
+  private showingWork(): boolean {
+    return this.logMode === "uncommitted" || this.workShown;
+  }
+
+  /** The summary row selected: a repository's work (repoId: its chip; otherwise the most recently edited) in the Changes view. */
+  private showWork(repoId: unknown): void {
+    if (this.logMode !== "commits") return;
+    if (!this.workShown) {
+      this.commitsTree = this.deps.changes.current();
+      this.commitsCombined = this.deps.changes.currentCombined();
+      this.workShown = true;
+    }
+    this.workRepo = typeof repoId === "string" ? repoId : undefined;
+    this.showWorkTree();
+  }
+
+  /** A commit selected instead: the commits' tree is back in the Changes view, for the selection to replace. */
+  private leaveWork(): void {
+    if (!this.workShown) return;
+    this.workShown = false;
+    if (this.commitsCombined) this.deps.changes.setCombined(this.commitsCombined);
+    else this.deps.changes.set(this.commitsTree);
+    this.commitsTree = null;
+    this.commitsCombined = null;
+  }
 
   /** Show Uncommitted: the Log, on its Uncommitted side (a webview still loading starts there). */
   async showUncommitted(): Promise<void> {
@@ -1534,8 +1574,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (mode === this.logMode) return;
     this.logMode = mode;
     if (mode === "uncommitted") {
-      this.commitsTree = this.deps.changes.current();
-      this.commitsCombined = this.deps.changes.currentCombined();
+      // From the summary row, the commits' tree is already aside: the Changes view shows work either way.
+      if (this.workShown) this.workShown = false;
+      else {
+        this.commitsTree = this.deps.changes.current();
+        this.commitsCombined = this.deps.changes.currentCombined();
+      }
       this.showWorkTree();
       // What no event keeps current is read again when it is looked at.
       void this.deps.uncommitted.readUnreported();
@@ -1556,16 +1600,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       .filter((w) => distinctPaths(w).length > 0)
       .sort((a, b) => (b.editedAt ?? -Infinity) - (a.editedAt ?? -Infinity))
       .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), counts: workKinds(w), ...(w.branch ? { branch: w.branch } : {}), head: w.head, tags: tags(w),
-        edited: editedLabel(now, w.editedAt), canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
+        edited: editedLabel(now, w.editedAt), editedAt: w.editedAt, canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
   }
 
   private postUncommitted(): void {
     this.post({ type: "uncommitted", known: this.deps.uncommitted.known, totals: totals(this.deps.uncommitted.works()), rows: this.workRows() });
   }
 
-  /** The Changes view on the Uncommitted side: the selected repository's files, review only. */
+  /** The Changes view on the Uncommitted side, or for the summary row: the selected repository's files, review only. */
   private showWorkTree(): void {
-    if (this.logMode !== "uncommitted") return;
+    if (!this.showingWork()) return;
     const rows = this.workRows();
     const id = rows.some((r) => r.repoId === this.workRepo) ? this.workRepo : rows[0]?.repoId;
     const work = id ? this.deps.uncommitted.get(id) : undefined;

@@ -421,6 +421,6 @@ function repoCount(n: number): string {
   return localize(n === 1 ? "{0} repository" : "{0} repositories", n);
 }
 
-function isoDay(d: Date): string {
+export function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

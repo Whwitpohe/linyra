@@ -5,9 +5,9 @@
   position: absolute; top: 0; right: 0; bottom: 0; z-index: 1; display: none; align-items: center; gap: 2px; padding: 0 var(--pad-x) 0 6px;
   background: linear-gradient(var(--row-fill), var(--row-fill)), var(--vscode-panel-background, var(--vscode-editor-background));
 }
-.row:hover > .row-actions { display: flex; }
-.row[aria-selected="true"] > .row-actions { --row-fill: var(--vscode-list-inactiveSelectionBackground); }
-.list:focus .row.focus[aria-selected="true"] > .row-actions { --row-fill: var(--vscode-list-activeSelectionBackground); }
+.row:hover > .row-actions, .work-summary:hover > .row-actions { display: flex; }
+:is(.row, .work-summary)[aria-selected="true"] > .row-actions { --row-fill: var(--vscode-list-inactiveSelectionBackground); }
+.list:focus :is(.row.focus, .work-summary)[aria-selected="true"] > .row-actions { --row-fill: var(--vscode-list-activeSelectionBackground); }
 .row-action {
   display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0;
   border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer;

@@ -49,7 +49,7 @@ test("reduced motion: the disc still grows, without the transition", async ({ pa
 
 test("the checked-out commit's row offers Undo Commit and Edit Commit Message; every row offers ⋯", async ({ page }) => {
   await open(page);
-  await expect(page.locator(".row-actions")).toHaveCount(0);
+  await expect(page.locator("#rows .row-actions")).toHaveCount(0);
   await pointAt(page, row(page, 0).locator(".subject"));
   const head = row(page, 0).locator(".row-actions .row-action");
   await expect(head).toHaveCount(3);
@@ -58,10 +58,10 @@ test("the checked-out commit's row offers Undo Commit and Edit Commit Message; e
   await expect(row(page, 3).locator(".row-action")).toHaveCount(1);
   await expect(row(page, 3).locator(".row-action")).toHaveAttribute("aria-label", "More Actions…");
   // One toolbar, moved: the row left behind has none, and leaving the list hides it.
-  await expect(page.locator(".row-actions")).toHaveCount(1);
+  await expect(page.locator("#rows .row-actions")).toHaveCount(1);
   await expect(row(page, 0).locator(".row-actions")).toHaveCount(0);
   await page.mouse.move(5, 5);
-  await expect(page.locator(".row-actions")).toBeHidden();
+  await expect(page.locator("#rows .row-actions")).toBeHidden();
 });
 
 test("the buttons sit over the row's end on its own background, opaque, in every state", async ({ page }) => {
@@ -184,7 +184,7 @@ test("zh-cn: the buttons and the parts' tooltips speak Chinese", async ({ page }
 test("while the rows scroll under a still pointer they do not answer it; once they stop, the row under it does", async ({ page }) => {
   await open(page, { height: 400 });
   await pointAt(page, row(page, 2).locator(".subject"));
-  await expect(page.locator(".row-actions")).toBeVisible();
+  await expect(page.locator("#rows .row-actions")).toBeVisible();
   const list = page.locator("#list");
   await list.evaluate((el) => { el.scrollTop += 60; });
   await expect(list).toHaveClass(/scrolling/);

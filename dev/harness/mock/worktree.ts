@@ -32,6 +32,6 @@ export function mockWork(repos: readonly Repo[], nowSeconds: number): Extract<Ho
   const rows: WorkRow[] = works.filter((w) => distinctPaths(w).length > 0)
     .sort((a, b) => (b.editedAt ?? -Infinity) - (a.editedAt ?? -Infinity))
     .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), counts: workKinds(w), ...(w.branch ? { branch: w.branch } : {}), head: w.head, tags: tags(w),
-      edited: editedLabel(now, w.editedAt), canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
+      edited: editedLabel(now, w.editedAt), editedAt: w.editedAt, canStage: w.canStage, hasStaged: w.staged.length > 0, hasChanges: w.changes.length > 0 }));
   return { type: "uncommitted", known: true, totals: totals(works), rows };
 }

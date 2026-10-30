@@ -26,6 +26,8 @@ import { ChangesFeed } from "./changesColumn";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import { HoverCard } from "./hoverCard";
 import { RowActions } from "./rowActions";
+import { workSummary } from "./workSummary";
+import { isoDay } from "./searchBox";
 import { BranchSheetView } from "./branchSheet";
 import { revealTarget, type Upstream } from "./refPills";
 import { HostRoutes } from "./hostRoutes";
@@ -56,6 +58,12 @@ const state = {
   overLimit: false,
   now: Math.floor(Date.now() / 1000),
 };
+/**
+ * The summary row of uncommitted work is the selection (workSummary.ts): the Changes view shows
+ * that work, of workRepo or the most recently edited repository, while the Commits side stays.
+ */
+let workSelected = false;
+let workRepo: string | undefined;
 
 const listEl = byId("list");
 const searchEl = byId<HTMLInputElement>("search");
@@ -146,6 +154,19 @@ const branchSheet = new BranchSheetView(post, {
   mark: (repoId, ref) => list.markBranch(repoId, ref),
 });
 list.onRevealBranch = (repoId, ref) => branchSheet.open(repoId, ref);
+list.onWork = (repoId) => {
+  branchSheet.close();
+  // A commit still settling from a held arrow key would replace the work: it is dropped.
+  clearTimeout(pendingSelect);
+  pendingSelect = undefined;
+  pendingPost = undefined;
+  select(-1, false);
+  workSelected = true;
+  workRepo = repoId;
+  post({ type: "showWork", ...(repoId ? { repoId } : {}) });
+  render();
+};
+list.onCommitWork = (repoId) => post({ type: "commitWork", ...(repoId ? { repoId } : {}) });
 // The hover card's pills too: their commit's row selected and the sheet opened, as a pill in the row does
 // (the Repo List when the row is not loaded).
 const fullRef = (r: { kind: string; name: string }) => (r.kind === "local" ? `refs/heads/${r.name}` : r.kind === "remote" ? `refs/remotes/${r.name}` : r.kind === "tag" ? `refs/tags/${r.name}` : "");
@@ -171,6 +192,8 @@ function setMode(next: "commits" | "uncommitted", focus = false): void {
   if (next !== mode) {
     mode = next;
     post({ type: "logMode", mode: next });
+    // Back on the Commits side with the summary row selected: its work again, not the commit the host kept.
+    if (next === "commits" && workSelected) post({ type: "showWork", ...(workRepo ? { repoId: workRepo } : {}) });
   }
   for (const [k, el] of Object.entries(tabs)) {
     const on = k === mode;
@@ -321,6 +344,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       // Clear Selection: the host went back to one commit and is showing it already.
       const keys = m.items.map(commitKey);
       const focus = commitKey(m.focus);
+      workSelected = false;
       state.selection = { keys, focus, anchor: focus };
       state.selected = state.rows.findIndex((c) => commitKey(c) === focus);
       selectedKey = keys.length === 1 ? focus : null;
@@ -348,6 +372,12 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
 
 /** New rows for the list, keeping the selected commit (and the scroll) when it is still listed. */
 function replaceRows(rows: Commit[]): void {
+  // The summary row stays the selection across a reload: there is no commit to keep.
+  if (workSelected) {
+    state.rows = rows;
+    state.selected = -1;
+    return;
+  }
   let prevKey = state.rows[state.selected] ? commitKey(state.rows[state.selected]) : null;
   if (state.selection.keys.length > 1) {
     // Combined Changes: the host keeps the commits still listed too, and re-reads what is left.
@@ -391,6 +421,7 @@ function select(index: number, andRender = true): void {
 function gesture(index: number, how: Gesture): void {
   const c = state.rows[index];
   if (!c) return;
+  workSelected = false;
   // A click on a row shows its commit's details (a pill's click opens the sheet right after this).
   branchSheet.close();
   const key = commitKey(c);
@@ -495,6 +526,14 @@ let keysOf: typeof state.selection.keys | undefined;
 
 function render(): void {
   if (namesOf !== state.repos) { namesOf = state.repos; names = new Map(state.repos.map((r) => [r.id, r.name])); }
+  const summary = workSummary({ mode, history: state.history !== null, work, filter: state.filter, today: isoDay(new Date()) });
+  // The row went on the Commits side (everything committed, a search typed): the newest commit takes the selection back.
+  if (workSelected && !summary && mode === "commits") {
+    workSelected = false;
+    workRepo = undefined;
+    const first = list.visibleCommitIndexes()[0] ?? (state.rows.length > 0 ? 0 : undefined);
+    if (first !== undefined) select(first, false);
+  }
   if (keysOf !== state.selection.keys) { keysOf = state.selection.keys; selectedKeys = new Set(keysOf); }
   const count = switchCount(work.known, work.totals.files);
   setText(workCount, count);
@@ -520,6 +559,7 @@ function render(): void {
     historyPath: state.history?.path,
     selected: state.selected, selectedKeys, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
+    work: summary, workSelected, workRepo,
   });
   historyWorkRow.update(state.history ? historyWork : null, historyAccent, listEl.style.getPropertyValue("--graph-width"));
   empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);

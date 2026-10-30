@@ -301,7 +301,9 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .main { display: grid; min-height: 0; }
 .list-pane { display: grid; min-height: 0; }
 .list-pane > * { grid-area: 1 / 1; }
-.list { overflow-y: auto; min-height: 0; will-change: transform; }
+/* The list sets its own scroll position (list.ts: folds, the selection, the summary row coming or going):
+   the browser's scroll anchoring would move it a second time. */
+.list { overflow-y: auto; min-height: 0; will-change: transform; overflow-anchor: none; }
 /* Lists, as VS Code's: Shift/Ctrl-click selects rows, never their text (Copy commands copy it). */
 .rows { position: relative; user-select: none; }
 /* Scrolling (list.ts): the rows ignore the pointer until it stops; the wheel still reaches the list. */
@@ -320,8 +322,45 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .row .graph-point { transform-box: fill-box; transform-origin: center; transition: transform 120ms ease-out; }
 .row:hover .graph-point { transform: scale(1.25); }
 .row:hover .graph-point:not(.author-disc) { transform: scale(1.4); }
-@media (prefers-reduced-motion: reduce) { .row .graph-point { transition: none; } }
-body.vscode-reduce-motion .row .graph-point { transition: none; }
+@media (prefers-reduced-motion: reduce) { .row .graph-point, .summary-node { transition: none; } }
+body.vscode-reduce-motion :is(.row .graph-point, .summary-node) { transition: none; }
+
+/* The summary row of uncommitted work (workRow.ts): above the newest commit, in the commits'
+   columns, one row high (list.ts counts the rows after it). Its node and, for several
+   repositories, its strip are dashed: it is work, not a commit. */
+.work-summary {
+  position: relative; box-sizing: border-box; display: grid; grid-template-columns: var(--log-columns, 72px 32px minmax(0, 1fr) 70px 56px);
+  align-items: center; column-gap: var(--log-gap, 10px); height: var(--row-height); padding: 0 var(--pad-x); cursor: pointer; user-select: none;
+  border-bottom: 1px dashed var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+.work-summary[hidden] { display: none; }
+.work-summary:hover { background: var(--vscode-list-hoverBackground); }
+.work-summary[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
+.list:focus .work-summary[aria-selected="true"] {
+  background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
+  outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px;
+}
+.list.scrolling .work-summary { pointer-events: none; }
+.list:focus .work-summary[aria-selected="true"] :is(.date, .summary-more) { color: inherit; }
+.repo-band.summary-band {
+  --accent: var(--vscode-descriptionForeground);
+  background: repeating-linear-gradient(to bottom, var(--accent) 0 3px, transparent 3px 6px) 0 3px / 3px calc(100% - 6px) no-repeat;
+}
+.summary-graph { display: block; align-self: stretch; overflow: hidden; }
+.summary-node {
+  fill: var(--vscode-panel-background, var(--vscode-editor-background)); stroke: var(--accent, var(--vscode-descriptionForeground)); stroke-width: 1.5; stroke-dasharray: 2.2 1.6;
+  transform-box: fill-box; transform-origin: center; transition: transform 120ms ease-out;
+}
+.work-summary:hover .summary-node { transform: scale(1.25); }
+.summary-message { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
+/* Short of room, the chips give way first (each down to a few letters), then the counts; the label never. */
+.commit-message.summary-message .summary-subject { flex: none; font-style: italic; }
+/* A chip per repository when there are several: a click shows that one's files. */
+.summary-chip { flex: 0 100 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.summary-chip:hover { background: color-mix(in srgb, var(--accent) 34%, transparent); }
+.work-summary[aria-selected="true"] .summary-chip[aria-current="true"] { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.summary-more { flex: none; color: var(--vscode-descriptionForeground); }
+.summary-message :is(.summary-kinds, .summary-lines) { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 .row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
 /* Several selected (Combined Changes): the others keep the inactive color, the focus row is active. */
 .list:focus .row.focus[aria-selected="true"] {
@@ -412,6 +451,9 @@ body.vscode-high-contrast .row:hover,
 body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .work-summary:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .work-summary[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .summary-chip:hover { background: transparent; outline-style: dashed; }
 body.vscode-high-contrast .row[aria-selected="true"]:not(.focus) { outline-style: dotted; }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
 /* High contrast: an outlined chip in the text color (the badge's own foreground is white,

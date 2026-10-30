@@ -376,6 +376,59 @@ describe("Linyra panel", () => {
     await until("six rows, nothing uncommitted", (x) => x.rows.length === 6 && (work(x)?.changes.length ?? 0) + (work(x)?.staged.length ?? 0) === 0);
   });
 
+  it("the summary row of uncommitted work: its files on the Commits side until a commit is selected; Commit… for its repository", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    await send({ type: "logMode", mode: "commits" });
+    await send({ type: "filter", filter: ALL });
+    const s = await until("six rows", (x) => x.rows.length === 6);
+    const web = s.repos.find((r) => r.name === "acme-web")!;
+    const c = s.rows.find((r) => r.repoId === web.id)!;
+    const flatten = (nodes: ChangeRow[]): ChangeRow[] => nodes.flatMap((n) => [n, ...flatten(n.children ?? [])]);
+    const shows = (name: string) => (x: LogSnapshot) => flatten(x.changes.presentation?.roots ?? []).some((r) => r.label === name) && x.changes.presentation?.details.length === 0;
+    const files = ["summary-row.txt", "summary-row-2.txt"].map((f) => path.join(web.root, f));
+    fs.writeFileSync(files[0], "work\n");
+    try {
+      await send({ type: "refresh" });
+      await until("acme-web's work read", (x) => x.uncommitted.some((w) => w.repoId === web.id && w.changes.includes("summary-row.txt")));
+      await send({ type: "select", repoId: c.repoId, sha: c.sha });
+      await until("the commit's files", (x) => x.changes.presentation?.details[0]?.sha === c.sha);
+      await send({ type: "showWork", repoId: web.id });
+      await until("its work, the Commits side kept", (x) => shows("summary-row.txt")(x) && x.logMode === "commits");
+      // A reload keeps the work shown: the commit's files it reads wait aside.
+      const reloads = (await snapshot()).stats.reloads;
+      await send({ type: "refresh" });
+      await until("reloaded", (x) => x.stats.reloads > reloads);
+      await sleep(300);
+      assert.ok(shows("summary-row.txt")(await snapshot()), "a reload does not put a commit's files in its place");
+      // New work shows as it is read.
+      fs.writeFileSync(files[1], "more\n");
+      await send({ type: "refresh" });
+      await until("the new file too", shows("summary-row-2.txt"));
+      // The Uncommitted side and back: the commit's tree waited aside all along.
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("the Uncommitted side shows the work", (x) => x.logMode === "uncommitted" && shows("summary-row.txt")(x));
+      await send({ type: "logMode", mode: "commits" });
+      await until("the commit's files back", (x) => x.changes.presentation?.details[0]?.sha === c.sha);
+      // No repository named: the most recently edited one's; then a commit's selection takes the view back.
+      await send({ type: "showWork" });
+      await until("the most recently edited repository's work", shows("summary-row.txt"));
+      await send({ type: "select", repoId: c.repoId, sha: c.sha });
+      await until("a commit's selection takes the Changes view back", (x) => x.changes.presentation?.details[0]?.sha === c.sha);
+      // Commit…: the Commit side bar, with acme-web's files alone ticked.
+      await send({ type: "commitWork", repoId: web.id });
+      await waitFor("the Commit side bar, acme-web's files ticked", async () => {
+        const p = await vscode.commands.executeCommand<{ items: string[]; visible: boolean }>("linyra._itest.commitPanel");
+        const ticked = p.items.filter((i) => i.trimStart().startsWith("[x]") && i.includes("summary-row"));
+        return p.visible && ticked.length === 2 ? true : undefined;
+      });
+    } finally {
+      for (const f of files) fs.rmSync(f, { force: true });
+      await send({ type: "refresh" });
+    }
+    await until("nothing uncommitted in acme-web", (x) => !x.uncommitted.some((w) => w.repoId === web.id && w.changes.length > 0));
+  });
+
   it("the Uncommitted view: Staged and Changes, stage, unstage, discard, commit", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
