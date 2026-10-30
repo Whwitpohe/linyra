@@ -11,8 +11,11 @@ export interface PromptRect { x: number; y: number; w: number; h: number }
  */
 export interface PromptAnchor { surface: string; at: PromptRect | string; since: number }
 
-/** A choice as VS Code's QuickPickItem words it: its label, a description beside it, a detail under it. */
-export interface PromptItem { label: string; description?: string; detail?: string; picked?: boolean }
+/**
+ * A choice as VS Code's QuickPickItem words it: its label, a description beside it, a detail under
+ * it; `separator`: a section's heading (QuickPickItemKind.Separator), never a choice.
+ */
+export interface PromptItem { label: string; description?: string; detail?: string; picked?: boolean; separator?: true }
 
 /**
  * A switch under a name's box (Stash Changes…'s Include new files): its label, its state, and the
@@ -70,7 +73,8 @@ export function anchorOf(arg: unknown, now: number): PromptAnchor | undefined {
 export function promptAnswer(req: PromptRequest, v: unknown): PromptAnswer {
   const a = v as { index?: unknown; pin?: unknown; indexes?: unknown; value?: unknown } | undefined;
   if (!a || typeof a !== "object") return undefined;
-  const inRange = (i: unknown): i is number => Number.isInteger(i) && (i as number) >= 0 && (i as number) < (req.kind === "input" ? 0 : req.items.length);
+  // A choice's index: in range, and not a section's heading.
+  const inRange = (i: unknown): i is number => Number.isInteger(i) && (i as number) >= 0 && req.kind !== "input" && (i as number) < req.items.length && !req.items[i as number].separator;
   if (req.kind === "pick") return inRange(a.index) ? { index: a.index, ...(a.pin === true && req.pin ? { pin: true } : {}) } : undefined;
   if (req.kind === "pickMany") return Array.isArray(a.indexes) && a.indexes.every(inRange) ? { indexes: [...new Set(a.indexes as number[])].sort((x, y) => x - y) } : undefined;
   if (typeof a.value !== "string") return undefined;

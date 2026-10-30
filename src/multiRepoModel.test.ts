@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -283,6 +283,68 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
     assert.strictEqual(git(web, ["branch", "--show-current"]), "develop");
     assert.strictEqual(git(web, ["status", "--porcelain"]), "", "the working tree is untouched");
     console.log("ok - real git: a branch only behind is fast-forwarded without a checkout; one checked out elsewhere or diverged is refused");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+{
+  // Push…'s plans: the checked-out branch's, then every other local branch its upstream lags behind.
+  const b = (name: string, o: Partial<Branches["branches"][number]> = {}): Branches["branches"][number] => ({ ref: `refs/heads/${name}`, name, kind: "local", sha, current: false, ahead: 0, behind: 0, ...o });
+  const r = (name: string, rsha = sha): Branches["branches"][number] => ({ ref: `refs/remotes/${name}`, name, kind: "remote", sha: rsha, current: false, ahead: 0, behind: 0, remote: name.split("/")[0], remoteBranch: name.split("/").slice(1).join("/") });
+  const data: Branches = { remotes: ["origin"], current: "develop", branches: [
+    b("develop", { current: true, upstream: "origin/develop", ahead: 0 }),
+    b("master", { upstream: "origin/master", ahead: 3 }),
+    b("release-1.4", { upstream: "origin/release-1.4", ahead: 1, behind: 2 }),
+    b("in-step", { upstream: "origin/in-step" }),
+    b("only-behind", { upstream: "origin/only-behind", behind: 4 }),
+    b("on-local", { upstream: "develop", ahead: 2 }),
+    b("never-pushed", { ahead: 0 }),
+    r("origin/develop"), r("origin/master"), r("origin/release-1.4", "f".repeat(40)),
+  ] };
+  const plans = pushPlans(data);
+  assert.deepStrictEqual(plans.map((p) => [p.branch, p.current === true, p.lease !== undefined]), [["develop", true, false], ["master", false, false], ["release-1.4", false, true]],
+    "the checked-out branch first (its commits are counted later); then those ahead of a remote upstream; in step, only behind, on a local upstream or never pushed: none");
+  assert.deepStrictEqual(plans[1], { branch: "master", remote: "origin", destination: "master", setUpstream: false });
+  assert.deepStrictEqual(plans[2], { branch: "release-1.4", remote: "origin", destination: "release-1.4", setUpstream: false, lease: "f".repeat(40), behind: 2 }, "diverged: leased on the fetched commit, as the checked-out one is");
+  assert.deepStrictEqual(multiCommands.outgoingOf("master", "origin/master"), ["log", "--format=%h%x00%s", "--max-count=1000", "refs/remotes/origin/master..refs/heads/master", "--"]);
+  assert.throws(() => multiCommands.outgoingOf("master", "origin/master..HEAD"), "a range is never smuggled in");
+  console.log("ok - Push… plans every local branch with commits for its remote upstream, the checked-out one first");
+}
+
+{
+  // Real git: develop merged into master, develop checked out again; Push… sends master from here.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-pushother-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const read = (cwd: string) => parseBranches(git(cwd, branchArgs()), git(cwd, ["remote"]).split(/\r?\n/).filter(Boolean));
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    git(seed, ["branch", "-M", "master"]);
+    git(seed, ["branch", "develop"]);
+    const origin = path.join(home, "origin.git");
+    git(home, ["clone", "-q", "--bare", seed, origin]);
+    const web = path.join(home, "acme-web");
+    git(home, ["clone", "-q", origin, web]);
+    git(web, ["switch", "-q", "--track", "-c", "develop", "origin/develop"]);
+    fs.writeFileSync(path.join(web, "b.txt"), "two\n");
+    git(web, ["add", "b.txt"]); git(web, ["commit", "-q", "-m", "feat: on develop"]);
+    git(web, ["push", "-q"]);
+    git(web, ["switch", "-q", "master"]);
+    git(web, ["merge", "-q", "--no-ff", "-m", "Merge develop into master", "develop"]);
+    git(web, ["switch", "-q", "develop"]);
+    const plans = pushPlans(read(web));
+    assert.deepStrictEqual(plans.map((p) => [p.branch, p.current === true]), [["develop", true], ["master", false]]);
+    const master = plans[1];
+    assert.deepStrictEqual(parseOutgoing(git(web, multiCommands.outgoing(true))), [], "develop itself has nothing to send");
+    const commits = parseOutgoing(git(web, multiCommands.outgoingOf(master.branch, `${master.remote}/${master.destination}`)));
+    assert.deepStrictEqual(commits.map((c) => c.subject), ["Merge develop into master", "feat: on develop"]);
+    git(web, multiCommands.push(master.remote, master.branch, master.destination, master.setUpstream, master.lease));
+    assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "master"]), git(web, ["rev-parse", "master"]), "the remote's master has the merge");
+    assert.strictEqual(git(web, ["branch", "--show-current"]), "develop", "pushed without checking master out");
+    assert.deepStrictEqual(pushPlans(read(web)).map((p) => p.branch), ["develop"], "nothing left to push on master");
+    console.log("ok - real git: a branch merged into locally and not checked out is planned, its commits listed and pushed from where you are");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

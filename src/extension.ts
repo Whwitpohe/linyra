@@ -461,6 +461,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       command("linyra._itest.branches", () => branchSidebar.snapshot()),
       command("linyra._itest.branchError", () => branchSidebar.lastError),
       command("linyra._itest.lastDetail", () => uncommittedActions.ask.lastDetail),
+      command("linyra._itest.lastItems", () => uncommittedActions.ask.lastItems),
       command("linyra._itest.branchWorktreePath", (value: string | undefined) => { branchSidebar.worktreePath = value; }),
       command("linyra._itest.snapshot", () => log.snapshot()),
       command("linyra._itest.blame", () => blame.last),

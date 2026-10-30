@@ -662,6 +662,7 @@
   "{0} commits on the remote you do not have": "远程有 {0} 个你本地没有的提交",
   "Tick to force push: the remote loses those commits (you are asked first). To keep them, run Update Project instead.": "勾选即强制推送：远程会丢失这些提交（推送前会再问你）。想保留它们，请改用“更新项目”。",
   "Needs pull or force push": "需要先拉取，或强制推送",
+  "Other branches with commits to push": "其它有待推送提交的分支",
   "it has diverged from its upstream: merge or rebase it": "它与上游已分叉：请合并或变基",
   "Update Project ({0})": "更新项目（{0}）",
   "Fast-forward only": "仅快进",

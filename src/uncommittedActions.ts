@@ -39,8 +39,8 @@ export interface PromptSurface {
   ask(req: PromptRequest, at: PromptAnchor["at"], opts?: { check?: (value: string) => PromptCheck | undefined; extra?: PromptExtra }): Promise<PromptAnswer> | undefined;
 }
 
-const promptItem = (x: vscode.QuickPickItem): PromptItem =>
-  ({ label: x.label, ...(x.description ? { description: x.description } : {}), ...(x.detail ? { detail: x.detail } : {}), ...(x.picked ? { picked: true } : {}) });
+const promptItem = (x: vscode.QuickPickItem): PromptItem => x.kind === vscode.QuickPickItemKind.Separator ? { label: x.label, separator: true }
+  : { label: x.label, ...(x.description ? { description: x.description } : {}), ...(x.detail ? { detail: x.detail } : {}), ...(x.picked ? { picked: true } : {}) };
 
 /**
  * VS Code's prompts, in one place: the integration suite answers them through a queue
@@ -85,9 +85,10 @@ export class Ask {
   private readonly testing = process.env.LINYRA_ITEST === "1";
   /** Test seam: runs once, as if while the dialog is open, before a queued answer is given. */
   beforeAnswer: (() => Promise<void>) | undefined;
-  /** Test seam: the last warning asked, and how many questions were asked. */
+  /** Test seam: the last warning asked, the last checklist's items, and how many questions were asked. */
   lastWarning: string | undefined;
   lastDetail: string | undefined;
+  lastItems: PromptItem[] | undefined;
   asked = 0;
 
   queue(value: string | undefined): void {
@@ -145,6 +146,7 @@ export class Ask {
     this.asked++;
     if (this.testing && this.answers.length > 0) {
       const a = this.answers.shift();
+      this.lastItems = items.map(promptItem);
       if (a === undefined || a === "Cancel") return undefined;
       const labels = JSON.parse(a) as string[];
       return items.flatMap((x, i) => (labels.includes(x.label) ? [i] : []));

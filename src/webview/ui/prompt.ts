@@ -95,8 +95,9 @@ export function showPrompt(id: number, req: PromptRequest, at: PromptRect | stri
 function choices(id: number, req: Extract<PromptRequest, { kind: "pick" | "pickMany" }>, el: HTMLElement, finish: (a: PromptAnswer) => void): HTMLElement {
   const many = req.kind === "pickMany";
   const pin = req.kind === "pick" ? req.pin : undefined;
-  const checked = new Set(req.items.flatMap((item, i) => (item.picked ? [i] : [])));
-  let shown = req.items.map((_, i) => i);
+  const checked = new Set(req.items.flatMap((item, i) => (item.picked && !item.separator ? [i] : [])));
+  // The choices shown (a section's heading is drawn above its first one, never chosen).
+  let shown = req.items.flatMap((item, i) => (item.separator ? [] : [i]));
   let active = shown[0] ?? -1;
   const list = h("div", { class: "prompt-list", id: `prompt-${id}-list`, role: "listbox", tabindex: "0", "aria-labelledby": `prompt-${id}-title`, ...(many ? { "aria-multiselectable": "true" } : {}) });
   const filter = req.items.length >= FILTER_FROM
@@ -104,7 +105,15 @@ function choices(id: number, req: Extract<PromptRequest, { kind: "pick" | "pickM
     : undefined;
   const optionId = (i: number) => `prompt-${id}-${i}`;
   const draw = () => {
-    list.replaceChildren(...shown.map((i) => row(req.items[i], i)));
+    const rows: HTMLElement[] = [], showing = new Set(shown);
+    let heading: PromptItem | undefined;
+    req.items.forEach((item, i) => {
+      if (item.separator) { heading = item; return; }
+      if (!showing.has(i)) return;
+      if (heading) { rows.push(h("div", { class: "prompt-heading", role: "presentation" }, [heading.label])); heading = undefined; }
+      rows.push(row(item, i));
+    });
+    list.replaceChildren(...rows);
     if (shown.length === 0) list.append(h("div", { class: "prompt-empty" }, [localize("No matches")]));
     mark();
   };
@@ -164,6 +173,7 @@ function choices(id: number, req: Extract<PromptRequest, { kind: "pick" | "pickM
   filter?.addEventListener("input", () => {
     const words = filter.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     shown = req.items.flatMap((item, i) => {
+      if (item.separator) return [];
       const text = `${item.label} ${item.description ?? ""} ${item.detail ?? ""}`.toLowerCase();
       return words.every((w) => text.includes(w)) ? [i] : [];
     });

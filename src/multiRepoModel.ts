@@ -80,6 +80,8 @@ export const multiCommands = {
    * is checked out in any worktree.
    */
   fastForward: (b: BranchTrack) => ["fetch", "--quiet", ".", `${checkRef(b.upstream)}:${checkRef(b.ref)}`],
+  /** A branch that is not checked out: the commits a push would send to its upstream. */
+  outgoingOf: (branch: string, upstream: string) => ["log", "--format=%h%x00%s", "--max-count=1000", `refs/remotes/${checkName(upstream)}..refs/heads/${checkName(branch)}`, "--"],
   /** Commits a push would send: to the upstream, or (no upstream yet) those on no remote at all. */
   outgoing: (hasUpstream: boolean) => hasUpstream
     ? ["log", "--format=%h%x00%s", "--max-count=1000", "@{upstream}..HEAD", "--"]
@@ -119,6 +121,8 @@ export interface PushPlan {
   lease?: string;
   /** Diverged: how many commits the remote branch has that this one does not. */
   behind?: number;
+  /** The checked-out branch's (its outgoing commits are counted from HEAD). */
+  current?: boolean;
 }
 
 /** The commits a force push would drop from the remote branch: on it, not on the local one (newest first). */
@@ -204,6 +208,27 @@ export function pushPlan(data: Branches): PushPlan | undefined {
   }
   const remote = data.remotes.includes("origin") ? "origin" : data.remotes.length === 1 ? data.remotes[0] : undefined;
   return remote ? { branch: branch.name, remote, destination: branch.name, setUpstream: true } : undefined;
+}
+
+/**
+ * Push…'s plans in one repository: the checked-out branch's (pushPlan), then every other local
+ * branch with commits its upstream on a remote does not have, as git push would send them. A
+ * branch merged into locally (develop into master) is pushed from here without checking it out.
+ */
+export function pushPlans(data: Branches): PushPlan[] {
+  const current = pushPlan(data);
+  const plans: PushPlan[] = current ? [{ ...current, current: true }] : [];
+  const remotes = [...data.remotes].sort((a, b) => b.length - a.length);
+  for (const b of data.branches) {
+    if (b.kind !== "local" || b.current || !b.upstream || b.ahead === 0) continue;
+    // An upstream that is another local branch: nothing to send to a remote.
+    const remote = remotes.find((r) => b.upstream!.startsWith(`${r}/`));
+    if (!remote) continue;
+    const plan: PushPlan = { branch: b.name, remote, destination: b.upstream.slice(remote.length + 1), setUpstream: false };
+    const remoteSha = data.branches.find((x) => x.kind === "remote" && x.name === b.upstream)?.sha;
+    plans.push(b.behind > 0 && remoteSha ? { ...plan, lease: remoteSha, behind: b.behind } : plan);
+  }
+  return plans;
 }
 
 /** Where a repository's tags go: its branch's upstream remote, else origin, else its only remote. */

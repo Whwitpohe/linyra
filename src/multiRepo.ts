@@ -4,7 +4,7 @@ import { isValidRef } from "./filterModel";
 import { checkValue, listValue, textValue } from "./formModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, droppedArgs, forcePushPrompt, forwardReason, headDistance, isProtected, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
+import { checkoutStep, droppedArgs, forcePushPrompt, forwardReason, headDistance, isProtected, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
@@ -162,13 +162,15 @@ export class MultiRepo {
   push(only?: ReadonlySet<string>): Promise<MultiResult | undefined> {
     return this.exclusive(async () => {
       const all = await this.read(only);
+      // Every branch with commits to send, the checked-out one first: one log each, only for those ahead.
       const listed = (await runPool(all, WRITE_CONCURRENCY, async (x) => {
-        const plan = x.data && pushPlan(x.data);
-        if (!plan) return undefined;
-        const commits = parseOutgoing(await this.host.run(x.repo.root, multiCommands.outgoing(!plan.setUpstream), WRITE_SIGNAL));
         const guarded = vscode.workspace.getConfiguration("git", vscode.Uri.file(x.repo.root)).get<string[]>("branchProtection", []);
-        return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && isProtected(plan.destination, Array.isArray(guarded) ? guarded : []) } : undefined;
-      }, WRITE_SIGNAL)).flatMap((s) => (s.status === "fulfilled" && s.value ? [s.value] : []));
+        const rows = await Promise.all((x.data ? pushPlans(x.data) : []).map(async (plan) => {
+          const commits = parseOutgoing(await this.host.run(x.repo.root, plan.current ? multiCommands.outgoing(!plan.setUpstream) : multiCommands.outgoingOf(plan.branch, `${plan.remote}/${plan.destination}`), WRITE_SIGNAL));
+          return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && isProtected(plan.destination, Array.isArray(guarded) ? guarded : []) } : undefined;
+        }));
+        return rows.filter((r): r is NonNullable<typeof r> => r !== undefined);
+      }, WRITE_SIGNAL)).flatMap((s) => (s.status === "fulfilled" ? s.value : []));
       // Diverged on a protected branch: a push would be rejected and a force push is not offered.
       const blocked = listed.filter((r) => r.blocked).map((r) => ({ name: r.repo.name, reason: localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", r.plan.branch, r.plan.remote, r.plan.destination) }));
       // Ready to push first; diverged ones (ahead and behind) in a section of their own, not ticked: being
@@ -187,11 +189,18 @@ export class MultiRepo {
         detail: r.plan.lease ? localize("Tick to force push: the remote loses those commits (you are asked first). To keep them, run Update Project instead.")
           : r.commits.slice(0, 3).map((c) => `${c.sha} ${c.subject}`).join("  ·  ") + (r.commits.length > 3 ? "  …" : ""),
       });
-      const ready = rows.filter((r) => !r.plan.lease), diverged = rows.filter((r) => r.plan.lease);
-      const items: vscode.QuickPickItem[] = [...ready.map(item),
-        ...(diverged.length > 0 ? [{ label: localize("Needs pull or force push"), kind: vscode.QuickPickItemKind.Separator }, ...diverged.map(item)] : [])];
-      const rowOf = (i: number) => (i < ready.length ? ready[i] : diverged[i - ready.length - 1]);
-      const chosen = await this.host.ask.pickMany(items, localize("Push to {0} repositories", rows.length));
+      // The checked-out branches; then the others with commits to send (a merge into master made
+      // locally), ticked too, under their own heading; then the diverged ones, not ticked.
+      const checkedOut = rows.filter((r) => !r.plan.lease && r.plan.current), others = rows.filter((r) => !r.plan.lease && !r.plan.current), diverged = rows.filter((r) => r.plan.lease);
+      const sections: [string | undefined, typeof rows][] = [[undefined, checkedOut], [localize("Other branches with commits to push"), others], [localize("Needs pull or force push"), diverged]];
+      const items: vscode.QuickPickItem[] = [], order: ((typeof rows)[number] | undefined)[] = [];
+      for (const [heading, list] of sections) {
+        if (list.length === 0) continue;
+        if (heading) { items.push({ label: heading, kind: vscode.QuickPickItemKind.Separator }); order.push(undefined); }
+        for (const r of list) { items.push(item(r)); order.push(r); }
+      }
+      const rowOf = (i: number) => order[i];
+      const chosen = await this.host.ask.pickMany(items, localize("Push to {0} repositories", new Set(rows.map((r) => r.repo.id)).size));
       if (!chosen?.length) return undefined;
       const picked = chosen.map(rowOf).filter((r): r is (typeof rows)[number] => r !== undefined);
       if (picked.length === 0) return undefined;
@@ -200,14 +209,17 @@ export class MultiRepo {
         const p = forcePushPrompt(await Promise.all(forced.map((r) => this.forcePush(r.repo, r.plan.branch, r.plan.remote, r.plan.destination, r.plan.behind ?? 0))));
         if (!(await this.host.ask.warning(p.message, p.detail, p.button))) return undefined;
       }
-      const result = await this.each(localize("Pushing"), picked.map((r) => r.repo), async (repo) => {
-        const { plan } = picked.find((r) => r.repo.id === repo.id)!;
-        const ctl = new AbortController();
-        const timer = setTimeout(() => ctl.abort(), PUSH_TIMEOUT_MS);
-        try {
-          await this.host.run(repo.root, multiCommands.push(plan.remote, plan.branch, plan.destination, plan.setUpstream, plan.lease), ctl.signal, { tree: true, env: WRITE_ENV });
-        } finally {
-          clearTimeout(timer);
+      // One job per repository: its picked branches pushed in turn, the checked-out one first.
+      const repos = [...new Set(picked.map((r) => r.repo))];
+      const result = await this.each(localize("Pushing"), repos, async (repo) => {
+        for (const { plan } of picked.filter((r) => r.repo.id === repo.id)) {
+          const ctl = new AbortController();
+          const timer = setTimeout(() => ctl.abort(), PUSH_TIMEOUT_MS);
+          try {
+            await this.host.run(repo.root, multiCommands.push(plan.remote, plan.branch, plan.destination, plan.setUpstream, plan.lease), ctl.signal, { tree: true, env: WRITE_ENV });
+          } finally {
+            clearTimeout(timer);
+          }
         }
       });
       result.skipped.push(...blocked);

@@ -219,6 +219,37 @@ describe("Across repositories", () => {
     git(web, ["switch", "-q", "main"]);
   });
 
+  it("Push… also lists and sends a branch that is not checked out: a develop merged into main locally", async () => {
+    const web = repo("acme-web").root;
+    const remote = path.join(home, "web.git");
+    const main = git(web, ["rev-parse", "main"]);
+    git(web, ["switch", "-q", "-c", "ci-develop"]);
+    fs.writeFileSync(path.join(web, "develop.txt"), "develop\n");
+    git(web, ["add", "develop.txt"]); git(web, ["commit", "-q", "-m", "feat: on develop"]);
+    git(web, ["push", "-q", "-u", "ci-origin", "ci-develop"]);
+    git(web, ["switch", "-q", "main"]);
+    git(web, ["merge", "-q", "--no-ff", "-m", "Merge ci-develop into main", "ci-develop"]);
+    git(web, ["switch", "-q", "ci-develop"]);
+    const head = git(web, ["rev-parse", "HEAD"]);
+    try {
+      await answer(JSON.stringify(["acme-web"]));
+      const r = await run("pushAll");
+      const items = await vscode.commands.executeCommand<{ label: string; description?: string; separator?: true }[]>("linyra._itest.lastItems");
+      assert.deepStrictEqual(items?.map((x) => [x.label, x.separator === true]), [["Other branches with commits to push", true], ["acme-web", false]],
+        "the checked-out ci-develop has nothing to send; main does, under its own heading");
+      assert.match(items?.[1].description ?? "", /^main → ci-origin\/main · 2 commits$/);
+      assert.deepStrictEqual(r?.done, ["acme-web"]);
+      assert.strictEqual(git(remote, ["log", "-1", "--format=%s", "main"]), "Merge ci-develop into main");
+      assert.deepStrictEqual([git(web, ["branch", "--show-current"]), git(web, ["rev-parse", "HEAD"]), git(web, ["status", "--porcelain"])], ["ci-develop", head, ""], "pushed without a checkout");
+    } finally {
+      git(web, ["switch", "-q", "main"]);
+      git(web, ["reset", "-q", "--hard", main]);
+      git(web, ["push", "-q", "-f", "ci-origin", "main"]);
+      git(web, ["branch", "-q", "-D", "ci-develop"]);
+      git(web, ["push", "-q", "ci-origin", "--delete", "ci-develop"]);
+    }
+  });
+
   it("Tag Across Repositories… tags each checked-out commit and pushes where there is a remote", async () => {
     await answer(JSON.stringify({ name: "ci-v1", message: "Release ci-v1", push: true }));
     const r = await run("tagAcross");

@@ -76,6 +76,11 @@
 .prompt-item.active .prompt-pin, .prompt-pin:focus-visible { opacity: 1; }
 .prompt-pin:hover { background: var(--vscode-toolbar-hoverBackground); }
 .prompt-empty { padding: 6px; color: var(--vscode-descriptionForeground); }
+/* A section's heading, as VS Code's picker draws its separators: a line, the words at its right. */
+.prompt-heading {
+  display: flex; align-items: center; gap: 8px; margin: 4px 0 2px; padding: 0 6px; font-size: 0.92em; color: var(--vscode-descriptionForeground);
+}
+.prompt-heading::before { content: ""; flex: 1; border-top: 1px solid var(--vscode-widget-border, var(--vscode-menu-separatorBackground, var(--vscode-descriptionForeground))); opacity: 0.6; }
 .prompt-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 2px 0; }
 .prompt-hint { display: inline-flex; align-items: center; gap: 4px; min-width: 0; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
 .prompt-ok {

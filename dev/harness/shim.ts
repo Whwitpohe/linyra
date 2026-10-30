@@ -209,7 +209,8 @@ function handle(m: WebviewMessage): void {
       if (m.action === "state" && m.state) { branchState = sidebarState(m.state); sessionStorage.setItem("branch-sidebar", JSON.stringify(branchState)); send({ type: "sidebarState", state: branchState }, 0); }
       if (m.action === "load" && m.repoId) send({ type: "branchTree", repoId: m.repoId, data: { current: "develop", remotes: ["origin"], branches: [
         { ref: "refs/heads/develop", name: "develop", sha: "a".repeat(40), kind: "local", current: true, upstream: "origin/develop", ahead: 1, behind: 2 },
-        { ref: "refs/heads/master", name: "master", sha: "b".repeat(40), kind: "local", current: false, ahead: 0, behind: 0 },
+        // develop merged into master here, not pushed yet: master has commits to push without being checked out.
+        { ref: "refs/heads/master", name: "master", sha: "b".repeat(40), kind: "local", current: false, upstream: "origin/master", ahead: 3, behind: 0 },
         { ref: "refs/remotes/origin/develop", name: "origin/develop", sha: "c".repeat(40), kind: "remote", current: false, remote: "origin", remoteBranch: "develop", ahead: 0, behind: 0 },
         { ref: "refs/remotes/origin/master", name: "origin/master", sha: "d".repeat(40), kind: "remote", current: false, remote: "origin", remoteBranch: "master", ahead: 0, behind: 0 },
       ] } });

@@ -407,6 +407,12 @@ export class RepoPane {
             this.twisty(undefined),
             h("span", { class: `branch-mark${b.current ? " current" : ""}`, "aria-hidden": "true" }, [codiconElement(b.current ? "check" : b.kind === "tag" ? "tag" : "git-branch")]),
             h("span", { class: "branch-name" }, [row.label]),
+            // Every local branch's distance from its upstream, as the repository's own row shows it: a
+            // branch merged into locally (develop into master) says it has commits to push.
+            b.kind === "local" && b.upstream && (b.ahead > 0 || b.behind > 0) ? h("span", { class: "repo-sync branch-sync", "aria-hidden": "true" }, [
+              b.behind > 0 ? h("span", { class: "sync-in" }, [`↓${b.behind}`]) : null,
+              b.ahead > 0 ? h("span", { class: "sync-out" }, [`↑${b.ahead}`]) : null,
+            ]) : null,
             h("button", { class: `branch-star${row.favorite ? " favorite" : ""}`, type: "button", tabindex: "-1", "aria-pressed": String(row.favorite),
               title: localize(row.favorite ? "Remove from Favorites" : "Add to Favorites"), "aria-label": localize("Favorite branch {0}", b.name) }, [codiconElement(row.favorite ? "star-full" : "star-empty")]),
           ]));
