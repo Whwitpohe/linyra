@@ -4,7 +4,9 @@ import * as path from "path";
 import Mocha = require("mocha");
 
 export function run(): Promise<void> {
-  const mocha = new Mocha({ ui: "bdd", color: true, timeout: 60000 });
+  // LINYRA_ITEST_GREP (runTests.ts): only the tests whose title matches.
+  const grep = process.env.LINYRA_ITEST_GREP;
+  const mocha = new Mocha({ ui: "bdd", color: true, timeout: 60000, ...(grep ? { grep } : {}) });
   // The suites share one workspace, so their order is fixed: the Log's own suite, then the ones
   // split out of it, as when they were one file. Any other suite runs after them, by name.
   const order = ["branches", "log", "compare", "combined", "multiRepo", "commitActions"];

@@ -40,6 +40,9 @@ async function main(): Promise<void> {
       GIT_CONFIG_NOSYSTEM: env.GIT_CONFIG_NOSYSTEM,
       GIT_CONFIG_GLOBAL: env.GIT_CONFIG_GLOBAL,
       LINYRA_ITEST: "1",
+      // Only the tests whose title matches (mocha's grep): one test again in a minute instead of every suite.
+      // The suites share one workspace and build on each other: a full run is still the check.
+      LINYRA_ITEST_GREP: process.env.LINYRA_ITEST_GREP ?? "",
     },
   });
   fs.rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
