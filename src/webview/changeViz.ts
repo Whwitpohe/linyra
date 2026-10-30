@@ -8,12 +8,16 @@ export const FULL_CHURN = 1600;
 /** How much room the column has, widest first (the Log's width picks one). */
 export type ChangesStage = "full" | "compact" | "mini" | "icon";
 
-/** Per stage, in px: the column's width for a drawing and for numbers, and the drawing's track. */
-export const STAGES: Record<ChangesStage, { column: number; numbers: number; track: number }> = {
-  full: { column: 118, numbers: 124, track: 64 }, compact: { column: 88, numbers: 88, track: 52 },
-  mini: { column: 52, numbers: 52, track: 46 }, icon: { column: 18, numbers: 28, track: 0 },
+/**
+ * Per stage, in px: the column's width for a bar, for numbers and for squares (the files count,
+ * the lines' total and the squares: "999+ 999k" needs about 129px), and the drawing's track.
+ */
+export const STAGES: Record<ChangesStage, { column: number; numbers: number; squares: number; track: number }> = {
+  full: { column: 118, numbers: 124, squares: 136, track: 64 }, compact: { column: 88, numbers: 88, squares: 88, track: 52 },
+  mini: { column: 52, numbers: 52, squares: 52, track: 46 }, icon: { column: 18, numbers: 28, squares: 18, track: 0 },
 };
-export const columnWidth = (mode: Exclude<ChangesMode, "off">, stage: ChangesStage): number => (mode === "numbers" ? STAGES[stage].numbers : STAGES[stage].column);
+export const columnWidth = (mode: Exclude<ChangesMode, "off">, stage: ChangesStage): number =>
+  (mode === "numbers" ? STAGES[stage].numbers : mode === "squares" ? STAGES[stage].squares : STAGES[stage].column);
 
 /** The stage the Log's width allows: the subject keeps most of a narrow Log. */
 export const stageFor = (logWidth: number): ChangesStage => (logWidth >= 1150 ? "full" : logWidth >= 950 ? "compact" : logWidth >= 760 ? "mini" : "icon");

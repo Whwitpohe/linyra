@@ -117,6 +117,17 @@ test("every drawing stays inside its cell, in each theme and width", async ({ pa
         const overflow = await page.locator("#rows .row[data-index] :is(.changes-cell, .count-deleted)").evaluateAll((cells) =>
           cells.filter((c) => c.scrollWidth > c.clientWidth + 1).map((c) => c.textContent));
         expect(overflow, `${theme} ${width} ${name}`).toEqual([]);
+        // Room to spare where there is text: Linux's fonts set the same digits a few pixels wider
+        // than Windows' do (a drawing alone is as wide everywhere).
+        const tight = await page.locator("#rows .row[data-index] .changes-cell").evaluateAll((cells) => cells.flatMap((c) => {
+          if (!c.textContent.trim()) return [];
+          const room = c.clientWidth;
+          c.style.width = "max-content";
+          const needs = c.getBoundingClientRect().width;
+          c.style.width = "";
+          return room - needs < 8 ? [`${c.textContent} ${Math.round(needs)}/${room}`] : [];
+        }));
+        expect(tight, `${theme} ${width} ${name}: 8px to spare`).toEqual([]);
       }
       expect(errors).toEqual([]);
     }
