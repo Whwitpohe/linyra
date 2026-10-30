@@ -89,7 +89,7 @@ export function mockCommits(repos: Repo[], scenario: string): Commit[] {
     ];
     return rows.map(([repo, id, parents], i) => ({ repoId: repos[repo].id, sha: sha(id), parents: parents.map(sha),
       time: NOW - i * 120, author: AUTHORS[i % 2], email: `${AUTHORS[i % 2]}@example.com`, subject: i === 0 ? "Merge release-1.4 into main" : SUBJECTS[i % SUBJECTS.length],
-      refs: i === 0 ? [{ kind: "head", name: "HEAD" }, { kind: "local", name: "main" }, { kind: "remote", name: "origin/main" }]
+      refs: i === 0 ? [{ kind: "head", name: "HEAD" }, { kind: "local", name: "main", current: true }, { kind: "remote", name: "origin/main" }]
         : i === 3 ? [{ kind: "local", name: "release-1.4" }, { kind: "remote", name: "origin/release-1.4" }]
         : i === 4 ? [{ kind: "local", name: "fix/preview" }] : [] }));
   }

@@ -1,0 +1,19 @@
+/* A Log row's buttons while the pointer is on it (rowActions.ts): over the row's end, on the
+   row's own background made opaque, so the date beneath does not show through. */
+.row-actions {
+  --row-fill: var(--vscode-list-hoverBackground);
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 1; display: none; align-items: center; gap: 2px; padding: 0 var(--pad-x) 0 6px;
+  background: linear-gradient(var(--row-fill), var(--row-fill)), var(--vscode-panel-background, var(--vscode-editor-background));
+}
+.row:hover > .row-actions { display: flex; }
+.row[aria-selected="true"] > .row-actions { --row-fill: var(--vscode-list-inactiveSelectionBackground); }
+.list:focus .row.focus[aria-selected="true"] > .row-actions { --row-fill: var(--vscode-list-activeSelectionBackground); }
+.row-action {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer;
+}
+.row-action:hover { background: var(--vscode-toolbar-hoverBackground); }
+.row-action:active { background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground)); }
+/* High contrast: no fills; the hovered button gets the dashed ring every button has there (styles.css). */
+body.vscode-high-contrast .row-actions { background: var(--vscode-editor-background); }
+body.vscode-high-contrast .row-action:hover, body.vscode-high-contrast .row-action:active { background: transparent; }

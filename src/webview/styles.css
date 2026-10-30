@@ -304,15 +304,24 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .list { overflow-y: auto; min-height: 0; will-change: transform; }
 /* Lists, as VS Code's: Shift/Ctrl-click selects rows, never their text (Copy commands copy it). */
 .rows { position: relative; user-select: none; }
+/* Scrolling (list.ts): the rows ignore the pointer until it stops; the wheel still reaches the list. */
+.list.scrolling .rows { pointer-events: none; }
 
 /* Repository band | actual parent graph | subject | hash | author | changes | date: the columns the
    column model shows, at its widths (logColumns.ts writes --log-columns; the column header uses it too). */
 .row {
   position: absolute; top: 0; left: 0; right: 0; height: var(--row-height); contain: strict;
   display: grid; grid-template-columns: var(--log-columns, 72px 32px minmax(0, 1fr) 70px 56px);
-  align-items: center; column-gap: var(--log-gap, 10px); padding: 0 var(--pad-x); cursor: default;
+  align-items: center; column-gap: var(--log-gap, 10px); padding: 0 var(--pad-x); cursor: pointer;
 }
 .row:hover { background: var(--vscode-list-hoverBackground); }
+/* The row under the pointer: its commit's disc (or dot, or fold box) grows a little, so the eye
+   finds that commit in the graph. CSS alone: hovering builds and repaints no row. */
+.row .graph-point { transform-box: fill-box; transform-origin: center; transition: transform 120ms ease-out; }
+.row:hover .graph-point { transform: scale(1.25); }
+.row:hover .graph-point:not(.author-disc) { transform: scale(1.4); }
+@media (prefers-reduced-motion: reduce) { .row .graph-point { transition: none; } }
+body.vscode-reduce-motion .row .graph-point { transition: none; }
 .row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
 /* Several selected (Combined Changes): the others keep the inactive color, the focus row is active. */
 .list:focus .row.focus[aria-selected="true"] {

@@ -13,7 +13,7 @@ const open = async (page, { theme = "dark", sheet = "", ai = "", across = "", wi
   await expect(page.locator("#rows .row").first()).toBeVisible();
   return errors;
 };
-const pill = (page, ref, repo = "/work/acme-web") => page.locator(`.row-ref[data-repo="${repo}"][data-ref="${ref}"]`).first();
+const pill = (page, ref, repo = "/work/acme-web") => page.locator(`.row-ref .pill-part[data-repo="${repo}"][data-ref="${ref}"]`).first();
 const sheet = (page) => page.locator("#branch-sheet");
 const card = (page, title) => sheet(page).locator(".sheet-card", { has: page.locator(".card-title", { hasText: title }) });
 const buttons = (locator) => locator.locator(".card-buttons .sheet-button, .sheet-button").allTextContents();
@@ -58,13 +58,13 @@ test("the open sheet's branch is marked in the Log: its pills only, until the sh
     await open(page, { theme });
     await pill(page, "refs/heads/develop").click();
     await expect(sheet(page)).toBeVisible();
-    const marked = page.locator('#rows .row-ref[aria-current="true"]');
+    const marked = page.locator('#rows .row-ref .pill-part[aria-current="true"]');
     await expect(marked.first()).toBeVisible();
-    // Every marked pill is develop's in acme-web; another branch's pill is not marked.
+    // Every marked part is develop's in acme-web; another branch's part (origin/develop beside it too) is not marked.
     const refs = await marked.evaluateAll((els) => els.map((el) => `${el.dataset.repo} ${el.dataset.ref}`));
     expect(new Set(refs)).toEqual(new Set(["/work/acme-web refs/heads/develop"]));
-    await expect(page.locator('#rows .row-ref[data-ref]:not([data-ref="refs/heads/develop"])[aria-current]')).toHaveCount(0);
-    // Drawn in the focus border's color, inside the pill (its group clips anything outside).
+    await expect(page.locator('#rows .row-ref .pill-part[data-ref]:not([data-ref="refs/heads/develop"])[aria-current]')).toHaveCount(0);
+    // Drawn in the focus border's color, inside the part (the pill clips anything outside).
     const style = await marked.first().evaluate((el) => {
       const s = getComputedStyle(el), probe = document.createElement("div");
       probe.style.color = "var(--vscode-focusBorder)";
@@ -77,7 +77,7 @@ test("the open sheet's branch is marked in the Log: its pills only, until the sh
     await sheet(page).locator(".sheet-name").click();
     await page.keyboard.press("Escape");
     await expect(sheet(page)).toBeHidden();
-    await expect(page.locator("#rows .row-ref[aria-current]")).toHaveCount(0);
+    await expect(page.locator("#rows .row-ref [aria-current]")).toHaveCount(0);
   }
 });
 
@@ -88,7 +88,7 @@ test("selecting another row closes the sheet", async ({ page }) => {
   await page.locator("#rows .row").nth(3).click();
   await expect(sheet(page)).toBeHidden();
   await expect(page.locator("#commit-details")).toBeVisible();
-  await expect(page.locator("#rows .row-ref[aria-current]")).toHaveCount(0);
+  await expect(page.locator("#rows .row-ref [aria-current]")).toHaveCount(0);
 });
 
 const states = [

@@ -32,7 +32,8 @@ export interface CommitDetails {
   time: number;
   accent?: number;
   refs?: CommitReference[];
-  containingBranches?: string[];
+  /** The branches containing the commit (commitReferences.ts), read after the rest: absent until then. */
+  containing?: CommitReference[];
   /** The commit's parents: each one selects that commit in the Log. */
   parents?: string[];
 }

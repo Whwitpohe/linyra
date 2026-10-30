@@ -4,10 +4,20 @@
 .row-refs .pill { flex: 0 0 auto; }
 /* A pill cut to fit keeps its branch's name longest: the joined remotes give way first. */
 .row-refs .pill-part + .pill-part { flex-shrink: 50; }
-.row-refs .pill[data-ref] { cursor: pointer; }
-/* The branch whose sheet is open. Inside the pill: the group clips anything drawn outside it.
-   An outline sits over the parts' tint, keeps the pill's width, and in high contrast replaces its ring. */
-.row-refs .pill[aria-current="true"] { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+/* Each part is its own target (refPills.ts): the one under the pointer deepens its own tint, so it
+   is plain which branch a click shows. Color only: a bolder or bigger part would move its neighbours. */
+.pill-part[data-ref] { cursor: pointer; }
+.pill-part[data-ref]:hover, .pill-part[aria-current="true"] { background: color-mix(in srgb, var(--part) 42%, transparent); }
+.pill-current .pill-part.pill-local[data-ref]:hover, .pill-current .pill-part.pill-local[aria-current="true"] { background: color-mix(in srgb, var(--part) 52%, transparent); }
+body.vscode-light .pill-part[data-ref]:hover, body.vscode-light .pill-part[aria-current="true"] { background: color-mix(in srgb, var(--part) 34%, transparent); }
+body.vscode-light .pill-current .pill-part.pill-local[data-ref]:hover, body.vscode-light .pill-current .pill-part.pill-local[aria-current="true"] { background: color-mix(in srgb, var(--part) 44%, transparent); }
+/* The branch whose sheet is open: that part, deepened and ringed, inside the pill (its group clips
+   anything drawn outside it). An outline keeps the part's width, and in high contrast it is the mark. */
+.pill-part[aria-current="true"] { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+/* High contrast: no tints; the part under the pointer is ringed dashed, as a toolbar button is. */
+body.vscode-high-contrast .pill .pill-part[data-ref]:hover, body.vscode-high-contrast .pill-current .pill-part.pill-local[data-ref]:hover,
+body.vscode-high-contrast .pill .pill-part[aria-current="true"], body.vscode-high-contrast .pill-current .pill-part.pill-local[aria-current="true"] { background: transparent; }
+body.vscode-high-contrast .pill-part[data-ref]:hover:not([aria-current="true"]) { outline: 1px dashed var(--vscode-contrastActiveBorder, var(--vscode-focusBorder)); outline-offset: -1px; }
 .row-ref-more { font-variant-numeric: tabular-nums; }
 /* On the focused selection, the parts' text follows the selection's foreground, as the row's own text does. */
 .list:focus .row.focus[aria-selected="true"] .pill-part { color: inherit; }

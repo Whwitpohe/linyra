@@ -9,7 +9,8 @@ import { h } from "../dom";
  * them; the current branch carries its distance from its upstream; a merge target is its own part.
  */
 export interface PillSegment {
-  kind: "local" | "remote" | "tag" | "base" | "detached";
+  /** head: HEAD on the checked-out branch's pill (the commit details); detached: HEAD on no branch. */
+  kind: "local" | "remote" | "tag" | "base" | "detached" | "head";
   label: string;
   title?: string;
   /** The checked-out branch: drawn stronger. */
@@ -21,7 +22,7 @@ export interface PillSegment {
   unpublished?: boolean;
 }
 
-const ICONS: Record<PillSegment["kind"], Codicon> = { local: "git-branch", remote: "cloud", tag: "tag", base: "target", detached: "git-commit" };
+const ICONS: Record<PillSegment["kind"], Codicon> = { local: "git-branch", remote: "cloud", tag: "tag", base: "target", detached: "git-commit", head: "git-commit" };
 
 /** "↑2 ↓1", "", or "unpublished": a current branch's upstream state as text. */
 export function upstreamText(s: Pick<PillSegment, "ahead" | "behind" | "unpublished">): string {

@@ -6,7 +6,7 @@ import { codicon, codiconElement } from "../codicons";
 import { attachSplitter } from "../splitter";
 import { absoluteTime } from "../view";
 import { changeLines, changeNote, changesFilter } from "./fileFilterModel";
-import { referencePills } from "./referencePills";
+import { containingBranches, referencePills } from "./referencePills";
 import { FileTree, type RowParts } from "../ui/fileTree";
 import { renderPill } from "../ui/pill";
 
@@ -124,8 +124,8 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
       return link;
     });
     const pills = referencePills(commit.refs ?? []).map((segments) => renderPill(segments));
-    const branches = commit.containingBranches;
-    const branchList = h("div", { class: "containing-list" }, (branches ?? []).map((branch) => h("div", {}, [branch])));
+    const containing = commit.containing && containingBranches(commit.refs ?? [], commit.containing);
+    const branchList = h("div", { class: "containing-list" }, (containing?.pills ?? []).map((segments) => renderPill(segments)));
     const branchKey = `${commit.repoId}\0${commit.sha}`;
     branchList.hidden = collapsedBranches.has(branchKey);
     const toggleBranches = h("button", { class: "branches-toggle", type: "button", "aria-expanded": String(!branchList.hidden) }, [localize(branchList.hidden ? "Show" : "Hide")]);
@@ -151,9 +151,9 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
         ]),
         parents.length ? h("div", { class: "commit-parents" }, [localize(parents.length > 1 ? "Parents:" : "Parent:"), " ", ...parents.flatMap((link, i) => i ? [" ", link] : [link])]) : null,
         pills.length ? h("div", { class: "commit-refs", "aria-label": localize("Commit references") }, pills) : null,
-        branches ? h("div", { class: "containing-branches" }, [
-          h("div", { class: "containing-heading" }, [localize("In {0} branches:", branches.length), " ", branches.length ? toggleBranches : null]),
-          branchList,
+        containing ? h("div", { class: "containing-branches" }, [
+          h("div", { class: "containing-heading" }, [containing.heading, containing.pills.length ? " " : null, containing.pills.length ? toggleBranches : null]),
+          containing.pills.length ? branchList : null,
         ]) : null,
       ]),
     ]);

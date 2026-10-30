@@ -11,7 +11,11 @@ export interface CommitReference {
 
 export interface CommitReferences {
   refs: CommitReference[];
-  containingBranches: string[];
+  /**
+   * Every branch that contains the commit, the checked-out one first (marked current); HEAD
+   * among them only when it is detached: on a branch, that branch stands for it.
+   */
+  containing: CommitReference[];
 }
 
 /** --decorate=full makes namespaces explicit; a space cannot occur inside a ref name. */
@@ -101,18 +105,20 @@ export const referenceArgs = (sha: string): string[] => ["for-each-ref", `--cont
 /** Symbolic remote HEADs alias a branch; they must not add a duplicate to its count. */
 export function parseReferences(output: string, sha: string, head: string, headContains: boolean): CommitReferences {
   const refs: CommitReference[] = head === sha ? [{ kind: "head", name: "HEAD" }] : [];
-  const branches: { name: string; current: boolean }[] = [];
+  const containing: CommitReference[] = [];
   for (const line of output.split("\n")) {
     const [ref, object, peeled, symbolic, current] = line.replace(/\r$/, "").split("\0");
     const m = /^refs\/(heads|remotes|tags)\/(.+)$/.exec(ref);
     if (!m || symbolic) continue;
     const kind = m[1] === "heads" ? "local" : m[1] === "remotes" ? "remote" : "tag";
-    if (kind !== "tag") branches.push({ name: m[2], current: current === "*" });
-    if (object === sha || peeled === sha) refs.push(kind === "local" && current === "*" ? { kind, name: m[2], current: true } : { kind, name: m[2] });
+    const reference: CommitReference = kind === "local" && current === "*" ? { kind, name: m[2], current: true } : { kind, name: m[2] };
+    if (kind !== "tag") containing.push(reference);
+    if (object === sha || peeled === sha) refs.push(reference);
   }
-  const containingBranches = branches.sort((a, b) => Number(b.current) - Number(a.current)).map((b) => b.name);
-  if (headContains) containingBranches.unshift("HEAD");
-  return { refs, containingBranches: [...new Set(containingBranches)] };
+  containing.sort((a, b) => Number(b.current === true) - Number(a.current === true));
+  // HEAD contains it, yet no branch that does is checked out: HEAD is detached.
+  if (headContains && !containing.some((r) => r.current)) containing.unshift({ kind: "head", name: "HEAD" });
+  return { refs, containing };
 }
 
 /** Read on selection; no history scan, persisted cache or working-tree mutation. */

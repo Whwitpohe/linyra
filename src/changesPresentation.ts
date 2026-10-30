@@ -12,7 +12,7 @@ export function commitDetails(state: ChangesState | null, combined: CombinedStat
   if (combined) return combined.repos.flatMap((r) => r.commits.map((c) => ({ ...detail(c, r.repoName), accent: r.accent })));
   if (!state || state.commit.sha === UNCOMMITTED) return [];
   return [{ ...detail(state.commit, state.repoName, state.message || state.commit.subject), accent: state.repoAccent,
-    refs: state.references?.refs, containingBranches: state.references?.containingBranches }];
+    refs: state.references?.refs, containing: state.references?.containing }];
 }
 
 /** Both panes remain reachable, even when the whole panel becomes very short. */

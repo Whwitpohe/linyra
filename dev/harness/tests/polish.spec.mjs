@@ -172,9 +172,9 @@ test("the details: the UI font and the text color for the title, the editor's fo
   expect(fonts.weight).toBe("600");
   expect(fonts.marker).toBe(8);
   expect([fonts.dateWraps, fonts.emailWraps]).toEqual(["nowrap", "nowrap"]);
-  // main and origin/main point here: one pill, the branch and its remote.
+  // HEAD on main, and origin/main: one pill, HEAD, the branch and its remote.
   await expect(details.locator(".commit-refs .pill")).toHaveCount(1);
-  await expect(details.locator(".commit-refs .pill .pill-label")).toHaveText(["main", "origin"]);
+  await expect(details.locator(".commit-refs .pill .pill-label")).toHaveText(["HEAD", "main", "origin"]);
 });
 
 test("a parent hash in the details selects that commit in the Log", async ({ page }) => {

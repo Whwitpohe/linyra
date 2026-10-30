@@ -65,7 +65,8 @@ body.resizing #changes-pane { cursor: row-resize; user-select: none; }
 #changes-pane .containing-branches { margin-top: 10px; }
 #changes-pane .branches-toggle { border: 0; background: transparent; padding: 0; font: inherit; color: var(--vscode-textLink-foreground); }
 #changes-pane .branches-toggle:hover { text-decoration: underline; color: var(--vscode-textLink-activeForeground); }
-#changes-pane .containing-list { margin-top: 2px; color: var(--vscode-foreground); overflow-wrap: anywhere; }
+#changes-pane .containing-list { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+#changes-pane .containing-list[hidden] { display: none; }
 #changes-pane .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 320px) {
   #changes-pane .commit-details { padding-left: 12px; padding-right: 12px; }

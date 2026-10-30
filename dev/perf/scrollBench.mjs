@@ -5,8 +5,10 @@
 // --cpu slows the CPU like a busy VS Code window; --profile prints the functions that took the time;
 // --dist measures another build of the harness (an older commit's, to compare); --chatter sends the
 // Log an "uncommitted" message every <ms> while it scrolls, as VS Code's Git reporting changes does;
-// --keys holds ↓ instead of scrolling (one selection move per frame); --state picks the harness scenario
-// ("long": three repositories with deep history, whose graph draws author discs rather than dots).
+// --keys holds ↓ instead of scrolling (one selection move per frame); --hover keeps the pointer over
+// the rows while they scroll under it (each frame a new row is hovered: its disc grows, its buttons
+// move into it); --state picks the harness scenario ("long": three repositories with deep history,
+// whose graph draws author discs rather than dots).
 import { chromium } from "@playwright/test";
 import { createReadStream, existsSync } from "node:fs";
 import { createServer } from "node:http";
@@ -19,7 +21,7 @@ const arg = (name, fallback) => {
 };
 const ROWS = arg("rows", 2000), CPU = arg("cpu", 4), STEP = arg("step", 120), FRAMES = arg("frames", 240), RUNS = arg("runs", 3);
 const stateFlag = process.argv.indexOf("--state"), STATE = stateFlag >= 0 ? process.argv[stateFlag + 1] : "many";
-const PROFILE = process.argv.includes("--profile"), KEYS = process.argv.includes("--keys"), CHATTER = arg("chatter", 0);
+const PROFILE = process.argv.includes("--profile"), KEYS = process.argv.includes("--keys"), HOVER = process.argv.includes("--hover"), CHATTER = arg("chatter", 0);
 const distFlag = process.argv.indexOf("--dist");
 const dist = distFlag >= 0 ? path.resolve(process.argv[distFlag + 1]) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "harness", "dist");
 if (!existsSync(path.join(dist, "index.html"))) throw new Error("build the harness first: node dev/harness/build.mjs");
@@ -77,6 +79,10 @@ const pct = (xs, p) => [...xs].sort((a, b) => a - b)[Math.min(xs.length - 1, Mat
 const results = [];
 for (let run = 0; run < RUNS; run++) {
   await page.evaluate(() => { document.getElementById("list").scrollTop = 0; });
+  if (HOVER) {
+    const box = await page.locator("#list").boundingBox();
+    await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
+  }
   await page.waitForTimeout(300);
   const before = await metrics();
   if (PROFILE && run === RUNS - 1) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }

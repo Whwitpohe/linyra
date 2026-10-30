@@ -6,7 +6,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { ALL, send, snapshot, until } from "./helpers";
+import { ALL, send, snapshot, until, waitFor } from "./helpers";
 
 describe("Commit actions", () => {
   let root: string, repoId: string, start: string;
@@ -166,6 +166,28 @@ describe("Commit actions", () => {
     await act("commitUndo", reworded);
     assert.strictEqual(head(), start);
     assert.strictEqual(git(["diff", "--cached", "--name-only"]), "undo.txt", "the undone change is staged");
+    git(["reset", "-q", "--hard", start]);
+  });
+
+  it("a row's own buttons (webview/rowActions.ts) run the menu's Edit Commit Message and Undo Commit on that commit", async () => {
+    fs.writeFileSync(path.join(root, "row.txt"), "row\n");
+    git(["add", "row.txt"]);
+    git(["commit", "-q", "-m", "feat: from a row button"]);
+    const made = head();
+    await send({ type: "refresh" });
+    await listed(made);
+    // A commit the Log does not show is refused: nothing runs, nothing moves.
+    await send({ type: "rowAction", action: "undo", repoId, sha: "0".repeat(40) });
+    assert.strictEqual(head(), made);
+    await answer("feat: reworded from the row");
+    await send({ type: "rowAction", action: "reword", repoId, sha: made });
+    await waitFor("the row's reword", () => (git(["log", "-1", "--format=%s"]) === "feat: reworded from the row" ? true : undefined));
+    const reworded = head();
+    await listed(reworded);
+    await answer("Undo Commit");
+    await send({ type: "rowAction", action: "undo", repoId, sha: reworded });
+    await waitFor("the row's undo", () => (head() === start ? true : undefined));
+    assert.strictEqual(git(["diff", "--cached", "--name-only"]), "row.txt", "the undone change is staged");
     git(["reset", "-q", "--hard", start]);
   });
 

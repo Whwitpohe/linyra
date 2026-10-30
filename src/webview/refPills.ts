@@ -14,17 +14,37 @@ export function commitPills(repoId: string, refs: readonly CommitReference[] | u
   return refs?.length ? refGroups(refs).map((pill) => withUpstream(pill, upstream?.[repoId])) : [];
 }
 
+/** What a part names and what its click and right-click do: its tooltip. */
+export function partTitle(s: RefSegment): string {
+  const name = s.title ?? s.label;
+  const what = s.kind === "tag" ? localize("Tag {0}", name) : s.kind === "remote" ? localize("Remote branch {0}", name)
+    : s.current ? localize("Branch {0}, checked out", name) : localize("Branch {0}", name);
+  const state = s.kind === "local" && s.current
+    ? [s.unpublished ? localize("unpublished") : "", s.ahead ? localize("{0} ahead", s.ahead) : "", s.behind ? localize("{0} behind", s.behind) : ""].filter(Boolean) : [];
+  return `${[what, ...state].join(" · ")}\n${localize("Click for its details, right-click for its actions.")}`;
+}
+
 /**
- * One pill. Right-click: the branch's menu (webviewSection refPill); click: the branch in the
- * Repo List (data-repo, data-ref). A detached HEAD has neither.
+ * One pill. Each part is its own target, as GitLens's are: a click shows that branch (the
+ * branch sheet, data-repo and data-ref), a right-click opens that branch's menu (webviewSection
+ * refPill), the pointer deepens that part alone. The pill keeps its first part's as well, for
+ * markPills and the menu between parts. A detached HEAD has none of these.
  */
 export function pillElement(repoId: string, pill: readonly RefSegment[], className = ""): HTMLElement {
   const context = refPillContext(repoId, pill);
   const el = renderPill(pill, context ? { ...context } : undefined, className);
-  if (context) {
-    el.dataset.repo = repoId;
-    el.dataset.ref = context.ref;
-  }
+  if (!context) return el;
+  el.dataset.repo = repoId;
+  el.dataset.ref = context.ref;
+  const parts = el.querySelectorAll<HTMLElement>(".pill-part");
+  pill.forEach((s, i) => {
+    const own = refPillContext(repoId, [s]), part = parts[i];
+    if (!own || !part) return;
+    part.dataset.repo = repoId;
+    part.dataset.ref = own.ref;
+    part.dataset.vscodeContext = JSON.stringify({ preventDefaultContextMenuItems: true, ...own });
+    part.title = partTitle(s);
+  });
   return el;
 }
 

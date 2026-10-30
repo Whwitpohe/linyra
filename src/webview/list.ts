@@ -60,6 +60,8 @@ const SKELETON_ROWS = 8;
 export class CommitList {
   private rowHeight = 0;
   private frame = 0;
+  /** The timer that ends a scroll (the root's .scrolling class); 0 while still. */
+  private scrolling: ReturnType<typeof setTimeout> | 0 = 0;
   /** The repo names' font, insets and ch width, read once per layout change rather than on every paint. */
   private column: { font: string; paddingX: number; rowPaddingX: number; ch: number } | undefined;
   /** The list's width at the last full paint (read before it builds rows, so no early layout). */
@@ -134,6 +136,11 @@ export class CommitList {
     // started has its position known; any other (the wheel, the scrollbar) is read here, once.
     root.addEventListener("scroll", () => {
       if (this.expected !== undefined) { this.top = this.expected; this.expected = undefined; } else this.top = root.scrollTop;
+      // Rows moving under a still pointer do not answer it until the scrolling stops: one hover
+      // per frame (a row's tint, its disc growing, its buttons moving in) would cost a layout each.
+      if (!this.scrolling) root.classList.add("scrolling");
+      clearTimeout(this.scrolling);
+      this.scrolling = setTimeout(() => { this.scrolling = 0; root.classList.remove("scrolling"); }, 150);
       if (this.frame) return;
       this.frame = requestAnimationFrame(() => {
         this.frame = 0;
@@ -173,8 +180,8 @@ export class CommitList {
       if (!row) return;
       root.focus();
       this.onSelect(Number(row.dataset.index), { kind: "click", ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey });
-      // A plain click on a branch pill also shows that branch (where: main.ts's onRevealBranch).
-      const pill = (e.target as Element).closest<HTMLElement>(".row-ref[data-ref]");
+      // A plain click on a branch pill also shows that branch, the part's own (where: main.ts's onRevealBranch).
+      const pill = (e.target as Element).closest<HTMLElement>(".row-ref .pill-part[data-ref], .row-ref[data-ref]");
       if (pill?.dataset.repo && pill.dataset.ref && !(e.ctrlKey || e.metaKey || e.shiftKey)) this.onRevealBranch(pill.dataset.repo, pill.dataset.ref);
     });
     // The rail under the pointer is highlighted and says that a click folds it.
@@ -239,10 +246,11 @@ export class CommitList {
 
   private markPills(row: HTMLElement): void {
     const open = this.openBranch;
-    for (const pill of row.querySelectorAll<HTMLElement>(".row-ref[data-ref]")) {
+    // The part that names the branch: develop in "develop | origin", origin in it for origin/develop.
+    for (const part of row.querySelectorAll<HTMLElement>(".row-ref .pill-part[data-ref]")) {
       // aria-current: an attribute, so fitReferences's widths (cached by class and text) still hold.
-      if (open && pill.dataset.repo === open.repoId && pill.dataset.ref === open.ref) pill.setAttribute("aria-current", "true");
-      else pill.removeAttribute("aria-current");
+      if (open && part.dataset.repo === open.repoId && part.dataset.ref === open.ref) part.setAttribute("aria-current", "true");
+      else part.removeAttribute("aria-current");
     }
   }
 

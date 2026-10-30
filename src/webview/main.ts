@@ -25,6 +25,7 @@ import { AvatarFeed } from "./avatars";
 import { ChangesFeed } from "./changesColumn";
 import { LogToolbar, type ViewOptions } from "./toolbar";
 import { HoverCard } from "./hoverCard";
+import { RowActions } from "./rowActions";
 import { BranchSheetView } from "./branchSheet";
 import { revealTarget, type Upstream } from "./refPills";
 import { HostRoutes } from "./hostRoutes";
@@ -129,6 +130,7 @@ const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds 
 const appEl = byId("app");
 /** The commit hover card; a branch pill (in a row or the card) shows its branch in the Repo List. */
 const hoverCard = new HoverCard(listEl, byId("rows"), { commit: (i) => list.commitAt(i), row: (i) => list.hoverRow(i) }, post);
+new RowActions(byId("rows"), post);
 const revealBranch = (repoId: string, ref: string) => {
   if (state.history) return; // the Repo List is locked during File History
   if (appEl.classList.contains("no-repos")) post({ type: "toolbarAction", action: "toggleRepos" });

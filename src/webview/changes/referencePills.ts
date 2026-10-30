@@ -1,25 +1,37 @@
 // The commit details' references as branch pills. Pure: no DOM.
-import type { CommitReference } from "../../commitReferences";
+import { refGroups, type CommitReference } from "../../commitReferences";
+import { localize } from "../../i18n";
 import type { PillSegment } from "../ui/pill";
 
 /**
- * A local branch and the remote branches of the same name share one pill ("main | origin"), tags
- * are pills of their own, and HEAD is one only when no local branch points here (detached).
- * Remote branches without a local one come last, as the old detail listed them.
+ * The Log's pills (refGroups: the checked-out branch first, a branch and its same-name remotes in
+ * one pill, a detached HEAD alone), with HEAD named on the checked-out branch's pill: the details
+ * have the room the Log row does not, and say where HEAD is in words.
  */
 export function referencePills(refs: readonly CommitReference[]): PillSegment[][] {
-  const locals = refs.filter((r) => r.kind === "local");
-  const remotes = refs.filter((r) => r.kind === "remote");
-  const paired = new Set<CommitReference>();
-  const pills: PillSegment[][] = [];
-  if (refs.some((r) => r.kind === "head") && locals.length === 0) pills.push([{ kind: "detached", label: "HEAD" }]);
-  for (const local of locals) {
-    const mates = remotes.filter((r) => !paired.has(r) && r.name.endsWith(`/${local.name}`));
-    for (const r of mates) paired.add(r);
-    pills.push([{ kind: "local", label: local.name },
-      ...mates.map((r): PillSegment => ({ kind: "remote", label: r.name.slice(0, -local.name.length - 1), title: r.name }))]);
-  }
-  for (const tag of refs.filter((r) => r.kind === "tag")) pills.push([{ kind: "tag", label: tag.name }]);
-  for (const r of remotes) if (!paired.has(r)) pills.push([{ kind: "remote", label: r.name }]);
-  return pills;
+  return refGroups(refs).map((pill) => pill.some((s) => s.current) ? [{ kind: "head", label: "HEAD", title: localize("HEAD (checked out)") }, ...pill] : pill);
+}
+
+export interface Containing {
+  heading: string;
+  /** The branches that contain the commit but do not point at it: the pills above already name those. */
+  pills: PillSegment[][];
+}
+
+const key = (r: CommitReference): string => `${r.kind}\0${r.name}`;
+
+/**
+ * "In N branches", without repeating the pills above: the branches pointing at the commit are
+ * there, so the list holds the rest, and the heading says whether there are any.
+ */
+export function containingBranches(refs: readonly CommitReference[], containing: readonly CommitReference[]): Containing {
+  const here = new Set(refs.map(key));
+  const others = containing.filter((r) => !here.has(key(r)));
+  // A detached HEAD drawn above is no branch: a commit only it holds is in none.
+  const above = containing.some((r) => r.kind !== "head" && here.has(key(r)));
+  const n = others.length;
+  const heading = n === 0 ? (above ? localize("In no other branch.") : localize("Not in any branch."))
+    : above ? (n === 1 ? localize("Also in 1 other branch:") : localize("Also in {0} other branches:", n))
+    : n === 1 ? localize("In 1 branch:") : localize("In {0} branches:", n);
+  return { heading, pills: referencePills(others) };
 }

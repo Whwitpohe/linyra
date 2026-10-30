@@ -77,7 +77,7 @@ test("clicking a pill opens its branch's sheet; the sheet's Reveal shows it in t
   await open(page);
   const sheetName = page.locator("#branch-sheet .sheet-name");
   const reveal = () => page.locator('#branch-sheet button[data-action="reveal"]').click();
-  await row(page, 6).locator(".row-refs > .pill").first().click();
+  await row(page, 6).locator(".row-refs > .pill").first().locator(".pill-local").click();
   await expect(sheetName).toHaveText("master");
   // The row was selected as by any click.
   await expect(row(page, 6)).toHaveAttribute("aria-selected", "true");
@@ -92,12 +92,17 @@ test("clicking a pill opens its branch's sheet; the sheet's Reveal shows it in t
   await reveal();
   await expect(page.locator("#repo-rows .repo-row.active .branch-name")).toHaveText("master");
   await expect(page.locator("#repo-rows .repo-row.active")).toHaveAttribute("aria-level", "4");
-  // Joined into develop's pill, the remote part stands for the local branch.
-  await row(page, 0).locator(".pill-current .pill-remote").click();
+  // Each part of a joined pill is its own: develop's part shows develop, its remote part origin/develop.
+  await row(page, 0).locator(".pill-current .pill-local").click();
   await expect(sheetName).toHaveText("develop");
   await reveal();
   await expect(page.locator("#repo-rows .repo-row.active .branch-name")).toHaveText("develop");
   await expect(page.locator("#repo-rows .repo-row.active")).toHaveAttribute("aria-level", "3");
+  await row(page, 0).locator(".pill-current .pill-remote").click();
+  await expect(sheetName).toHaveText("origin/develop");
+  await reveal();
+  await expect(page.locator("#repo-rows .repo-row.active .branch-name")).toHaveText("develop");
+  await expect(page.locator("#repo-rows .repo-row.active")).toHaveAttribute("aria-level", "4");
 });
 
 test("the card opens after the pointer rests 500 ms: the row's data at once, then one git show's", async ({ page }) => {

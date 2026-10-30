@@ -1341,10 +1341,12 @@ describe("Linyra panel", () => {
     assert.strictEqual(page.details[0].title, c.subject);
     assert.strictEqual(page.details[0].author, c.author);
     assert.strictEqual(page.details[0].email, c.email);
-    const withRefs = await until("the selected commit's actual references", (x) => x.changes.presentation?.details[0]?.sha === c.sha && x.changes.presentation.details[0].containingBranches !== undefined);
+    const withRefs = await until("the selected commit's actual references", (x) => x.changes.presentation?.details[0]?.sha === c.sha && x.changes.presentation.details[0].containing !== undefined);
     const actualRefs = withRefs.changes.presentation!.details[0];
     assert.ok(actualRefs.refs?.some((r) => r.kind === "head" && r.name === "HEAD"));
-    assert.ok(actualRefs.containingBranches?.includes("HEAD"));
+    // HEAD is on a branch: that branch is listed, marked checked out, and HEAD is not listed beside it.
+    assert.ok(actualRefs.containing?.some((r) => r.kind === "local" && r.current), "the checked-out branch contains it");
+    assert.ok(!actualRefs.containing?.some((r) => r.kind === "head"), "an attached HEAD is its branch");
     assert.ok(actualRefs.refs?.some((r) => r.kind === "local"), "the actual local branch points here");
     const cp = require("child_process") as typeof import("child_process");
     const repo = s.repos.find((r) => r.id === c.repoId)!;
@@ -1360,8 +1362,20 @@ describe("Linyra panel", () => {
           && refs.some((r) => r.kind === "remote" && r.name === "linyra-detail-remote/preview")
           && refs.some((r) => r.kind === "tag" && r.name === "linyra-detail-tag");
       });
-      assert.ok(refreshed.changes.presentation!.details[0].containingBranches?.includes("linyra-detail-ref"));
-      assert.ok(!refreshed.changes.presentation!.details[0].containingBranches?.includes("linyra-detail-tag"), "tags do not inflate the branch count");
+      const containing = refreshed.changes.presentation!.details[0].containing ?? [];
+      assert.ok(containing.some((r) => r.kind === "local" && r.name === "linyra-detail-ref"));
+      assert.ok(containing.some((r) => r.kind === "remote" && r.name === "linyra-detail-remote/preview"));
+      assert.ok(!containing.some((r) => r.name === "linyra-detail-tag"), "tags do not inflate the branch count");
+      // Detached at the same commit: no branch is checked out, so HEAD is listed, first.
+      const branch = git("rev-parse", "--abbrev-ref", "HEAD");
+      git("switch", "--detach", c.sha);
+      try {
+        await send({ type: "refresh" });
+        const detached = await until("a detached HEAD among the containing branches", (x) => x.changes.presentation?.details[0]?.containing?.[0]?.kind === "head");
+        assert.ok(!detached.changes.presentation!.details[0].containing!.some((r) => r.current), "no branch is checked out");
+      } finally {
+        git("switch", branch);
+      }
     } finally {
       git("branch", "-D", "linyra-detail-ref");
       git("tag", "-d", "linyra-detail-tag");

@@ -5,6 +5,7 @@ import { DEFAULT_FILTER, hashQuery, type FilterState } from "../../src/filterMod
 import type { HostMessage, WebviewMessage } from "../../src/protocol";
 import type { Commit } from "../../src/types";
 import type { ChangesPage } from "../../src/changesProtocol";
+import type { CommitReference } from "../../src/commitReferences";
 import type { ToolbarState } from "../../src/toolbarModel";
 import type { Layout } from "../../src/protocol";
 import { DEFAULT_BRANCH_SIDEBAR, sidebarState, type BranchSidebarState } from "../../src/branchModel";
@@ -100,6 +101,11 @@ let allFiles = false;
 let accents: Record<string, number> = {};
 const harnessWindow = window as unknown as { harnessMessages: WebviewMessage[] };
 harnessWindow.harnessMessages = [];
+/** The branches containing a commit: those pointing at it, else (an older commit) main and its remote, main checked out. */
+function containingOf(c: Commit): CommitReference[] {
+  const here = (c.refs ?? []).filter((r) => r.kind === "local" || r.kind === "remote");
+  return here.length ? here : [{ kind: "local", name: "main", current: true }, { kind: "remote", name: "origin/main" }];
+}
 function postChanges(): void {
   if (!selectedCommit) return;
   const repo = repos.find((r) => r.id === selectedCommit.repoId)!;
@@ -110,7 +116,7 @@ function postChanges(): void {
     ] }, { id: "readme", kind: "file", label: "README.md", path: "README.md", description: "+2 −0", tooltip: "README.md", contextValue: "file", status: "M", added: 2, deleted: 0 }],
     details: [{ repoId: repo.id, repoName: repo.name, sha: selectedCommit.sha, title: selectedCommit.subject,
       body: "Keep the preview configuration in sync.\n\nCo-Authored-By: Rin <rin@example.com>", author: selectedCommit.author, email: selectedCommit.email, time: selectedCommit.time,
-      accent: accents[repo.id], refs: selectedCommit.refs, containingBranches: ["HEAD", "main", "origin/main"], parents: selectedCommit.parents }],
+      accent: accents[repo.id], refs: selectedCommit.refs, containing: containingOf(selectedCommit), parents: selectedCommit.parents }],
   };
   send({ type: "changesView", message }, 0);
 }

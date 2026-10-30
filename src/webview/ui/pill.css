@@ -14,10 +14,14 @@
 }
 .pill-part { --part: var(--pill-local); display: inline-flex; align-items: center; gap: 3px; min-width: 0; padding: 0 7px 0 6px; color: var(--vscode-foreground); background: color-mix(in srgb, var(--part) 20%, transparent); }
 .pill-part + .pill-part { border-left: 1px solid color-mix(in srgb, var(--part) 45%, transparent); }
+/* The pill's own corners on its end parts: a part's outline (refPills.css) follows them. */
+.pill-part:first-child { border-radius: 9px 0 0 9px; }
+.pill-part:last-child { border-radius: 0 9px 9px 0; }
+.pill-part:only-child { border-radius: 9px; }
 .pill-part.pill-remote { --part: var(--pill-remote); }
 .pill-part.pill-base { --part: var(--pill-base); }
 .pill-part.pill-tag { --part: var(--pill-tag); }
-.pill-part.pill-detached { --part: var(--vscode-descriptionForeground); }
+.pill-part:is(.pill-detached, .pill-head) { --part: var(--vscode-descriptionForeground); }
 .pill-icon { width: 12px; height: 12px; flex: none; color: var(--part); }
 .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pill-status { flex: none; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }

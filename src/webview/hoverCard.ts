@@ -162,7 +162,7 @@ export class HoverCard {
   private click(e: MouseEvent): void {
     const s = this.shown;
     if (!s) return;
-    const pill = (e.target as Element).closest<HTMLElement>(".pill[data-ref]");
+    const pill = (e.target as Element).closest<HTMLElement>(".pill-part[data-ref], .pill[data-ref]");
     if (pill?.dataset.repo && pill.dataset.ref) {
       const { repo, ref } = pill.dataset;
       this.hide();

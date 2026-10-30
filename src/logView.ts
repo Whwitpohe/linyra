@@ -269,6 +269,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       .on("branchSidebar", (m) => this.branchSidebar?.handle(m))
       .on("visibleAuthors", (m) => this.avatars.want(visibleAuthors(m.authors, (id) => this.repos.some((r) => r.id === id))))
       .on("operation", (m) => this.runOperation(m))
+      .on("rowAction", (m) => this.rowAction(m))
       .onReady({ before: () => { this.branchSidebar?.ready(); this.avatars.webviewReset(); } });
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
@@ -432,6 +433,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async runOperation(m: Extract<WebviewMessage, { type: "operation" }>): Promise<void> {
     const op = typeof m.repoId === "string" ? this.marks.get(m.repoId)?.operation : undefined;
     if (op && (m.action === "resolve" || m.action === "continue" || m.action === "abort")) await vscode.commands.executeCommand(operationCommand(op, m.action), { repoId: m.repoId });
+  }
+
+  /** A row's own button (webview/rowActions.ts): the command its menu runs, with the menu's context, on a commit the Log shows. */
+  private async rowAction(m: Extract<WebviewMessage, { type: "rowAction" }>): Promise<void> {
+    const command = m.action === "undo" ? "linyra.commitUndo" : m.action === "reword" ? "linyra.commitReword" : undefined;
+    const found = typeof m.repoId === "string" && typeof m.sha === "string" ? this.findCommit(m.repoId, m.sha) : undefined;
+    if (command && found) await vscode.commands.executeCommand(command, { webviewSection: "commit", repoId: found.repo.id, sha: found.commit.sha });
   }
 
   private settings() {

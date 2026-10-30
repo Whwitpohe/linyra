@@ -17,9 +17,17 @@ const output = [
     { kind: "head", name: "HEAD" }, { kind: "local", name: "develop" },
     { kind: "local", name: "fix/preview", current: true }, { kind: "remote", name: "origin/develop" }, { kind: "tag", name: "v1.0" },
   ]);
-  assert.deepStrictEqual(refs.containingBranches, ["HEAD", "fix/preview", "develop", "release", "origin/develop"]);
+  // HEAD is on fix/preview, which stands for it: no HEAD among the branches, the checked-out one first.
+  assert.deepStrictEqual(refs.containing, [
+    { kind: "local", name: "fix/preview", current: true }, { kind: "local", name: "develop" }, { kind: "local", name: "release" }, { kind: "remote", name: "origin/develop" },
+  ]);
   assert.ok(!parseReferences(output, sha, next, true).refs.some((r) => r.kind === "head"), "containing is distinct from pointing at the commit");
-  assert.deepStrictEqual(parseReferences("", sha, next, false), { refs: [], containingBranches: [] });
+  assert.deepStrictEqual(parseReferences("", sha, next, false), { refs: [], containing: [] });
+  // HEAD contains it but no containing branch is checked out: HEAD is detached, and listed.
+  const detached = parseReferences(output.replace("\0*", "\0 "), sha, next, true).containing;
+  assert.deepStrictEqual(detached[0], { kind: "head", name: "HEAD" });
+  assert.strictEqual(detached.length, 5);
+  assert.deepStrictEqual(parseReferences(output.replace("\0*", "\0 "), sha, next, false).containing.map((r) => r.kind), ["local", "local", "local", "remote"], "HEAD elsewhere: not listed");
   assert.ok(referenceArgs(sha).includes(`--contains=${sha}`));
   console.log("ok - actual commit refs distinguish HEAD, local/remote branches, annotated tags and containing branches");
 }
@@ -88,7 +96,7 @@ async function main(): Promise<void> {
   assert.strictEqual((await readReferences(run, "/ws/acme-web", sha, new AbortController().signal)).refs[0].kind, "head");
   assert.strictEqual(calls.length, 2);
   const detached: RunGit = async (_root, args) => args[0] === "for-each-ref" ? "" : args[0] === "rev-parse" ? next : "";
-  assert.deepStrictEqual((await readReferences(detached, "/ws/acme-web", sha, new AbortController().signal)).containingBranches, ["HEAD"]);
+  assert.deepStrictEqual((await readReferences(detached, "/ws/acme-web", sha, new AbortController().signal)).containing, [{ kind: "head", name: "HEAD" }]);
   console.log("ok - reference reads use argv and also handle an ancestor of detached HEAD");
 }
 void main().catch((e) => { console.error(e); process.exitCode = 1; });
