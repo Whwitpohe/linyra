@@ -102,10 +102,13 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   console.log("ok - messages: words OR together, Match All ANDs them, -message: inverts, toggles pick git's matching");
 }
 {
-  assert.deepStrictEqual(flags("fix", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=\\bfix\\b"], "Whole Word: \\b around a literal word");
-  assert.deepStrictEqual(flags("fix(api)", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=\\bfix\\(api\\)"], "only on the sides that are word characters");
-  assert.deepStrictEqual(flags("a.b|c", { wholeWord: true, regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=\\b(a.b|c)\\b"], "and around a whole expression");
-  console.log("ok - Whole Word wraps literal words and expressions in \\b");
+  // A word's edges as every POSIX regex reads them (macOS' has no \\b).
+  const S = "(^|[^[:alnum:]_])", E = "([^[:alnum:]_]|$)";
+  assert.deepStrictEqual(flags("fix", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}fix${E}`], "Whole Word: a word's edges around a literal word");
+  assert.deepStrictEqual(flags("fix(api)", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}fix\\(api\\)`], "only on the sides that are word characters");
+  assert.deepStrictEqual(flags("a.b|c", { wholeWord: true, regex: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}(a.b|c)${E}`], "and around a whole expression");
+  assert.ok(!flags("fix", { wholeWord: true }).join(" ").includes("\\b"), "no \\b: GNU's alone");
+  console.log("ok - Whole Word wraps literal words and expressions in a word's POSIX edges");
 }
 
 // ── Authors and committers, with @me and the Author box ─────────────────────
@@ -141,7 +144,7 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("change:Retry()"), ["--regexp-ignore-case", "-SRetry()"], "pickaxe, ignoring case like the messages");
   assert.deepStrictEqual(flags("change:Retry", { matchCase: true }), ["-SRetry"]);
   assert.deepStrictEqual(flags("change:retry\\(", { regex: true }), ["--regexp-ignore-case", "-Gretry\\("], "regex mode: -G");
-  assert.deepStrictEqual(flags("change:retry", { wholeWord: true }), ["--regexp-ignore-case", "--pickaxe-regex", "-S\\bretry\\b"], "Whole Word: -S as an expression");
+  assert.deepStrictEqual(flags("change:retry", { wholeWord: true }), ["--regexp-ignore-case", "--pickaxe-regex", "-S(^|[^[:alnum:]_])retry([^[:alnum:]_]|$)"], "Whole Word: -S as an expression");
   assert.deepStrictEqual(flags('~:"func Retry"', { matchCase: true }), ["-Sfunc Retry"], "a quoted snippet");
   assert.deepStrictEqual(flags("type:merge"), ["--merges"]);
   assert.deepStrictEqual(flags("is:tip"), ["--simplify-by-decoration"]);
@@ -323,7 +326,9 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(await subjects("change:retry()"), ["feat: add retry to uploader"], "pickaxe, ignoring case");
   assert.deepStrictEqual(await subjects("@me"), ["fix: guard nil response"], "@me: only where user.email is known");
   assert.deepStrictEqual(await subjects("deps", { wholeWord: true }), ["chore: bump deps"]);
-  assert.deepStrictEqual(await subjects("dep", { wholeWord: true }), [], "Whole Word: \\b in git's own expressions");
+  assert.deepStrictEqual(await subjects("dep", { wholeWord: true }), [], "Whole Word: a word's edges in git's own expressions");
+  assert.deepStrictEqual(await subjects("bump", { wholeWord: true }), ["chore: bump deps"], "a word inside the subject");
+  assert.deepStrictEqual(await subjects("chore", { wholeWord: true }), ["chore: bump deps"], "a word at its start");
   assert.deepStrictEqual(await subjects('author:"a <d"', { authors: ["dana@example.com"] }), ["fix: guard nil response", "chore: bump deps", "feat: scaffold api"], "the Author box and author: overlapping in the author line");
   assert.deepStrictEqual(await subjects("author:rin", { authors: ["dana@example.com"] }), [], "both hold: nobody is dana and rin");
   assert.deepStrictEqual(await subjects("repo:acme-web scaffold"), ["feat: scaffold web"]);

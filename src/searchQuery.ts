@@ -432,11 +432,21 @@ export function searchSkips(plan: Pick<SearchPlan, "authors" | "committers">, me
   return (plan.authors.length > 0 && withMe(plan.authors, me).length === 0) || (plan.committers.length > 0 && withMe(plan.committers, me).length === 0);
 }
 
-/** Whole Word: \b on each side that starts or ends with a word character (or around a whole expression). */
+/**
+ * A word's edges in POSIX extended expressions: \b is GNU's, and macOS' regex (git's there) has
+ * none, so Whole Word found nothing on a Mac. These hold in glibc's, BSD's and git's own regex alike.
+ */
+const WORD_START = "(^|[^[:alnum:]_])";
+const WORD_END = "([^[:alnum:]_]|$)";
+
+/** Whole Word: a word's edge on each side that starts or ends with a word character (or around a whole expression). */
 function wholeWord(pattern: string, raw: string, regex: boolean): string {
-  if (regex) return `\\b(${pattern})\\b`;
-  return `${/^\w/.test(raw) ? "\\b" : ""}${pattern}${/\w$/.test(raw) ? "\\b" : ""}`;
+  if (regex) return `${WORD_START}(${pattern})${WORD_END}`;
+  return `${/^\w/.test(raw) ? WORD_START : ""}${pattern}${/\w$/.test(raw) ? WORD_END : ""}`;
 }
+
+/** The same expression for JavaScript, which reads no POSIX classes (bothPattern's shortcut only). */
+const forJs = (q: string): string => q.replaceAll("[^[:alnum:]_]", "[^\\p{L}\\p{N}_]");
 
 /**
  * Expressions matching a line that contains both p and q, literally: one each for "p, then q", "q,
@@ -459,7 +469,8 @@ function bothLiteral(p: string, q: string, icase: boolean): string[] {
 /** The same for a literal p and an expression q: p alone when q matches inside it. */
 function bothPattern(p: string, q: string, icase: boolean): string[] {
   try {
-    if (new RegExp(q, icase ? "i" : "").test(p)) return [escapeRegex(p)];
+    const js = forJs(q);
+    if (new RegExp(js, `${icase ? "i" : ""}${js !== q ? "u" : ""}`).test(p)) return [escapeRegex(p)];
   } catch {
     // git judges what JavaScript cannot read.
   }
@@ -503,7 +514,7 @@ export function searchFlags(plan: SearchPlan, f: FilterState, me?: string): stri
   args.push(...committers.map((c) => `--committer=${c}`));
   if (plan.change !== undefined) {
     const c = plan.change;
-    if (regex && regexProblem(c) === undefined) args.push(`-G${word ? `\\b(${c})\\b` : c}`);
+    if (regex && regexProblem(c) === undefined) args.push(`-G${word ? wholeWord(c, c, true) : c}`);
     else if (word) args.push("--pickaxe-regex", `-S${wholeWord(escapeRegex(c), c, false)}`);
     else args.push(`-S${c}`);
   }
