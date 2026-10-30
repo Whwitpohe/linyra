@@ -17,8 +17,8 @@ Linyra 基于 [Polylog](https://github.com/lntvan166/polylog) 独立维护，原
 | 源码 / Issues | `Whwitpohe/linyra` |
 
 Marketplace 已公开发布 [whwitpohe.linyra](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra)。
-Open VSX 当前因命名空间未验证而未激活；不要将它列为公开可安装。
-命名空间所有权申请：https://github.com/EclipseFdn/open-vsx.org/issues/14842 。
+Open VSX 命名空间已验证，[whwitpohe/linyra](https://open-vsx.org/extension/whwitpohe/linyra) 从 1.6.0 起由 GitHub Release
+自动同步（见下文“同步 GitHub Release 到 Open VSX”）。命名空间所有权申请记录：https://github.com/EclipseFdn/open-vsx.org/issues/14842 。
 GitHub 登录与商店发布权限分别管理。Linyra 是新的扩展 ID，旧身份的版本不会占用新 ID 的版本号。
 历史 `v1.4.0` 标签和 GitHub Release 保留原来的 Polylog 包，不替换其附件或校验值。
 

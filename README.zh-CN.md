@@ -5,7 +5,7 @@
 工作区内所有仓库合并为一条日志，旁边是分支面板、提交详情、变更文件和原生 Diff；
 提交、推送、更新、签出、合并、变基等日常操作直接从对应的行上跨仓库完成。
 
-[English](https://github.com/Whwitpohe/linyra/blob/main/README.md) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [下载 VSIX](https://github.com/Whwitpohe/linyra/releases) · [更新日志](https://github.com/Whwitpohe/linyra/blob/main/CHANGELOG.md) · [反馈问题](https://github.com/Whwitpohe/linyra/issues)
+[English](https://github.com/Whwitpohe/linyra/blob/main/README.md) · [安装扩展](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Open VSX](https://open-vsx.org/extension/whwitpohe/linyra) · [下载 VSIX](https://github.com/Whwitpohe/linyra/releases) · [更新日志](https://github.com/Whwitpohe/linyra/blob/main/CHANGELOG.md) · [反馈问题](https://github.com/Whwitpohe/linyra/issues)
 
 一个需求改了前端、API、公共库和文档？搜索一次，就能看到所选仓库里的相关提交。
 沿着真实分支图追踪合并，阅读完整提交信息，再用 VS Code 原生 Diff 核对每个文件；
@@ -42,8 +42,8 @@ code --install-extension whwitpohe.linyra
 或点击底部 **Linyra** 标签。VS Code Git 已打开的仓库和工作区内发现的仓库会一起显示。
 
 默认范围是**最近 24 小时、全部分支**。要找更早的提交，先把时间改为**全部时间**；
-左侧仓库复选框可限制查看范围。使用其他扩展注册中心的编辑器，可以先从
-[GitHub Releases](https://github.com/Whwitpohe/linyra/releases) 下载 VSIX 安装；Open VSX 尚未完成发布。
+左侧仓库复选框可限制查看范围。Cursor、VSCodium、Windsurf 等使用 Open VSX 的编辑器，可从
+[Open VSX](https://open-vsx.org/extension/whwitpohe/linyra) 安装，或从 [GitHub Releases](https://github.com/Whwitpohe/linyra/releases) 下载 VSIX。
 
 ## 一次搜索，串起多个仓库的改动
 

@@ -6,7 +6,7 @@ One merged log for every repository in your workspace, with a branches panel, co
 details, changed files and native diffs beside it — and commit, push, update, check out,
 merge and rebase across repositories, from the row each applies to.
 
-[简体中文](https://github.com/Whwitpohe/linyra/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Download VSIX](https://github.com/Whwitpohe/linyra/releases) · [Changelog](https://github.com/Whwitpohe/linyra/blob/main/CHANGELOG.md) · [Report an issue](https://github.com/Whwitpohe/linyra/issues)
+[简体中文](https://github.com/Whwitpohe/linyra/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Open VSX](https://open-vsx.org/extension/whwitpohe/linyra) · [Download VSIX](https://github.com/Whwitpohe/linyra/releases) · [Changelog](https://github.com/Whwitpohe/linyra/blob/main/CHANGELOG.md) · [Report an issue](https://github.com/Whwitpohe/linyra/issues)
 
 Find a change that spans your frontend, API, shared libraries and documentation with one
 search. Follow its branches and merges, read the complete commit message, and open each
@@ -55,9 +55,9 @@ found inside your workspace folders.
 The initial range is **Last 24 hours** and **All branches**. Choose **All time** to browse
 older history. Use the repository checkboxes to narrow the workspace.
 
-For editors using another registry, install the VSIX from
-[GitHub Releases](https://github.com/Whwitpohe/linyra/releases). Open VSX publication
-has not been completed.
+In Cursor, VSCodium, Windsurf and other editors that use Open VSX, install it from
+[Open VSX](https://open-vsx.org/extension/whwitpohe/linyra), or the VSIX from
+[GitHub Releases](https://github.com/Whwitpohe/linyra/releases).
 
 ## Review a change across repositories
 

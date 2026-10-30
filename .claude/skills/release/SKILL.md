@@ -260,9 +260,9 @@ curl -s "https://api.github.com/repos/Whwitpohe/linyra/actions/workflows/publish
 curl -s https://api.github.com/repos/Whwitpohe/linyra/actions/runs/<run id>/jobs | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{for(const j of JSON.parse(d).jobs)console.log(j.name,j.conclusion)})"
 ```
 
-- **As of 1.5.0 the namespace is not verified** (claim:
-  https://github.com/EclipseFdn/open-vsx.org/issues/14842), so Open VSX waits. No token
-  changes that; say so instead of reporting it as published.
+- **Since 1.6.0 the namespace is verified** and the workflow uploads (1.6.0 went out this way;
+  claim: https://github.com/EclipseFdn/open-vsx.org/issues/14842). Still check the `publish`
+  job's conclusion: a skipped job means nothing was uploaded.
 - Once it is verified, the namespace owner adds the Trusted Publisher binding described in
   `docs/PUBLISHING.md`. Then sync any released tag from Actions → *Publish to Open VSX* →
   *Run workflow* with the tag (for example `v1.5.0`). Re-running is safe: it skips published versions.
