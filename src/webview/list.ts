@@ -392,9 +392,10 @@ export class CommitList {
       if (row === undefined) row = this.display.rows.findIndex((item) => item.segment?.hidden.includes(anchor));
       if (row !== undefined && row >= 0) this.setTop(lead + row * this.height() + offset);
     }
-    const selected = this.segments.find((segment) => this.collapsed.has(segment.id) && segment.hidden.some((i) => this.props.selectedKeys.has(commitKey(this.props.rows[i]))));
-    if (selected) { this.onSelect(selected.top, { kind: "click", ctrl: false, shift: false }); return; }
+    // The rows are drawn anew first: the selection's own repaint keeps the rows already built.
     this.paint();
+    const selected = this.segments.find((segment) => this.collapsed.has(segment.id) && segment.hidden.some((i) => this.props.selectedKeys.has(commitKey(this.props.rows[i]))));
+    if (selected) this.onSelect(selected.top, { kind: "click", ctrl: false, shift: false });
   }
 
   private rebuild(): void {
