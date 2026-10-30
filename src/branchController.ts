@@ -12,7 +12,7 @@ import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, SCHEME } from "./revisionUri";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
-import { isStashRef, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
+import { isStashRef, nothingStashed, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
 import { compareWithWorkingTree } from "./workingTreeDiff";
 import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
@@ -465,14 +465,23 @@ export class BranchController implements vscode.Disposable {
   async stashCreate(arg: unknown, preset?: { message: string; untracked: boolean }): Promise<void> {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     const repo = this.deps.repos().find((r) => r.id === id);
-    if (!repo || this.busy.has(repo.id)) return;
+    if (!repo) return;
+    // Busy: said, as the other actions say it, never a click that does nothing.
+    if (this.busy.has(repo.id)) { this.lastError = localize("A Git operation is already running in {0}.", repo.name); void vscode.window.showInformationMessage(this.lastError); return; }
     const answer = preset ? { message: preset.message, untracked: preset.untracked } : await this.stashBox(repo);
     if (!answer || !answer.message.trim()) return;
     if (!preset) await this.context.globalState.update(STASH_UNTRACKED, answer.untracked);
     this.busy.add(repo.id);
     try {
-      await this.deps.run(repo.root, stashCommands.push(answer.message, answer.untracked), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
-      vscode.window.setStatusBarMessage(localize(answer.untracked ? "Linyra: stashed the changes in {0}, new files included." : "Linyra: stashed the changes in {0}.", repo.name), 8000);
+      const out = await this.deps.run(repo.root, stashCommands.push(answer.message, answer.untracked), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+      // git saves nothing and still succeeds when there is nothing it may take (only new files, left out).
+      if (nothingStashed(out)) {
+        this.lastError = answer.untracked ? localize("Nothing stashed in {0}: there are no changes to save.", repo.name)
+          : localize("Nothing stashed in {0}: no tracked file changed. New files are left out while Include new files is off.", repo.name);
+        void vscode.window.showInformationMessage(this.lastError);
+      } else {
+        vscode.window.setStatusBarMessage(localize(answer.untracked ? "Linyra: stashed the changes in {0}, new files included." : "Linyra: stashed the changes in {0}.", repo.name), 8000);
+      }
     } catch (e) {
       this.lastError = stashFailed("push", "", repo.name, whyOf(e));
       void vscode.window.showErrorMessage(this.lastError);

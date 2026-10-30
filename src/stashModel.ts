@@ -51,3 +51,6 @@ export function stashStopped(stderr: string): string | undefined {
   if (/would be overwritten|already exists, no checkout|could not restore untracked/i.test(stderr)) return "local changes are in the way: commit or stash them first";
   return undefined;
 }
+
+/** git stash push's output when it saved nothing (run with LC_ALL=C): it exits 0 all the same. */
+export const nothingStashed = (stdout: string): boolean => /^No local changes to save$/m.test(stdout);

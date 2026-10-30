@@ -288,7 +288,10 @@ describe("Commit actions", () => {
     // One box: the message, and Include new files toggled on (off is the first default).
     await answer("ci stash|toggle");
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
-    assert.ok(!fs.existsSync(path.join(root, "stash-me.txt")), "the work tree is clean");
+    // Failing, it says which way: what Linyra last reported (busy, nothing stashed, git's error) and git's own state.
+    const said = () => vscode.commands.executeCommand<string | undefined>("linyra._itest.branchError");
+    assert.ok(!fs.existsSync(path.join(root, "stash-me.txt")),
+      `the work tree is clean (Linyra said: ${await said()}; status: ${git(["status", "--porcelain"])}; stashes: ${git(["stash", "list"])})`);
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
     assert.deepStrictEqual((await stashes()).map((s) => s.ref), ["stash@{0}"]);
     assert.match((await stashes())[0].subject, /ci stash/);
@@ -311,6 +314,14 @@ describe("Commit actions", () => {
     await answer("Drop");
     await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
     assert.strictEqual((await stashes()).length, 0);
+    // Only a new file, with Include new files off (as left): nothing stashed, and said so, not "stashed".
+    fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");
+    await answer("ci nothing");
+    await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
+    assert.strictEqual((await stashes()).length, 0, "no stash made");
+    assert.ok(fs.existsSync(path.join(root, "stash-me.txt")), "the new file stays");
+    assert.match((await said()) ?? "", /Nothing stashed in acme-api: no tracked file changed/);
+    fs.rmSync(path.join(root, "stash-me.txt"));
   });
 
   it("Create Patch…: one commit, or the selected ones oldest first, as git format-patch writes them", async () => {

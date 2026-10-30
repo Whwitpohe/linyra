@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { gitEnv, makeRepo } from "./fixtures";
-import { isStashRef, parseStashes, stashCommands, stashLabel, stashListArgs, stashStopped } from "./stashModel";
+import { isStashRef, nothingStashed, parseStashes, stashCommands, stashLabel, stashListArgs, stashStopped } from "./stashModel";
 
 const sha = "a".repeat(40);
 {
@@ -16,6 +16,8 @@ const sha = "a".repeat(40);
   assert.deepStrictEqual(stashCommands.push(" wip ", true), ["stash", "push", "--include-untracked", "-m", "wip"]);
   assert.match(stashStopped("CONFLICT (content): Merge conflict in a.txt")!, /conflict/);
   assert.strictEqual(stashStopped("fatal: something else"), undefined);
+  assert.ok(nothingStashed("No local changes to save\n"));
+  assert.ok(!nothingStashed("Saved working directory and index state On main: wip\n"));
   console.log("ok - stash entries parse, label without git's prefix, and only stash@{n} reaches git");
 }
 
@@ -44,6 +46,17 @@ const sha = "a".repeat(40);
     git(stashCommands.drop("stash@{0}"));
     assert.strictEqual(git(stashListArgs()), "");
     console.log("ok - real git: push (with untracked), list, files, apply, pop and drop");
+
+    // Only a new file, new files left out: git saves nothing, exits 0 all the same, and says so.
+    const push = (message: string, untracked: boolean) => execFileSync("git", stashCommands.push(message, untracked), { cwd: root, env: { ...env, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    assert.ok(fs.existsSync(path.join(root, "new.txt")) && git(["status", "--porcelain"]) === "?? new.txt");
+    assert.ok(nothingStashed(push("nothing", false)), "nothing saved, said on stdout");
+    assert.strictEqual(git(stashListArgs()), "", "and no stash made");
+    fs.writeFileSync(path.join(root, "a.txt"), "three\n");
+    assert.ok(!nothingStashed(push("something", false)), "a tracked change is saved");
+    git(stashCommands.drop("stash@{0}"));
+    assert.ok(!nothingStashed(push("with the new file", true)), "new files included: saved");
+    console.log("ok - real git: a push that saves nothing is told apart from one that saves");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

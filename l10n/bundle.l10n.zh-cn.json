@@ -578,6 +578,8 @@
   "Linyra could not read {0} again: {1}": "Linyra 无法重新读取 {0}：{1}",
   "Stash Changes in {0}": "储藏 {0} 的更改",
   "Linyra: stashed the changes in {0}, new files included.": "Linyra：已储藏 {0} 的更改，包括新文件。",
+  "Nothing stashed in {0}: there are no changes to save.": "{0} 没有储藏任何内容：没有需要保存的更改。",
+  "Nothing stashed in {0}: no tracked file changed. New files are left out while Include new files is off.": "{0} 没有储藏任何内容：已跟踪的文件没有更改；“包括新文件”关闭时，新文件不会被储藏。",
   "Linyra: stashed the changes in {0}.": "Linyra：已储藏 {0} 的更改。",
   "Stashes every change, new files included. Enter to stash.": "储藏所有更改，包括新文件。按 Enter 储藏。",
   "Stashes the changes to tracked files; new files stay. Enter to stash.": "储藏已跟踪文件的更改；新文件保留不动。按 Enter 储藏。",
