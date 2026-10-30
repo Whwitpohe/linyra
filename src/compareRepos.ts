@@ -14,6 +14,7 @@ import { gitMessage, type Ask } from "./uncommittedActions";
 import type { MultiResult } from "./multiRepo";
 import { checkValue, listValue, textValue } from "./formModel";
 import { parseUpstream, releasePushArgs, releaseReport, releaseSpec, releaseTagArgs, tagMessage } from "./releaseModel";
+import { sameFolder } from "./folders";
 
 /** What Compare needs beyond the side views' deps: the merge across repositories (Branches Across Repositories' machinery). */
 export interface ReposDeps extends Deps {
@@ -557,7 +558,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       const [sha = "", worktree = "", remote = "", remoteRef = ""] = out.trim().split("\0");
       if (!sha) { skipped.push({ name: repo.name, why: "remote", into: short(into) }); return; }
       if (sha !== result.rightSha) { skipped.push({ name: repo.name, why: "moved", into }); return; }
-      const here = worktree !== "" && samePath(worktree, repo.root);
+      // Git names the worktree by its real path; the repository's root may reach it by another.
+      const here = worktree !== "" && await sameFolder(worktree, repo.root);
       if (worktree !== "" && !here) { skipped.push({ name: repo.name, why: "worktree", into }); return; }
       const from = { name: result.leftName, sha: result.leftSha };
       plans.push({ repo, from: result.leftName, into, checkedOut: here, commits: result.left, upstream: parseUpstream(`${remote}\0${remoteRef}`),
@@ -725,8 +727,3 @@ function skipReason(s: MergeSkip): string {
     : s.why === "worktree" ? localize("checked out in another worktree") : localize("moved since the comparison");
 }
 
-/** The same folder, however git and VS Code spell it (slashes, a drive letter's case). */
-function samePath(a: string, b: string): boolean {
-  const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").replace(/^([a-z]):/i, (_, d: string) => `${d.toLowerCase()}:`);
-  return process.platform === "win32" || process.platform === "darwin" ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
-}

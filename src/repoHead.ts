@@ -2,6 +2,7 @@
 // No git process, no vscode: HEAD, and MERGE_HEAD, rebase-merge/, CHERRY_PICK_HEAD… in its git dir.
 import { promises as fs } from "fs";
 import * as path from "path";
+import { sameFolder } from "./folders";
 import { operationOf, parseHead, rebasedBranch, type RepoMark } from "./repoMarkModel";
 import type { Worktree } from "./worktreeModel";
 
@@ -16,10 +17,6 @@ export async function gitDirOf(root: string): Promise<string | undefined> {
   return m ? path.resolve(root, m[1]) : undefined;
 }
 
-const samePath = (a: string, b: string) => {
-  const norm = (p: string) => (process.platform === "win32" || process.platform === "darwin" ? path.resolve(p).toLowerCase() : path.resolve(p));
-  return norm(a) === norm(b);
-};
 const exists = (p: string) => fs.stat(p).then(() => true, () => false);
 
 /**
@@ -39,15 +36,15 @@ export async function readWorktrees(root: string): Promise<Worktree[]> {
   // The main working tree holds the common dir as its .git (none for a bare repository).
   if (path.basename(common) === ".git") {
     const main = path.dirname(common);
-    list.push({ path: main, ...(await headOf(common)), main: true, current: samePath(main, root) });
+    list.push({ path: main, ...(await headOf(common)), main: true, current: await sameFolder(main, root) });
   }
   for (const name of names.sort()) {
     const admin = path.join(common, "worktrees", name);
     const gitdir = await fs.readFile(path.join(admin, "gitdir"), "utf8").catch(() => undefined);
     if (!gitdir) continue;
     const folder = path.dirname(path.resolve(admin, gitdir.trim()));
-    const [head, locked, present] = await Promise.all([headOf(admin), exists(path.join(admin, "locked")), exists(folder)]);
-    list.push({ path: folder, ...head, main: false, current: samePath(folder, root), ...(locked ? { locked: true } : {}), ...(present ? {} : { missing: true }) });
+    const [head, locked, present, current] = await Promise.all([headOf(admin), exists(path.join(admin, "locked")), exists(folder), sameFolder(folder, root)]);
+    list.push({ path: folder, ...head, main: false, current, ...(locked ? { locked: true } : {}), ...(present ? {} : { missing: true }) });
   }
   return list;
 }

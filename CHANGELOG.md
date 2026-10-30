@@ -142,6 +142,9 @@ plus optional AI on a model of your own, and Insights over the history.
   letter below 440 px.
 - **Collapse Linear Branches draws its folded rows when the selected commit is inside a run**;
   the selection moves to the run's top instead of the hidden commits simply vanishing.
+- **A repository reached by another name is still "here"** (a symlink, a `subst` drive, Windows'
+  short names): Compare's Merge ◀ into ▶ no longer skips it as "checked out in another
+  worktree", and the branch sheet and the Worktrees group mark it as this folder.
 
 ### Performance
 

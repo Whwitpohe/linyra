@@ -1,4 +1,3 @@
-import * as path from "path";
 import * as vscode from "vscode";
 import { debounce } from "./debounce";
 import { acrossRow, parseSheetRef, sheetRefArgs, type AcrossRow, type BranchSheetData, type SheetAction } from "./branchSheetModel";
@@ -6,6 +5,7 @@ import { Limiter } from "./allFiles";
 import { countArgs, parseCounts, pickMergeTarget, remoteHeadArgs, shortRemoteRef, showsMergeTarget } from "./hoverModel";
 import type { RunGit } from "./logQuery";
 import { conflictCount } from "./mergeCheck";
+import { sameFolder } from "./folders";
 import { isAbortError } from "./pool";
 import type { HostMessage } from "./protocol";
 import type { Repo } from "./types";
@@ -29,10 +29,6 @@ export interface BranchSheetHost {
   concurrency(): number;
 }
 
-const samePath = (a: string, b: string) => {
-  const norm = (p: string) => (process.platform === "win32" || process.platform === "darwin" ? path.resolve(p).toLowerCase() : path.resolve(p));
-  return norm(a) === norm(b);
-};
 const REF = /^refs\/(heads|remotes|tags)\/[^\s\0~^:?*[\\]+$/;
 
 /**
@@ -102,7 +98,7 @@ export class BranchSheet implements vscode.Disposable {
     const data: BranchSheetData = {
       repoId: repo.id, repoName: repo.name, ref, name: r.name, kind: r.kind, current: r.current,
       tip: { sha: r.sha, subject: r.subject, author: r.author, time: r.time }, ai: this.host.ai(),
-      ...(r.worktree && !samePath(r.worktree, repo.root) ? { worktree: r.worktree } : {}),
+      ...(r.worktree && !(await sameFolder(r.worktree, repo.root)) ? { worktree: r.worktree } : {}),
     };
     if (r.kind !== "local") return data;
     data.upstream = { name: r.upstream, ref: r.upstreamRef, ahead: r.ahead, behind: r.behind, gone: r.gone };
