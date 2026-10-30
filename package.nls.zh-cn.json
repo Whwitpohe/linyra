@@ -1,6 +1,6 @@
 {
   "extension.displayName": "Linyra — 多仓库 Git 日志",
-  "extension.description": "仿 JetBrains（WebStorm）Git 日志的多仓库 Git 管理工具：在同一日志中查看工作区全部仓库的提交，配合分支面板、提交详情、变更文件和原生差异编辑器，并可跨仓库拉取、推送、签出、合并和变基。",
+  "extension.description": "仿 JetBrains（WebStorm）Git 日志的多仓库 Git 管理工具：在同一日志中查看工作区全部仓库的提交，配合分支面板、提交详情、变更文件和原生差异编辑器；跨仓库提交、推送、更新、签出、合并和变基；可选接入你自己的 AI 模型，并提供仓库洞察。",
   "container.linyra-compare.title": "Linyra 分支比较",
   "view.linyra.log.name": "日志",
   "view.linyra.commit.name": "提交",

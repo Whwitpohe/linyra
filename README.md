@@ -3,24 +3,41 @@
 **A multi-repository Git client in the style of the JetBrains (WebStorm) Git Log.**
 
 One merged log for every repository in your workspace, with a branches panel, commit
-details, changed files and native diffs beside it — and fetch, pull, checkout, merge and
-rebase across repositories, from the row each applies to.
+details, changed files and native diffs beside it — and commit, push, update, check out,
+merge and rebase across repositories, from the row each applies to.
 
-[简体中文](https://github.com/Whwitpohe/linyra/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Download VSIX](https://github.com/Whwitpohe/linyra/releases) · [Report an issue](https://github.com/Whwitpohe/linyra/issues)
+[简体中文](https://github.com/Whwitpohe/linyra/blob/main/README.zh-CN.md) · [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=whwitpohe.linyra) · [Download VSIX](https://github.com/Whwitpohe/linyra/releases) · [Changelog](https://github.com/Whwitpohe/linyra/blob/main/CHANGELOG.md) · [Report an issue](https://github.com/Whwitpohe/linyra/issues)
 
 Find a change that spans your frontend, API, shared libraries and documentation with one
 search. Follow its branches and merges, read the complete commit message, and open each
-file in VS Code's native diff editor.
-
-**Linyra's additions** include a real multi-lane Git graph, branch/author checklists,
-topological sorting and history folding, hash lookup, richer commit details, a branch
-sidebar and resizable panes with explicit collapse controls. The clips below demonstrate
-these additions, beyond the merged timeline inherited from Polylog.
+file in VS Code's native diff editor. Then commit, push and update every repository in one
+step, each in its own repository.
 
 ![Select several branches and authors, switch date/topological order, then fold and expand linear history](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-branches.gif)
 
-The recording uses six neutral example repositories and real Git history. Screenshots
-below can be opened at full resolution.
+The recordings use six neutral example repositories and real Git history, and show the
+1.5.0 look; since 1.7.0 a row also draws its author's disc, its branch pills and a Changes
+column. Screenshots can be opened at full resolution.
+
+## What's new in 1.7.0
+
+- **Search like GitLens's Commit Graph:** `author:`, `file:`, `change:`, `after:`, `ref:`,
+  `repo:` and more, each turned into a `git log` flag, with a popup that lists them.
+- **A richer Log:** author discs and avatars, branch pills you can click, a hover card, a
+  Changes column, a column header, row buttons, and an Uncommitted changes row on top.
+- **The branch sheet:** click a branch for its upstream, its merge target with predicted
+  conflicts, its next steps, and the same branch in every other repository.
+- **More across repositories:** Push… sends every branch with commits to push, checked out or
+  not, and force pushes a rewritten one with a lease; Update Project also fast-forwards
+  branches that are only behind; Tag Across Repositories…, Run Git Command Across
+  Repositories… and Release….
+- **Repository state in the Repo List:** each branch's ↓ and ↑, uncommitted marks, a stopped
+  merge or rebase with Resolve, Continue and Abort, worktrees, and Smart Checkout.
+- **Linyra AI, off until you turn it on:** your own OpenAI-compatible, Anthropic or Gemini
+  model explains, reviews, writes commit messages and release notes, and resolves conflicts.
+- **Insights:** Visual History, Files and Commits treemaps, and Repository Health.
+- **Questions open where you act:** under the button you clicked, not at the top of the
+  window; a click anywhere outside closes any popup.
 
 ## Start using Linyra
 
@@ -50,10 +67,17 @@ Click a commit to see its changed files, then click a file to open its native di
 
 ![Merged history with real branch lanes, repository bands, changed files and a native diff above](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-log.png)
 
-- **Message or hash.** Ordinary text searches commit messages, case-insensitively. A full
-  hash or hexadecimal prefix of at least seven characters locates a commit directly;
-  `sha:abcd` accepts prefixes of at least four. Hash lookup temporarily ignores the other
-  filters within the selected repositories; clearing it restores those filters.
+- **A search language, run by Git.** Plain words search commit messages. Operators narrow
+  the search, and each one becomes `git log`'s own flags: `message:` and `-message:`,
+  `author:` (`@me`), `committer:`, `commit:`, `file:`, `change:` (a line added or removed),
+  `type:merge` / `type:tip` / `is:wip`, `after:` / `before:`, `ref:` (a branch, tag or
+  range, such as `ref:main..feature`) and Linyra's `repo:`. The popup under the box lists
+  every operator with an example and suggests authors, branches, tags and repositories as
+  you type. Match Case, Whole Word, Regex and Match All sit beside it; ↑/↓ recall recent
+  searches.
+- **Hash lookup.** A full hash or a hexadecimal prefix of at least seven characters locates
+  a commit directly; `sha:abcd` accepts prefixes of at least four. The lookup temporarily
+  ignores the other filters within the selected repositories; clearing it restores them.
 - **Authors and branches.** Search and select several authors or branch names. **Me** uses
   each repository's configured email. Branch selection combines the chosen histories;
   clearing it returns to all local and remote branches. Repositories without a selected
@@ -61,8 +85,19 @@ Click a commit to see its changed files, then click a file to open its native di
 - **Path and time.** Filter by a repository-relative filename, folder or glob, and choose
   24 hours, 7 days, 30 days, all time or a custom date range.
 - **Real parent links.** Colored lanes show forks and merges within each repository.
-  Choose commit-date or topological order. Explicit graph controls fold long linear paths
-  while keeping branch tips, tags, forks and merges visible.
+  The Graph column's menu orders by commit date or **By branch structure** (topological)
+  and folds long linear paths, keeping branch tips, tags, forks and merges visible.
+
+**What a row shows.** A strip in its repository's color; the author's disc, an initial
+ringed in that color (a thicker ring for your commits), or the author's picture from the
+repository's own host; the subject with **branch pills** — a branch and the remotes at the
+same commit in one pill, the checked-out one bold with its ↑/↓; the author, a **Changes**
+column (files and lines as numbers, squares or a bar) and the date. The **column header**
+resizes and hides columns and sets the Graph's order and the Date's format. Resting the
+pointer opens a **hover card** with the message and counts; the row under the pointer
+offers **Undo Commit…** and **Edit Commit Message…** on the checked-out commit and **⋯**,
+its menu, on every row. While the ticked repositories have uncommitted work, an
+**Uncommitted changes** row sits above the newest commit: click it for that work's files.
 
 **In the clip:** select `main` and `feature/saved-cards`, switch date/topological order,
 fold and expand linear paths, then select several authors. Branch tips and real merges
@@ -75,9 +110,10 @@ three-month-old commit even with **Last 24 hours** selected. Clear it to restore
 
 ## Read the complete commit
 
-The Changes area includes the subject, paragraphs and trailers, author/email, timestamp,
-copyable hash, repository marker and colored HEAD, branch and tag references. Expand the
-list of branches containing a commit when you need to find where it landed.
+The commit details read like a VS Code pane: the title, the body as written, then its
+repository, copyable hash, author, date, parent links (a click selects that parent) and
+branch pills. The checked-out branch's pill starts with **HEAD**; the branches listed under
+it are only those the pills do not already name.
 
 ![Read colored references and complete metadata, resize or hide the details, and search the commit's files](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-commit-review.gif)
 
@@ -88,10 +124,26 @@ Drag the divider between files and commit details to adjust their heights. The s
 arrow hides or restores the details; both the size and visibility are remembered.
 
 The file toolbar retains **All Files / Changed Files**, expand/collapse, clear selection
-and commit actions. Filenames and rename sources retain Git status colors; added/deleted
-line counts align on the right. Search changed files by name, path or old rename path.
-**Enter** opens the first match; **Escape** clears the file query. In **All Files** mode,
-the query still searches the commit's changed files.
+and commit actions. A changed file looks the same everywhere: its name in its Git status
+color (struck through when deleted), a rename's old name, its added/deleted lines and its
+status letter. Search changed files by name, path or old rename path. **Enter** opens the
+first match; **Escape** clears the file query. The tree moves with the keys VS Code's own
+trees use, and typing a name goes to it.
+
+## A branch at a glance
+
+Click a branch pill, in a row or in the commit details, for its **branch sheet** in the
+Changes view (or **Show Branch Details**):
+
+- **Upstream:** up to date, to push, to pull, diverged (Pull or Force Push…), gone on the
+  remote (Delete Branch… or Publish) or not published; a pencil changes the upstream.
+- **Merges into:** its commits not on the merge target, how far behind it is, and whether
+  merging conflicts — predicted with `git merge-tree` without writing to the repository
+  (Git 2.38+). Merged: safe to delete.
+- **Next steps:** never empty — Switch, Check out, Fetch, Create Branch…, Push…, Show
+  History, Compare…, the worktree that has it.
+- **Across repositories:** on request, the same branch in every ticked repository (checked
+  out, ↑ ↓, diverged, gone), with Check Out Everywhere…, Push… and Update Project….
 
 ## Compare branches across the workspace
 
@@ -126,33 +178,126 @@ the native diff; **Changes since the Split** reviews what that side introduced.
   right-click), and **Copy ◀ Commits as Release Notes** (Markdown, by repository). The merge goes
   into ▶ as the boxes say: where ▶ is checked out, `git merge`; where it is not, the branch moves
   without a checkout and your working tree is not touched.
+- **Release…** (the Log's ⋯) runs ◀ into ▶ as a release, one reviewed step at a time: the
+  release notes, the merge, a tag on ▶ carrying that repository's notes, and the push.
 
 Log/Changes and Compare support side-by-side or stacked layouts, draggable dividers and
 explicit visibility controls. Clicking a heading or its empty space does not collapse
 an entire view. Folder and commit expansion uses the small arrow or keyboard actions.
 **Open Changes in Editor** also provides a separately movable Changes tab.
 
+## Work in every repository at once
+
+- **Push…** (Ctrl+Shift+K) lists every ticked repository's commits to send in one
+  checklist: the checked-out branch first, then any other local branch ahead of its
+  upstream — a develop merged into master, master not checked out — under its own heading.
+  Each repository pushes its ticked branches without a checkout. A branch whose pushed
+  commits were rewritten is listed apart and unticked; ticked, it is force pushed with a
+  lease on the commit last fetched, after a confirmation that names what the remote would
+  lose. Never main, master or VS Code's `git.branchProtection`.
+- **Update Project** (Ctrl+T) fetches, then merges, rebases or fast-forwards each
+  checked-out branch onto its upstream — asked each time, or set once with the pin beside a
+  method (`linyra.updateMethod`); it never autostashes. Other local branches that are only
+  behind their upstream are fast-forwarded too, without a checkout.
+- **Branches Across Repositories…** (Ctrl+Shift+`) checks out, creates or merges one branch
+  name everywhere. Where local changes are in the way, **Smart Checkout** stashes them,
+  checks out and puts them back.
+- **Tag Across Repositories…** tags each checked-out commit (annotated when given a message)
+  and pushes it if asked. **Run Git Command Across Repositories…** runs one command, never
+  through a shell, and shows each repository's output; anything that may write asks first.
+  **Abort in All Repositories…** ends a merge or rebase stopped in several.
+- Afterwards one report says what was done, what was already up to date, what stopped and
+  why anything was skipped.
+
+## The Repo List
+
+The tree on the Log's left groups each repository's **Local**, **Remote**, **Tags**,
+**Stashes** and **Worktrees**, as the JetBrains Branches panel does. Search it for a
+repository or a branch name; clicking a branch filters the Log to it and never checks it
+out.
+
+- **State at a glance:** each repository's branch with VS Code's `*` `+` `!` for
+  uncommitted work, a mark where it is on another branch than the others, and its ↓ (to
+  pull, blue) and ↑ (to push, green). Each local branch shows its own ↓ and ↑ against its
+  upstream, as of the last fetch.
+- **A stopped merge, rebase, cherry-pick, revert or patch series** shows as a badge
+  ("2 conflicts") and a row under the repository: **Resolve Conflicts…** (VS Code's merge
+  editor), **Continue**, **Abort…**, **Abort in All Repositories…**.
+- **Right-click** for checkout, create, compare, rename, merge, rebase, upstream, worktree,
+  fetch, pull, push and delete; for a tag, check out detached, push and delete; for a stash,
+  Apply, Pop, Drop or Show Changes; for a worktree, Open in New Window, Reveal, Copy Path
+  and Remove Worktree…. Favorites stay on top; **Untick**, **Always Hide (Settings)** and
+  saved **profiles** choose what the Log shows.
+
+![The Repositories tree searched for a branch name: each repository opens onto its Local and Remote branches](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-branch-sidebar.png)
+
+## Commit from the side bar
+
+The Linyra icon in the Activity Bar opens the Commit side bar, like the JetBrains Commit
+window: **Changes** and **Unversioned Files** of every ticked repository in a native tree
+(with your file icon theme) and a checkbox on each row, one message, **Amend**,
+**Sign-off**, **Author…**, **Commit Message History** (Ctrl+M), and **Commit**
+(Ctrl+Enter) or **Commit and Push…** (Ctrl+Alt+K). Each repository with checked files gets
+its own commit of exactly those files; anything else staged stays staged.
+
+- The message starts from git's `commit.template`, and hints at a line over 72 characters
+  or a missing blank line after the subject, without blocking.
+- New files are added with the commit when checked, or at once with **Add to VCS**
+  (Ctrl+Alt+A), or kept out with **Add to .gitignore**.
+- Three commands that are never one another: **Discard Changes** (Ctrl+Alt+Z) takes
+  tracked files back to the last commit and never deletes a new file, **Remove from VCS**
+  takes an added file out again and keeps it, **Delete…** (Delete) removes new files from
+  the disk.
+- **Stash Changes…** (with or without new files) and **Apply Patch…** (from a file or the
+  clipboard; as changes, with a three-way merge offered, or as the commits of a mailbox)
+  work on a repository's row.
+- Click a file (or Ctrl+D) for its diff; Group By repository and directory, both or neither.
+
+## Linyra AI (optional)
+
+Off until you turn it on: while `linyra.ai.enabled` is off nothing is sent anywhere and
+the AI menu items stay hidden. **Linyra: Configure AI…** opens the Linyra AI page: profiles for OpenAI
+and any OpenAI-compatible server (Ollama, LM Studio), Anthropic and Gemini, each with its
+model, thinking level and a **Test Connection**. API keys stay in VS Code's secret storage,
+each bound to the address it was entered for.
+
+- **Explain** a commit, uncommitted changes, unpushed commits, a branch against yours, or a
+  conflict; **Review** commits; **Write Release Notes** from commits or from Compare.
+- **Generate Commit Message** in the Commit side bar, following your
+  `linyra.ai.commitMessageInstructions`; ✨ also names a stash.
+- **Resolve Conflicts with AI…** proposes a resolution per file and asks before writing.
+- ✨ in the search box turns a question into the operator query; **Ask AI…** in the Log
+  header answers in words, running read-only steps at once and listing anything that would
+  write to a repository in one prompt first.
+- `linyra.ai.exclude` keeps lockfiles, built files and secrets out of every prompt;
+  `linyra.ai.maxPromptTokens` asks before a large request.
+
+## Insights
+
+**Linyra: Insights** (or **Visual History** on a file or folder) opens a tab over the
+ticked repositories, one of them, or that path:
+
+- **Visual History:** one bubble per commit, sized by the lines it changed, one row per
+  author, in the repository's or the author's color; a click shows the commit in the Log.
+- **Files** and **Commits:** treemaps of the tracked files, by size or by how many commits
+  touched them in the range, so the hot files stand out.
+- **Health:** one row per repository — commit-graph, objects, untracked cache, file system
+  monitor, many files, maintenance — each with what it means and a recommendation.
+  **Optimize Selected…** names every command in one confirmation; nothing is written
+  without it.
+
 ## More tools for daily work
 
 | Tool | Where and what it does |
 | --- | --- |
-| **File History** | Right-click a file in Explorer, an editor/tab or Changes. Follow renames in one file's history. Search, author and date filters are set aside and restored when you exit. |
+| **File History** | Right-click a file in Explorer, an editor/tab or Changes, or a folder for **Folder History**. The Log shows that path's history, following renames: each row's change to the file (its letter and lines), and its uncommitted change on top. **Blame at This Revision** on a row. Search, author and date filters are set aside and restored when you exit. |
 | **Combined Changes** | Ctrl/⌘-click or Shift-click commits, including commits from different repositories. Review each file once, with diffs limited to the selected changes where they can be separated. Overlapping unselected changes are marked. No history is rewritten. |
-| **Uncommitted work** | Use **Commits / Uncommitted** in the Log. Review working files across repositories. Explicit stage, unstage, discard and commit actions use VS Code's Git integration. |
-| **Commit side bar** | The Linyra icon in the Activity Bar, like the JetBrains Commit window: **Changes** and **Unversioned Files** of every ticked repository in a native tree (with your file icon theme) and a checkbox on each row, one message, **Amend**, **Sign-off**, **Author…**, **Commit Message History** (Ctrl+M), and **Commit** (Ctrl+Enter) or **Commit and Push…** (Ctrl+Alt+K). Each repository with checked files gets its own commit of exactly those files; anything else staged stays staged. New files are added with the commit when checked, or at once with **Add to VCS** (Ctrl+Alt+A), or kept out with **Add to .gitignore**. Three commands that are never one another: **Discard Changes** (Ctrl+Alt+Z) takes tracked files back to the last commit and never deletes a new file, **Remove from VCS** takes an added file out again and keeps it, **Delete…** (Delete) removes new files from the disk. Click a file (or Ctrl+D) for its diff; Group By repository and directory, both or neither. |
-| **Repositories tree** | Each repository opens onto its **Local**, **Remote**, **Tags** and **Stashes**; the search box finds branch names too. Clicking a branch filters history. Context menus provide repository-scoped checkout, create, compare, rename, merge, rebase, worktree, fetch, pull, push and delete actions, and Apply, Pop, Drop or Show Changes for a stash. |
+| **Uncommitted work** | Use **Commits / Uncommitted** in the Log: one row per repository with work — its files by kind, the branch with its ↑/↓, the last edit. Explicit stage, unstage, discard and commit actions use VS Code's Git integration. |
 | **Commit actions** | Right-click a commit: cherry-pick (several selected commits at once, oldest first), revert, reset the current branch to here, check out the revision, or create a branch or tag there; **Compare with Working Tree…**, **Create Patch…** (the selected commits, to a file or the clipboard) and **Push All up to Here…** (the checked-out branch up to that commit; the ones after it stay local). On the checked-out commit: Undo Commit and Edit Commit Message. |
-| **Across repositories** | **Branches Across Repositories…** checks out, creates or merges one branch name in every ticked repository; **Push…** lists every repository's outgoing commits in one dialog, the checked-out branch's and those of any other local branch ahead of its upstream (a develop merged into master, master not checked out); **Update Project** fetches, then merges or rebases each onto its upstream. With the Log focused: Ctrl+T (Update Project), Ctrl+Shift+K (Push…). |
 | **Repository profiles** | Save a repository selection and switch back to it later. Profiles use the shareable `linyra.profiles` workspace setting. |
 | **Fetch and pull** | Toolbar/context actions fetch when requested, show ahead/behind counts and select repositories behind their upstream. Pull-all uses fast-forward checks. |
 | **Blame and current file** | Native diff/revision editors show line attribution. **Open File** opens the current workspace file at the same line. |
 | **Copy and remote links** | Commit and file context menus expose copy actions and remote links for supported Git hosts. |
-
-The Repositories tree groups each repository's branches, tags and stashes, as the JetBrains
-Branches panel does: search, favorite, or use repository-scoped actions without changing
-history by clicking a name.
-
-![The Repositories tree searched for a branch name: each repository opens onto its Local and Remote branches](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-branch-sidebar.png)
 
 ![File History follows the selected file while its native diff stays open](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-file-history.png)
 
@@ -165,6 +310,14 @@ history by clicking a name.
 | `Enter` | Open the selected commit's first changed file |
 | `/` or `Ctrl/Cmd+F` | Focus message search |
 | `Esc` | Clear search, then return to the list |
+| `Ctrl+T` | Update Project |
+| `Ctrl+Shift+K` | Push… |
+| ``Ctrl+Shift+` `` | Branches Across Repositories… |
+
+A question Linyra asks — a choice, a checklist or a name — opens under the button you
+clicked or where you right-clicked, with ↑ ↓ Enter Esc, and any popup closes on a click
+outside it. From the Command Palette, VS Code's picker still asks; confirmations stay VS
+Code's dialogs.
 
 Colors and typography follow your VS Code theme, including light, dark and both
 high-contrast themes. Linyra follows the display language: English and Simplified Chinese
@@ -174,9 +327,10 @@ are supported, with English as the fallback.
 
 ## Settings and requirements
 
-Requires **VS Code 1.85+** and **Git**. Linyra uses your `git.path`, the Git executable
-found by VS Code, or Git on `PATH`. Reading history, searching and folding do not write
-to repositories; Git operations run when you explicitly choose them.
+Requires **VS Code 1.85+** and **Git** (2.38+ for conflict prediction). Linyra uses your
+`git.path`, the Git executable found by VS Code, or Git on `PATH`. Reading history,
+searching and folding do not write to repositories; Git operations run when you explicitly
+choose them.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
@@ -186,16 +340,27 @@ to repositories; Git operations run when you explicitly choose them.
 | `linyra.excludeRepos` | `[]` | Repository-name/path patterns to exclude |
 | `linyra.profiles` | `{}` | Named repository selections |
 | `linyra.blame` | `true` | Line attribution in Linyra diffs and revisions |
+| `linyra.updateMethod` | `ask` | How Update Project brings in incoming commits: ask, merge, rebase or fast-forward only |
+| `linyra.avatars` | `remote` | Author pictures: `off`, `remote` (only the hosts your remotes name), `remote+gravatar` |
+| `linyra.avatarHosts` | `{}` | The kind of server (`gitlab`, `github`) a self-hosted remote is |
+| `linyra.avatarUrlTemplate` | `""` | An avatar service of your own (user settings only) |
+| `linyra.ai.enabled` | `false` | Turns Linyra AI on; while off, nothing is sent |
+| `linyra.ai.profiles` / `linyra.ai.activeProfile` | `[]` / `""` | AI connections and the one in use, written by the Linyra AI page (keys are in secret storage) |
+| `linyra.ai.commitMessageInstructions` | `""` | Your rules for AI commit messages |
+| `linyra.ai.exclude` | lockfiles, built files, secrets | Files AI prompts leave out |
+| `linyra.ai.maxPromptTokens` | `50000` | Ask before sending a larger request (`0`: never ask) |
 
 From 1.4.2, settings use only **`linyra.*`**. Old `polylog.*` settings are not read or
 migrated. Set Linyra preferences under the new keys if needed; existing configuration
 files are left untouched.
 
-![The native VS Code Settings editor shows Linyra's six settings under its own name](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-settings.png)
+![The native VS Code Settings editor lists Linyra's settings under its own name](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-settings.png)
 
 Filters are passed to Git; results are merged as pages arrive. There is no persistent
 history index or database, and Linyra does not fetch in the background. Filter input is
-debounced and superseded Git reads are cancelled.
+debounced and superseded Git reads are cancelled. Author pictures are asked only of the
+servers your repositories' remotes name, only for the rows on screen, and kept in memory
+until the window reloads.
 
 ## Switching from Polylog
 

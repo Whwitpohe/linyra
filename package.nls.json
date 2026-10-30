@@ -1,6 +1,6 @@
 {
   "extension.displayName": "Linyra — Multi-Repo Git Log",
-  "extension.description": "A multi-repository Git client in the style of the JetBrains (WebStorm) Git Log: one merged log across every repository in your workspace, with branches, commit details, changed files and native diffs, and fetch, pull, checkout, merge and rebase across repositories.",
+  "extension.description": "A multi-repository Git client in the style of the JetBrains (WebStorm) Git Log: one merged log across every repository in your workspace, with branches, commit details, changed files and native diffs; commit, push, update, check out, merge and rebase across repositories; optional AI with your own model, and repository insights.",
   "container.linyra-compare.title": "Linyra Compare",
   "view.linyra.log.name": "Log",
   "view.linyra.commit.name": "Commit",

@@ -43,7 +43,13 @@
     "git graph",
     "branches",
     "webstorm",
-    "jetbrains"
+    "jetbrains",
+    "ai",
+    "commit",
+    "push",
+    "worktree",
+    "stash",
+    "cherry-pick"
   ],
   "activationEvents": [
     "onCommand:linyra.fileHistory",
