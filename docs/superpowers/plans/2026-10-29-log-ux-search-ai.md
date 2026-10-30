@@ -326,7 +326,12 @@
   - `change:`（pickaxe）不限日期时很慢：15 个仓库、3188 个提交，全量需要 32s。所以选"全部时间"时搜索框会提示缩短日期范围。
 - **F AI 核心**：
   - Anthropic 用官方 SDK `@anthropic-ai/sdk`（Apache-2.0，已写进 ThirdPartyNotices）。SDK 单独打成 `out/anthropic.js`（压缩后 405KB），第一次用 Anthropic 时才加载。
-  - 压缩后的 `out/extension.js` 从 304KB 增加到 481KB，其中 `src/ai` 占 105KB。加载时间（`dev/perf/loadBench.mjs`）从 18ms 增加到 29ms，大致和体积成正比。
+  - 压缩后的 `out/extension.js` 从 304KB 增加到 481KB，其中 `src/ai` 占 105KB。
+  - 加载时间（`dev/perf/loadBench.mjs`）当时测得从 18ms 增加到 29ms。这个差值偏大，两个包没有交替对比。
+  - 2026-10-30 在 d5e0a60 上复测：
+    - 方法：现在的包（597KB，其中 `src/ai` 116KB）和把 AI 换成空壳的包（481KB）交替量 5 轮，每轮 31 个新进程。
+    - 结果：每轮中位数分别是 19.6–24.5ms 和 16.1–20.9ms，AI 只占约 3.5ms。
+  - 所以不把 AI 拆成用到时才加载的 `out/ai.js`：省下的时间感觉不到，拆开后 i18n、输出日志、剪贴板记录和 AI 服务的注册入口会在两个包里各有一份，每一处都得接回主包。
   - `linyra.ai.enabled`、`profiles`、`activeProfile` 只接受用户级设置；密钥按 origin 存在 SecretStorage 里。
 - **集成时补的接线**：
   - AI 菜单项和悬停卡片里的"解释"，只在 `linyra.ai.enabled` 打开时显示。

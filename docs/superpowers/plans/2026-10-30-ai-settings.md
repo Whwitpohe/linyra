@@ -138,7 +138,7 @@ request never goes out much later, unasked.
   sentence, the row summary, and `checkDraft` for the host.
 - `src/ai/settingsProtocol.ts`: the messages.
 - `src/ai/settingsPanel.ts`: the panel (vscode only): state, keys, models, test, save, use, remove.
-  Reached only through `LinyraAi` in `service.ts` (a later lazy `out/ai.js` cuts there); no
+  Reached only through `LinyraAi` in `service.ts` (a lazy `out/ai.js` was measured at ~3.5 ms of load and not made: 2026-10-29 plan §7); no
   module-level state.
 - `src/ai/configure.ts`: removed (its flows move to the page).
 - `src/webview/aiSettings/{html,main,view}.ts`, `aiSettings.css`: the webview, its own bundle
