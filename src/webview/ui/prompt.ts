@@ -3,6 +3,7 @@ import { localize } from "../../i18n";
 import { placePopup, type PromptAnswer, type PromptCheck, type PromptItem, type PromptRect, type PromptRequest, type PromptUpdate } from "../../promptModel";
 import { codiconElement } from "../codicons";
 import { h } from "../dom";
+import { closeOnOutside } from "./dismiss";
 
 /** Past this many choices, a box above them filters them, as VS Code's picker does. */
 const FILTER_FROM = 8;
@@ -62,13 +63,14 @@ export function showPrompt(id: number, req: PromptRequest, at: PromptRect | stri
     done = true;
     if (open?.el === el) open = undefined;
     el.remove();
-    window.removeEventListener("pointerdown", outside, true);
+    stopOutside();
     window.removeEventListener("resize", away);
     if (back?.isConnected) back.focus();
     handlers.answer(answer);
   };
-  const outside = (e: Event) => { if (!el.contains(e.target as Node)) finish(undefined); };
   const away = () => finish(undefined);
+  // A click anywhere outside it, in the page or elsewhere in VS Code, cancels it (ui/dismiss.ts).
+  let stopOutside = () => {};
   const state: Open = { id, el, cancel: () => finish(undefined) };
   const focus = req.kind === "input" ? input(req, el, handlers, finish, state) : choices(id, req, el, finish);
   open = state;
@@ -83,7 +85,7 @@ export function showPrompt(id: number, req: PromptRequest, at: PromptRect | stri
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(undefined); }
     else if (e.key === "Tab") { e.preventDefault(); e.stopPropagation(); }
   });
-  window.addEventListener("pointerdown", outside, true);
+  stopOutside = closeOnOutside({ inside: () => [el], close: away });
   window.addEventListener("resize", away);
   focus.focus();
   return el;

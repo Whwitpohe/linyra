@@ -8,6 +8,7 @@ import { absoluteTime } from "../view";
 import { changeLines, changeNote, changesFilter } from "./fileFilterModel";
 import { containingBranches, referencePills } from "./referencePills";
 import { FileTree, type RowParts } from "../ui/fileTree";
+import { closeOnOutside } from "../ui/dismiss";
 import { renderPill } from "../ui/pill";
 
 export interface SavedState { detailHeight?: number; key?: string; collapsed?: string[]; detailsCollapsed?: boolean; fileFilter?: string }
@@ -217,9 +218,9 @@ export function mountChanges(api: ChangesApi, events: EventTarget = window): voi
       items[(index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
     }
   });
-  const outsideMenu = (e: Event) => { if (!menu.hidden && !menu.contains(e.target as Node) && !more.contains(e.target as Node)) closeMenu(); };
-  document.addEventListener("pointerdown", outsideMenu);
-  document.addEventListener("focusin", outsideMenu);
+  // A click anywhere outside it, in the page or elsewhere in VS Code, closes it (ui/dismiss.ts); so does Tab out of it.
+  closeOnOutside({ inside: () => [menu, more], open: () => !menu.hidden, close: () => closeMenu() });
+  document.addEventListener("focusin", (e) => { if (!menu.hidden && !menu.contains(e.target as Node) && !more.contains(e.target as Node)) closeMenu(); });
   window.addEventListener("resize", () => closeMenu());
   post({ type: "ready" });
 }

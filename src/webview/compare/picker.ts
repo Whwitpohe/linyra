@@ -1,4 +1,5 @@
 import { localize } from "../../i18n";
+import { closeOnOutside } from "../ui/dismiss";
 import { MAX_CANDIDATES, pickerGroups, type Pair, type PickerItem } from "../../compareModel";
 import { codiconElement } from "../codicons";
 import { clear, h } from "../dom";
@@ -87,9 +88,8 @@ export class BranchPicker {
         this.choose(this.items[this.active]);
       }
     });
-    document.addEventListener("mousedown", (e) => {
-      if (this.isOpen && !root.contains(e.target as Node) && !(this.anchor?.contains(e.target as Node) ?? false)) this.close(false);
-    });
+    // A click anywhere outside it, in the page or elsewhere in VS Code, closes it (ui/dismiss.ts).
+    closeOnOutside({ inside: () => [root, this.anchor], open: () => this.isOpen, close: () => this.close(false) });
   }
 
   get isOpen(): boolean {

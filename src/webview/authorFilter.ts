@@ -1,4 +1,5 @@
 import { MAX_AUTHORS, type FilterState } from "../filterModel";
+import { closeOnOutside } from "./ui/dismiss";
 import { localize } from "../i18n";
 import type { AuthorName } from "../protocol";
 import { byId, chevron, h } from "./dom";
@@ -42,12 +43,11 @@ export class AuthorFilter {
         inputs[next]?.focus();
       }
     });
-    const outside = (e: Event) => {
+    // A click anywhere outside it, in the page or elsewhere in VS Code, closes it (ui/dismiss.ts); so does Tab out of it.
+    closeOnOutside({ inside: () => [this.panel, this.button], open: () => !this.panel.hidden, close: () => this.close() });
+    document.addEventListener("focusin", (e) => {
       if (!this.panel.hidden && !this.panel.contains(e.target as Node) && !this.button.contains(e.target as Node)) this.close();
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("focusin", outside);
-    document.addEventListener("visibilitychange", () => { if (document.hidden) this.close(); });
+    });
     window.addEventListener("resize", () => { if (!this.panel.hidden) this.place(); });
   }
 
