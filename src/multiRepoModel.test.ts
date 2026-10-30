@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, isProtected, multiCommands, multiReport, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -186,6 +186,103 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
     assert.strictEqual(git(seed, ["--git-dir", origin, "cat-file", "-t", "v1.4.0"]), "tag", "annotated, and on the remote");
     assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "v1.4.0^{commit}"]), git(web, ["rev-parse", "HEAD"]));
     console.log("ok - real git: a tag on the checked-out commit, pushed to the branch's remote");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+{
+  // Update Project's read: every local branch, its upstream and how far, and the checked-out one.
+  const row = (ref: string, upstream: string, track: string, head = " ") => [ref, upstream, track, head].join("\0");
+  const out = [
+    row("refs/heads/develop", "refs/remotes/origin/develop", "behind 2", "*"),
+    row("refs/heads/master", "refs/remotes/origin/master", "behind 3"),
+    row("refs/heads/release-1.4", "refs/remotes/origin/release-1.4", ""),
+    row("refs/heads/feature/x", "refs/remotes/origin/feature/x", "ahead 1, behind 4"),
+    row("refs/heads/spike", "refs/remotes/origin/spike", "gone"),
+    row("refs/heads/local-only", "", ""),
+    row("refs/heads/ahead", "refs/remotes/origin/ahead", "ahead 2"),
+  ].join("\r\n") + "\n";
+  const tracks = parseBranchTracks(out);
+  assert.deepStrictEqual(tracks.map((t) => [t.name, t.ahead, t.behind, t.gone, t.head]), [
+    ["develop", 0, 2, false, true], ["master", 0, 3, false, false], ["release-1.4", 0, 0, false, false], ["feature/x", 1, 4, false, false],
+    ["spike", 0, 0, true, false], ["local-only", 0, 0, false, false], ["ahead", 2, 0, false, false],
+  ]);
+  assert.deepStrictEqual(headDistance(tracks), { ahead: 0, behind: 2 }, "the checked-out branch, as rev-list counted it");
+  assert.strictEqual(headDistance(tracks.map((t) => ({ ...t, head: false }))), null, "HEAD detached");
+  assert.strictEqual(headDistance([{ ...tracks[0], upstream: "" }]), null, "no upstream");
+  assert.strictEqual(headDistance([{ ...tracks[0], gone: true }]), null, "its upstream gone");
+  const o = otherBranches(tracks);
+  assert.deepStrictEqual(o.forward.map((t) => t.name), ["master"], "behind only, not checked out: fast-forwarded");
+  assert.deepStrictEqual(o.diverged.map((t) => t.name), ["feature/x"], "diverged: left, and named");
+  assert.deepStrictEqual(multiCommands.fastForward(o.forward[0]), ["fetch", "--quiet", ".", "refs/remotes/origin/master:refs/heads/master"]);
+  assert.throws(() => multiCommands.fastForward({ ...o.forward[0], upstream: "refs/remotes/origin/x:refs/heads/y" }), "a refspec is never smuggled in");
+  assert.throws(() => multiCommands.fastForward({ ...o.forward[0], ref: "+refs/heads/master" }));
+  assert.strictEqual(forwardReason("fatal: refusing to fetch into branch 'refs/heads/release-1.4' checked out at '/work/acme-web-wt'"), "checked out in another worktree");
+  console.log("ok - Update Project reads every branch once; behind-only ones besides the checked-out one are fast-forwarded, diverged ones named");
+}
+
+{
+  const none = { done: [], unchanged: [], stopped: [], skipped: [] };
+  const only = multiReport("Update Project (merge)", "update", { ...none, unchanged: ["acme-web", "acme-api"], forwarded: [{ name: "acme-web", branches: ["master"] }, { name: "acme-api", branches: ["master", "release-1.4"] }] });
+  assert.deepStrictEqual(only, { level: "info", text: "Update Project (merge) — Already up to date: acme-web, acme-api. Fast-forwarded too: master in acme-web, acme-api; release-1.4 in acme-api." },
+    "checked-out branches up to date, others moved: said, not 'all already up to date'");
+  const left = multiReport("Update Project (merge)", "update", { ...none, done: ["acme-web"], notForwarded: [
+    { name: "acme-web", branch: "feature/x", reason: "it has diverged from its upstream" },
+    { name: "acme-api", branch: "release-1.4", reason: "checked out in another worktree", failed: true },
+  ] });
+  assert.strictEqual(left.text, "Update Project (merge) — Updated: acme-web. Other branches left as they were: feature/x in acme-web (it has diverged from its upstream); release-1.4 in acme-api (checked out in another worktree).");
+  assert.strictEqual(left.level, "warning", "git refused one: a warning");
+  assert.strictEqual(multiReport("Update Project (merge)", "update", { ...none, done: ["acme-web"], notForwarded: [{ name: "acme-web", branch: "feature/x", reason: "it has diverged from its upstream" }] }).level, "info", "a diverged branch left alone is no failure");
+  console.log("ok - Update Project's report names the other branches moved and those left, by branch and repository");
+}
+
+{
+  // Real git: a clone on develop; master behind, release-1.4 behind but checked out in a worktree, feature diverged.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-forward-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const fails = (cwd: string, args: string[]) => {
+    try { git(cwd, args); return ""; } catch (e) { return String((e as { stderr?: unknown }).stderr ?? e); }
+  };
+  const commit = (cwd: string, file: string, message: string) => { fs.writeFileSync(path.join(cwd, file), `${message}\n`); git(cwd, ["add", file]); git(cwd, ["commit", "-q", "-m", message]); };
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    git(seed, ["branch", "-M", "master"]);
+    for (const b of ["develop", "release-1.4", "feature"]) git(seed, ["branch", b]);
+    const origin = path.join(home, "origin.git");
+    git(home, ["clone", "-q", "--bare", seed, origin]);
+    const web = path.join(home, "acme-web"), other = path.join(home, "acme-web-other"), wt = path.join(home, "acme-web-release");
+    git(home, ["clone", "-q", origin, web]);
+    for (const b of ["develop", "release-1.4", "feature"]) git(web, ["branch", "-q", "--track", b, `origin/${b}`]);
+    git(web, ["switch", "-q", "feature"]); commit(web, "mine.txt", "feat: mine");
+    git(web, ["switch", "-q", "develop"]);
+    git(web, ["worktree", "add", "-q", wt, "release-1.4"]);
+    // Someone else pushes to master, release-1.4 and feature.
+    git(home, ["clone", "-q", origin, other]);
+    for (const b of ["master", "release-1.4", "feature"]) { git(other, ["switch", "-q", b]); commit(other, `${b.replace(/\W/g, "-")}.txt`, `feat: theirs on ${b}`); git(other, ["push", "-q", "origin", b]); }
+    git(web, ["fetch", "-q"]);
+
+    const tracks = parseBranchTracks(git(web, multiCommands.branches()));
+    assert.deepStrictEqual(headDistance(tracks), { ahead: 0, behind: 0 }, "develop, checked out, is up to date");
+    const o = otherBranches(tracks);
+    assert.deepStrictEqual(o.forward.map((t) => t.name).sort(), ["master", "release-1.4"]);
+    assert.deepStrictEqual(o.diverged.map((t) => t.name), ["feature"]);
+    const master = o.forward.find((t) => t.name === "master")!, release = o.forward.find((t) => t.name === "release-1.4")!;
+    git(web, multiCommands.fastForward(master));
+    assert.strictEqual(git(web, ["rev-parse", "master"]), git(web, ["rev-parse", "origin/master"]), "master moved to origin/master");
+    assert.strictEqual(forwardReason(fails(web, multiCommands.fastForward(release))), "checked out in another worktree", "git refuses a branch checked out elsewhere");
+    assert.notStrictEqual(git(web, ["rev-parse", "release-1.4"]), git(web, ["rev-parse", "origin/release-1.4"]));
+    const feature = parseBranchTracks(git(web, multiCommands.branches())).find((t) => t.name === "feature")!;
+    // Even if asked, git refuses to move a diverged branch (quietly: --quiet keeps its "[rejected]" line back).
+    let refused = false;
+    try { git(web, multiCommands.fastForward(feature)); } catch { refused = true; }
+    assert.ok(refused, "even if asked, git refuses to move a diverged branch");
+    assert.strictEqual(git(web, ["log", "-1", "--format=%s", "feature"]), "feat: mine");
+    assert.strictEqual(git(web, ["branch", "--show-current"]), "develop");
+    assert.strictEqual(git(web, ["status", "--porcelain"]), "", "the working tree is untouched");
+    console.log("ok - real git: a branch only behind is fast-forwarded without a checkout; one checked out elsewhere or diverged is refused");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

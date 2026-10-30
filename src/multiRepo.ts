@@ -4,13 +4,13 @@ import { isValidRef } from "./filterModel";
 import { checkValue, listValue, textValue } from "./formModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, droppedArgs, forcePushPrompt, isProtected, multiReport, parseDropped, type ForcePush, multiCommands, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
+import { checkoutStep, droppedArgs, forcePushPrompt, forwardReason, headDistance, isProtected, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, pushPlan, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
 import { gitText } from "./actionErrors";
 import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport, type CheckoutBlock } from "./smartCheckout";
-import { aheadBehindArgs, FETCH_ENV, parseAheadBehind } from "./upstream";
+import { FETCH_ENV } from "./upstream";
 
 /** A write must finish once started: a merge killed halfway leaves the working tree mid-change. */
 const WRITE_SIGNAL = new AbortController().signal;
@@ -47,7 +47,12 @@ interface Preset { name: string; only?: ReadonlySet<string>; /** Ask before chec
  * git stopped half-way on conflicts (mid-merge or mid-rebase); `skipped`: left as they were
  * (`failed`: git refused, as opposed to nothing to do there).
  */
-export interface MultiResult { done: string[]; unchanged: string[]; stopped: { name: string; reason: string }[]; skipped: { name: string; reason: string; failed?: boolean }[] }
+export interface MultiResult {
+  done: string[]; unchanged: string[]; stopped: { name: string; reason: string }[]; skipped: { name: string; reason: string; failed?: boolean }[];
+  /** Update Project: the other branches fast-forwarded, and those left as they were (multiReport). */
+  forwarded?: { name: string; branches: string[] }[];
+  notForwarded?: { name: string; branch: string; reason: string; failed?: boolean }[];
+}
 
 /**
  * Work across every ticked repository at once, as the JetBrains IDEs do for a project with
@@ -212,9 +217,11 @@ export class MultiRepo {
   }
 
   /**
-   * ⇣ Update Project: Fetch All, then merge, rebase or fast-forward every ticked repository that is
-   * behind its upstream. The method: linyra.updateMethod, or asked (the last one first; its 📌 makes
-   * it the setting, so the question stops).
+   * ⇣ Update Project: Fetch All, then merge, rebase or fast-forward every ticked repository's
+   * checked-out branch that is behind its upstream; then fast-forward its other branches that are
+   * only behind theirs (no commits of their own), without a checkout, so a local master keeps up
+   * with origin/master. The method: linyra.updateMethod, or asked (the last one first; its 📌 makes
+   * it the setting, so the question stops). One read per repository for every branch's distance.
    */
   update(): Promise<MultiResult | undefined> {
     return this.exclusive(async () => {
@@ -222,8 +229,9 @@ export class MultiRepo {
       if (!method) return undefined;
       await this.host.fetchAll();
       const repos = [...this.host.repos()];
-      const distance = await runPool(repos, WRITE_CONCURRENCY, async (r) => parseAheadBehind(await this.host.run(r.root, aheadBehindArgs(), WRITE_SIGNAL)), WRITE_SIGNAL);
-      const at = (r: Repo) => { const d = distance[repos.indexOf(r)]; return d.status === "fulfilled" ? d.value : null; };
+      const read = await runPool(repos, WRITE_CONCURRENCY, async (r) => parseBranchTracks(await this.host.run(r.root, multiCommands.branches(), WRITE_SIGNAL)), WRITE_SIGNAL);
+      const tracks = (r: Repo) => { const d = read[repos.indexOf(r)]; return d.status === "fulfilled" ? d.value : []; };
+      const at = (r: Repo) => headDistance(tracks(r));
       const behind = repos.filter((r) => (at(r)?.behind ?? 0) > 0);
       const noUpstream = repos.filter((r) => at(r) === null);
       // Fast-forward only: a diverged branch is not tried (git would refuse it); named, with what would do it.
@@ -232,8 +240,27 @@ export class MultiRepo {
       result.unchanged.push(...repos.filter((r) => !behind.includes(r) && !noUpstream.includes(r)).map((r) => r.name));
       result.skipped.push(...diverged.map((r) => ({ name: r.name, reason: localize("it has diverged from its upstream: merge or rebase it") })));
       result.skipped.push(...noUpstream.map((r) => ({ name: r.name, reason: localize("no upstream branch") })));
+      await this.forwardOthers(repos, tracks, result);
       return this.report(localize("Update Project ({0})", localize(METHOD_NAMES[method])), "update", result);
     });
+  }
+
+  /** Update Project's other branches (otherBranches): the fast-forwards, run as one pool; the diverged named. */
+  private async forwardOthers(repos: readonly Repo[], tracks: (r: Repo) => BranchTrack[], result: MultiResult): Promise<void> {
+    const plan = repos.flatMap((repo) => { const o = otherBranches(tracks(repo)); return o.forward.map((branch) => ({ repo, branch })); });
+    const notForwarded: NonNullable<MultiResult["notForwarded"]> = repos.flatMap((repo) => otherBranches(tracks(repo)).diverged.map((b) => ({ name: repo.name, branch: b.name, reason: localize("it has diverged from its upstream") })));
+    const settled = await runPool(plan, WRITE_CONCURRENCY, ({ repo, branch }) => this.git(repo, multiCommands.fastForward(branch)), WRITE_SIGNAL);
+    const forwarded = new Map<Repo, string[]>();
+    settled.forEach((s, i) => {
+      const { repo, branch } = plan[i];
+      if (s.status === "fulfilled") forwarded.set(repo, [...(forwarded.get(repo) ?? []), branch.name]);
+      else notForwarded.push({ name: repo.name, branch: branch.name, reason: forwardReason(gitText(s.reason)), failed: true });
+    });
+    result.forwarded = [...forwarded].map(([repo, branches]) => ({ name: repo.name, branches }));
+    result.notForwarded = notForwarded;
+    // Their refs moved: the Log, the Repo List and the marks read them again.
+    const moved = [...forwarded.keys()].filter((r) => !result.done.includes(r.name));
+    if (moved.length) await this.host.changed(moved.map((r) => r.id));
   }
 
   /** linyra.updateMethod, or the question: the methods, the last one first, each with a 📌 "don't ask again". */
@@ -245,10 +272,10 @@ export class MultiRepo {
     const describe: Record<UpdateMethod, { label: string; description: string }> = {
       merge: { label: localize("Merge incoming changes"), description: localize("a merge commit where the branches diverged") },
       rebase: { label: localize("Rebase onto incoming changes"), description: localize("local commits replayed on top; needs a clean working tree") },
-      ffOnly: { label: localize("Fast-forward only"), description: localize("only branches with no local commits; diverged ones are left as they are") },
+      ffOnly: { label: localize("Fast-forward only"), description: localize("only when it has no commits of its own; a diverged one is left as it is") },
     };
     const pin = { iconPath: new vscode.ThemeIcon("pin"), tooltip: localize("Always use this method (don't ask again)") };
-    const answer = await this.host.ask.pickWithButton(order.map((m) => describe[m]), localize("Update {0} repositories: how? (the pin beside a method: don't ask again)", this.host.repos().length), pin);
+    const answer = await this.host.ask.pickWithButton(order.map((m) => describe[m]), localize("Update {0} repositories: how should each checked-out branch take in its upstream? Branches that are only behind are fast-forwarded too. (The pin beside a method: don't ask again.)", this.host.repos().length), pin);
     if (!answer) return undefined;
     const method = order[answer.index];
     await this.host.state.update(LAST_METHOD, method);

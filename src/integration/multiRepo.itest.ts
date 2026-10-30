@@ -107,6 +107,30 @@ describe("Across repositories", () => {
     assert.deepStrictEqual([r?.done, r?.unchanged, r?.stopped], [[], ["acme-web"], []]);
   });
 
+  it("Update Project also fast-forwards a branch that is not checked out and only behind its upstream, without a checkout", async () => {
+    const web = repo("acme-web").root;
+    // ci-release: pushed with one more commit on ci-origin, then one commit behind it locally.
+    git(web, ["switch", "-q", "-c", "ci-release"]);
+    fs.writeFileSync(path.join(web, "release.txt"), "fix\n");
+    git(web, ["add", "release.txt"]); git(web, ["commit", "-q", "-m", "fix: on the release"]);
+    git(web, ["push", "-q", "-u", "ci-origin", "ci-release"]);
+    const pushed = git(web, ["rev-parse", "HEAD"]);
+    git(web, ["reset", "-q", "--hard", "HEAD~1"]);
+    git(web, ["switch", "-q", "main"]);
+    const main = git(web, ["rev-parse", "HEAD"]);
+    try {
+      await answer("Merge incoming changes");
+      const r = await run("updateProject");
+      assert.deepStrictEqual(r?.forwarded, [{ name: "acme-web", branches: ["ci-release"] }]);
+      assert.strictEqual(git(web, ["rev-parse", "ci-release"]), pushed, "moved to its upstream");
+      assert.deepStrictEqual([git(web, ["branch", "--show-current"]), git(web, ["rev-parse", "HEAD"]), git(web, ["status", "--porcelain"])], ["main", main, ""], "the checked-out branch and the working tree untouched");
+      assert.ok(!fs.existsSync(path.join(web, "release.txt")));
+    } finally {
+      git(web, ["branch", "-q", "-D", "ci-release"]);
+      git(web, ["push", "-q", "ci-origin", "--delete", "ci-release"]);
+    }
+  });
+
   it("Update Project: fast-forward only leaves a diverged branch alone; a conflict is reported as stopped; 📌 stops the question", async () => {
     const web = repo("acme-web").root;
     const config = () => vscode.workspace.getConfiguration("linyra");

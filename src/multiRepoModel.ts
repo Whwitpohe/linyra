@@ -72,6 +72,14 @@ export const multiCommands = {
     : method === "ffOnly"
       ? ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"]
       : ["-c", "rebase.autoStash=false", "-c", "submodule.recurse=false", "rebase", "--quiet", "@{upstream}"],
+  /** Every local branch: its upstream, how far from it, and which is checked out (Update Project reads it once per repository). */
+  branches: () => ["for-each-ref", "--format=%(refname)%00%(upstream)%00%(upstream:track,nobracket)%00%(HEAD)", "refs/heads"],
+  /**
+   * A branch that is not checked out and only behind its upstream, moved there without a checkout:
+   * a fetch from the repository itself takes nothing but a fast-forward, and refuses a branch that
+   * is checked out in any worktree.
+   */
+  fastForward: (b: BranchTrack) => ["fetch", "--quiet", ".", `${checkRef(b.upstream)}:${checkRef(b.ref)}`],
   /** Commits a push would send: to the upstream, or (no upstream yet) those on no remote at all. */
   outgoing: (hasUpstream: boolean) => hasUpstream
     ? ["log", "--format=%h%x00%s", "--max-count=1000", "@{upstream}..HEAD", "--"]
@@ -227,6 +235,55 @@ export function updateReason(message: string): string {
 /** git stopped half-way (a merge or rebase on conflicts): the repository is mid-operation, not as it was. */
 export const stoppedOnConflicts = (message: string): boolean => /\bconflict/i.test(message);
 
+/** A local branch as Update Project reads it (multiCommands.branches). */
+export interface BranchTrack {
+  ref: string;
+  name: string;
+  /** Its upstream's full ref name; "" when it has none. */
+  upstream: string;
+  ahead: number;
+  behind: number;
+  /** Its upstream is set but no longer there. */
+  gone: boolean;
+  /** Checked out here. */
+  head: boolean;
+}
+
+/** A full ref name from git's own output, before it goes back into a refspec. */
+function checkRef(ref: string): string {
+  if (!/^refs\/[^\s:^~?*[\\]+$/.test(ref)) throw new Error(`not a ref name: ${ref}`);
+  return ref;
+}
+
+export function parseBranchTracks(out: string): BranchTrack[] {
+  return out.split("\n").flatMap((line) => {
+    const [ref, upstream = "", track = "", head = ""] = line.replace(/\r$/, "").split("\0");
+    if (!ref?.startsWith("refs/heads/")) return [];
+    const count = (re: RegExp) => Number(re.exec(track)?.[1] ?? 0);
+    return [{ ref, name: ref.slice("refs/heads/".length), upstream, ahead: count(/ahead (\d+)/), behind: count(/behind (\d+)/), gone: track === "gone", head: head === "*" }];
+  });
+}
+
+/** The checked-out branch's distance from its upstream; null: HEAD detached, no upstream, or it is gone. */
+export function headDistance(tracks: readonly BranchTrack[]): { ahead: number; behind: number } | null {
+  const h = tracks.find((t) => t.head);
+  return h && h.upstream && !h.gone ? { ahead: h.ahead, behind: h.behind } : null;
+}
+
+/**
+ * Update Project's other branches: those behind their upstream and not checked out here. With no
+ * commits of their own they are fast-forwarded; diverged ones are left as they are, and named.
+ */
+export function otherBranches(tracks: readonly BranchTrack[]): { forward: BranchTrack[]; diverged: BranchTrack[] } {
+  const behind = tracks.filter((t) => !t.head && t.upstream !== "" && !t.gone && t.behind > 0);
+  return { forward: behind.filter((t) => t.ahead === 0), diverged: behind.filter((t) => t.ahead > 0) };
+}
+
+/** Why a branch was not fast-forwarded, in words: git's refusal of a branch checked out elsewhere, or its own line. */
+export function forwardReason(message: string): string {
+  return /checked out at|refusing to fetch into/i.test(message) ? localize("checked out in another worktree") : errorLine(message);
+}
+
 /** What one action across repositories did, as its report groups it. */
 export interface Outcome {
   done: readonly string[];
@@ -236,6 +293,10 @@ export interface Outcome {
   stopped: readonly { name: string; reason: string }[];
   /** Left as they were, and why. `failed`: git refused (not just nothing to do there). */
   skipped: readonly { name: string; reason: string; failed?: boolean }[];
+  /** Update Project: branches besides the checked-out ones, fast-forwarded, by repository. */
+  forwarded?: readonly { name: string; branches: readonly string[] }[];
+  /** Update Project: other branches left as they were (diverged, or git refused), by repository and why. */
+  notForwarded?: readonly { name: string; branch: string; reason: string; failed?: boolean }[];
 }
 
 export type ReportKind = "update" | "checkout" | "create" | "merge" | "push" | "tag";
@@ -256,8 +317,9 @@ function names(list: readonly string[]): string {
  */
 export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?: number): { level: "info" | "warning"; text: string } {
   const total = r.done.length + r.unchanged.length + r.stopped.length + r.skipped.length;
-  const level = r.stopped.length > 0 || r.skipped.some((s) => s.failed) ? "warning" : "info";
-  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0) {
+  const level = r.stopped.length > 0 || r.skipped.some((s) => s.failed) || (r.notForwarded ?? []).some((n) => n.failed) ? "warning" : "info";
+  const forwarded = r.forwarded ?? [], notForwarded = r.notForwarded ?? [];
+  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0 && forwarded.length === 0 && notForwarded.length === 0) {
     if (total === 0) return { level, text: localize("{0}: nothing to do.", what) };
     if (kind === "update") return { level, text: total === 1 ? localize("{0}: {1} is already up to date.", what, r.unchanged[0]) : localize("{0}: all {1} repositories already up to date.", what, total) };
     if (kind === "checkout") return { level, text: localize("{0}: every repository is already on it.", what) };
@@ -274,6 +336,20 @@ export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?
   const why = new Map<string, string[]>();
   for (const s of r.skipped) why.set(s.reason, [...(why.get(s.reason) ?? []), s.name]);
   if (why.size > 0) parts.push(localize("Left as they were: {0}.", [...why].map(([reason, list]) => `${names(list)} (${reason})`).join("; ")));
+  // The other branches: "master in acme-web, acme-api; release-1.4 in acme-libs".
+  const where = (byBranch: Map<string, string[]>) => [...byBranch].map(([branch, repos]) => localize("{0} in {1}", branch, names(repos))).join("; ");
+  if (forwarded.length > 0) {
+    const byBranch = new Map<string, string[]>();
+    for (const f of forwarded) for (const b of f.branches) byBranch.set(b, [...(byBranch.get(b) ?? []), f.name]);
+    parts.push(localize("Fast-forwarded too: {0}.", where(byBranch)));
+  }
+  const notWhy = new Map<string, Map<string, string[]>>();
+  for (const n of notForwarded) {
+    const byBranch = notWhy.get(n.reason) ?? new Map<string, string[]>();
+    byBranch.set(n.branch, [...(byBranch.get(n.branch) ?? []), n.name]);
+    notWhy.set(n.reason, byBranch);
+  }
+  if (notWhy.size > 0) parts.push(localize("Other branches left as they were: {0}.", [...notWhy].map(([reason, byBranch]) => `${where(byBranch)} (${reason})`).join("; ")));
   const head = kind === "push" && commits !== undefined && r.done.length > 0 ? "" : `${what} — `;
   return { level, text: `${head}${parts.join(" ")}` };
 }
