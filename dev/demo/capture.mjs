@@ -171,6 +171,16 @@ try {
     const iframeRect=await page.locator('iframe.webview.ready').last().boundingBox();
     if (!iframeRect) throw new Error("Recording webview is not visible");
     await shot("screenshot-details",{...detailRect,x:iframeRect.x+detailRect.x,y:iframeRect.y+detailRect.y});
+    // A branch pill's click: its branch sheet in the Changes view. release-1.4 has a fix main
+    // lacks, so the sheet predicts the merge into main.
+    const releaseIndex=(await snapshot()).rows.findIndex(r=>r.repoId===web.id&&r.subject.startsWith("fix(payments): cap checkout retries"));
+    await logView.click(`.row[data-index="${releaseIndex}"] .pill-part[data-ref="refs/heads/release-1.4"]`);
+    await waitFor("branch sheet",()=>logView.evaluate("const s=doc.getElementById('branch-sheet');return !!s&&!s.hidden&&s.querySelectorAll('.card-status').length>=2&&!s.querySelector('.sheet-note')&&!/Reading|Checking/.test(s.textContent);"),20000);
+    for(let i=0;i<8;i++) await logView.key("#detail-splitter","ArrowUp");
+    await logView.evaluate("doc.activeElement?.blur();return true;");
+    const sheetRect=await logView.evaluate("const p=doc.getElementById('changes-pane').getBoundingClientRect();const h=doc.getElementById('detail-heading').getBoundingClientRect();return {x:p.x,y:h.y,width:p.width,height:p.bottom-h.y};");
+    await shot("screenshot-branch-sheet",{...sheetRect,x:iframeRect.x+sheetRect.x,y:iframeRect.y+sheetRect.y});
+    for(let i=0;i<8;i++) await logView.key("#detail-splitter","ArrowDown");
     await select(target);
     await logView.click("#branch");
     await waitFor("branch options",()=>logView.evaluate("return !!doc.querySelector('input[data-branch=main]');"));
@@ -179,8 +189,8 @@ try {
     await waitFor("branch union",async()=>{const s=await snapshot();return s.filter.branches?.length===2&&s.done;});
     await shot("screenshot-branches",panelRect);
     await logView.key("#branch-search","Escape");
-    await logView.click("#sort");await shot("screenshot-sort",panelRect);
-    await logView.key("#sort","Escape");
+    await logView.click('.column-button[data-key="graph"]');await shot("screenshot-sort",panelRect);
+    await logView.evaluate("doc.querySelector('.popup-menu')?.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true;");
     await logView.click("#branch");
     await logView.click("#branch-picker .branch-picker-all");
     await logView.key("#branch-search","Escape");
@@ -218,7 +228,21 @@ try {
     await sleep(600);await shot("screenshot-compare",panelRect);
     await command("linyra._itest.compareMode","commits");await sleep(650);await shot("screenshot-compare-commits",panelRect);
     await compareView.close();
-    await command("linyra.compareHide");await command("linyra.open");
+    await command("linyra.compareHide");
+    // Insights in the editor area, the panel closed: Visual History's rows, then the Files treemap.
+    await command("linyra.insights");
+    await command("workbench.action.closePanel");
+    await sleep(4000);
+    const editorTop=await page.evaluate(()=>document.getElementById("workbench.parts.editor").getBoundingClientRect().top);
+    await shot("screenshot-insights",{x:0,y:editorTop,width:nativeViewport.width,height:385});
+    const insights=await webviewDriver(browser,"Linyra Insights");
+    await insights.click("#tab-files");
+    await sleep(4000);
+    await shot("screenshot-insights-files");
+    await insights.click("#tab-history");
+    await insights.close();
+    await command("workbench.action.closeAllEditors");
+    await command("linyra.open");
     await command("linyra._itest.send",{type:"filter",filter:base});
     await waitFor("restored log",async()=>{const s=await snapshot();return s.done&&s.rows.some(r=>r.sha===target.sha);});
     await select(target,"src/checkout/PaymentStep.tsx");
@@ -234,7 +258,7 @@ try {
     const ffmpeg=process.env.LINYRA_FFMPEG??"ffmpeg";
     const gif=spawnSync(ffmpeg,["-hide_banner","-loglevel","error","-y","-framerate","8","-i",join(frames,"%05d.png"),"-filter_complex","[0:v]scale=1920:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=full[p];[b][p]paletteuse=dither=none","-loop","0",join(output,"demo.gif")],{encoding:"utf8"});
     if(gif.status!==0)throw new Error("GIF encoding failed: "+gif.stderr);
-    writeFileSync(join(output,"recording.json"),JSON.stringify({version:"1.4.1",width:imageSize.width,height:imageSize.height,locale,panelFraction:0.46,frames:frame,source:"real VS Code with neutral Git repositories",repos:(await snapshot()).repos.map(r=>r.name)},null,2));
+    writeFileSync(join(output,"recording.json"),JSON.stringify({version:"1.7.0",width:imageSize.width,height:imageSize.height,locale,panelFraction:0.46,frames:frame,source:"real VS Code with neutral Git repositories",repos:(await snapshot()).repos.map(r=>r.name)},null,2));
     console.log("Recording complete:",frame,"frames");
     await logView.close();
   }

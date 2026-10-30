@@ -11,10 +11,9 @@
 沿着真实分支图追踪合并，阅读完整提交信息，再用 VS Code 原生 Diff 核对每个文件；
 之后一步完成所有仓库的提交、推送和更新，每个操作都在各自的仓库里执行。
 
-![多选分支和作者，切换日期／拓扑排序，并折叠和展开线性历史](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-branches.gif)
+![多选分支和作者，切换日期／拓扑排序，并折叠和展开线性历史](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-branches.gif)
 
-演示使用六个中性的示例仓库和真实 Git 提交，画面为 1.5.0 的样子；从 1.7.0 起，每行还会显示作者头像圆点、
-分支标签和“更改”列。静态图片均可打开查看原始分辨率。
+演示使用六个中性的示例仓库和真实 Git 提交，在真实的 VS Code 窗口中录制。静态图片均可打开查看原始分辨率。
 
 ## 1.7.0 新增
 
@@ -50,13 +49,15 @@ code --install-extension whwitpohe.linyra
 输入需求编号、关键词或提交信息，各仓库结果集中展示，左侧色带标明所属仓库。
 选择提交后，右侧同步显示更改文件；点击文件，在上方原生编辑器里查看差异。
 
-![完整工作区：上方原生 Diff，下方多仓库日志、真实分支轨道与更改文件](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-log.png)
+![完整工作区：上方原生 Diff，下方多仓库日志、真实分支轨道与更改文件](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-log.png)
 
 - **搜索语法，由 Git 执行。**普通文字搜索提交信息；运算符进一步缩小范围，每个都转换成 `git log` 自己的参数：
   `message:` 与 `-message:`、`author:`（`@me`）、`committer:`、`commit:`、`file:`、`change:`（新增或删除的某一行）、
   `type:merge`／`type:tip`／`is:wip`、`after:`／`before:`、`ref:`（分支、标签或范围，如 `ref:main..feature`），
   以及 Linyra 的 `repo:`。输入框下方的弹窗列出每个运算符和示例，输入时提示作者、分支、标签和仓库。
   旁边有区分大小写、全字匹配、正则和全部匹配；↑／↓ 调出最近的搜索。
+
+  ![在搜索框输入 author: 和 file:：弹窗提示运算符和作者，git log 在每个仓库中执行查询](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-search.gif)
 - **哈希定位。**完整哈希或至少七位十六进制前缀可直接定位提交，`sha:abcd` 支持至少四位前缀。
   哈希定位在所选仓库内暂时忽略其他筛选，清空后恢复之前条件。
 - **作者、分支都能搜索多选。**“我”读取各仓库配置的邮箱。
@@ -74,13 +75,13 @@ code --install-extension whwitpohe.linyra
 鼠标所在的行，当前签出的提交提供**撤销提交…**和**编辑提交信息…**，每一行都有 **⋯**（即该行的右键菜单）。
 勾选的仓库有未提交的工作时，最新提交上方会多出一行**未提交的更改**：点击即可查看这些文件。
 
-**演示步骤：**同时选择 `main` 与 `feature/saved-cards`，切换日期／拓扑排序，折叠并展开线性历史，
+**演示步骤：**同时选择 `main` 与 `feature/saved-cards`，从“图”列的菜单切换日期／拓扑排序、折叠并展开线性历史，
 再多选作者。真实分叉、合并和分支头保持可见；默认仍是全部本地／远程分支和全部作者。
 
 **不用重设筛选，也能定位旧提交。**粘贴哈希，即使时间选着“最近 24 小时”，仍能找到三个月前的提交；
 清空哈希后恢复之前的日志。
 
-![粘贴短哈希定位旧提交，清空后恢复原筛选](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-hash-lookup.gif)
+![粘贴短哈希定位旧提交，清空后恢复原筛选](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-hash-lookup.gif)
 
 ## 看清完整提交信息
 
@@ -88,10 +89,10 @@ code --install-extension whwitpohe.linyra
 父提交链接（点击即选中该父提交）和分支标签。当前签出分支的标签以 **HEAD** 开头；
 下方列出的分支只包含标签里没有的那些。
 
-![查看完整提交与彩色引用，调整或隐藏说明区域，并搜索更改文件](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-commit-review.gif)
+![查看完整提交与彩色引用，调整或隐藏说明区域，并搜索更改文件](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-commit-review.gif)
 
-**演示步骤：**查看 HEAD／本地分支／远程分支／标签的图标和颜色，展开包含分支，隐藏并恢复说明，
-拖动分隔线，再把更改文件筛到 `PaymentStep`。
+**演示步骤：**阅读一个合并提交的信息、共同作者以及分支、远程分支和标签的标签，隐藏并恢复说明，
+拖动分隔线，再把另一个提交的更改文件筛到 `PaymentStep`。
 
 拖动文件列表和提交信息之间的分隔线调整高度，小箭头可隐藏／恢复说明，大小和显隐状态都会记住。
 更改区工具栏保留**全部文件／更改文件**、展开／折叠、清除选择及提交操作菜单。
@@ -111,12 +112,14 @@ code --install-extension whwitpohe.linyra
 - **所有仓库：**按需读取，列出每个勾选仓库里的同名分支（已签出、↑ ↓、已分叉、远程已删除），
   并可执行“全部签出…”、“推送…”和“更新项目…”。
 
+![更改区里的分支详情：上游、后续步骤，以及所有仓库里的同名分支](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-branch-sheet.png)
+
 ## 在多个仓库里比较两条分支
 
 从日志工具栏或 **Linyra: 比较分支** 打开比较面板。
 只需选择一次左右分支，就能查看所选仓库中各自的差异，并明确列出缺少分支的仓库。
 
-![切换文件／提交、展开提交文件、选择仓库、交换分支并调整左右大小](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-compare.gif)
+![切换文件／提交、展开提交文件、选择仓库、交换分支并调整左右大小](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-compare.gif)
 
 **演示步骤：**发布分支和主分支各有独立改动；切换“文件／提交”，展开提交的文件，选择另一仓库，
 左右交换并调整区域大小。三个区域保持在稳定的同一视图中，原有操作入口继续保留。
@@ -172,7 +175,7 @@ code --install-extension whwitpohe.linyra
   在文件资源管理器中显示、复制路径和移除。收藏的分支排在最前；**取消勾选**、**永久排除（写入设置）**
   和保存的**仓库组**决定日志显示哪些仓库。
 
-![按分支名搜索仓库树：每个仓库展开为本地和远程分支](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-branch-sidebar.png)
+![按分支名搜索仓库树：每个仓库展开为本地和远程分支](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-branch-sidebar.png)
 
 ## 在侧边栏提交
 
@@ -212,6 +215,10 @@ API 密钥保存在 VS Code 的机密存储中，并且只用于当初输入时�
 - **健康：**每个仓库一行——commit-graph、对象、未跟踪缓存、文件系统监视器、大量文件、维护——
   每项都说明含义并给出建议。**优化所选…**在一个确认框里列出所有要执行的命令，未经确认不写入任何内容。
 
+![可视化历史：每个提交一个气泡，每位作者一行，按仓库着色](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-insights.png)
+
+![文件矩形树图：所有仓库的已跟踪文件按大小排布，按文件类型着色](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-insights-files.png)
+
 ## 日常使用的其他入口
 
 | 功能 | 入口与用途 |
@@ -225,7 +232,7 @@ API 密钥保存在 VS Code 的机密存储中，并且只用于当初输入时�
 | **行归属与当前文件** | 原生 Diff／历史版本编辑器显示行归属；“打开文件”跳到工作区当前文件的相同行。 |
 | **复制与远程链接** | 提交和文件右键菜单提供复制及支持的 Git 托管平台链接。 |
 
-![文件历史与跟随选择的原生 Diff](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-file-history.png)
+![文件历史与跟随选择的原生 Diff](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-file-history.png)
 
 ## 键盘、主题与语言
 
@@ -246,7 +253,7 @@ Linyra 的提问——单选、多选清单或输入名称——会弹在你点�
 界面颜色和字体跟随 VS Code，支持浅色、深色及两种高对比度主题。
 语言随编辑器显示语言切换，支持英文和简体中文，其他语言回退为英文。
 
-![同一真实工作区的深色、浅色及两种高对比度主题](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-themes.png)
+![同一真实工作区的深色、浅色及两种高对比度主题](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-themes.png)
 
 ## 设置与运行要求
 
@@ -274,7 +281,7 @@ Linyra 的提问——单选、多选清单或输入名称——会弹在你点�
 从 1.4.2 开始，设置只使用 **`linyra.*`**，不读取或迁移旧 `polylog.*` 设置。
 需要自定义时使用新名称配置；现有配置文件保持原样。
 
-![VS Code 原生设置页以 Linyra 自己的名称列出各项设置](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-settings.png)
+![VS Code 原生设置页以 Linyra 自己的名称列出各项设置](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-settings.png)
 
 筛选条件交给 Git，读取结果分页合并；不维护持久化历史索引或数据库，不后台获取远程更新。
 输入筛选有防抖，新查询会取消被替代的 Git 读取。作者头像只向你的仓库远程所在的服务器请求，

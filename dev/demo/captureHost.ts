@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 const allowed = new Set([
-  "linyra.open", "linyra.compareShow", "linyra.compareHide", "linyra.openDiff",
+  "linyra.open", "linyra.compareShow", "linyra.compareHide", "linyra.openDiff", "linyra.insights",
   "linyra._itest.snapshot", "linyra._itest.send", "linyra._itest.changesMessage",
   "linyra._itest.compareView", "linyra._itest.compare", "linyra._itest.compareStore", "linyra._itest.compareSelect",
   "linyra._itest.compareMode", "linyra._itest.compareReposSend", "linyra._itest.compareSide",

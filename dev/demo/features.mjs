@@ -46,6 +46,13 @@ export async function recordFeatures(r) {
     console.log("Recorded "+name+": "+count+" frames");
   }
 
+  // The Graph column's menu (columnHeader.ts): the Log's order, and folding linear runs.
+  async function graph(label, hold) {
+    await logView.click('.column-button[data-key="graph"]');
+    await waitFor("graph menu",()=>logView.evaluate("return !!doc.querySelector('.popup-menu');"));
+    if (hold) await hold(1);
+    await logView.evaluate(`const b=[...doc.querySelectorAll('.popup-menu button')].find(n=>n.textContent.includes(${JSON.stringify(label)}));if(!b)throw new Error('Missing menu item');b.click();return true;`);
+  }
   await clip("feature-branches",logRegion,async hold=>{
     await hold(1.5);
     await logView.click("#branch");
@@ -55,18 +62,20 @@ export async function recordFeatures(r) {
     await waitFor("selected branch union",async()=>{const s=await snapshot();return s.filter.branches?.length===2&&s.done;});
     await hold(2); await shot("feature-branches",logRegion);
     await logView.key("#branch-search","Escape");
-    await logView.click("#sort"); await hold(1);
-    await logView.click(".sort-choice:nth-of-type(1)");
+    await graph("By commit date",hold);
     await waitFor("date sort",async()=>{const s=await snapshot();return s.filter.sort!=="topo"&&s.done;});
     await hold(1.5);
-    await logView.click("#sort"); await logView.click(".sort-choice:nth-of-type(2)");
+    await graph("By branch structure",hold);
     await waitFor("topology sort",async()=>{const s=await snapshot();return s.filter.sort==="topo"&&s.done;});
     await hold(1.5);
-    // Graph folding lives in the ⋯ menu.
-    await logView.click("#toolbar-more"); await logView.evaluate("[...doc.querySelectorAll('#toolbar-menu button')].find((b)=>b.textContent==='Collapse Linear Branches').click();return true;");
-    await waitFor("folded paths",()=>logView.evaluate("return !!doc.querySelector('.folded-row');"));
+    // The rows a sort change re-reads can land after the menu's click: ask again until a run folds.
+    for (let attempt=1;;attempt++) {
+      await graph("Collapse Linear Branches",hold);
+      try { await waitFor("folded paths",()=>logView.evaluate("return !!doc.querySelector('.folded-row, [data-fold-expand]');"),6000); break; }
+      catch (error) { if (attempt===3) throw error; }
+    }
     await hold(2); await shot("feature-folding",logRegion);
-    await logView.click("#toolbar-more"); await logView.evaluate("[...doc.querySelectorAll('#toolbar-menu button')].find((b)=>b.textContent==='Expand Linear Branches').click();return true;"); await hold(1.5);
+    await graph("Expand Linear Branches",hold); await hold(1.5);
     await logView.click("#author");
     await waitFor("author checklist",()=>logView.evaluate("return doc.querySelectorAll('#author-picker input[data-author]').length>=2;"));
     await logView.evaluate("doc.querySelectorAll('#author-picker input[data-author]')[0].click();return true;");
@@ -83,8 +92,11 @@ export async function recordFeatures(r) {
     for(let i=0;i<4;i++)await logView.key("#detail-splitter","ArrowUp");
     await logView.evaluate("doc.activeElement?.blur();return true;");
     await hold(2); await shot("feature-commit-review",changesRegion);
-    await logView.click(".branches-toggle"); await hold(1);
-    await logView.click(".branches-toggle"); await hold(1);
+    // Only branches the pills do not name are listed (a tip's are all named): toggled when there.
+    if (await logView.evaluate("return !!doc.querySelector('.branches-toggle');")) {
+      await logView.click(".branches-toggle"); await hold(1);
+      await logView.click(".branches-toggle"); await hold(1);
+    }
     await logView.click("#detail-toggle"); await hold(1);
     await logView.click("#detail-toggle"); await hold(1);
     await resize(logView,"#detail-splitter",0,64,hold);
@@ -94,6 +106,23 @@ export async function recordFeatures(r) {
     await select(target); await hold(1.5);
     await logView.fill("#file-filter","PaymentStep"); await hold(1.5);
     await logView.fill("#file-filter",""); await hold(1);
+  });
+
+  // The search language: the operator popup, a value suggested, two operators run by git log.
+  await clip("feature-search",logRegion,async hold=>{
+    await hold(1);
+    await logView.fill("#search",""); await hold(1.5);
+    for (const text of ["a","au","author:","author:r","author:rin"]) { await logView.fill("#search",text); await hold(0.7); }
+    await hold(1);
+    for (const text of ["author:rin ","author:rin f","author:rin file:","author:rin file:src/pay"]) { await logView.fill("#search",text); await hold(0.6); }
+    await logView.fill("#search","author:rin file:src/payments");
+    await waitFor("operator search",async()=>{const s=await snapshot();return s.done&&s.rows.length>0&&s.rows.every(r=>r.author==="rin");});
+    await logView.evaluate("doc.getElementById('search').dispatchEvent(new doc.defaultView.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));return true;");
+    await hold(2.5); await shot("feature-search",logRegion);
+    await logView.fill("#search","");
+    await waitFor("search cleared",async()=>{const s=await snapshot();return s.filter.text===""&&s.done&&s.rows.length>10;});
+    await logView.evaluate("doc.activeElement?.blur();return true;");
+    await hold(1);
   });
 
   const rootSha=execFileSync("git",["rev-list","--max-parents=0","HEAD"],{cwd:web.root,encoding:"utf8",windowsHide:true}).trim().split(/\s+/)[0];
@@ -136,5 +165,5 @@ export async function recordFeatures(r) {
     await compare.evaluate("doc.activeElement?.blur();return true;");await hold(1.5);
   });
   await compare.close();
-  writeFileSync(join(output,"features.json"),JSON.stringify({version:"1.4.2",clips:manifest},null,2));
+  writeFileSync(join(output,"features.json"),JSON.stringify({version:"1.7.0",clips:manifest},null,2));
 }

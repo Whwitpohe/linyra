@@ -336,6 +336,16 @@ repos.forEach((name, seed) => {
     git("update-ref", "refs/remotes/origin/release-1.4", "HEAD");
     git("checkout", "-q", "main");
     total += 3;
+    // An origin that is never fetched (VS Code's autofetch is off): upstreams for the pills, the
+    // Repo List's ↑/↓ and the branch sheet. acme-libs has one commit on main not pushed yet.
+    git("remote", "add", "origin", `https://git.acme.test/acme/${name}.git`);
+    for (const branch of ["main", "release-1.4", "feature/saved-cards"]) git("branch", "-q", "-u", `origin/${branch}`, branch);
+    if (name === "acme-libs") {
+      commit(repo, now - 420, "dana", "docs(payments): document the saved-card flag (ACME-142)", {
+        "docs/saved-cards.md": "# Saved cards\n\nThe rollout flag lives in src/payments/rollout.ts.\n",
+      });
+      total++;
+    }
   }
 });
 

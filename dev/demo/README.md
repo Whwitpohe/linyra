@@ -58,21 +58,24 @@ Outputs go to ignored `dev/demo/out/`:
 - `demo.gif`: search a ticket across four repositories and review web/API diffs.
 - `screenshot-log.png`, `screenshot-search.png`: complete working layout.
 - `screenshot-details.png`: readable commit details and real reference icons.
+- `screenshot-branch-sheet.png`: release-1.4's branch sheet, opened from its pill.
+- `screenshot-insights.png`, `screenshot-insights-files.png`: Visual History and the Files treemap.
 - `screenshot-branches.png`, `screenshot-sort.png`, `screenshot-branch-sidebar.png`.
 - `screenshot-file-search.png`, `screenshot-file-history.png`, `screenshot-uncommitted.png`.
 - `screenshot-compare.png`, `screenshot-compare-commits.png`.
 - Individual light/dark/high-contrast images and `screenshot-themes.png`.
 - `recording.json`: capture dimensions, locale, example repositories and frame count.
 
-For the focused 1.4.2 feature recordings, run `node dev/demo/capture.mjs --features`.
+For the focused feature recordings, run `node dev/demo/capture.mjs --features`.
 Set `LINYRA_CAPTURE_OUTPUT` to a separate output directory if keeping both runs.
-The four GIFs show branch/author checklists, sorting and graph folding; commit references,
-containing branches, real divider dragging and file filtering; old-commit hash lookup;
-and comparison modes, commit expansion, repository switching, swapping and divider dragging.
+The five GIFs show branch/author checklists, sorting and graph folding (the Graph column's
+menu); commit references, real divider dragging and file filtering; the search language's
+popup and an operator query; old-commit hash lookup; and comparison modes, commit expansion,
+repository switching, swapping and divider dragging.
 `features.json` records the frame counts and native crop regions. The smaller crops retain
 the actual UI pixels and avoid shrinking a whole editor around the feature being explained.
 `node dev/demo/capture.mjs --settings` separately captures the native Settings editor,
-filtered to Linyra's six registered settings, using the same isolated profile.
+filtered to Linyra's registered settings, using the same isolated profile.
 
 The recording reads existing fixture changes but never stages, discards or commits them.
 The ordinary input path is used for message search, commit selection and branch checkboxes;

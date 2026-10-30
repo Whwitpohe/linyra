@@ -13,11 +13,10 @@ search. Follow its branches and merges, read the complete commit message, and op
 file in VS Code's native diff editor. Then commit, push and update every repository in one
 step, each in its own repository.
 
-![Select several branches and authors, switch date/topological order, then fold and expand linear history](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-branches.gif)
+![Select several branches and authors, switch date/topological order, then fold and expand linear history](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-branches.gif)
 
-The recordings use six neutral example repositories and real Git history, and show the
-1.5.0 look; since 1.7.0 a row also draws its author's disc, its branch pills and a Changes
-column. Screenshots can be opened at full resolution.
+The recordings use six neutral example repositories and real Git history in a real VS Code
+window. Screenshots can be opened at full resolution.
 
 ## What's new in 1.7.0
 
@@ -65,7 +64,7 @@ Search a ticket number, phrase or commit message once. Results from the selected
 repositories appear together; repository color bands show where each commit belongs.
 Click a commit to see its changed files, then click a file to open its native diff.
 
-![Merged history with real branch lanes, repository bands, changed files and a native diff above](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-log.png)
+![Merged history with real branch lanes, repository bands, changed files and a native diff above](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-log.png)
 
 - **A search language, run by Git.** Plain words search commit messages. Operators narrow
   the search, and each one becomes `git log`'s own flags: `message:` and `-message:`,
@@ -75,6 +74,8 @@ Click a commit to see its changed files, then click a file to open its native di
   every operator with an example and suggests authors, branches, tags and repositories as
   you type. Match Case, Whole Word, Regex and Match All sit beside it; ↑/↓ recall recent
   searches.
+
+  ![Type author: and file: in the search box: the popup suggests operators and authors, and git log runs the query in every repository](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-search.gif)
 - **Hash lookup.** A full hash or a hexadecimal prefix of at least seven characters locates
   a commit directly; `sha:abcd` accepts prefixes of at least four. The lookup temporarily
   ignores the other filters within the selected repositories; clearing it restores them.
@@ -99,14 +100,14 @@ offers **Undo Commit…** and **Edit Commit Message…** on the checked-out comm
 its menu, on every row. While the ticked repositories have uncommitted work, an
 **Uncommitted changes** row sits above the newest commit: click it for that work's files.
 
-**In the clip:** select `main` and `feature/saved-cards`, switch date/topological order,
-fold and expand linear paths, then select several authors. Branch tips and real merges
+**In the clip:** select `main` and `feature/saved-cards`, switch date/topological order and
+fold and expand linear paths from the Graph column's menu, then select several authors. Branch tips and real merges
 remain visible. Defaults are all local/remote branches and all authors.
 
 **Find an old commit without resetting your filters.** Paste a hash; the lookup finds a
 three-month-old commit even with **Last 24 hours** selected. Clear it to restore the log.
 
-![Paste a short hash to locate an old commit, then clear it to restore the previous filters](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-hash-lookup.gif)
+![Paste a short hash to locate an old commit, then clear it to restore the previous filters](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-hash-lookup.gif)
 
 ## Read the complete commit
 
@@ -115,10 +116,11 @@ repository, copyable hash, author, date, parent links (a click selects that pare
 branch pills. The checked-out branch's pill starts with **HEAD**; the branches listed under
 it are only those the pills do not already name.
 
-![Read colored references and complete metadata, resize or hide the details, and search the commit's files](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-commit-review.gif)
+![Read colored references and complete metadata, resize or hide the details, and search the commit's files](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-commit-review.gif)
 
-**In the clip:** inspect HEAD/local/remote/tag icons and containing branches, hide and
-restore the details, drag the divider, then filter the selected commit to `PaymentStep`.
+**In the clip:** read a merge commit's message, co-author and branch, remote and tag pills,
+hide and restore the details, drag the divider, then filter another commit's files to
+`PaymentStep`.
 
 Drag the divider between files and commit details to adjust their heights. The small
 arrow hides or restores the details; both the size and visibility are remembered.
@@ -145,13 +147,15 @@ Changes view (or **Show Branch Details**):
 - **Across repositories:** on request, the same branch in every ticked repository (checked
   out, ↑ ↓, diverged, gone), with Check Out Everywhere…, Push… and Update Project….
 
+![A branch sheet in the Changes view: its upstream, next steps and the same branch across repositories](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-branch-sheet.png)
+
 ## Compare branches across the workspace
 
 Open **Linyra: Compare Branches** or use the comparison button in the Log toolbar.
 Choose the left and right branches once to compare them in the selected repositories.
 The repository list identifies differences and reports missing branches.
 
-![Switch comparison between Files and Commits, expand a commit, change repository, swap branches and resize the sides](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-compare.gif)
+![Switch comparison between Files and Commits, expand a commit, change repository, swap branches and resize the sides](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-compare.gif)
 
 **In the clip:** the release and main branches each have their own changes. Switch
 **Files / Commits**, expand commit files, select another repository, swap the pair and
@@ -229,7 +233,7 @@ out.
   and Remove Worktree…. Favorites stay on top; **Untick**, **Always Hide (Settings)** and
   saved **profiles** choose what the Log shows.
 
-![The Repositories tree searched for a branch name: each repository opens onto its Local and Remote branches](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-branch-sidebar.png)
+![The Repositories tree searched for a branch name: each repository opens onto its Local and Remote branches](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-branch-sidebar.png)
 
 ## Commit from the side bar
 
@@ -286,6 +290,10 @@ ticked repositories, one of them, or that path:
   **Optimize Selected…** names every command in one confirmation; nothing is written
   without it.
 
+![Visual History: one bubble per commit, one row per author, colored by repository](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-insights.png)
+
+![The Files treemap: every repository's tracked files by size, colored by file type](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-insights-files.png)
+
 ## More tools for daily work
 
 | Tool | Where and what it does |
@@ -299,7 +307,7 @@ ticked repositories, one of them, or that path:
 | **Blame and current file** | Native diff/revision editors show line attribution. **Open File** opens the current workspace file at the same line. |
 | **Copy and remote links** | Commit and file context menus expose copy actions and remote links for supported Git hosts. |
 
-![File History follows the selected file while its native diff stays open](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-file-history.png)
+![File History follows the selected file while its native diff stays open](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-file-history.png)
 
 ## Keyboard and appearance
 
@@ -323,7 +331,7 @@ Colors and typography follow your VS Code theme, including light, dark and both
 high-contrast themes. Linyra follows the display language: English and Simplified Chinese
 are supported, with English as the fallback.
 
-![The same real workspace in dark, light and both high-contrast themes](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/screenshot-themes.png)
+![The same real workspace in dark, light and both high-contrast themes](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/screenshot-themes.png)
 
 ## Settings and requirements
 
@@ -354,7 +362,7 @@ From 1.4.2, settings use only **`linyra.*`**. Old `polylog.*` settings are not r
 migrated. Set Linyra preferences under the new keys if needed; existing configuration
 files are left untouched.
 
-![The native VS Code Settings editor lists Linyra's settings under its own name](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.5.0/feature-settings.png)
+![The native VS Code Settings editor lists Linyra's settings under its own name](https://raw.githubusercontent.com/Whwitpohe/linyra/main/media/v1.7.0/feature-settings.png)
 
 Filters are passed to Git; results are merged as pages arrive. There is no persistent
 history index or database, and Linyra does not fetch in the background. Filter input is
