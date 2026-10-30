@@ -11,9 +11,10 @@ export type ChangesStage = "full" | "compact" | "mini" | "icon";
 /**
  * Per stage, in px: the column's width for a bar, for numbers and for squares (the files count,
  * the lines' total and the squares: "999+ 999k" needs about 129px), and the drawing's track.
+ * Text gets 8px more than Windows' fonts need: Linux's set the same digits wider.
  */
 export const STAGES: Record<ChangesStage, { column: number; numbers: number; squares: number; track: number }> = {
-  full: { column: 118, numbers: 124, squares: 136, track: 64 }, compact: { column: 88, numbers: 88, squares: 88, track: 52 },
+  full: { column: 118, numbers: 132, squares: 136, track: 64 }, compact: { column: 88, numbers: 88, squares: 88, track: 52 },
   mini: { column: 52, numbers: 52, squares: 52, track: 46 }, icon: { column: 18, numbers: 28, squares: 18, track: 0 },
 };
 export const columnWidth = (mode: Exclude<ChangesMode, "off">, stage: ChangesStage): number =>

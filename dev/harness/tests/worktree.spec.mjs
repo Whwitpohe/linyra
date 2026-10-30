@@ -98,8 +98,11 @@ test("↑/↓ move the selection; a narrow Log drops the time, and no row runs p
   await expect(page.locator(".work-row").nth(1)).toHaveAttribute("aria-selected", "true");
   for (const width of [1250, 1000, 800]) {
     await page.setViewportSize({ width, height: 400 });
-    const log = await page.locator(".log").boundingBox();
-    if (log.width <= 760) await expect(page.locator(".work-edited").first()).toBeHidden();
+    // Automatic layout may still be moving the Changes view: the time agrees with the width it settles at.
+    await expect.poll(async () => {
+      const log = await page.locator(".log").boundingBox();
+      return log.width > 760 || !(await page.locator(".work-edited").first().isVisible());
+    }, { message: `${width}px: the time hidden in a Log 760px or narrower` }).toBe(true);
     const overflow = await page.locator(".work-row").evaluateAll((els) => els.filter((el) => el.scrollWidth > el.clientWidth + 1).length);
     expect(overflow, `${width}px`).toBe(0);
     await expect(page.locator(".work-row .work-counts .counts").first()).toBeVisible();
