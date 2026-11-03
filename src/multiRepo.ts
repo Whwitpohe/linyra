@@ -423,8 +423,8 @@ export class MultiRepo {
   }
 
   /** `git merge` of a ref into the repository's checked-out branch (no editor, no autostash). */
-  mergeRef(repo: Repo, ref: string): Promise<string> {
-    return this.git(repo, multiCommands.merge(ref));
+  mergeRef(repo: Repo, ref: string, message?: string): Promise<string> {
+    return this.git(repo, multiCommands.merge(ref, message));
   }
 
   /** Each ticked repository's branches and remotes (undefined when they could not be read). */

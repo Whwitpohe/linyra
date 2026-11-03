@@ -5,7 +5,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { parseShow, showArgs } from "./commitDetail";
 import {
-  bothPaths, filesArgs, sameNow, tipsDiffArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure, mirror, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog,
+  bothPaths, filesArgs, sameNow, tipsDiffArgs, logArgs, mergeBaseArgs, mergeMessage, mergeTreeArgs, mergeTreeFailure, mirror, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog,
   resolveInput, setRemoteNames, sideCountArgs, type Pair, type RepoCompare, type Side, type SideCommit,
 } from "./compareModel";
 import { GitError } from "./git";
@@ -316,7 +316,7 @@ export class CompareStore implements vscode.Disposable {
     if (!(await ancestor(into.sha, from.sha))) {
       const merged = parseMergeTree(await run(mergeTreeArgs(into.sha, from.sha)));
       if (!merged) throw new Error(localize("git merge-tree did not name the merged tree."));
-      to = (await run(["commit-tree", merged.tree, "-p", into.sha, "-p", from.sha, "-F", "-"], `Merge branch '${from.name}' into ${into.name}\n`)).trim();
+      to = (await run(["commit-tree", merged.tree, "-p", into.sha, "-p", from.sha, "-F", "-"], `${mergeMessage(from.name, into.name)}\n`)).trim();
     }
     await run(["update-ref", "-m", `merge ${from.name}: Merge made by Linyra`, `refs/heads/${into.name}`, to, into.sha]);
   }

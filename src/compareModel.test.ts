@@ -4,11 +4,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
-  bothPaths, candidates, COMMIT_PAGE, conflictNames, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure,
+  bothPaths, candidates, COMMIT_PAGE, conflictNames, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeMessage, mergeTreeArgs, mergeTreeFailure,
   mergeSkips, mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, previewPaths, pushRecent, refsOf, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
   sidePage, repoDescription, sideCountArgs, summaryLabel, tabTitle, validPair, type RepoCompare,
 } from "./compareModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
+import { multiCommands } from "./multiRepoModel";
 import type { FileChange } from "./types";
 
 const A = "a".repeat(40);
@@ -132,6 +133,30 @@ console.log("ok - the merge check: merge-tree in memory, its conflicted files, a
       assert.strictEqual(git(["cat-file", "blob", `main:${at.right}`]), text(9, "main"), `${side}: ▶ as it is now`);
     }
     console.log("ok - real git: a conflict on a file ◀ renamed is found on both sides, and its merge previews");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+{
+  // Real git: ▶ checked out; ◀ moved on after the comparison (a fetch, a commit). The merge takes ◀
+  // as compared, named as its branch, not the new commit nobody checked.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-compare-"));
+  const repo = path.join(home, "acme-web");
+  const git = (args: string[]) => execFileSync("git", args, { cwd: repo, env: { ...gitEnv(home), GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  try {
+    makeRepo(repo, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "1\n" } }], home);
+    git(["switch", "-q", "-c", "release-1.4"]);
+    commitAt(repo, home, { time: 1100, author: "dana", message: "feat: billing page", files: { "billing.ts": "export {};\n" } });
+    const compared = git(["rev-parse", "HEAD"]);
+    commitAt(repo, home, { time: 1200, author: "rin", message: "feat: not reviewed", files: { "late.ts": "export {};\n" } });
+    git(["switch", "-q", "main"]);
+    commitAt(repo, home, { time: 1300, author: "dana", message: "fix: on main", files: { "a.txt": "2\n" } });
+    git(multiCommands.merge(compared, mergeMessage("release-1.4", "main")));
+    assert.deepStrictEqual(git(["rev-list", "--parents", "-1", "HEAD"]).split(" ").slice(2), [compared], "◀ as compared");
+    assert.strictEqual(git(["log", "-1", "--format=%s"]), "Merge branch 'release-1.4' into main");
+    assert.ok(!fs.existsSync(path.join(repo, "late.ts")), "◀'s later commit is not merged");
+    console.log("ok - real git: Merge ◀ into ▶ where ▶ is checked out merges ◀ as compared, named as its branch");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

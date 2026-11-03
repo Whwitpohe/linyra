@@ -141,7 +141,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const mergeDocs = new MergePreviewDocs();
   const compareDeps = { context, store: compare, log, selection, mergeDocs, ask,
     mergeEach: (title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string; failed?: boolean }[], opts?: { quiet?: boolean }) => multiRepo.mergeEach(title, plans, skipped, opts),
-    mergeRef: (repo: Repo, ref: string) => multiRepo.mergeRef(repo, ref) };
+    mergeRef: (repo: Repo, ref: string, message?: string) => multiRepo.mergeRef(repo, ref, message) };
   const compareRepos = new CompareRepos(compareDeps);
   // The hover card's Compare: the HEAD row's branch against its merge target, in Compare Branches.
   log.hover.compare = (repoId, left, right) => compareRepos.comparePair({ left, right }, repoId);

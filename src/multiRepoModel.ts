@@ -62,7 +62,8 @@ export const multiCommands = {
   checkout: (name: string) => ["switch", "--no-guess", checkName(name)],
   track: (name: string, remote: string) => ["switch", "--track", "-c", checkName(name), `${remote}/${checkName(name)}`],
   create: (name: string) => ["switch", "-c", checkName(name)],
-  merge: (ref: string) => ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--no-edit", "--quiet", "--", checkName(ref)],
+  /** `message`: the merge commit's, for a commit merged by its hash (Compare's ◀ as compared). */
+  merge: (ref: string, message?: string) => ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--no-edit", "--quiet", ...(message ? ["-m", message] : []), "--", checkName(ref)],
   /**
    * Update Project. No autostash on purpose: it would put local edits back with conflict markers
    * and still exit 0. A repository whose local changes are in the way is skipped and named.

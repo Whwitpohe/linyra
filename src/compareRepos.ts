@@ -2,7 +2,7 @@ import { localize } from "./i18n";
 import { randomBytes } from "crypto";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
-import { candidates, COMMIT_PAGE, conflictNote, isGroupSelection, manyRepos, MANY_PREFIX, mergeSkips, selectionIds, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type MergeSkip, type Pair } from "./compareModel";
+import { candidates, COMMIT_PAGE, conflictNote, isGroupSelection, manyRepos, MANY_PREFIX, mergeMessage, mergeSkips, selectionIds, pairDuplicates, pushRecent, releaseNotes, repoCounts, sideLabel, summaryLabel, tabTitle, validPair, type MergeSkip, type Pair } from "./compareModel";
 import { COMPARE_PROMPT_MESSAGES, type CRepoRow, type CompareLayout, type ReposHost, type ReposWebview } from "./compareProtocol";
 import { PromptPort } from "./promptPort";
 import type { CompareStore } from "./compareStore";
@@ -21,8 +21,8 @@ export interface ReposDeps extends Deps {
   ask: Ask;
   /** Runs each plan's merge, with progress, the repositories' refresh and one report; `skipped` joins the report. */
   mergeEach(title: string, plans: { repo: Repo; merge: () => Promise<unknown> }[], skipped: { name: string; reason: string; failed?: boolean }[], opts?: { quiet?: boolean }): Promise<MultiResult | undefined>;
-  /** `git merge` of a ref into the repository's checked-out branch. */
-  mergeRef(repo: Repo, ref: string): Promise<unknown>;
+  /** `git merge` of a ref into the repository's checked-out branch (`message`: the merge commit's). */
+  mergeRef(repo: Repo, ref: string, message?: string): Promise<unknown>;
 }
 import { renderReposHtml } from "./webview/compare/html";
 import { accentOf } from "./webview/view";
@@ -565,9 +565,10 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       // Git names the worktree by its real path; the repository's root may reach it by another.
       const here = worktree !== "" && await sameFolder(worktree, repo.root);
       if (worktree !== "" && !here) { skipped.push({ name: repo.name, why: "worktree", into }); return; }
+      // ◀ as compared (and checked for conflicts), not wherever its name points by the time it runs.
       const from = { name: result.leftName, sha: result.leftSha };
       plans.push({ repo, from: result.leftName, into, checkedOut: here, commits: result.left, upstream: parseUpstream(`${remote}\0${remoteRef}`),
-        merge: here ? () => this.deps.mergeRef(repo, result.leftName) : () => this.deps.store.mergeInPlace(repo, from, { name: into, sha }) });
+        merge: here ? () => this.deps.mergeRef(repo, from.sha, mergeMessage(from.name, into)) : () => this.deps.store.mergeInPlace(repo, from, { name: into, sha }) });
     }, new AbortController().signal);
     const order = (name: string) => targets.findIndex((x) => x.repo.name === name);
     plans.sort((a, b) => order(a.repo.name) - order(b.repo.name));

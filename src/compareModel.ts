@@ -162,6 +162,14 @@ export function parseMergeTree(out: string): { tree: string; conflicts: string[]
   return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) ? { tree, conflicts: [...new Set(paths)] } : undefined;
 }
 
+/**
+ * Merge ◀ into ▶'s commit message, with or without a checkout: ◀ is merged as the commit compared,
+ * so git would name it by its hash; the branch names it.
+ */
+export function mergeMessage(from: string, into: string): string {
+  return `Merge branch '${from}' into ${into}`;
+}
+
 /** Why merge-tree did not answer: no shared history, a git too old for it, or another failure. */
 export function mergeTreeFailure(message: string): "nobase" | "unsupported" | "error" {
   if (/unrelated histories/i.test(message)) return "nobase";
