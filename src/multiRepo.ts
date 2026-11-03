@@ -4,7 +4,7 @@ import { isValidRef } from "./filterModel";
 import { checkValue, listValue, textValue } from "./formModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
+import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, mergePlan, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
@@ -137,17 +137,15 @@ export class MultiRepo {
     const all = await this.read(preset?.only);
     const name = preset?.name ?? await this.pickShared(all, localize("Branch to merge into each repository's current branch"));
     if (!name) return undefined;
+    // Each repository's own branch of that name as a full ref: a tag named alike is never what is merged.
     const plans = all.map((x) => {
-      if (!x.data?.current) return { ...x, ref: undefined, why: localize("no branch checked out") };
-      if (x.data.current === name) return { ...x, ref: undefined, why: localize("it is the current branch") };
-      if (x.data.branches.some((b) => b.kind === "local" && b.name === name)) return { ...x, ref: name, why: "" };
-      const remotes = x.data.branches.filter((b) => b.kind === "remote" && b.remoteBranch === name);
-      return remotes.length === 1 ? { ...x, ref: remotes[0].name, why: "" } : { ...x, ref: undefined, why: localize("no such branch") };
+      const plan = x.data ? mergePlan(x.data, name) : { why: localize("no such branch") };
+      return "ref" in plan ? { ...x, ref: plan.ref, label: plan.label, why: "" } : { ...x, ref: undefined, label: "", why: plan.why };
     });
     const act = plans.filter((p) => p.ref);
     if (!act.length) return this.report(localize("Merge {0}", name), "merge", { done: [], unchanged: [], stopped: [], skipped: plans.map((p) => ({ name: p.repo.name, reason: p.why })) });
     if (!preset && !(await this.host.ask.warning(localize("Merge {0} into the current branch of {1} repositories?", name, act.length),
-      act.map((p) => `${p.repo.name}: ${p.ref} → ${p.data!.current}`).join("\n"), localize("Merge")))) return undefined;
+      act.map((p) => `${p.repo.name}: ${p.label} → ${p.data!.current}`).join("\n"), localize("Merge")))) return undefined;
     const result = await this.each(localize("Merging {0}", name), act.map((p) => p.repo), (repo) => this.git(repo, multiCommands.merge(act.find((p) => p.repo.id === repo.id)!.ref!)));
     result.skipped.push(...plans.filter((p) => !p.ref).map((p) => ({ name: p.repo.name, reason: p.why })));
     return this.report(localize("Merge {0}", name), "merge", result);

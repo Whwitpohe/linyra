@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, forcePushProtected, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, protectionPatterns, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, forcePushProtected, forwardReason, headDistance, isProtected, mergePlan, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, protectionPatterns, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -136,6 +136,43 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.deepStrictEqual(multiCommands.update("ffOnly"), ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"]);
   assert.strictEqual(updateReason("fatal: Not possible to fast-forward, aborting."), "it has diverged from its upstream: merge or rebase it");
   console.log("ok - Update Project's method: the setting, the last one first, and fast-forward only");
+}
+
+{
+  // Real git: a branch and a tag both named release-1.4 (and a tag named like the remote branch).
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-multi-tagged-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const read = (cwd: string) => parseBranches(git(cwd, branchArgs()), git(cwd, ["remote"]).split(/\r?\n/).filter(Boolean));
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    git(seed, ["switch", "-q", "-c", "release-1.4"]);
+    fs.writeFileSync(path.join(seed, "branch.txt"), "on the branch\n");
+    git(seed, ["add", "branch.txt"]); git(seed, ["commit", "-q", "-m", "feat: on release-1.4"]);
+    git(seed, ["switch", "-q", "main"]);
+    const web = path.join(home, "acme-web");
+    git(home, ["clone", "-q", seed, web]);
+    git(web, ["branch", "release-1.4", "origin/release-1.4"]);
+    fs.writeFileSync(path.join(web, "tag.txt"), "tagged elsewhere\n");
+    git(web, ["add", "tag.txt"]); git(web, ["commit", "-q", "-m", "feat: tagged"]);
+    git(web, ["tag", "release-1.4"]); git(web, ["tag", "origin/release-1.4"]);
+    git(web, ["reset", "-q", "--hard", "HEAD~1"]);
+    const plan = mergePlan(read(web), "release-1.4");
+    assert.deepStrictEqual(plan, { ref: "refs/heads/release-1.4", label: "release-1.4" });
+    git(web, multiCommands.merge("ref" in plan ? plan.ref : ""));
+    assert.ok(fs.existsSync(path.join(web, "branch.txt")) && !fs.existsSync(path.join(web, "tag.txt")), "the branch is merged, not the tag");
+    git(web, ["branch", "-q", "-D", "release-1.4"]);
+    assert.deepStrictEqual(mergePlan(read(web), "release-1.4"), { ref: "refs/remotes/origin/release-1.4", label: "origin/release-1.4" }, "only on the remote: its full ref");
+    git(web, multiCommands.track("release-1.4", "origin"));
+    assert.strictEqual(git(web, ["config", "branch.release-1.4.merge"]), "refs/heads/release-1.4", "tracks the remote branch, though a tag has its short name");
+    assert.strictEqual(git(web, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "refs/remotes/origin/release-1.4"]));
+    assert.deepStrictEqual(mergePlan(read(web), "release-1.4"), { why: "it is the current branch" });
+    assert.deepStrictEqual(mergePlan(read(web), "acme-missing"), { why: "no such branch" });
+    console.log("ok - real git: Merge into Current and Check Out across repositories take the branch, never a tag of its name");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 }
 
 {

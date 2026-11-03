@@ -57,12 +57,30 @@ export function checkoutStep(data: Branches, name: string): CheckoutStep {
   return remotes.length === 1 ? "track" : "missing";
 }
 
+/**
+ * What Merge into Current merges in one repository: the local branch, else the one remote branch of
+ * that name, as a full ref; git reads a short name as a tag first. undefined: nothing to merge (`why`).
+ */
+export function mergePlan(data: Branches, name: string): { ref: string; label: string } | { why: string } {
+  if (!data.current) return { why: localize("no branch checked out") };
+  if (data.current === name) return { why: localize("it is the current branch") };
+  const local = data.branches.find((b) => b.kind === "local" && b.name === name);
+  if (local) return { ref: local.ref, label: local.name };
+  const remotes = data.branches.filter((b) => b.kind === "remote" && b.remoteBranch === name);
+  return remotes.length === 1 ? { ref: remotes[0].ref, label: remotes[0].name } : { why: localize("no such branch") };
+}
+
 /** Explicit argv; names are checked against git's ref rules, so none can read as an option. */
 export const multiCommands = {
+  /** git switch takes a branch name only: a tag of the same name is never checked out. */
   checkout: (name: string) => ["switch", "--no-guess", checkName(name)],
-  track: (name: string, remote: string) => ["switch", "--track", "-c", checkName(name), `${remote}/${checkName(name)}`],
+  /** The remote branch as a full ref: a tag or local branch named origin/x would win the short name. */
+  track: (name: string, remote: string) => ["switch", "--track", "-c", checkName(name), `refs/remotes/${checkName(`${remote}/${name}`)}`],
   create: (name: string) => ["switch", "-c", checkName(name)],
-  /** `message`: the merge commit's, for a commit merged by its hash (Compare's ◀ as compared). */
+  /**
+   * `ref`: a full ref (mergePlan) wherever a tag could share the name. `message`: the merge
+   * commit's, for a commit merged by its hash (Compare's ◀ as compared).
+   */
   merge: (ref: string, message?: string) => ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--no-edit", "--quiet", ...(message ? ["-m", message] : []), "--", checkName(ref)],
   /**
    * Update Project. No autostash on purpose: it would put local edits back with conflict markers
