@@ -4,11 +4,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
-  bothPaths, candidates, COMMIT_PAGE, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure,
-  mergeSkips, mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, pushRecent, refsOf, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
+  bothPaths, candidates, COMMIT_PAGE, conflictNames, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure,
+  mergeSkips, mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, previewPaths, pushRecent, refsOf, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
   sidePage, repoDescription, sideCountArgs, summaryLabel, tabTitle, validPair, type RepoCompare,
 } from "./compareModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
+import type { FileChange } from "./types";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -84,6 +85,57 @@ assert.strictEqual(mergeTreeFailure("unknown option `write-tree'"), "unsupported
 assert.strictEqual(mergeTreeFailure("bad object"), "error");
 assert.ok(isConflict(["src/a.ts"], { path: "src/a.ts" }) && isConflict(["old.ts"], { path: "new.ts", oldPath: "old.ts" }) && !isConflict(null, { path: "src/a.ts" }));
 console.log("ok - the merge check: merge-tree in memory, its conflicted files, and why it could not tell");
+
+{
+  // ◀ renamed old.txt to new.txt and edited it; ▶ edited old.txt. merge-tree names the conflict new.txt.
+  const renamed: FileChange = { path: "new.txt", oldPath: "old.txt", status: "R", added: 1, deleted: 1 };
+  const edited: FileChange = { path: "old.txt", status: "M", added: 1, deleted: 1 };
+  const names = conflictNames(["new.txt"], [renamed]);
+  assert.ok(isConflict(names, renamed) && isConflict(names, edited), "both sides' rows are the conflict");
+  assert.strictEqual(conflictNames(null, [renamed]), null);
+  assert.deepStrictEqual(conflictNames(["other.txt"], [renamed]), ["other.txt"], "a rename adds its old name only when its new one conflicts");
+  const files = { left: [renamed], right: [edited] };
+  assert.deepStrictEqual(previewPaths("left", renamed, ["new.txt"], files), { merged: "new.txt", right: "old.txt" });
+  assert.deepStrictEqual(previewPaths("right", edited, ["new.txt"], files), { merged: "new.txt", right: "old.txt" });
+  // The other way: ▶ renamed it, ◀ edited the old name. ▶ has it as new.txt now.
+  const swapped = { left: [edited], right: [renamed] };
+  assert.deepStrictEqual(previewPaths("left", edited, ["new.txt"], swapped), { merged: "new.txt", right: "new.txt" });
+  assert.deepStrictEqual(previewPaths("right", renamed, ["new.txt"], swapped), { merged: "new.txt", right: "new.txt" });
+  assert.deepStrictEqual(previewPaths("left", { path: "a.ts" }, ["a.ts"], { left: [], right: [] }), { merged: "a.ts", right: "a.ts" }, "no rename");
+  console.log("ok - a conflict on a file one side renamed: both sides' rows, and the merged file under the name the merge keeps");
+}
+
+{
+  // Real git: the rename on ◀, the edit on ▶, and what merge-tree and Files mode name.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-compare-"));
+  const repo = path.join(home, "acme-web");
+  const git = (args: string[]) => {
+    try { return execFileSync("git", args, { cwd: repo, env: gitEnv(home), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }); }
+    catch (e) { if ((e as { status?: number }).status === 1) return String((e as { stdout?: unknown }).stdout); throw e; }
+  };
+  try {
+    const lines = Array.from({ length: 20 }, (_, i) => `${i + 1}`);
+    const text = (at: number, s: string) => lines.map((l, i) => (i === at ? s : l)).join("\n") + "\n";
+    makeRepo(repo, [{ time: 1000, author: "dana", message: "feat: base", files: { "old.txt": text(-1, "") } }], home);
+    git(["switch", "-q", "-c", "release-1.4"]);
+    commitAt(repo, home, { time: 1100, author: "dana", message: "refactor: rename", files: { "old.txt": null, "new.txt": text(9, "release") } });
+    git(["switch", "-q", "main"]);
+    commitAt(repo, home, { time: 1200, author: "rin", message: "fix: on main", files: { "old.txt": text(9, "main") } });
+    const merged = parseMergeTree(git(mergeTreeArgs("release-1.4", "main")))!;
+    assert.deepStrictEqual(merged.conflicts, ["new.txt"]);
+    const files = { left: parseFiles(git(filesArgs("main", "release-1.4"))), right: parseFiles(git(filesArgs("release-1.4", "main"))) };
+    const names = conflictNames(merged.conflicts, [...files.left, ...files.right]);
+    assert.deepStrictEqual([files.left.map((f) => isConflict(names, f)), files.right.map((f) => isConflict(names, f))], [[true], [true]], "the rename and the edit");
+    for (const side of ["left", "right"] as const) {
+      const at = previewPaths(side, files[side][0], merged.conflicts, files);
+      assert.match(git(["cat-file", "blob", `${merged.tree}:${at.merged}`]), /^<<<<<<< /m, `${side}: the merged file, its markers`);
+      assert.strictEqual(git(["cat-file", "blob", `main:${at.right}`]), text(9, "main"), `${side}: ▶ as it is now`);
+    }
+    console.log("ok - real git: a conflict on a file ◀ renamed is found on both sides, and its merge previews");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
 assert.deepStrictEqual(sideCountArgs("left", A, B), ["rev-list", "--left-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(sideCountArgs("right", A, B), ["rev-list", "--right-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(parseSideCount("2\t1\n"), { only: 2, same: 1 });

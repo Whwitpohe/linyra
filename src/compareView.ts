@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import { agoText } from "./blameModel";
 import { decorationFor, stat } from "./changesModel";
 import type { OpenDiffArgs } from "./changesTree";
-import { ALL_REPOS, candidates, COMMIT_PAGE, isGroupSelection, selectionIds, isConflict, parseResolve, resolveInput, shownFiles, sidePage, tipPaths, type RepoCompare, type Side, type SideCommit } from "./compareModel";
+import { ALL_REPOS, candidates, COMMIT_PAGE, conflictNames, isGroupSelection, selectionIds, isConflict, parseResolve, previewPaths, resolveInput, shownFiles, sidePage, tipPaths, type RepoCompare, type Side, type SideCommit } from "./compareModel";
 import type { CompareMode, CompareSidePage, CompareTreeRow } from "./compareProtocol";
 import type { CompareStore } from "./compareStore";
 import { fileTree, type TreeNode } from "./fileTree";
@@ -161,6 +161,8 @@ interface RepoDetail {
   files?: FileChange[];
   both?: Set<string>;
   same?: Set<string>;
+  /** Both sides' renamed files: a conflict goes by the name a rename gave it. */
+  renamed?: FileChange[];
   commits?: SideCommit[];
   more?: boolean;
 }
@@ -298,16 +300,19 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     return modeOf(this.deps.context);
   }
 
-  /** A repository's conflicted files as its merge check found them (it lands after the files: read live). */
-  private conflictsOf(repoId: string): string[] | null | undefined {
-    const c = resultOf(this.deps.store, repoId)?.result;
-    return c?.kind === "differs" ? c.conflicts : undefined;
+  /**
+   * A repository's conflicted files as its merge check found them (it lands after the files: read
+   * live), under each name a rename gives them on either side.
+   */
+  private conflictsOf(r: RepoDetail): readonly string[] | null | undefined {
+    const c = resultOf(this.deps.store, r.repoId)?.result;
+    return c?.kind === "differs" ? conflictNames(c.conflicts, r.renamed ?? []) : undefined;
   }
 
   /** Files mode: a repository's files listed (Hide Files Already on Both and Only Conflicts applied) and how many were left out as already on both. */
   private filesOf(r: RepoDetail): { shown: FileChange[]; hidden: number } {
     const f = shownFiles(r.files ?? [], r.same ?? new Set(), hideSameOf(this.deps.context));
-    const conflicts = this.conflictsOf(r.repoId);
+    const conflicts = this.conflictsOf(r);
     if (!onlyConflictsOf(this.deps.context) || !conflicts) return f;
     return { shown: f.shown.filter((x) => isConflict(conflicts, x)), hidden: f.hidden };
   }
@@ -429,7 +434,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         const tip = this.side === "left" ? result.leftSha : result.rightSha;
         if (mode === "files") {
           const f = await this.deps.store.readFiles(repo.id);
-          return { repoId: repo.id, tip, files: f[this.side], both: new Set(f.both), same: new Set(f.same) };
+          return { repoId: repo.id, tip, files: f[this.side], both: new Set(f.both), same: new Set(f.same), renamed: [...f.left, ...f.right].filter((x) => x.oldPath !== undefined) };
         }
         const page = sidePage(await this.deps.store.readCommits(repo.id, this.side, limit + 1), limit);
         return { repoId: repo.id, tip, commits: page.rows, more: page.more };
@@ -481,7 +486,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         const d = await this.read();
         if (!d) return [];
         const rowsOf = (r: RepoDetail): SNode[] => {
-          if (d.mode === "files") return this.tree(fileTree(this.filesOf(r).shown), `${r.repoId}/${this.side}`, r.repoId, r.both ?? new Set(), "", r.same ?? new Set(), this.conflictsOf(r.repoId) ?? null);
+          if (d.mode === "files") return this.tree(fileTree(this.filesOf(r).shown), `${r.repoId}/${this.side}`, r.repoId, r.both ?? new Set(), "", r.same ?? new Set(), this.conflictsOf(r) ?? null);
           const rows = (r.commits ?? []).map((commit): SNode => ({ kind: "commit", id: `${r.repoId}/${this.side}/c:${commit.sha}`, repoId: r.repoId, commit }));
           return r.more ? [...rows, { kind: "more", id: `${r.repoId}/${this.side}/more` }] : rows;
         };
@@ -624,14 +629,18 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     const t = this.fileTarget(arg);
     if (!t) return;
     const { f, repo, result } = t;
-    const at = tipPaths(this.side, f);
-    const text = await this.deps.store.mergePreview(repo.id, at.right).catch((e: unknown) => { if (!isAbortError(e)) throw e; return undefined; });
+    const quiet = (e: unknown) => { if (!isAbortError(e)) throw e; return undefined; };
+    // The merge keeps a rename from either side: the merged file goes by merge-tree's name for it.
+    const files = await this.deps.store.readFiles(repo.id).catch(quiet);
+    if (!files) return;
+    const at = previewPaths(this.side, f, result.conflicts ?? [], files);
+    const text = await this.deps.store.mergePreview(repo.id, at.merged).catch(quiet);
     if (text === undefined) {
       void vscode.window.showInformationMessage(localize("Linyra could not work out the merge of {0} (git 2.38 or later is needed).", f.path));
       return;
     }
     const now = vscode.Uri.from({ scheme: REVISION_SCHEME, ...encodeRevision({ root: repo.root, ref: result.rightSha, path: at.right }) });
-    await vscode.commands.executeCommand("vscode.diff", now, this.deps.mergeDocs.put(at.right, text),
+    await vscode.commands.executeCommand("vscode.diff", now, this.deps.mergeDocs.put(at.merged, text),
       localize("{0} ({1} ↔ merged with {2}) — {3}", path.posix.basename(f.path), short(result.rightName), short(result.leftName), repo.name), { preview: true });
   }
 

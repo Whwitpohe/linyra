@@ -174,6 +174,31 @@ export function isConflict(conflicts: readonly string[] | null | undefined, f: {
   return !!conflicts && (conflicts.includes(f.path) || (f.oldPath !== undefined && conflicts.includes(f.oldPath)));
 }
 
+/**
+ * The names a merge's conflicts go by on both sides. merge-tree names a conflicted file as the
+ * merge keeps it: one side renamed it, so it is its new name, and the other side's file, still
+ * under the old name, conflicts too. `renamed`: either side's files (only renames count).
+ */
+export function conflictNames(conflicts: readonly string[] | null | undefined, renamed: readonly { path: string; oldPath?: string }[]): readonly string[] | null | undefined {
+  if (!conflicts) return conflicts;
+  const names = new Set(conflicts);
+  for (const f of renamed) if (f.oldPath !== undefined && conflicts.includes(f.path)) names.add(f.oldPath);
+  return [...names];
+}
+
+/**
+ * Preview Merge Result of a conflicted file on one side: its name in the merged tree (merge-tree's,
+ * which keeps a rename from either side) and ▶'s name for it now. `files`: each side's files.
+ */
+export function previewPaths(side: Side, f: { path: string; oldPath?: string }, conflicts: readonly string[], files: { left: readonly FileChange[]; right: readonly FileChange[] }): { merged: string; right: string } {
+  const names = new Set([f.path, ...(f.oldPath !== undefined ? [f.oldPath] : [])]);
+  // The other side's change to the same file: under its name, or renamed from it.
+  const other = files[side === "left" ? "right" : "left"].find((o) => names.has(o.path) || (o.oldPath !== undefined && names.has(o.oldPath)));
+  const right = side === "right" ? f.path : other?.path ?? tipPaths(side, f).right;
+  const merged = [f.path, other?.path, f.oldPath, other?.oldPath].find((n): n is string => n !== undefined && conflicts.includes(n));
+  return { merged: merged ?? right, right };
+}
+
 /** A Repositories row's merge note: "2 conflicts", "merges cleanly", or nothing when git cannot tell. */
 export function conflictNote(c: RepoCompare): string {
   if (c.kind !== "differs" || !c.conflicts) return "";
