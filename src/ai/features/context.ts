@@ -42,6 +42,8 @@ function unquote(s: string): string {
   return new TextDecoder().decode(new Uint8Array(bytes));
 }
 const stripPrefix = (s: string, prefix: string): string => (s.startsWith(prefix) ? s.slice(prefix.length) : s);
+/** A ---/+++ line's path. git ends the line with a TAB when the name has a space (a TAB in a name is quoted, so this one is not part of it). */
+const headerPath = (s: string): string => unquote(s.endsWith("\t") ? s.slice(0, -1) : s);
 
 /** A patch, one section per file: `diff --git` starts each; the path comes from +++/---, a rename, or the header. */
 export function splitPatch(patch: string): FileDiff[] {
@@ -55,8 +57,8 @@ export function splitPatch(patch: string): FileDiff[] {
     let path: string | undefined, oldPath: string | undefined, from: string | undefined;
     for (const line of lines.slice(1)) {
       if (line.startsWith("@@")) break;
-      if (line.startsWith("+++ ")) { const p = unquote(line.slice(4)); if (p !== "/dev/null") path = stripPrefix(p, "b/"); }
-      else if (line.startsWith("--- ")) { const p = unquote(line.slice(4)); if (p !== "/dev/null") from = stripPrefix(p, "a/"); }
+      if (line.startsWith("+++ ")) { const p = headerPath(line.slice(4)); if (p !== "/dev/null") path = stripPrefix(p, "b/"); }
+      else if (line.startsWith("--- ")) { const p = headerPath(line.slice(4)); if (p !== "/dev/null") from = stripPrefix(p, "a/"); }
       else if (line.startsWith("rename from ")) oldPath = unquote(line.slice(12));
       else if (line.startsWith("rename to ")) path = unquote(line.slice(10));
     }

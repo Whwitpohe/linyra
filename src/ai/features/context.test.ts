@@ -41,7 +41,11 @@ const PATCH = [
   assert.deepStrictEqual(splitPatch(""), []);
   const quoted = splitPatch('diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n@@ -1 +1 @@\n-a\n+b\n');
   assert.strictEqual(quoted[0].path.length, 8); // café.txt, its é given as git's octal escape
-  console.log("ok - splitPatch: one section per file, renames, deletions, binary files and quoted paths");
+  const spaced = splitPatch("diff --git a/server key.pem b/server key.pem\nnew file mode 100644\n--- /dev/null\n+++ b/server key.pem\t\n@@ -0,0 +1 @@\n+SECRET=1\n");
+  assert.strictEqual(spaced[0].path, "server key.pem", "the TAB git ends a spaced name's +++ line with is not part of the name");
+  assert.deepStrictEqual(budgetDiffs(spaced, fakeAi([]).excluded).left, [{ path: "server key.pem", why: "excluded" }]);
+  assert.strictEqual(splitPatch("diff --git a/old one.txt b/old one.txt\ndeleted file mode 100644\n--- a/old one.txt\t\n+++ /dev/null\n@@ -1 +0,0 @@\n-x\n")[0].path, "old one.txt");
+  console.log("ok - splitPatch: one section per file, renames, deletions, binary files, quoted paths and names with spaces");
 }
 
 {
