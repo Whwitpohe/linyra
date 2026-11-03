@@ -59,6 +59,13 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   console.log("ok - git status splits into Staged (index) and Changes (working tree); a file can be in both");
 }
 {
+  // mv old.txt new.txt, then git add -N new.txt: renamed in the working tree only, the old name in no other entry.
+  const s = splitStatus(`2 .R N... 100644 100644 100644 ${H} ${H} R100 new.txt\0old.txt\0` + `2 RM N... 100644 100644 100644 ${H} ${H} R100 b.md\0a.md\0`);
+  assert.deepStrictEqual(s.changes, [{ path: "new.txt", oldPath: "old.txt", status: "R" }, { path: "b.md", status: "M" }], "still a rename, from its old name; a staged rename's own edit is not one");
+  assert.deepStrictEqual(s.staged.map((e) => [e.path, e.oldPath, e.status]), [["b.md", "a.md", "R"]]);
+  console.log("ok - a rename in the working tree only keeps its old name");
+}
+{
   // A repository inside this one, untracked: git lists it as "acme-libs/" (with --untracked-files=all too).
   const s = splitStatus(["? acme-libs/", "? acme-libs.md", "? docs/vendor/acme-api/"].join("\0") + "\0");
   assert.deepStrictEqual(s.changes.map((e) => e.path), ["acme-libs.md"], "a nested repository is not a new file to commit");

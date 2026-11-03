@@ -293,6 +293,20 @@ void (async () => {
     assert.strictEqual(git(api, ["show", "HEAD:src.txt"]), source, "the source's edit is not committed");
     assert.match(git(api, ["status", "--porcelain"]), /^M  src\.txt$/m, "it stays staged");
     console.log("ok - real git: a rename commits with its old name, never a new file there, nor a copy's source");
+
+    // Renamed in the working tree only (mv, then git add -N): a rename, committed with its old name.
+    const libs = path.join(home, "acme-libs");
+    makeRepo(libs, [{ time: 1000, author: "dana", message: "feat: base", files: { "old.txt": eight } }], home);
+    fs.renameSync(path.join(libs, "old.txt"), path.join(libs, "new.txt"));
+    git(libs, ["add", "-N", "new.txt"]);
+    const ita = await read(libs);
+    assert.deepStrictEqual(commitFiles(ita).map((x) => [x.path, x.status, x.oldPath]), [["new.txt", "R", "old.txt"]], "one row, the rename");
+    const [here] = commitPlan([ita], new Map());
+    assert.deepStrictEqual(here.paths, ["new.txt", "old.txt"]);
+    await gitWithPaths(runGit, libs, here.paths, ["commit", "--only", "--file=-"], { input: "refactor: new" });
+    assert.deepStrictEqual(git(libs, ["show", "--name-status", "-z", "--format=", "-M", "HEAD"]).split("\0").filter(Boolean), ["R100", "old.txt", "new.txt"]);
+    assert.strictEqual(git(libs, ["status", "--porcelain"]), "", "no deletion of old.txt left behind");
+    console.log("ok - real git: a rename in the working tree only commits as a rename");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

@@ -128,7 +128,9 @@ export function splitStatus(stdout: string): { staged: WorkEntry[]; changes: Wor
       const path = parts.slice(9).join(" ");
       const oldPath = tokens[++i]; // the original name is the next NUL field
       if (x !== ".") staged.push({ path, oldPath, status: x === "C" ? "C" : "R", ...blobOf(parts[7]) });
-      if (y !== ".") changes.push({ path, status: letter(y) });
+      // Renamed in the working tree only (mv, then git add -N): still a rename, from its old name,
+      // which git lists nowhere else.
+      if (y !== ".") changes.push({ path, ...(x === "." && (y === "R" || y === "C") ? { oldPath, status: y } : { status: letter(y) }) });
     } else if (kind === "u") {
       changes.push({ path: parts.slice(10).join(" "), status: "M", conflicted: true });
     }

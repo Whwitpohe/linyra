@@ -10,7 +10,7 @@ import { movedFrom, NO_UNCOMMITTED_VIEW, type RepoWork } from "./uncommittedMode
 /** One changed path of a repository. Its staged and unstaged halves are one row: a commit takes the file as it is. */
 export interface CommitFile {
   path: string;
-  /** A staged rename's or copy's old name: shown beside it, its diff starts there. */
+  /** A rename's or copy's old name (staged, or in the working tree only): shown beside it, its diff starts there. */
   oldPath?: string;
   /** A rename's old name that no row of its own lists: the commit takes it too, recording the move. */
   movedFrom?: string;
@@ -68,11 +68,13 @@ export function commitFiles(w: RepoWork): CommitFile[] {
   for (const f of w.changes) byPath.set(f.path, { ...byPath.get(f.path), change: f });
   const listed = new Set(byPath.keys());
   return [...byPath].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, { staged, change }]) => {
+    // Renamed in the index, or in the working tree only (git add -N).
+    const renamed = staged?.oldPath ? staged : change?.oldPath ? change : undefined;
     // A copy's source, or a new file made at a rename's old name, is never committed unchecked.
-    const moved = staged && movedFrom(staged, listed);
+    const moved = renamed && movedFrom(renamed, listed);
     return {
       path,
-      ...(staged?.oldPath ? { oldPath: staged.oldPath } : {}),
+      ...(renamed ? { oldPath: renamed.oldPath } : {}),
       ...(moved ? { movedFrom: moved } : {}),
       // Deleted from the working tree after it was staged: the commit deletes it.
       status: change?.status === "D" ? "D" : staged?.status ?? change?.status,
