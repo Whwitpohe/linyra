@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import { localize } from "../i18n";
 import { asAiError } from "./errors";
+import { notificationText, safeMarkdown } from "./untrusted";
 
 export const AI_SCHEME = "linyra-ai";
 /** Answers kept for previews still open; older ones are dropped. */
@@ -23,8 +24,9 @@ export class AiDocuments implements vscode.TextDocumentContentProvider, vscode.D
   private count = 0;
   private readonly registration = vscode.workspace.registerTextDocumentContentProvider(AI_SCHEME, this);
 
+  /** The answer as the preview renders it: what the model wrote, without images or HTML that would load a URL. */
   provideTextDocumentContent(uri: vscode.Uri): string {
-    return this.texts.get(uri.toString()) ?? "";
+    return safeMarkdown(this.texts.get(uri.toString()) ?? "");
   }
 
   create(title: string): Answer {
@@ -75,7 +77,7 @@ export class AiDocuments implements vscode.TextDocumentContentProvider, vscode.D
         if (e.kind === "cancelled") answer.append(`\n\n*${localize("Cancelled.")}*\n`);
         else {
           answer.append(`\n\n> ${e.message.replace(/\n/g, "\n> ")}\n`);
-          void vscode.window.showErrorMessage(e.message);
+          void vscode.window.showErrorMessage(notificationText(e.message));
         }
       } finally {
         listener.dispose();

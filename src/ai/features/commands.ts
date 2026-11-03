@@ -21,6 +21,7 @@ import type { RepoWork } from "../../uncommittedModel";
 import type { UncommittedStore } from "../../uncommittedStore";
 import { aiService } from "../index";
 import { AiError, type AiService } from "../types";
+import { notificationText } from "../untrusted";
 import { cleanCommitMessage, cleanStashMessage, commitMessageRequest, stashMessageRequest, type CommitRepoInput } from "./commitMessage";
 import { conflictTooLarge, explainConflictsRequest, mergeRequest, parseMerge, resolveReport, reviewStep, type PredictedConflict, type ReviewChoice, type ReviewItem } from "./conflicts";
 import { budgetDiffs, LIMITS, splitPatch, type FileDiff, type Limits } from "./context";
@@ -106,11 +107,11 @@ export class AiFeatures {
     }
   }
 
-  /** An error as the user reads it: AiError's own words, nothing for a cancel. */
+  /** An error as the user reads it: AiError's own words (the provider's among them, so no live link), nothing for a cancel. */
   fail(e: unknown): void {
     if (isCancel(e)) return;
     const text = messageOf(e).trim();
-    void vscode.window.showErrorMessage(localize("Linyra AI: {0}", /[.!?…:]$/.test(text) ? text : `${text}.`));
+    void vscode.window.showErrorMessage(notificationText(localize("Linyra AI: {0}", /[.!?…:]$/.test(text) ? text : `${text}.`)));
   }
 
   /** A streamed answer in the editor area; `write` appends. */
