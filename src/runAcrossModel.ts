@@ -53,6 +53,19 @@ export function isReadOnly(args: readonly string[]): boolean {
   return false;
 }
 
+/** How long a command runs before Linyra does something about it. */
+export const RUN_TIMEOUT_MS = 120_000;
+
+/**
+ * A command that only reads and hangs (a huge log, a helper waiting) is stopped after
+ * RUN_TIMEOUT_MS: nothing is lost. One that may write is never stopped by a timer, since halfway
+ * it can leave a repository mid-change (a merge, a rebase, a checkout): then Linyra says it is
+ * still running and stops it only when asked to. undefined: no timer.
+ */
+export function runTimeout(args: readonly string[]): number | undefined {
+  return isReadOnly(args) ? RUN_TIMEOUT_MS : undefined;
+}
+
 /** What one repository answered. */
 export interface RunResult {
   repo: string;
