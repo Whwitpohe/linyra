@@ -72,6 +72,25 @@ try {
   git(["push", "--delete", "--", "origin", "worktree-topic"]);
   assert.ok(!git(["for-each-ref", "--format=%(refname)", "refs/heads/worktree-topic"], bare));
   console.log("ok - actual Git accepts checkout/create/rename/merge/rebase/delete/track/worktree argv; push targets the chosen branch");
+
+  // Pull into Current from a remote branch someone force pushed: its remote-tracking ref follows.
+  const other = path.join(home, "acme-api-other");
+  git(["clone", "-q", bare, other], home);
+  const id = { ...env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
+  const theirs = (args: string[]) => execFileSync("git", args, { cwd: other, env: id, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  theirs(["switch", "-q", "-c", "acme-rewritten"]);
+  fs.writeFileSync(path.join(other, "r.txt"), "one\n"); theirs(["add", "r.txt"]); theirs(["commit", "-q", "-m", "feat: first try"]);
+  theirs(["push", "-q", "origin", "acme-rewritten"]);
+  git(["fetch", "-q", "origin"]);
+  theirs(["commit", "-q", "--amend", "-m", "feat: second try"]);
+  theirs(["push", "-q", "--force", "origin", "acme-rewritten"]);
+  const remote = find("origin/acme-rewritten");
+  assert.strictEqual(branchCommands.fetchRemoteBranch(remote), "+refs/heads/acme-rewritten:refs/remotes/origin/acme-rewritten");
+  assert.throws(() => git(["fetch", "--", "origin", "refs/heads/acme-rewritten:refs/remotes/origin/acme-rewritten"]), /rejected|non-fast-forward/, "unforced, git refuses");
+  git(["fetch", "--", "origin", branchCommands.fetchRemoteBranch(remote)]);
+  assert.strictEqual(git(["log", "-1", "--format=%s", "origin/acme-rewritten"]), "feat: second try");
+  assert.throws(() => branchCommands.fetchRemoteBranch(find("main")), "only a remote branch");
+  console.log("ok - real git: Pull into Current fetches a force-pushed remote branch into its remote-tracking ref");
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
 }

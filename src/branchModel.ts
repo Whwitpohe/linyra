@@ -88,4 +88,12 @@ export const branchCommands = {
   worktree: (b: Branch, name: string, destination: string) => ["worktree", "add", "-b", name, "--", destination, b.ref],
   setUpstream: (b: Branch, upstream: string) => ["branch", `--set-upstream-to=${upstream}`, "--", b.name],
   unsetUpstream: (b: Branch) => ["branch", "--unset-upstream", "--", b.name],
+  /**
+   * Pull into Current's fetch of one remote branch into its remote-tracking ref, forced (+) as
+   * git fetch's own refspec is: the ref mirrors the remote, also after a force push there.
+   */
+  fetchRemoteBranch: (b: Branch) => {
+    if (b.kind !== "remote" || !b.remoteBranch || !isValidRef(b.remoteBranch)) throw new Error(`not a remote branch: ${b.ref}`);
+    return `+refs/heads/${b.remoteBranch}:${b.ref}`;
+  },
 };

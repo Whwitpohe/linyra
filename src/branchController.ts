@@ -344,7 +344,7 @@ export class BranchController implements vscode.Disposable {
           if (action === "pullMerge" || action === "pullRebase") {
             if (!b.remote || !b.remoteBranch) return;
             await ensureCurrent();
-            const refspec = `refs/heads/${b.remoteBranch}:${b.ref}`;
+            const refspec = branchCommands.fetchRemoteBranch(b);
             if (native?.fetch) await native.fetch(b.remote, refspec); else await run(["fetch", "--", b.remote, refspec]);
           }
           // What moves, in counts, and the button says the action.
