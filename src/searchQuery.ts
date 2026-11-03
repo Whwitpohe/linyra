@@ -1,7 +1,7 @@
 // The Log's search language, after GitLens 19.5's: words, "quoted phrases" and operators such as
 // author: or file:, each pushed down into `git log` as git's own flags (constraint 1: git does the
 // searching, JavaScript only merges what it returns). Pure: no vscode, no DOM.
-import { authorPatterns, escapeRegex, isValidRef, normalizePath, regexProblem, type FilterState } from "./filterModel";
+import { authorPatterns, escapeRegex, isValidRef, meAuthor, normalizePath, regexProblem, type FilterState } from "./filterModel";
 import { localize } from "./i18n";
 import type { Codicon } from "./webview/codicons";
 
@@ -422,9 +422,15 @@ export function searchRepos<R extends { name: string }>(plan: Pick<SearchPlan, "
   return plan.repos.length === 0 ? [...repos] : repos.filter((r) => plan.repos.some((v) => repoMatches(v, r.name)));
 }
 
+/** An author: or committer: value; @me is this repository's whole address (meAuthor), always literal. */
+interface PersonTerm {
+  value: string;
+  me?: true;
+}
+
 /** Values with @me for this repository; [] when every value was @me and it has no user.email. */
-function withMe(values: readonly string[], me: string | undefined): string[] {
-  return values.flatMap((v) => (v !== "@me" ? [v] : me ? [me] : []));
+function withMe(values: readonly string[], me: string | undefined): PersonTerm[] {
+  return values.flatMap((v): PersonTerm[] => (v !== "@me" ? [{ value: v }] : me?.trim() ? [{ value: meAuthor(me), me: true }] : []));
 }
 
 /** author: or committer: values that only @me could have filled, in a repository with no user.email. */
@@ -493,15 +499,17 @@ export function searchFlags(plan: SearchPlan, f: FilterState, me?: string): stri
   const both = picked.length > 0 && queryAuthors.length > 0;
   const ere = regex || word || both;
   // An invalid expression (the box refuses it) is searched as text rather than failing every repository.
-  const term = (v: string) => {
-    const pattern = regex && regexProblem(v) === undefined ? v : ere ? escapeRegex(v) : v;
-    return word ? wholeWord(pattern, v, regex && pattern === v) : pattern;
+  const term = (v: string, literal = false) => {
+    const expression = regex && !literal && regexProblem(v) === undefined;
+    const pattern = expression ? v : ere ? escapeRegex(v) : v;
+    return word ? wholeWord(pattern, v, expression) : pattern;
   };
+  const person = (q: PersonTerm) => term(q.value, q.me);
   const grep = [...plan.messages, ...plan.excluded].map((v) => `--grep=${term(v)}`);
   const authors = both
-    ? picked.flatMap((p) => queryAuthors.flatMap((q) => (!regex && !word ? bothLiteral(p, q, icase) : bothPattern(p, term(q), icase))))
-    : picked.length > 0 ? picked.map((p) => (ere ? escapeRegex(p) : p)) : queryAuthors.map(term);
-  const committers = withMe(plan.committers, me).map(term);
+    ? picked.flatMap((p) => queryAuthors.flatMap((q) => (!regex && !word ? bothLiteral(p, q.value, icase) : bothPattern(p, person(q), icase))))
+    : picked.length > 0 ? picked.map((p) => (ere ? escapeRegex(p) : p)) : queryAuthors.map(person);
+  const committers = withMe(plan.committers, me).map(person);
 
   const args: string[] = [];
   const patterns = grep.length + authors.length + committers.length > 0;

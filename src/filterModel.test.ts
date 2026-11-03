@@ -130,7 +130,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.deepStrictEqual(many.filter((x) => x.startsWith("--author=")), ["--author=dana", "--author=rin@example.com", "--author=sa"], "each chip, plus what is being typed");
   assert.strictEqual(many.filter((x) => x === "--fixed-strings").length, 1, "literal matching once, for all of them");
   const withMe = logArgs({ ...ALL, authors: ["rin"], mine: true }, { pageSize: 200, now: 0, me: "dana@example.com" });
-  assert.deepStrictEqual(withMe.filter((x) => x.startsWith("--author=")), ["--author=rin", "--author=dana@example.com"], "Me is one more author, not a replacement");
+  assert.deepStrictEqual(withMe.filter((x) => x.startsWith("--author=")), ["--author=rin", "--author=<dana@example.com>"], "Me is one more author, not a replacement");
   assert.deepStrictEqual(args({ ...ALL, authors: ["dana", "Dana", "", "  "] }).filter((x) => x.startsWith("--author=")), ["--author=dana"], "blank and repeated authors add nothing (case-insensitive)");
   assert.deepStrictEqual(authorPatterns({ ...ALL, authors: ["rin"], mine: true }), ["rin"], "without a repo email, Me adds nothing");
   assert.ok(!hasOtherAuthors({ ...ALL, mine: true }) && hasOtherAuthors({ ...ALL, mine: true, authors: ["rin"] }), "Me alone vs Me plus others");
@@ -148,11 +148,14 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 // ── Me: each repository's own user.email ────────────────────────────────────
 {
   const a = logArgs({ ...ALL, mine: true }, { pageSize: 200, now: NOW, me: "dana@example.com" });
-  assert.ok(a.includes("--author=dana@example.com") && a.includes("--fixed-strings"));
+  assert.ok(a.includes("--author=<dana@example.com>") && a.includes("--fixed-strings"), "the whole address: git matches --author against \"Name <email>\"");
   const both = logArgs({ ...ALL, mine: true, author: "rin" }, { pageSize: 200, now: NOW, me: "dana@example.com" });
-  assert.ok(both.includes("--author=dana@example.com") && both.includes("--author=rin"), "Me is one more author beside the typed one (0.2.0: several authors)");
+  assert.ok(both.includes("--author=<dana@example.com>") && both.includes("--author=rin"), "Me is one more author beside the typed one (0.2.0: several authors)");
+  const regex = logArgs({ ...ALL, mine: true, regex: true }, { pageSize: 200, now: NOW, me: "dana@example.com" });
+  assert.ok(regex.includes(String.raw`--author=<dana@example\.com>`) && regex.includes("--extended-regexp"), "escaped where the patterns are expressions");
+  assert.deepStrictEqual(authorPatterns({ ...ALL, mine: true }, "  "), [], "a blank user.email is no one");
   assert.ok(sanitizeFilter({ ...ALL, mine: true }).mine);
-  console.log("ok - Me becomes --author=<that repository's user.email>");
+  console.log("ok - Me becomes --author=<that repository's user.email>, angle brackets included");
 }
 
 // ── File history: the same filters, one path, followed across renames ──────

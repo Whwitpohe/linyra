@@ -114,8 +114,10 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
 // ── Authors and committers, with @me and the Author box ─────────────────────
 {
   assert.deepStrictEqual(flags("author:dana author:rin"), ["--regexp-ignore-case", "--fixed-strings", "--author=dana", "--author=rin"], "several authors: any of them");
-  assert.deepStrictEqual(flags("@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=dana@example.com"], "@me is this repository's user.email");
-  assert.deepStrictEqual(flags("author:@rin committer:@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=rin", "--committer=dana@example.com"]);
+  assert.deepStrictEqual(flags("@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=<dana@example.com>"], "@me is this repository's whole address, as the author line has it");
+  assert.deepStrictEqual(flags("author:@rin committer:@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=rin", "--committer=<dana@example.com>"]);
+  assert.deepStrictEqual(flags("@me", { regex: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>"], "@me stays literal in regex mode: its dot is no wildcard");
+  assert.deepStrictEqual(flags("@me", { wholeWord: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>"], "its brackets are its edges");
   assert.deepStrictEqual(flags("author:d.n", { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--author=d.n"], "author: is an expression in regex mode");
   assert.deepStrictEqual(flags("fix", { regex: true, authors: ["d.n+a"] }), ["--regexp-ignore-case", "--extended-regexp", "--grep=fix", "--author=d\\.n\\+a"], "the Author box stays literal");
   assert.ok(searchSkips(plan("author:@me"), undefined), "@me alone in a repository without user.email: nothing is mine there");
@@ -132,10 +134,11 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("author:DANA", { authors: ["dana@example.com"], matchCase: true }), ["--extended-regexp", "--author=dana@example\\.com.*DANA", "--author=DANA.*dana@example\\.com"], "Match Case: DANA is not inside dana@…");
   assert.deepStrictEqual(flags('author:"a <d"', { authors: ["dana@example.com"] }), ["--regexp-ignore-case", "--extended-regexp",
     "--author=dana@example\\.com.*a <d", "--author=a <d.*dana@example\\.com", "--author=a <dana@example\\.com"], "overlapping: one more expression per overlap");
-  assert.deepStrictEqual(flags("author:@me", { authors: ["rin"] }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=rin.*dana@example\\.com", "--author=dana@example\\.com.*rin"]);
+  assert.deepStrictEqual(flags("author:@me", { authors: ["rin"] }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=rin.*<dana@example\\.com>", "--author=<dana@example\\.com>.*rin"]);
+  assert.deepStrictEqual(flags("author:@me", { authors: ["dana@example.com"] }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>"], "@me holds the box's address: it alone decides");
   assert.deepStrictEqual(flags("author:d.n", { regex: true, authors: ["dana@example.com"] }), ["--regexp-ignore-case", "--extended-regexp", "--author=dana@example\\.com"], "an expression matching inside the box's value");
   assert.deepStrictEqual(flags("author:^r", { regex: true, authors: ["dana"] }), ["--regexp-ignore-case", "--extended-regexp", "--author=dana.*(^r)", "--author=(^r).*dana"]);
-  assert.deepStrictEqual(flags("author:rin", { mine: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=dana@example\\.com.*rin", "--author=rin.*dana@example\\.com"], "Me is in the Author box");
+  assert.deepStrictEqual(flags("author:rin", { mine: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>.*rin", "--author=rin.*<dana@example\\.com>"], "Me is in the Author box");
   console.log("ok - author: and the Author box both hold: git matches expressions needing both");
 }
 
@@ -337,6 +340,24 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(await subjects("after:2000-01-01"), []);
   assert.deepStrictEqual(await subjects("fix author:"), [], "a pending operator runs nothing");
   console.log("ok - real git: authors, words, Match All, -message:, file:, ref: per repository, change:, @me, Whole Word, AND with the Author box");
+
+  {
+    // Me is the whole address: dana@example.com is not adana@example.com or dana@example.com.au.
+    const mineRoot = path.join(home, "acme-me");
+    makeRepo(mineRoot, [{ time: 100, author: "dana", message: "feat: mine" }], home);
+    for (const [email, message, time] of [["adana@example.com", "feat: a longer address", 200], ["dana@example.com.au", "feat: another domain", 300]] as const) {
+      execFileSync("git", ["commit", "-q", "--allow-empty", "-m", message], { cwd: mineRoot, env: { ...gitEnv(home),
+        GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: email, GIT_AUTHOR_DATE: `@${time} +0000`, GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: email, GIT_COMMITTER_DATE: `@${time} +0000` } });
+    }
+    const mine = async (f: Partial<FilterState>) => (await fetchPage({
+      repos: [{ id: mineRoot, root: mineRoot, name: "acme-me" }], filter: { ...ALL, ...f }, pageSize: 50, concurrency: 1, now: 1000, prev: null, run: runGit,
+      signal: new AbortController().signal, me: new Map([[mineRoot, "dana@example.com"]]),
+    })).rows.map((c) => c.subject);
+    for (const f of [{ mine: true }, { text: "@me" }, { text: "committer:@me" }, { mine: true, regex: true }, { text: "@me", regex: true }, { text: "@me", wholeWord: true }, { mine: true, matchCase: true }, { text: "author:dana", mine: true }]) {
+      assert.deepStrictEqual(await mine(f), ["feat: mine"], JSON.stringify(f));
+    }
+    console.log("ok - real git: Me and @me match the whole address, not addresses that contain it");
+  }
 })().catch((e) => {
   console.error(e);
   process.exit(1);

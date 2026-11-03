@@ -191,7 +191,7 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const data = { [WEB.root]: [mk(WEB, 3)], [API.root]: [mk(API, 2)], [LIBS.root]: [mk(LIBS, 1)] };
     const me = new Map([[WEB.id, "dana@example.com"], [LIBS.id, "rin@example.com"]]);
     await fetchPage(req({ filter: { ...ALL, mine: true }, run: fakeRun(data, calls), me }));
-    assert.deepStrictEqual(calls.map((c) => [c[0], arg(c, "--author=")]), [[WEB.root, "dana@example.com"], [LIBS.root, "rin@example.com"]]);
+    assert.deepStrictEqual(calls.map((c) => [c[0], arg(c, "--author=")]), [[WEB.root, "<dana@example.com>"], [LIBS.root, "<rin@example.com>"]]);
     console.log("ok - Me asks each repository for its own user.email and skips repos without one");
   }
   {

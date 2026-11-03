@@ -244,11 +244,19 @@ export function parseHistoryPaths(stdout: string, path: string): string[] {
 export const MAX_AUTHORS = 20;
 
 /**
+ * Me as git's author and committer lines name it ("Name <email>"): the whole address in its angle
+ * brackets, so dan@example.com is not jordan@example.com or dan@example.com.au.
+ */
+export function meAuthor(email: string): string {
+  return `<${email.trim()}>`;
+}
+
+/**
  * Every author pattern for one repository: the chips, what is being typed, and Me (that
- * repository's user.email, if it has one). Trimmed, blank-free, de-duplicated ignoring case.
+ * repository's user.email, if it has one: meAuthor). Trimmed, blank-free, de-duplicated ignoring case.
  */
 export function authorPatterns(f: FilterState, me?: string): string[] {
-  const all = [...(f.authors ?? []), f.author, f.mine ? me ?? "" : ""].map((a) => a.trim()).filter((a) => a !== "");
+  const all = [...(f.authors ?? []), f.author, f.mine && me?.trim() ? meAuthor(me) : ""].map((a) => a.trim()).filter((a) => a !== "");
   const seen = new Set<string>();
   return all.filter((a) => {
     const k = a.toLowerCase();
