@@ -471,6 +471,7 @@
   "Reset {0} to {1} in {2}?": "将 {2} 中的 {0} 重置到 {1}？",
   "Reset": "重置",
   "Reset {0} to {1} in {2}.": "已将 {2} 中的 {0} 重置到 {1}。",
+  "{0} moved in {1} while you were asked: nothing was reset. Run Reset again.": "提问期间 {1} 中的 {0} 已移动：没有重置任何内容。请重新执行重置。",
   "Check out {0} in {1}?": "在 {1} 中签出 {0}？",
   "HEAD is detached there: new commits belong to no branch until you create one.": "那里会成为分离 HEAD：在新建分支之前，新提交不属于任何分支。",
   "Check Out": "签出",

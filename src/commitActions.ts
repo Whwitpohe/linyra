@@ -137,7 +137,7 @@ export class CommitActions {
         await git(commitCommands.revert(commit.sha, merge));
         return localize("Reverted {0} in {1}.", short(commit.sha), repo.name);
       case "reset": {
-        const branch = await this.currentBranch(repo);
+        const at = await this.headState(repo), { branch } = at;
         const modes: { mode: ResetMode; label: string; description: string }[] = [
           { mode: "soft", label: localize("Soft"), description: localize("Keep every change, staged") },
           { mode: "mixed", label: localize("Mixed"), description: localize("Keep every change, unstaged") },
@@ -156,6 +156,9 @@ export class CommitActions {
         const pushed = Math.max(0, leaving - (Number(local.trim().split(/\s+/)[0]) || 0));
         const p = resetPrompt({ branch, target: short(commit.sha), repo: repo.name, mode, leaving, pushed, upstream, arriving });
         if (!(await this.host.ask.warning(p.message, p.detail, p.button))) return undefined;
+        // The counts were of HEAD as it was: a commit or checkout made while the questions were open is not reset blind.
+        const now = await this.headState(repo);
+        if (now.sha !== at.sha || now.branch !== at.branch) throw new Error(localize("{0} moved in {1} while you were asked: nothing was reset. Run Reset again.", branch, repo.name));
         await git(commitCommands.reset(commit.sha, mode));
         return localize("Reset {0} to {1} in {2}.", branch, short(commit.sha), repo.name);
       }
@@ -174,15 +177,21 @@ export class CommitActions {
         return localize("Created branch {0} at {1} in {2}.", name, short(commit.sha), repo.name);
       }
       case "undo": case "reword": {
-        // Both rewrite HEAD only: the row must still be HEAD (the Log may be a moment old).
-        const head = (await this.host.run(repo.root, ["rev-parse", "HEAD"], WRITE_SIGNAL)).trim();
-        if (head !== commit.sha) throw new Error(localize("Only the checked-out commit can be changed here; it is no longer {0}.", short(commit.sha)));
+        // Both rewrite HEAD only: the row must still be HEAD (the Log may be a moment old), and still
+        // be once the question is answered, right before the write: a commit made while it was open
+        // (Source Control, a terminal) is not the one to amend or step back from.
+        const stillHead = async () => {
+          const head = (await this.host.run(repo.root, ["rev-parse", "HEAD"], WRITE_SIGNAL)).trim();
+          if (head !== commit.sha) throw new Error(localize("Only the checked-out commit can be changed here; it is no longer {0}.", short(commit.sha)));
+        };
+        await stillHead();
         if (action === "undo" && commit.parents.length !== 1) throw new Error(localize("Only a commit with one parent can be undone here."));
         const pushed = parseRefNames(await this.host.run(repo.root, commitCommands.pushedTo(commit.sha), WRITE_SIGNAL));
         const warning = pushed.length ? localize("It is already on {0}: changing it rewrites history others may have.", pushed.join(", ")) : undefined;
         if (action === "undo") {
           if (!(await this.host.ask.warning(localize("Undo commit {0} in {1}?", short(commit.sha), repo.name),
             [localize("The branch steps back one commit; its changes stay staged."), warning].filter(Boolean).join("\n\n"), localize("Undo Commit")))) return undefined;
+          await stillHead();
           await git(commitCommands.undo(commit.sha));
           return localize("Undid {0} in {1}; its changes are staged.", short(commit.sha), repo.name);
         }
@@ -191,6 +200,7 @@ export class CommitActions {
           { value: commit.subject, validate: (v) => (v.trim() ? undefined : localize("Enter a subject.")) });
         if (!subject?.trim() || subject.trim() === commit.subject) return undefined;
         if (warning && !(await this.host.ask.warning(localize("Edit the message of {0} in {1}?", short(commit.sha), repo.name), warning, localize("Edit Message")))) return undefined;
+        await stillHead();
         await this.host.run(repo.root, commitCommands.reword(), WRITE_SIGNAL, { env: WRITE_ENV, input: rewordMessage(message, subject) });
         return localize("Edited the message of {0} in {1}.", short(commit.sha), repo.name);
       }
@@ -302,6 +312,12 @@ export class CommitActions {
     } });
     if (answer === undefined || newRefProblem(answer, taken, kind)) return undefined;
     return answer.trim();
+  }
+
+  /** HEAD's commit and the checked-out branch's name (HEAD when detached), in one git process. */
+  private async headState(repo: Repo): Promise<{ sha: string; branch: string }> {
+    const [sha = "", ref = ""] = (await this.host.run(repo.root, ["rev-parse", "HEAD", "--symbolic-full-name", "HEAD"], WRITE_SIGNAL).catch(() => "")).trim().split(/\r?\n/);
+    return { sha, branch: ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : "HEAD" };
   }
 
   /** The checked-out branch's name, or HEAD when it is detached. */

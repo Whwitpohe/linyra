@@ -207,6 +207,30 @@ describe("Commit actions", () => {
     git(["reset", "-q", "--hard", start]);
   });
 
+  it("Edit Commit Message amends nothing when a commit was made while its question was open", async () => {
+    type Asked = { id: number; request: { kind: string; value?: string }; at: unknown };
+    const lastPrompt = () => vscode.commands.executeCommand<Asked | undefined>("linyra._itest.lastPrompt");
+    await answer(undefined);
+    fs.writeFileSync(path.join(root, "race.txt"), "race\n");
+    git(["add", "race.txt"]);
+    git(["commit", "-q", "-m", "feat: to be reworded later"]);
+    const made = head();
+    await send({ type: "refresh" });
+    await listed(made);
+    const before = (await lastPrompt())?.id ?? 0;
+    const done = send({ type: "rowAction", action: "reword", repoId, sha: made, at: { x: 700, y: 120, w: 22, h: 22 } } as WebviewMessage);
+    const asked = await waitFor("the question in the Log", async () => { const p = await lastPrompt(); return p && p.id > before ? p : undefined; });
+    // While the box is open, a commit in a terminal: HEAD is no longer the row's commit.
+    git(["commit", "-q", "--allow-empty", "-m", "feat: committed meanwhile"]);
+    const meanwhile = head();
+    await vscode.commands.executeCommand("linyra._itest.promptAnswer", asked.id, { value: "feat: reworded too late" });
+    await done;
+    assert.strictEqual(head(), meanwhile, "nothing amended");
+    assert.strictEqual(git(["log", "-1", "--format=%s"]), "feat: committed meanwhile");
+    assert.strictEqual(git(["log", "-1", "--format=%s", made]), "feat: to be reworded later");
+    git(["reset", "-q", "--hard", start]);
+  });
+
   it("a row's own buttons (webview/rowActions.ts) run the menu's Edit Commit Message and Undo Commit on that commit", async () => {
     fs.writeFileSync(path.join(root, "row.txt"), "row\n");
     git(["add", "row.txt"]);
