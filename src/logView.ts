@@ -1432,9 +1432,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
     if (await this.revealCommit(repoId, sha)) return;
     if (this.history) await this.setHistory(null);
+    // Found by its hash on the Commits side, where the search box shows what found it.
+    this.setLogMode("commits");
     this.filter = { ...this.filter, text: sha };
     this.persistFilter();
-    this.postInit();
+    this.postInit(true);
     this.reloadSoon.cancel();
     await this.reload();
     await this.revealCommit(repoId, sha);
@@ -1442,9 +1444,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async revealCommit(repoId: string, sha: string): Promise<boolean> {
     if (!this.findCommit(repoId, sha)) return false;
+    // A commit is shown on the Commits side: from the Uncommitted side the switch goes back. The
+    // selection first, so the page does not bring the summary row's work back with the switch.
+    const switching = this.logMode !== "commits";
+    this.setLogMode("commits");
     this.leaveWork();
     const ref = { repoId, sha };
     this.post({ type: "setSelection", items: [ref], focus: ref });
+    if (switching) this.postInit(true);
     await this.showDetail(repoId, sha);
     return true;
   }
