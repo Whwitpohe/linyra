@@ -101,6 +101,11 @@ export function newFileDiff(path: string, content: string | undefined, limits: L
   return { path, text: `diff --git a/${path} b/${path}\nnew file (not tracked yet)\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n${lines.map((l) => `+${l}`).join("\n")}\n` };
 }
 
+/** A new symbolic link not in git yet, as git would add it: the path it points to, never what is there. */
+export function newLinkDiff(path: string, target: string): FileDiff {
+  return { path, text: `diff --git a/${path} b/${path}\nnew file mode 120000 (a symbolic link, not tracked yet)\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1 @@\n+${target.replace(/[\r\n]+/g, " ")}\n\\ No newline at end of file\n` };
+}
+
 /** One line for the prompt naming what it leaves out, or "" when nothing is. */
 export function leftOutNote(b: Pick<Budgeted, "left" | "cut">): string {
   const why = { excluded: "excluded by the user's settings", binary: "binary", budget: "over the size limit" } as const;

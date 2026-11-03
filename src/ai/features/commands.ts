@@ -23,7 +23,7 @@ import { aiService } from "../index";
 import { AiError, type AiService } from "../types";
 import { cleanCommitMessage, cleanStashMessage, commitMessageRequest, stashMessageRequest, type CommitRepoInput } from "./commitMessage";
 import { conflictTooLarge, explainConflictsRequest, mergeRequest, parseMerge, resolveReport, reviewStep, type PredictedConflict, type ReviewChoice, type ReviewItem } from "./conflicts";
-import { budgetDiffs, LIMITS, newFileDiff, splitPatch, type FileDiff, type Limits } from "./context";
+import { budgetDiffs, LIMITS, splitPatch, type FileDiff, type Limits } from "./context";
 import { explainCommitsRequest, explainRangeRequest, explainWorkRequest, type CommitInput, type RangeInput } from "./explain";
 import {
   blobArgs, commitPatchArgs, commitsLogArgs, mergeBaseArgs, operationOf, parseCommitPatch, parseNames, parseRangeLog, RANGE_MAX, rangeLogArgs, rangeOk,
@@ -32,6 +32,7 @@ import {
 import { fallbackNotes, notesRequest, parseNotes, renderNotes, type NotesSection } from "./releaseNotes";
 import { fileLink, parseReview, renderReview, reviewRequest, type ReviewInput } from "./review";
 import { parseSearchAnswer, searchRequest } from "./translateSearch";
+import { untrackedDiff } from "./untracked";
 
 /** Explain and Review take this many commits at most (the prompt's budget is shared between them). */
 const MAX_COMMITS = 20;
@@ -204,29 +205,17 @@ export class AiFeatures {
 
   /**
    * One repository's uncommitted work as diffs: tracked files from one git diff against the last
-   * commit, new files read from disk (never one the settings exclude). `only`: just those paths.
+   * commit, new files read from disk as git would add them (never one the settings exclude, never
+   * what a link points at). `only`: just those paths.
    */
   private async workDiffs(ai: AiService, w: RepoWork, signal: AbortSignal, only?: readonly string[]): Promise<FileDiff[]> {
     const want = only ? new Set(only) : undefined;
     const tracked = splitPatch(await this.run(w.root, wipPatchArgs(w.head, (only && shortPaths(only)) || []), signal))
       .filter((f) => !want || want.has(f.path) || (f.oldPath !== undefined && want.has(f.oldPath)));
     const news = w.changes.filter((f) => f.untracked && (!want || want.has(f.path))).slice(0, NEW_FILES);
-    const read = await Promise.all(news.map(async (f): Promise<FileDiff> => {
-      if (ai.excluded(f.path)) return { path: f.path, text: "" };
-      try {
-        const handle = await fs.open(path.join(w.root, ...f.path.split("/")), "r");
-        try {
-          const buf = Buffer.alloc(NEW_FILE_BYTES);
-          const { bytesRead } = await handle.read(buf, 0, buf.length, 0);
-          return newFileDiff(f.path, buf.subarray(0, bytesRead).toString("utf8"));
-        } finally {
-          await handle.close();
-        }
-      } catch {
-        return newFileDiff(f.path, undefined);
-      }
-    }));
-    return [...tracked, ...read];
+    const read = await Promise.all(news.map((f): Promise<FileDiff | undefined> =>
+      (ai.excluded(f.path) ? Promise.resolve({ path: f.path, text: "" }) : untrackedDiff(w.root, f.path, NEW_FILE_BYTES))));
+    return [...tracked, ...read.filter((f): f is FileDiff => f !== undefined)];
   }
 
   private async readWorks(ai: AiService, works: readonly RepoWork[], signal: AbortSignal): Promise<{ work: RepoWork; diffs: ReturnType<typeof budgetDiffs> }[]> {
@@ -560,6 +549,8 @@ export class AiFeatures {
     if (ai.excluded(file)) return cannot(localize("excluded by linyra.ai.exclude, so it is not sent. Resolve it in the merge editor."));
     let current: string;
     try {
+      // A conflicted symbolic link is resolved by hand: what it points at is never read, nor written by Accept.
+      if (!(await fs.lstat(uri.fsPath)).isFile()) throw new Error("not a file");
       current = await fs.readFile(uri.fsPath, "utf8");
     } catch {
       return cannot(localize("the file could not be read (deleted on one side?). Resolve it in Source Control."));
