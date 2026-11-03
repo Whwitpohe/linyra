@@ -205,16 +205,43 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
   }
   {
     const calls: string[][] = [];
-    const out = "\x1e" + [mk(API, 9).sha, "9", "rin", "rin@example.com", "feat: add retry", ""].join("\0") + "\0\nM\0upload.go\0";
-    const names = "\x1e\x00\nM\x00upload.go\x00\x1e\x00\nR100\x00up.go\x00upload.go\x00";
-    const run: RunGit = async (cwd, args) => { calls.push([cwd, ...args]); return args.includes("--follow") ? names : out; };
+    const inputs: (string | undefined)[] = [];
+    const [edit, rename] = [mk(API, 9).sha, mk(API, 8).sha];
+    const out = "\x1e" + [edit, "9", "rin", "rin@example.com", "feat: add retry", ""].join("\0") + "\0\nM\0upload.go\0";
+    const names = `\x1e${edit}\x00\nM\x00upload.go\x00\x1e${rename}\x00\nR100\x00up.go\x00upload.go\x00`;
+    const run: RunGit = async (cwd, args, _signal, opts) => {
+      calls.push([cwd, ...args]);
+      inputs.push(opts?.input);
+      return args.includes("--follow") ? names : args[0] === "rev-parse" ? `${edit}\n` : out;
+    };
     const page = await fetchPage(req({ run, history: { repoId: API.id, path: "upload.go" } }));
-    assert.deepStrictEqual(calls.map((c) => c[0]), [API.root, API.root], "history asks only the file's repository");
-    assert.ok(calls[0].includes("--follow"), "first: every name the file has had");
-    assert.ok(!calls[1].includes("--follow") && calls[1].slice(-3).join() === "--,:(literal)upload.go,:(literal)up.go", "then: all those names, without --follow");
+    assert.ok(calls.every((c) => c[0] === API.root), "history asks only the file's repository");
+    assert.ok(calls[0].includes("--follow"), "first: each commit of the file, and every name it has had");
+    const log = calls.at(-1)!;
+    assert.ok(!log.includes("--follow") && log.slice(-3).join() === "--,:(literal)upload.go,:(literal)up.go", "then: all those names, without --follow");
+    assert.strictEqual(inputs.at(-1), `${edit}\n${rename}\n`, "and exactly those commits");
     assert.deepStrictEqual(page.rows.map((c) => c.file), [{ path: "upload.go", status: "M" }]);
     assert.strictEqual(page.done, true);
+    const none: string[][] = [];
+    const empty = await fetchPage(req({ run: async (cwd, args) => { none.push(args); return ""; }, history: { repoId: API.id, path: "new.go" } }));
+    assert.deepStrictEqual([none.length, empty.rows, empty.done], [1, [], true], "a file without commits: no git log, which given none would list HEAD");
     console.log("ok - file history queries one repository with --follow and keeps each commit's path");
+
+    // All branches: one walk, and one per tip only when that walk went through a rename.
+    const steps = async (walked: string, tips: string) => {
+      const seen: string[] = [];
+      await fetchPage(req({ history: { repoId: API.id, path: "upload.go" }, run: async (_cwd, args) => {
+        seen.push(args[0] === "log" && args.includes("--follow") ? `follow ${args.includes("--branches") ? "all" : args.at(-3)}` : args[0] === "log" ? "log" : args[0]);
+        return args.includes("--follow") ? walked : args[0] === "rev-parse" ? tips : out;
+      } }));
+      return seen;
+    };
+    const plain = `\x1e${edit}\x00\nM\x00upload.go\x00`;
+    const [tipA, tipB] = ["a".repeat(40), "b".repeat(40)];
+    assert.deepStrictEqual(await steps(plain, ""), ["follow all", "log"], "never renamed: one walk is exact");
+    assert.deepStrictEqual(await steps(names, `${tipA}\n${tipA}\n`), ["follow all", "rev-parse", "log"], "renamed, but every branch at one commit");
+    assert.deepStrictEqual(await steps(names, `${tipA}\n${tipB}\n${tipA}\n`), ["follow all", "rev-parse", `follow ${tipA}`, `follow ${tipB}`, "log"], "renamed: each distinct tip on its own");
+    console.log("ok - file history walks each tip on its own only when a rename could mislead one walk over all branches");
   }
   {
     const calls: string[][] = [];
@@ -307,6 +334,60 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     }
     assert.deepStrictEqual(oddRows, ["c6", "c5", "four\x1epart", "c3", "c2", "c1"]);
     console.log("ok - real git: an RS in a subject neither drops its commit nor shifts the next page");
+
+    // File History: index.ts became main.ts, then a new, unrelated index.ts was added.
+    const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}\n`).join("");
+    const reuse = { id: path.join(home, "acme-reuse"), root: path.join(home, "acme-reuse"), name: "acme-reuse" };
+    makeRepo(reuse.root, [
+      { time: 100, author: "dana", message: "c1 add index", files: { "index.ts": lines(5) } },
+      { time: 200, author: "rin", message: "c2 edit index", files: { "index.ts": lines(6) } },
+      { time: 300, author: "dana", message: "c3 rename index to main", files: { "index.ts": null, "main.ts": lines(6) } },
+      { time: 400, author: "dana", message: "c4 new index", files: { "index.ts": "brand new\nunrelated\n" } },
+      { time: 500, author: "dana", message: "c5 edit new index", files: { "index.ts": "brand new\nunrelated\nmore\n" } },
+      { time: 600, author: "rin", message: "c6 edit main", files: { "main.ts": lines(7) } },
+      { time: 700, author: "dana", message: "c7 edit both", files: { "index.ts": "brand new\nunrelated\nmore\nagain\n", "main.ts": lines(8) } },
+    ], home);
+    const history = async (repo: Repo, file: string, filter: FilterState = ALL, pageSize = 2) => {
+      const rows: string[] = [];
+      let prev: QueryState | null = null;
+      for (let guard = 0; guard < 20; guard++) {
+        const page = await fetchPage({ repos: [repo], filter, pageSize, concurrency: 4, now: 5000, prev, run: runGit, signal: new AbortController().signal, history: { repoId: repo.id, path: file } });
+        rows.push(...page.rows.map((c) => `${c.subject.split(" ")[0]} ${c.file?.status} ${c.file?.oldPath ? `${c.file.oldPath}→` : ""}${c.file?.path}`));
+        prev = page.state;
+        if (page.done) break;
+      }
+      return rows;
+    };
+    assert.deepStrictEqual(await history(reuse, "main.ts"), ["c7 M main.ts", "c6 M main.ts", "c3 R index.ts→main.ts", "c2 M index.ts", "c1 A index.ts"],
+      "git log --follow's commits, each with this file's change: not the new index.ts's");
+    assert.deepStrictEqual(await history(reuse, "main.ts", { ...ALL, author: "rin" }), ["c6 M main.ts", "c2 M index.ts"], "a filter that drops the rename keeps the older name's commits");
+    assert.deepStrictEqual(await history(reuse, "main.ts", { ...ALL, sort: "topo" }, 50), ["c7 M main.ts", "c6 M main.ts", "c3 R index.ts→main.ts", "c2 M index.ts", "c1 A index.ts"]);
+    const follow = (file: string) => execFileSync("git", ["log", "--follow", "--format=%s", "--", file], { cwd: reuse.root, env: gitEnv(home) }).toString().trim().split("\n").map((s) => s.split(" ")[0]);
+    for (const file of ["main.ts", "index.ts"]) assert.deepStrictEqual((await history(reuse, file)).map((r) => r.split(" ")[0]), follow(file), `${file}: git log --follow's own list`);
+    console.log("ok - real git: File History lists exactly git log --follow's commits, though a later file reused an old name");
+
+    // All branches: main renamed old.ts to a.ts; side, newer, renamed its own other.ts into a.ts.
+    // One --follow walk over both switches to other.ts at side's rename, on main too.
+    const cross = { id: path.join(home, "acme-cross"), root: path.join(home, "acme-cross"), name: "acme-cross" };
+    makeRepo(cross.root, [
+      { time: 50, author: "dana", message: "m0 add old", files: { "old.ts": lines(5) } },
+      { time: 100, author: "dana", message: "m1 rename old to a", files: { "old.ts": null, "a.ts": lines(5) } },
+    ], home);
+    const g = (args: string[]) => execFileSync("git", args, { cwd: cross.root, env: gitEnv(home), stdio: "pipe" });
+    g(["checkout", "-q", "-b", "side"]);
+    commitAt(cross.root, home, { time: 150, author: "rin", message: "s1 drop a", files: { "a.ts": null } });
+    commitAt(cross.root, home, { time: 160, author: "rin", message: "s2 add other", files: { "other.ts": "other\n".repeat(5) } });
+    commitAt(cross.root, home, { time: 170, author: "rin", message: "s3 edit other", files: { "other.ts": "other\n".repeat(6) } });
+    g(["checkout", "-q", "main"]);
+    commitAt(cross.root, home, { time: 200, author: "dana", message: "m2 edit a", files: { "a.ts": lines(6) } });
+    commitAt(cross.root, home, { time: 300, author: "dana", message: "m3 edit a", files: { "a.ts": lines(7) } });
+    g(["checkout", "-q", "side"]);
+    commitAt(cross.root, home, { time: 400, author: "rin", message: "s4 rename other to a", files: { "other.ts": null, "a.ts": "other\n".repeat(6) } });
+    g(["checkout", "-q", "main"]);
+    assert.deepStrictEqual(await history(cross, "a.ts"), ["s4 R other.ts→a.ts", "m3 M a.ts", "m2 M a.ts", "s3 M other.ts", "s2 A other.ts", "m1 R old.ts→a.ts", "m0 A old.ts"],
+      "each branch's own --follow: main's history before its rename is not lost, and side's dropped a.ts is not in it");
+    assert.deepStrictEqual(await history(cross, "a.ts", { ...ALL, branches: ["main"] }), ["m3 M a.ts", "m2 M a.ts", "m1 R old.ts→a.ts", "m0 A old.ts"], "a selected branch: its own walk, as before");
+    console.log("ok - real git: File History over all branches follows each branch's renames on its own");
     const topological: Commit[] = [];
     let topoPrev: QueryState | null = null;
     for (let guard = 0; guard < 50; guard++) {

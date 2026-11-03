@@ -116,8 +116,10 @@ function historyChanges(t: readonly string[], from: number): { entries: HistoryE
 /**
  * One file's commits (git log --raw --numstat -z -M over every name it had), each with that
  * file's path at the time, its status letter and its lines added and deleted (null: binary).
+ * `names`: each commit's name for the file (the --follow walk's), so a commit that also changed
+ * another file under one of its old names shows this file's change.
  */
-export function parseHistory(stdout: string, repoId: string, currentPath: string): Commit[] {
+export function parseHistory(stdout: string, repoId: string, currentPath: string, names?: ReadonlyMap<string, string>): Commit[] {
   const commits: Commit[] = [];
   for (const record of startedRecords(stdout)) {
     const t = record.split("\0");
@@ -130,7 +132,8 @@ export function parseHistory(stdout: string, repoId: string, currentPath: string
     if (!changes) continue;
     // A merge shows no diff: the file keeps the name the next older row will give it.
     let file: NonNullable<Commit["file"]> = { path: commits.at(-1)?.file?.oldPath ?? commits.at(-1)?.file?.path ?? currentPath };
-    const first = changes.entries[0];
+    const name = names?.get(sha);
+    const first = (name === undefined ? undefined : changes.entries.find((e) => e.path === name)) ?? changes.entries[0];
     if (first) {
       const lines = changes.lines.get(first.path);
       file = { ...first, ...(lines ? lines : {}) };

@@ -1,6 +1,6 @@
-import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
+import { HISTORY_FORMAT, LOG_FORMAT, startedRecords } from "./gitLog";
 import { parseSearch, planSearch, searchFlags, type SearchPlan } from "./searchQuery";
-import type { Repo } from "./types";
+import { isSha, type Repo } from "./types";
 
 export type DatePreset = "24h" | "7d" | "30d" | "all" | "custom";
 
@@ -123,7 +123,7 @@ interface ArgOptions {
   search?: SearchPlan;
 }
 
-function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = []): string[] {
+function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = [], revisions = true): string[] {
   const args = ["log", format, `--max-count=${o.pageSize}`, "--decorate=full"];
   if (f.sort === "topo") args.push("--topo-order");
   // The query's messages, authors (with the Author box's), committers, change: and type:, as git's
@@ -138,7 +138,7 @@ function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonl
   args.push(...extra);
   // After --end-of-options: revisions, never options. After --: paths, never
   // revisions, so a branch named like a folder ("docs") is not ambiguous.
-  args.push(...revisionArgs(o.refs ?? (o.ref ? [o.ref] : selectedBranches(f))));
+  if (revisions) args.push(...revisionArgs(o.refs ?? (o.ref ? [o.ref] : selectedBranches(f))));
   args.push("--", ...paths);
   return args;
 }
@@ -200,45 +200,88 @@ export function pathspecOf(path: string): string {
 }
 
 /**
- * One file's history with the Log's filters: every name the file has had is a
- * pathspec (see historyPathsArgs). No --follow: it cannot page with --skip, and
- * it stops following when the rename commit itself is filtered out.
+ * One file's history with the Log's filters: the commits the --follow walks found
+ * (historyPathsArgs), given on stdin (historyInput) with --no-walk, so the filters choose among
+ * exactly those and a later file that reused an old name stays out. Every name the file has had
+ * is a pathspec, so each commit shows its change. No --follow here: it cannot page with --skip,
+ * and it stops following when the rename commit itself is filtered out. --no-walk comes after
+ * --max-count, which turns walking back on; it sorts by date unless the walk's own order is kept.
  *
  * --raw gives each row its status letter (and a rename's old name), --numstat its lines added
  * and deleted, in the same process. The line counts cost git a diff of the file per commit:
  * measured 2026-10-29 (Windows, git 2.55, a page of 200), +12–37 ms on real files with 60–140
  * commits, +100 ms (46 → 146 ms) on a 1,500-line file with 5,000 commits.
  */
-export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[] }): string[] {
+export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[]; walkOrder?: boolean }): string[] {
+  const commits = [`--no-walk=${o.walkOrder ? "unsorted" : "sorted"}`, "--stdin"];
   // Literal: a route folder like app/[id]/ is a name, not a glob matching app/i/.
-  return buildArgs(HISTORY_FORMAT, f, o, ["--raw", "--numstat", "-z", "-M"], o.paths.map((p) => `:(literal)${p}`));
+  return buildArgs(HISTORY_FORMAT, f, o, ["--raw", "--numstat", "-z", "-M", ...commits], o.paths.map((p) => `:(literal)${p}`), false);
 }
 
-/** Unfiltered, unpaged --follow walk that only collects the names a file has had. */
-export function historyPathsArgs(path: string, ref?: string | readonly string[]): string[] {
-  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...revisionArgs(typeof ref === "string" ? [ref] : ref ?? []), "--", `:(literal)${path}`];
+/** historyArgs' stdin: the commits the --follow walks found, one per line. */
+export function historyInput(follow: Pick<FileFollow, "commits">): string {
+  return [...follow.commits.keys()].map((sha) => `${sha}\n`).join("");
 }
 
-/** The file's names, newest first; always starts with its current path. */
-export function parseHistoryPaths(stdout: string, path: string): string[] {
-  const names = [path];
-  const add = (p: string | undefined) => {
-    if (p && !names.includes(p)) names.push(p);
+/**
+ * Unfiltered, unpaged --follow walk: each commit git lists for the file, with its name there. In
+ * the Log's order, which decides where git switches to an older name.
+ */
+export function historyPathsArgs(path: string, ref?: string | readonly string[], topo = false): string[] {
+  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e%H", ...(topo ? ["--topo-order"] : []),
+    ...revisionArgs(typeof ref === "string" ? [ref] : ref ?? []), "--", `:(literal)${path}`];
+}
+
+/** What one --follow walk found. */
+export interface FollowWalk {
+  /** The file's names, newest first; always starts with its current path. */
+  names: string[];
+  /** Each commit the walk lists, in its order, with the file's name in it. */
+  commits: Map<string, string>;
+  /** The walk went back through a rename (or copy). */
+  renamed: boolean;
+}
+
+/** A file's history to page through: what its --follow walks found, together. */
+export interface FileFollow {
+  names: string[];
+  /** A commit two walks list keeps the first one's name. */
+  commits: Map<string, string>;
+  /** One --topo-order walk: git keeps its order (--no-walk=unsorted); otherwise git sorts by date. */
+  walkOrder: boolean;
+}
+
+/** A --follow walk's output (historyPathsArgs): RS, the hash and NUL, then one change of the file. */
+export function parseFollow(stdout: string, path: string): FollowWalk {
+  const walk: FollowWalk = { names: [path], commits: new Map(), renamed: false };
+  const add = (p: string) => {
+    if (!walk.names.includes(p)) walk.names.push(p);
   };
-  const t = stdout.split(/[\x00\x1e]/);
-  for (let i = 0; i < t.length; i++) {
-    const m = /^\n*([AMDRCT])\d*$/.exec(t[i]);
-    if (!m) continue;
-    if (m[1] === "R" || m[1] === "C") {
-      add(t[i + 1]);
-      add(t[i + 2]);
-      i += 2;
-    } else {
-      add(t[i + 1]);
-      i += 1;
+  for (const record of startedRecords(stdout)) {
+    const [sha, status, first, second] = record.split("\0");
+    const m = /^\n*([AMDRCT])\d*$/.exec(status ?? "");
+    if (!isSha(sha) || !m) continue;
+    const two = m[1] === "R" || m[1] === "C";
+    const name = two ? second : first;
+    if (!name || (two && !first)) continue; // cut off by a killed process
+    walk.commits.set(sha, name);
+    if (two) {
+      add(first);
+      walk.renamed = true;
     }
+    add(name);
   }
-  return names;
+  return walk;
+}
+
+/** Several tips' walks as one history; `topo`: the walks ran in topological order. */
+export function followUnion(walks: readonly FollowWalk[], path: string, topo: boolean): FileFollow {
+  const follow: FileFollow = { names: [path], commits: new Map(), walkOrder: topo && walks.length === 1 };
+  for (const walk of walks) {
+    for (const name of walk.names) if (!follow.names.includes(name)) follow.names.push(name);
+    for (const [sha, name] of walk.commits) if (!follow.commits.has(sha)) follow.commits.set(sha, name);
+  }
+  return follow;
 }
 
 export const MAX_AUTHORS = 20;

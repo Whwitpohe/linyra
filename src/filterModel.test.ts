@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, followUnion, historyArgs, historyInput, historyPathsArgs, isValidRef, logArgs, parseFollow, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -164,15 +164,27 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(a[1], HISTORY_FORMAT);
   assert.ok(a.includes("--grep=fix") && a.includes("--skip=5"));
   assert.ok(!a.includes("--follow"), "no --follow: it cannot page with --skip, and a filtered-out rename would cut the history");
-  assert.deepStrictEqual(a.slice(-10), ["--raw", "--numstat", "-z", "-M", "--branches", "--remotes", "HEAD", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "status letters (--raw) and line counts (--numstat) in one process; the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.deepStrictEqual(a.slice(-9), ["--raw", "--numstat", "-z", "-M", "--no-walk=sorted", "--stdin", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "status letters (--raw) and line counts (--numstat) in one process; the commits from stdin; the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.ok(!a.includes("--branches") && !a.includes("--end-of-options"), "no revisions: exactly the commits on stdin");
+  assert.ok(a.indexOf("--no-walk=sorted") > a.indexOf("--max-count=200"), "--max-count turns walking back on: --no-walk comes after it");
+  assert.ok(historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["a.ts"], walkOrder: true }).includes("--no-walk=unsorted"), "one --topo-order walk keeps its order");
   assert.ok(!a.includes("--name-status"), "--name-status would replace --numstat: git keeps one of them");
   const inj = historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["--output=/tmp/x"] });
   assert.deepStrictEqual(inj.slice(-2), ["--", ":(literal)--output=/tmp/x"], "a path can never be read as an option");
-  assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
+  assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e%H", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
+  assert.ok(historyPathsArgs("a.ts", undefined, true).includes("--topo-order"), "the walk in the Log's order");
   assert.deepStrictEqual(historyPathsArgs("app/[id]/page.tsx").slice(-1), [":(literal)app/[id]/page.tsx"], "a route folder like [id] is not a glob");
-  assert.deepStrictEqual(parseHistoryPaths("\x1e\x00\nM\x00new.ts\x00\x1e\x00\nR100\x00old.ts\x00new.ts\x00\x1e\x00\nA\x00old.ts\x00", "new.ts"), ["new.ts", "old.ts"]);
-  assert.deepStrictEqual(parseHistoryPaths("", "a.ts"), ["a.ts"], "an untracked file still has its own path");
-  console.log("ok - history first learns every name the file had, then asks for all of them");
+  const [A, B, C] = ["a", "b", "c"].map((x) => x.repeat(40));
+  const walk = parseFollow(`\x1e${A}\x00\nM\x00new.ts\x00\x1e${B}\x00\nR100\x00old.ts\x00new.ts\x00\x1e${C}\x00\nA\x00old.ts\x00`, "new.ts");
+  assert.deepStrictEqual(walk, { names: ["new.ts", "old.ts"], commits: new Map([[A, "new.ts"], [B, "new.ts"], [C, "old.ts"]]), renamed: true }, "each commit with the file's name in it");
+  assert.deepStrictEqual(parseFollow("", "a.ts"), { names: ["a.ts"], commits: new Map(), renamed: false }, "an untracked file still has its own path");
+  assert.deepStrictEqual(parseFollow(`\x1e${A}\x00\nM\x00a.ts\x00\x1e${B}\x00\nR10`, "a.ts").commits, new Map([[A, "a.ts"]]), "a record cut off by a kill is left out");
+  assert.strictEqual(historyInput(walk), `${A}\n${B}\n${C}\n`);
+  const other = parseFollow(`\x1e${"d".repeat(40)}\x00\nM\x00new.ts\x00\x1e${B}\x00\nR100\x00side.ts\x00new.ts\x00`, "new.ts");
+  const both = followUnion([walk, other], "new.ts", true);
+  assert.deepStrictEqual([both.names, [...both.commits.keys()], both.walkOrder], [["new.ts", "old.ts", "side.ts"], [A, B, C, "d".repeat(40)], false], "every walk's commits once; several walks are sorted by date");
+  assert.strictEqual(followUnion([walk], "new.ts", true).walkOrder, true);
+  console.log("ok - history first learns each commit the file is in and every name it had, then asks for exactly those");
 }
 
 // ── Default range and branch ────────────────────────────────────────────────
@@ -190,7 +202,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   const a = logArgs(ALL, { pageSize: 5, now: NOW, ref: "origin/prod" });
   assert.deepStrictEqual(a.slice(-3), ["--end-of-options", "origin/prod", "--"], "the ref comes after --end-of-options and before --, so a same-named folder is never ambiguous");
   const h = historyArgs({ ...ALL, text: "fix" }, { pageSize: 5, now: NOW, paths: ["b.ts", "a.ts"], ref: "origin/prod" });
-  assert.deepStrictEqual(h.slice(-9), ["--raw", "--numstat", "-z", "-M", "--end-of-options", "origin/prod", "--", ":(literal)b.ts", ":(literal)a.ts"], "history options stay before the ref; every name the file had is a pathspec");
+  assert.deepStrictEqual(h.slice(-9), ["--raw", "--numstat", "-z", "-M", "--no-walk=sorted", "--stdin", "--", ":(literal)b.ts", ":(literal)a.ts"], "history walks no ref: its branch chose the commits on stdin; every name the file had is a pathspec");
   assert.ok(logArgs(ALL, { pageSize: 5, now: NOW }).includes("--branches"), "all local and remote branches by default");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "--output=/tmp/x" }).branch, "", "an invalid persisted branch is dropped");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");
