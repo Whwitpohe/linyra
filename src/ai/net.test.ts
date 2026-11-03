@@ -2,8 +2,12 @@ import * as assert from "assert";
 import * as http from "http";
 import * as zlib from "zlib";
 import type { AddressInfo } from "net";
+import { configureI18n } from "../i18n";
+import { asAiError } from "./errors";
 import { linkedSignal, nodeFetch } from "./net";
 import { readSse } from "./sse";
+
+configureI18n("en");
 
 // A local server stands in for a provider: no real endpoint is ever called.
 const server = http.createServer((req, res) => {
@@ -103,11 +107,13 @@ const server = http.createServer((req, res) => {
       const res = await fetch(`${base}/endless`);
       const reader = res.body!.getReader();
       await reader.read();
+      let idle: unknown;
       await assert.rejects(async () => {
         for (;;) if ((await reader.read()).done) break;
-      }, (e: { code?: string }) => e.code === "ETIMEDOUT" || e.code === "ECONNRESET");
+      }, (e: { code?: string }) => { idle = e; return e.code === "ETIMEDOUT"; }, "a stream gone quiet halfway is a timeout, not a closed connection");
+      assert.match(asAiError(idle, undefined, base).message, /did not answer in time/);
       await assert.rejects(fetch("http://127.0.0.1:1/never"), (e: { code?: string }) => e.code === "ECONNREFUSED");
-      console.log("ok - node fetch: an idle stream times out; a refused connection keeps its error code");
+      console.log("ok - node fetch: an idle stream times out (and says so); a refused connection keeps its error code");
     }
 
     {

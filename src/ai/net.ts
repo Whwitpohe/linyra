@@ -35,8 +35,8 @@ function decoded(res: http.IncomingMessage): Readable {
   }
 }
 
-/** The response body as a web stream that pauses the socket while nobody reads. */
-function webStream(source: Readable, res: http.IncomingMessage, signal: AbortSignal | undefined): ReadableStream<Uint8Array> {
+/** The response body as a web stream that pauses the socket while nobody reads. `timedOut`: the idle timeout's error, once it ended the socket. */
+function webStream(source: Readable, res: http.IncomingMessage, signal: AbortSignal | undefined, timedOut: () => Error | undefined): ReadableStream<Uint8Array> {
   let finished = false;
   return new ReadableStream<Uint8Array>({
     start(controller) {
@@ -47,9 +47,9 @@ function webStream(source: Readable, res: http.IncomingMessage, signal: AbortSig
       source.on("end", () => {
         if (!finished) { finished = true; controller.close(); }
       });
-      // After an abort the socket reports "aborted"; the reader sees the abort itself.
+      // After an abort or the idle timeout the socket reports "aborted"; the reader sees the abort or the timeout itself.
       const fail = (error: unknown) => {
-        if (!finished) { finished = true; controller.error(signal?.aborted ? abortError(signal) : error); }
+        if (!finished) { finished = true; controller.error(signal?.aborted ? abortError(signal) : timedOut() ?? error); }
       };
       source.on("error", fail);
       res.on("error", fail);
@@ -86,6 +86,7 @@ export function nodeFetch(options: NodeFetchOptions = {}): FetchLike {
     const signal = init.signal ?? undefined;
     if (signal?.aborted) throw abortError(signal);
     for (let redirects = 0; ; redirects++) {
+      let timedOut: Error | undefined;
       const res = await new Promise<http.IncomingMessage>((resolve, reject) => {
         const outgoing: Record<string, string> = {};
         headers.forEach((value, key) => { outgoing[key] = value; });
@@ -98,7 +99,10 @@ export function nodeFetch(options: NodeFetchOptions = {}): FetchLike {
         const req = transport.request(url, { method, headers: outgoing });
         const onAbort = () => req.destroy(abortError(signal!) as Error);
         signal?.addEventListener("abort", onAbort, { once: true });
-        req.setTimeout(idle, () => req.destroy(Object.assign(new Error(`No answer for ${Math.round(idle / 1000)} seconds.`), { code: "ETIMEDOUT" })));
+        req.setTimeout(idle, () => {
+          timedOut = Object.assign(new Error(`No answer for ${Math.round(idle / 1000)} seconds.`), { code: "ETIMEDOUT" });
+          req.destroy(timedOut);
+        });
         req.on("error", (e) => {
           signal?.removeEventListener("abort", onAbort);
           reject(e);
@@ -136,7 +140,7 @@ export function nodeFetch(options: NodeFetchOptions = {}): FetchLike {
       }
       const empty = method === "HEAD" || status === 204 || status === 205 || status === 304;
       if (empty) res.resume();
-      return new Response(empty ? null : webStream(source, res, signal), { status: status >= 200 && status <= 599 ? status : 502, statusText: res.statusMessage ?? "", headers: out });
+      return new Response(empty ? null : webStream(source, res, signal, () => timedOut), { status: status >= 200 && status <= 599 ? status : 502, statusText: res.statusMessage ?? "", headers: out });
     }
   };
 }
