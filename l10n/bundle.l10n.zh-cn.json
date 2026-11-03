@@ -747,6 +747,7 @@
   "local changes are in the way: commit or stash them first": "有本地更改挡路：请先提交或储藏它们",
   "busy": "忙碌中",
   "{0} of {1} done": "已完成 {0}/{1}",
+  "{0} already on the branch": "{0} 个已在该分支上",
   "Cherry-picked {0} commits": "已拣选 {0} 个提交",
   "Reverted {0} commits": "已还原 {0} 个提交",
   "partly staged": "部分已暂存",

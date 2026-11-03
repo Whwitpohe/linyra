@@ -57,23 +57,48 @@ export function parseRefNames(output: string): string[] {
   return output.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 }
 
+/** stoppedReason for a cherry-pick or revert with nothing left to apply: it is skipped, not left in progress. */
+export const ALREADY_APPLIED = "its changes are already on the checked-out branch";
+
 /**
  * What a failed action left behind, from git's own words (LC_ALL=C): a cherry-pick or revert
  * that stopped on conflicts is in progress and must be finished or aborted in Source Control.
- * A localize key, or undefined for git's message as is.
+ * A localize key, or undefined for git's message as is. `output`: its stderr, then its stdout.
  */
-export function stoppedReason(action: CommitAction, stderr: string): string | undefined {
+export function stoppedReason(action: CommitAction, output: string): string | undefined {
   if (action !== "cherryPick" && action !== "revert") return undefined;
-  // First: git's "now empty" note itself mentions "conflict resolution".
-  if (/nothing to commit|previous cherry-pick is now empty|empty commit/i.test(stderr)) {
-    return "its changes are already on the checked-out branch";
-  }
-  if (/\bconflict/i.test(stderr) || /could not (apply|revert)/i.test(stderr)) {
+  // Whole lines git starts itself, never words of a subject: "error: could not apply 1a2b3c4...
+  // Allow empty commit" is a conflict, and the empty note's "conflict resolution" is not one.
+  const lines = output.split(/\r?\n/);
+  if (lines.some((l) => /^CONFLICT \(/.test(l) || /^error: could not (apply|revert) [0-9a-f]{4,}\.\.\./.test(l))) {
     return action === "cherryPick"
       ? "the cherry-pick stopped on conflicts. Resolve them in Source Control, then commit, or run git cherry-pick --abort"
       : "the revert stopped on conflicts. Resolve them in Source Control, then commit, or run git revert --abort";
   }
+  // A cherry-pick says so on stderr; a revert only prints git commit's status on stdout.
+  if (lines.some((l) => /^The previous cherry-pick is now empty\b/.test(l) || /^(nothing to commit|nothing added to commit|no changes added to commit)\b/.test(l))) return ALREADY_APPLIED;
   return undefined;
+}
+
+/**
+ * Several cherry-picks (or reverts) in one repository, in the order given. One with nothing left
+ * to apply (its changes are already there) is skipped and the next one goes on; any other failure
+ * stops the rest: `error`, with stoppedReason's word for it.
+ */
+export async function applyEach(action: "cherryPick" | "revert", shas: readonly string[], apply: (sha: string) => Promise<unknown>, skip: () => Promise<unknown>, textOf: (e: unknown) => string): Promise<{ applied: number; empty: number; error?: unknown; reason?: string }> {
+  let applied = 0, empty = 0;
+  for (const sha of shas) {
+    try {
+      await apply(sha);
+      applied++;
+    } catch (e) {
+      const reason = stoppedReason(action, textOf(e));
+      if (reason !== ALREADY_APPLIED) return { applied, empty, error: e, reason };
+      await skip();
+      empty++;
+    }
+  }
+  return { applied, empty };
 }
 
 /** What a reset moves: commits on HEAD and not on the target (they leave), and on the target only (they arrive). */

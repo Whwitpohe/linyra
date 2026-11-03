@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
-import { commitCommands, commitFailed, newRefProblem, parseRefNames, resetDistanceArgs, resetPrompt, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
+import { ALREADY_APPLIED, applyEach, commitCommands, commitFailed, newRefProblem, parseRefNames, resetDistanceArgs, resetPrompt, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
 import { gitText, whyOf } from "./actionErrors";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
@@ -70,7 +70,7 @@ export class CommitActions {
     } catch (e) {
       wrote = true; // a stopped cherry-pick or revert still changed the working tree
       const reason = stoppedReason(action, gitText(e));
-      if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
+      if (reason === ALREADY_APPLIED) await this.skip(repo, action);
       this.lastError = commitFailed(action, short(commit.sha), repo.name, reason ? localize(reason) : whyOf(e));
       void vscode.window.showErrorMessage(this.lastError);
     } finally {
@@ -97,17 +97,14 @@ export class CommitActions {
       if (this.busy.has(repo.id)) { stopped.push(`${repo.name} (${localize("busy")})`); continue; }
       this.busy.add(repo.id);
       const ordered = action === "cherryPick" ? [...commits].reverse() : commits;
-      let applied = 0;
+      const merges = new Set(ordered.filter((c) => c.parents.length > 1).map((c) => c.sha));
       try {
-        for (const c of ordered) {
-          await this.host.run(repo.root, action === "cherryPick" ? commitCommands.cherryPick(c.sha, c.parents.length > 1) : commitCommands.revert(c.sha, c.parents.length > 1), WRITE_SIGNAL, { env: WRITE_ENV });
-          applied++;
-        }
-        done.push(`${repo.name} (${applied})`);
-      } catch (e) {
-        const reason = stoppedReason(action, gitText(e));
-        if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
-        stopped.push(`${repo.name} (${localize("{0} of {1} done", applied, ordered.length)}: ${reason ? localize(reason) : whyOf(e)})`);
+        // One whose changes are already there is skipped, and the next one goes on.
+        const r = await applyEach(action, ordered.map((c) => c.sha), (sha) => this.host.run(repo.root, commitCommands[action](sha, merges.has(sha)), WRITE_SIGNAL, { env: WRITE_ENV }),
+          () => this.skip(repo, action), gitText);
+        const already = r.empty > 0 ? `; ${localize("{0} already on the branch", r.empty)}` : "";
+        if (r.error === undefined) done.push(`${repo.name} (${r.applied}${already})`);
+        else stopped.push(`${repo.name} (${localize("{0} of {1} done", r.applied, ordered.length)}${already}: ${r.reason ? localize(r.reason) : whyOf(r.error)})`);
       } finally {
         try {
           await this.host.discovery.branchRepository(repo.root)?.status?.();
