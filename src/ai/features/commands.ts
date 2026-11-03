@@ -23,7 +23,7 @@ import { aiService } from "../index";
 import { AiError, type AiService } from "../types";
 import { notificationText } from "../untrusted";
 import { cleanCommitMessage, cleanStashMessage, commitMessageRequest, stashMessageRequest, type CommitRepoInput } from "./commitMessage";
-import { conflictTooLarge, explainConflictsRequest, mergeRequest, parseMerge, resolveReport, reviewStep, type PredictedConflict, type ReviewChoice, type ReviewItem } from "./conflicts";
+import { conflictTooLarge, explainConflictsRequest, mergeProblem, mergeRequest, parseMerge, resolveReport, reviewStep, type PredictedConflict, type ReviewChoice, type ReviewItem } from "./conflicts";
 import { budgetDiffs, LIMITS, splitPatch, type FileDiff, type Limits } from "./context";
 import { explainCommitsRequest, explainRangeRequest, explainWorkRequest, type CommitInput, type RangeInput } from "./explain";
 import {
@@ -570,8 +570,8 @@ export class AiFeatures {
     } catch (e) {
       return cannot(isCancel(e) || ctl.signal.aborted ? localize("cancelled before the model answered.") : messageOf(e));
     }
-    const merged = parseMerge(answer, current);
-    if (!merged.ok) return cannot(merged.reason === "markers" ? localize("the proposal still has conflict markers.") : localize("the answer had no merged file."));
+    const merged = parseMerge(answer, input);
+    if (!merged.ok) return cannot(mergeProblem(merged.reason));
     const proposal = this.deps.mergeDocs.put(file, merged.content);
     await vscode.commands.executeCommand("vscode.diff", proposal, uri, localize("{0}: AI proposal ↔ file now ({1})", path.posix.basename(file), work.name), { preview: true });
     const choice = await decide({ note: merged.note }, proposal);

@@ -976,6 +976,8 @@
   "Linyra AI is merging {0}…": "Linyra AI 正在合并 {0}…",
   "the proposal still has conflict markers.": "建议内容中仍有冲突标记。",
   "the answer had no merged file.": "回答中没有合并后的文件。",
+  "the proposal leaves out or changes text outside the conflicts (cut off?). Resolve it in the merge editor.": "建议内容遗漏或改动了冲突之外的文本（可能被截断）。请在合并编辑器中解决。",
+  "the proposal is much shorter than either side (cut off?). Resolve it in the merge editor.": "建议内容比任何一侧都短得多（可能被截断）。请在合并编辑器中解决。",
   "{0}: AI proposal ↔ file now ({1})": "{0}：AI 建议 ↔ 当前文件（{1}）",
   "Accept…": "接受…",
   "write the proposal and stage the file": "写入建议内容并暂存该文件",

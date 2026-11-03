@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { configureI18n } from "../../i18n";
-import { conflictTooLarge, explainConflictsRequest, matchEol, mergeRequest, parseMerge, resolveReport, reviewStep, sideLabels } from "./conflicts";
+import { conflictTooLarge, explainConflictsRequest, matchEol, MERGE_SYSTEM, mergeFence, mergeProblem, mergeRequest, outsideConflicts, parseMerge, resolveReport, reviewStep, sideLabels } from "./conflicts";
 import { budgetDiffs } from "./context";
 import { fallbackNotes, notesRequest, parseNotes, renderNotes, type NotesSection } from "./releaseNotes";
 import { fileLink, parseReview, renderReview, reviewRequest, type ReviewWords } from "./review";
@@ -74,13 +74,52 @@ const signal = new AbortController().signal;
   assert.ok(t.includes("during a merge") && t.includes("Theirs:\n(no such file on this side)") && t.includes("The file now, with conflict markers"));
   assert.strictEqual(conflictTooLarge(c), false);
   assert.strictEqual(conflictTooLarge({ ...c, current: "x".repeat(70_000) }), true);
-  const ok = parseMerge("Here:\n```merged\nconst a = 1;\nconst b = 2;\n```\nNote: kept both constants.\n", "x\r\ny\r\n");
+  assert.ok(t.endsWith("Reply with the merged file between a line ```merged and a line ```, then the Note line."));
+  const ok = parseMerge("Here:\n```merged\nconst a = 1;\nconst b = 2;\n```\nNote: kept both constants.\n", { current: "x\r\ny\r\n" });
   assert.deepStrictEqual(ok, { ok: true, content: "const a = 1;\r\nconst b = 2;\r\n", note: "kept both constants." });
-  assert.deepStrictEqual(parseMerge("```ts\nonly one block\n```", "x"), { ok: true, content: "only one block", note: "" });
-  assert.deepStrictEqual(parseMerge("```merged\n<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n```", "x"), { ok: false, reason: "markers" });
-  assert.deepStrictEqual(parseMerge("no block", "x"), { ok: false, reason: "noBlock" });
-  assert.deepStrictEqual(parseMerge("```a\n1\n```\n```b\n2\n```", "x"), { ok: false, reason: "noBlock" }, "two blocks and none named merged: no guess");
-  assert.strictEqual(parseMerge("````merged\nhas ``` inside\n````", "")?.ok, true);
+  assert.deepStrictEqual(parseMerge("```ts\nonly one block\n```", { current: "x" }), { ok: true, content: "only one block", note: "" });
+  assert.deepStrictEqual(parseMerge("```merged\n<<<<<<< HEAD\na\n=======\nb\n>>>>>>> x\n```", { current: "x" }), { ok: false, reason: "markers" });
+  assert.deepStrictEqual(parseMerge("no block", { current: "x" }), { ok: false, reason: "noBlock" });
+  assert.deepStrictEqual(parseMerge("```a\n1\n```\n```b\n2\n```", { current: "x" }), { ok: false, reason: "noBlock" }, "two blocks and none named merged: no guess");
+  assert.strictEqual(parseMerge("````merged\nhas ``` inside\n````", { current: "" })?.ok, true);
+  console.log("ok - conflicts: ours/theirs named by operation, the merged block parsed (never with markers)");
+}
+
+{
+  // A README whose merge holds its own code fences: the proposal is the whole file, never cut at the first fence inside it.
+  const ours = "# acme-web\n\nInstall:\n\n```sh\nnpm install\n```\n\nThen run it with dana's script.\n";
+  const theirs = "# acme-web\n\nInstall:\n\n```sh\nnpm ci\n```\n\nThen run it.\n";
+  const current = "# acme-web\n\nInstall:\n\n```sh\n<<<<<<< HEAD\nnpm install\n=======\nnpm ci\n>>>>>>> rin\n```\n\n<<<<<<< HEAD\nThen run it with dana's script.\n=======\nThen run it.\n>>>>>>> rin\n";
+  const file = { base: "# acme-web\n\nInstall:\n\n```sh\nnpm i\n```\n\nRun it.\n", ours, theirs, current };
+  const fence = mergeFence(file);
+  assert.strictEqual(fence, "````", "longer than the file's own fences");
+  const c = { repo: "acme-web", path: "README.md", operation: "merge" as const, head: "main", ...file };
+  assert.ok((mergeRequest(c, signal).turns[0] as { content: string }).content.includes("between a line ````merged and a line ````"));
+  assert.ok(MERGE_SYSTEM.includes("longer than any in the file"), "the model is told why");
+  const merged = "# acme-web\n\nInstall:\n\n```sh\nnpm ci\n```\n\nThen run it with dana's script.\n";
+  const asked = parseMerge(`${fence}merged\n${merged}${fence}\nNote: took npm ci.`, file);
+  assert.deepStrictEqual(asked, { ok: true, content: merged, note: "took npm ci." }, "the fence asked for");
+  const plain = parseMerge(`\`\`\`merged\n${merged}\`\`\`\nNote: took npm ci.`, file);
+  assert.deepStrictEqual(plain, { ok: true, content: merged, note: "took npm ci." }, "a plain fence anyway: the last one before the note closes it");
+  const noNote = parseMerge(`\`\`\`merged\n${merged}\`\`\``, file);
+  assert.ok(noNote.ok && noNote.content === merged);
+  // The file has a "Note:" line of its own: the answer's note is the last one.
+  const noted = "Note: needs Node 22.\n\n```sh\nnpm ci\n```\n";
+  const notedFile = { ours: noted, theirs: noted, current: "<<<<<<< HEAD\nNote: needs Node 22.\n=======\nNote: needs Node 22.\n>>>>>>> rin\n\n```sh\nnpm ci\n```\n" };
+  assert.deepStrictEqual(parseMerge(`\`\`\`merged\n${noted}\`\`\`\nNote: kept it once.`, notedFile), { ok: true, content: noted, note: "kept it once." });
+  // What a cut-off proposal looks like is refused: the end of the file is gone, or it is far shorter than both sides.
+  assert.deepStrictEqual(parseMerge("```merged\n# acme-web\n\nInstall:\n\n```sh\nnpm ci\n```", file), { ok: false, reason: "changed" }, "the text after the last conflict is gone");
+  assert.deepStrictEqual(parseMerge("```merged\n# acme-web\n\nSee the wiki.\n```", file), { ok: false, reason: "changed" }, "text outside the conflicts rewritten");
+  const whole = { ours: `${"a".repeat(400)}\n`, theirs: `${"b".repeat(400)}\n`, current: `<<<<<<< HEAD\n${"a".repeat(400)}\n=======\n${"b".repeat(400)}\n>>>>>>> rin\n` };
+  assert.deepStrictEqual(parseMerge("```merged\naaa\n```", whole), { ok: false, reason: "short" });
+  assert.ok(parseMerge(`\`\`\`merged\n${"a".repeat(400)}\n${"b".repeat(400)}\n\`\`\``, whole).ok, "both sides kept");
+  assert.deepStrictEqual(outsideConflicts(current), [["# acme-web", "", "Install:", "", "```sh"], ["```", ""], [""]]);
+  assert.strictEqual(outsideConflicts("no markers\n"), undefined);
+  assert.strictEqual(mergeProblem("changed"), "the proposal leaves out or changes text outside the conflicts (cut off?). Resolve it in the merge editor.");
+  console.log("ok - conflicts: a merged file with code fences of its own is read whole; a cut-off proposal is refused");
+}
+
+{
   assert.strictEqual(matchEol("a\nb", "x\n"), "a\nb\n");
   assert.strictEqual(matchEol("a\r\nb\n", "x"), "a\nb\n");
   const first = reviewStep({ repo: "acme-api", path: "src/upload.ts", index: 1, total: 3, note: "kept both retries" });
@@ -105,5 +144,5 @@ const signal = new AbortController().signal;
   assert.ok(resolveReport({ accepted: 1, reviewed: 2, total: 2, operations: ["merge", "cherry-pick"] }).endsWith("Continue each repository's operation in Source Control once every file is resolved."));
   const e = explainConflictsRequest("acme-web", "feature/login", "main", [{ path: "src/a.ts", base: "a", left: "b", right: undefined }], "en", signal);
   assert.ok((e.turns[0] as { content: string }).content.includes("merging feature/login into main") && (e.turns[0] as { content: string }).content.includes("main:\n(no such file on this side)"));
-  console.log("ok - conflicts: ours/theirs named by operation, the merged block parsed (never with markers), line endings kept");
+  console.log("ok - conflicts: line endings kept, one choice per file, the run's report");
 }
