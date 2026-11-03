@@ -145,6 +145,16 @@ describe("Commit actions", () => {
     assert.strictEqual(git(["branch", "--show-current"]), "main");
     const s = await until("the Log after the reset", (x) => !x.rows.some((r) => r.sha === tip));
     assert.ok(s.rows.some((r) => r.sha === start));
+    // A commit made while the question is open was not counted in it: nothing is reset.
+    try {
+      await vscode.commands.executeCommand("linyra._itest.beforeAnswer", async () => { git(["commit", "-q", "--allow-empty", "-m", "test: committed while asked"]); });
+      await answer("Mixed"); await answer("Reset");
+      await act("commitReset", start);
+      assert.strictEqual(git(["log", "-1", "--format=%s"]), "test: committed while asked", "the commit made meanwhile stays");
+    } finally {
+      await vscode.commands.executeCommand("linyra._itest.beforeAnswer", undefined);
+      git(["reset", "-q", "--hard", start]);
+    }
   });
 
   it("edits the subject of HEAD, keeping its body, and undoes it with its changes staged", async () => {
