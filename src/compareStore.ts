@@ -48,6 +48,8 @@ export class CompareStore implements vscode.Disposable {
   private readonly map = new Map<string, RepoCompare>();
   /** Bumped by every new pair and swap: a read of an older one is dropped when it lands. */
   private gen = 0;
+  /** Each repository's last read started: an older one that lands after a newer one is dropped. */
+  private readonly readOf = new Map<string, number>();
   private ctl = new AbortController();
   private inFlight = 0;
   private readonly emitter = new vscode.EventEmitter<void>();
@@ -162,9 +164,12 @@ export class CompareStore implements vscode.Disposable {
     this.changed();
     try {
       await runPool(repos, this.deps.concurrency(), async (r, s) => {
+        const mine = (this.readOf.get(r.id) ?? 0) + 1;
+        this.readOf.set(r.id, mine);
         const result = await this.readOne(r, p, s);
-        // A newer pair or swap, or the repository was unticked meanwhile: drop it.
-        if (gen !== this.gen || signal.aborted || !this.deps.repos().some((x) => x.id === r.id)) return;
+        // A newer pair or swap, a newer read of this repository (its branches moved: Refresh of
+        // it alone), or the repository was unticked meanwhile: drop it.
+        if (gen !== this.gen || signal.aborted || this.readOf.get(r.id) !== mine || !this.deps.repos().some((x) => x.id === r.id)) return;
         this.map.set(r.id, result);
         this.changed();
       }, signal);
