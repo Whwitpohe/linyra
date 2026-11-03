@@ -17,6 +17,7 @@ import { compareWithWorkingTree } from "./workingTreeDiff";
 import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
 import { stashLogStamp } from "./stashLog";
+import { pullFastForwardArgs } from "./upstream";
 import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
 import { droppedArgs, forcePushPrompt, forcePushProtected, parseDropped, protectionPatterns } from "./multiRepoModel";
 import { gitText, whyOf } from "./actionErrors";
@@ -297,7 +298,7 @@ export class BranchController implements vscode.Disposable {
         case "pull": {
           if (!b.current) throw new Error(localize("Only the checked-out branch can be pulled."));
           await ensureCurrent();
-          if (native?.pull) await native.pull(); else await run(["pull", "--ff-only"]);
+          if (native?.pull) await native.pull(); else await run(pullFastForwardArgs());
           done = branchDone("pull", { name: b.name, repo: repo.name });
           break;
         }

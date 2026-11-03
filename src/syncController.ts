@@ -6,7 +6,7 @@ import { isAbortError, runPool } from "./pool";
 import type { RepoDiscovery } from "./repoDiscovery";
 import type { Repo } from "./types";
 import type { UncommittedStore } from "./uncommittedStore";
-import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
+import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullFastForwardArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
 
 /** Fetch All's answer; summary is the status-bar line shown when every fetch succeeded. */
 export interface FetchResult { fetched: number; failed: string[]; summary?: string }
@@ -253,7 +253,7 @@ export class SyncController implements vscode.Disposable {
     outer.addEventListener("abort", stop, { once: true });
     try {
       // English: its "fast-forward" error is recognized below whatever the system's language.
-      await this.host.run(repo.root, ["pull", "--ff-only", "--quiet", "--recurse-submodules=no"], ctl.signal, { tree: true, env: { ...FETCH_ENV, LC_ALL: "C" } });
+      await this.host.run(repo.root, pullFastForwardArgs(), ctl.signal, { tree: true, env: { ...FETCH_ENV, LC_ALL: "C" } });
     } finally {
       clearTimeout(timer);
       outer.removeEventListener("abort", stop);

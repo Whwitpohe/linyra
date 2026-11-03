@@ -78,6 +78,16 @@ export function pullArgs(): string[] {
   return ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"];
 }
 
+/**
+ * Pull on one repository VS Code's Git has not opened: fetch its upstream and fast-forward, never a
+ * merge commit, no submodules. Autostash pinned off as in pullArgs: merge.autoStash (or
+ * rebase.autoStash, with pull.rebase) would put local edits back over the incoming ones with
+ * conflict markers and exit 0; off, git refuses and changes nothing.
+ */
+export function pullFastForwardArgs(): string[] {
+  return ["-c", "merge.autoStash=false", "-c", "rebase.autoStash=false", "pull", "--ff-only", "--quiet", "--recurse-submodules=no"];
+}
+
 /** Behind and not ahead: a fast-forward. Behind and ahead: diverged, left to the user. */
 export function pullPlan(repoIds: readonly string[], sync: Readonly<Record<string, AheadBehind>>): { pull: string[]; diverged: string[] } {
   const behind = behindRepos(repoIds, sync);
