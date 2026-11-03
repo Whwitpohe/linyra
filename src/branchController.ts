@@ -18,7 +18,7 @@ import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
 import { stashLogStamp } from "./stashLog";
 import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
-import { droppedArgs, forcePushPrompt, isProtected, parseDropped } from "./multiRepoModel";
+import { droppedArgs, forcePushPrompt, forcePushProtected, parseDropped, protectionPatterns } from "./multiRepoModel";
 import { gitText, whyOf } from "./actionErrors";
 import { branchDone, branchFailed, deleteAnywayPrompt, deletePrompt, distanceArgs, integratePrompt, parseDistance, stashFailed, unmergedArgs } from "./branchPrompts";
 
@@ -321,8 +321,8 @@ export class BranchController implements vscode.Disposable {
           // The question names the commits the remote loses and whose they are; never a protected branch.
           const lease = upstreamRemote && b.ahead > 0 && b.behind > 0 ? data.branches.find((x) => x.kind === "remote" && x.name === b.upstream)?.sha : undefined;
           if (lease) {
-            const guarded = vscode.workspace.getConfiguration("git", vscode.Uri.file(repo.root)).get<string[]>("branchProtection", []);
-            if (isProtected(destination, Array.isArray(guarded) ? guarded : [])) {
+            const guarded = protectionPatterns(vscode.workspace.getConfiguration("git", vscode.Uri.file(repo.root)).get<unknown>("branchProtection", []));
+            if (forcePushProtected(b.name, destination, guarded)) {
               throw new Error(localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", b.name, remote, destination));
             }
             const [log, me] = await Promise.all([run(droppedArgs(b.name, `${remote}/${destination}`)).catch(() => ""), run(["config", "user.email"]).catch(() => "")]);

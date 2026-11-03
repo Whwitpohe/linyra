@@ -4,7 +4,7 @@ import { isValidRef } from "./filterModel";
 import { checkValue, listValue, textValue } from "./formModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, droppedArgs, forcePushPrompt, forwardReason, headDistance, isProtected, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
+import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
@@ -164,10 +164,10 @@ export class MultiRepo {
       const all = await this.read(only);
       // Every branch with commits to send, the checked-out one first: one log each, only for those ahead.
       const listed = (await runPool(all, WRITE_CONCURRENCY, async (x) => {
-        const guarded = vscode.workspace.getConfiguration("git", vscode.Uri.file(x.repo.root)).get<string[]>("branchProtection", []);
+        const guarded = protectionPatterns(vscode.workspace.getConfiguration("git", vscode.Uri.file(x.repo.root)).get<unknown>("branchProtection", []));
         const rows = await Promise.all((x.data ? pushPlans(x.data) : []).map(async (plan) => {
           const commits = parseOutgoing(await this.host.run(x.repo.root, plan.current ? multiCommands.outgoing(!plan.setUpstream) : multiCommands.outgoingOf(plan.branch, `${plan.remote}/${plan.destination}`), WRITE_SIGNAL));
-          return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && isProtected(plan.destination, Array.isArray(guarded) ? guarded : []) } : undefined;
+          return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && forcePushProtected(plan.branch, plan.destination, guarded) } : undefined;
         }));
         return rows.filter((r): r is NonNullable<typeof r> => r !== undefined);
       }, WRITE_SIGNAL)).flatMap((s) => (s.status === "fulfilled" ? s.value : []));

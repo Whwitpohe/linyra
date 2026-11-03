@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, forcePushProtected, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, protectionPatterns, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -70,6 +70,36 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork"])), "fork", "the only remote");
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["a", "b"])), undefined);
   console.log("ok - Tag Across Repositories: annotated or lightweight, and where each repository's tag is pushed");
+}
+
+{
+  // git.branchProtection as VS Code's Git (picomatch 2.3) matches it. `true` beside picomatch's false: protects more on purpose.
+  const table: [pattern: string, name: string, protects: boolean][] = [
+    ["{develop,staging}", "staging", true], ["{develop,staging}", "develop", true], ["{develop,staging}", "dev", false],
+    ["release/{1.4,1.5}", "release/1.4", true], ["release/{1.4,1.5}", "release/1.6", false],
+    ["{a,{b,c}}", "c", true], ["{acme,rel*}/x", "release/x", true], ["{a,b/*}", "b/x", true], ["x{a,}", "x", true], ["{a}", "a", false], ["{a}", "{a}", true],
+    ["{a,b", "a", false], ["v{1..3}", "v2", true], ["v{1..3}", "v4", false], ["{c..a}", "b", true],
+    ["release/[0-9]*", "release/1.4", true], ["release/[0-9]*", "release/x", false], ["[^a]bc", "xbc", true], ["[^a]bc", "abc", false],
+    ["[]a]", "]", true], ["[a-c]", "b", true], ["[^a]", "/", false],
+    ["release/[!0-9]*", "release/x", true], ["release/[!0-9]*", "release/1", true], ["[[:digit:]]", "5", true],
+    [" develop", "develop", true], ["develop ", "develop", true],
+    ["release/**", "release", true], ["release/**", "release/1.4/hotfix", true], ["release/**", "releases", false],
+    ["**/main", "main", true], ["**/main", "acme/x/main", true], ["a/**/b", "a/b", true], ["a/**/b", "a/x/y/b", true], ["**", "a/b", true],
+    ["a**", "a/b", false], ["release/*", "release", false], ["*", "a/b", false], ["a?b", "a/b", false], ["?ain", "main", true],
+    ["release-+(0|1|2|3|4|5|6|7|8|9).*", "release-1.4", true], ["@(main|dev)", "dev", true], ["!(main)", "dev", true],
+    ["release/(1.4|1.5)", "release/1.4", true], ["release/1.4|release/1.5", "release/1.5", true], ["fix|feat", "fix", false], ["fix|feat", "fix|feat", true],
+    ["release/[0-9]+.*", "release/14.x", true], ["{a,b}+", "abba", true], ["a)?b", "ab", true], ["\"main\"", "main", true],
+    ["!main", "develop", true], ["!main", "main", false], ["!!main", "main", true], ["!release/*", "release/1.4", false], ["!+(a|b)", "a", true],
+    ["a\\*b", "a*b", true], ["a\\*b", "axb", false], ["a.b", "axb", false], ["a\\d", "a5", true], ["(a", "a", true], ["[z-a]", "b", true], ["./main", "main", true],
+  ];
+  for (const [pattern, name, protects] of table) assert.strictEqual(branchMatches(pattern, name), protects, `${JSON.stringify(pattern)} on ${name}`);
+  assert.deepStrictEqual(protectionPatterns([" release/* ", "", 7, "main"]), ["release/*", "main"], "trimmed, empty and non-text dropped");
+  assert.deepStrictEqual(protectionPatterns("develop"), ["develop"], "one pattern, as VS Code's Git takes it too");
+  assert.deepStrictEqual(protectionPatterns(undefined), []);
+  assert.ok(isProtected("staging", protectionPatterns(["{develop,staging}"])) && isProtected("release/1.4", ["release/[0-9]*"]));
+  assert.ok(forcePushProtected("release/1.4", "acme-1.4", ["release/*"]), "the local name counts, as in VS Code's Git");
+  assert.ok(forcePushProtected("acme-1.4", "main", []) && !forcePushProtected("acme-1.4", "acme-1.4", ["release/*"]));
+  console.log("ok - git.branchProtection globs match as VS Code's Git reads them, and what is not read exactly protects more");
 }
 
 {

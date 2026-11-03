@@ -183,14 +183,188 @@ const plural = (n: number) => localize(n === 1 ? "{0} commit" : "{0} commits", n
 /** Branches never force pushed: main and master, and VS Code's git.branchProtection globs. */
 export const PROTECTED_BRANCHES = ["main", "master"];
 
-/** A glob of git.branchProtection: * within a name segment, ** across, ? one character. */
+/** git.branchProtection as VS Code's Git reads it: one pattern or a list, each trimmed, empty ones dropped. */
+export function protectionPatterns(value: unknown): string[] {
+  return (Array.isArray(value) ? value : [value]).map((p) => (typeof p === "string" ? p.trim() : "")).filter((p) => p !== "");
+}
+
+/**
+ * A glob of git.branchProtection, read as VS Code's Git reads it (picomatch 2): * and ? within a
+ * name segment, ** as whole segments across any number of them (release/** protects release too),
+ * {a,b} (nested, globs inside), {a..c}, [0-9] and [^0-9], "quoted" text, \ escapes, a leading !
+ * negates; and what picomatch passes on to its regular expression: a | between alternatives, a +
+ * after a class or a brace group (one or more). What is not read exactly protects more, never
+ * less: an extglob +(…) or a group (…) matches anything there, a POSIX [[:digit:]] or [!…] any one
+ * character (picomatch 2 reads [!a] as "!" or "a", a shell as "not a"), {1..10} any run in the
+ * segment; a negated pattern with any of those, or one that cannot be read (\d, an unclosed group),
+ * protects every branch.
+ */
 export function branchMatches(pattern: string, name: string): boolean {
-  const re = pattern.split(/(\*\*|\*|\?)/).map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part === "?" ? "[^/]" : part.replace(/[.+^${}()|[\]\\]/g, "\\$&"))).join("");
-  return new RegExp(`^${re}$`).test(name);
+  let p = pattern.trim();
+  // picomatch's own first test: a pattern that is the name matches it.
+  if (p === name) return true;
+  if (p.startsWith("./")) p = p.slice(2);
+  // picomatch's fast path (no / ( ) [ ] { } " and no leading * or !): | and + are themselves there.
+  const fast = !/(^[*!]|[/()[\]{}"])/.test(p);
+  let negated = false;
+  while (p.startsWith("!") && !p.startsWith("!(")) { negated = !negated; p = p.slice(1); }
+  let glob: { source: string; exact: boolean };
+  let re: RegExp;
+  try {
+    glob = globSource(p, fast);
+    re = new RegExp(`^(?:${glob.source})$`);
+  } catch {
+    return true;
+  }
+  const hit = re.test(name);
+  return negated ? !glob.exact || !hit : hit;
+}
+
+const escapeChar = (c: string) => c.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+/** A character as itself inside a [ … ] class: \ ] ^ [ escaped, and an escaped - (a bare one makes a range). */
+const literal = (c: string, escaped: boolean) => (/[\\\]^[]/.test(c) || (escaped && c === "-") ? `\\${c}` : c);
+
+/** A glob as a regular expression's source; `exact` false where it matches more than the glob does. Throws on one it cannot read. */
+function globSource(p: string, fast: boolean): { source: string; exact: boolean } {
+  let exact = true;
+  const unread = (): never => { throw new Error(`not read: ${p}`); };
+  // The closing character for the opening one at i (nested pairs counted, escapes skipped), or -1.
+  const closing = (i: number, open: string, close: string): number => {
+    let depth = 0;
+    for (let j = i; j < p.length; j++) {
+      if (p[j] === "\\") j++;
+      else if (p[j] === open) depth++;
+      else if (p[j] === close && --depth === 0) return j;
+    }
+    return -1;
+  };
+  // A [ … ] class at i, or undefined when it is not closed (then [ is itself).
+  const bracket = (i: number): { source: string; end: number } | undefined => {
+    let j = i + 1;
+    const bang = p[j] === "!", negate = bang || p[j] === "^";
+    if (negate) j++;
+    const first = j;
+    let posix = false, cls = "";
+    for (; j < p.length && (p[j] !== "]" || j === first); j++) {
+      if (p[j] === "\\" && j + 1 < p.length) cls += literal(p[++j], true);
+      else if (p[j] === "[" && /[:.=]/.test(p[j + 1] ?? "")) {
+        const close = p.indexOf(`${p[j + 1]}]`, j + 2);
+        if (close < 0) return undefined;
+        posix = true;
+        j = close + 1;
+      } else cls += literal(p[j], false);
+    }
+    if (j >= p.length) return undefined;
+    if (posix || bang) { exact = false; return { source: "[^/]", end: j + 1 }; }
+    return { source: negate ? `[^${cls}/]` : `[${cls}]`, end: j + 1 };
+  };
+  // Past a group's ")" at i: picomatch hands a ? or + right after it to the regular expression, as part of it.
+  const pastGroup = (i: number) => { let j = i + 1; while (p[j] === "?" || p[j] === "+") j++; return j; };
+  // One alternative from i: to the end, a | (not on the fast path), or (inside braces) its "," or "}".
+  const alternative = (i: number, inBraces: boolean): [string, number] => {
+    const start = i;
+    let out = "";
+    // What came last, for the + after it: a class or a group repeats ("one or more"); `covered`
+    // already matches anything there; `paren` a lone ")" (picomatch hands ? and + after it on too).
+    let last: "class" | "group" | "covered" | "paren" | undefined;
+    const ends = (j: number) => j >= p.length || (!fast && p[j] === "|") || (inBraces && (p[j] === "," || p[j] === "}"));
+    while (!ends(i)) {
+      const c = p[i], before = last;
+      last = undefined;
+      if (c === "\\") {
+        if (i + 1 >= p.length) { out += "\\\\"; i++; continue; }
+        // \d, \w, \b… reach picomatch's regular expression as they are.
+        if (/[A-Za-z0-9]/.test(p[i + 1])) unread();
+        out += escapeChar(p[i + 1]); i += 2; continue;
+      }
+      // (An extglob +( or ?( comes first, as in picomatch.)
+      if (!fast && c === "+" && p[i + 1] !== "(" && (before === "class" || before === "group" || before === "paren")) { out += "+"; i++; continue; }
+      if (!fast && c === "+" && p[i + 1] !== "(" && before === "covered") { last = "covered"; i++; continue; }
+      if (!fast && c === "?" && p[i + 1] !== "(" && before === "paren") { out += "?"; i++; continue; }
+      if (c === '"' && !fast) {
+        // "…": the text as it is.
+        const close = p.indexOf('"', i + 1), end = close < 0 ? p.length : close;
+        for (const ch of p.slice(i + 1, end)) out += escapeChar(ch);
+        i = end + 1;
+        continue;
+      }
+      if (c === "(" || ("+*?@!".includes(c) && p[i + 1] === "(")) {
+        // An extglob, or a group picomatch hands to its regular expression: anything there.
+        const close = closing(c === "(" ? i : i + 1, "(", ")");
+        if (close < 0) unread();
+        exact = false; out += ".*"; last = "covered"; i = pastGroup(close);
+        continue;
+      }
+      if (c === ")") { out += "\\)"; last = "paren"; i++; continue; }
+      if (c === "*") {
+        let j = i;
+        while (p[j] === "*") j++;
+        const run = j - i, segmentStart = i === start || p[i - 1] === "/" || p[i - 1] === ")", segmentEnd = ends(j) || p[j] === "/";
+        if (run === 1 || !segmentStart) out += "[^/]*";
+        // **x, ***: picomatch reads some within a segment, some across: anything there.
+        else if (run > 2 || !segmentEnd) { exact = false; out += ".*"; }
+        else if (i === start || !out.endsWith("\\/")) {
+          // **, or **/ in front: any segments, none included.
+          out += ends(j) ? ".*" : "(?:.*\\/)?";
+          if (!ends(j)) j++;
+        } else {
+          // /** at the end, or /**/ inside: the slash before and any segments, or nothing.
+          out = out.slice(0, -2) + (ends(j) ? "(?:\\/.*)?" : "(?:\\/.*)?\\/");
+          if (!ends(j)) j++;
+        }
+        i = j;
+        continue;
+      }
+      if (c === "?") { out += "[^/]"; i++; continue; }
+      if (c === "[") {
+        const b = bracket(i);
+        if (b) { out += b.source; last = "class"; i = b.end; continue; }
+      }
+      if (c === "{") {
+        const close = closing(i, "{", "}");
+        if (close > i) {
+          const parts: string[] = [];
+          let j = i + 1;
+          for (;;) {
+            const [source, k] = alternative(j, true);
+            parts.push(source);
+            j = k + 1;
+            if (p[k] !== "," && p[k] !== "|") break;
+          }
+          const body = p.slice(i + 1, close), range = /^(.)\.\.(.)$/.exec(body);
+          last = "group";
+          if (parts.length > 1) out += `(?:${parts.join("|")})`;
+          // {1..3}, {a..c}: one character of the range (either way round); a longer one ({1..10}), any run in the segment.
+          else if (range) out += `[${[range[1], range[2]].sort().map((x) => literal(x, true)).join("-")}]`;
+          else if (/^[^{}]*\.\.[^{}]*$/.test(body)) { exact = false; out += "[^/]*"; last = "covered"; }
+          // {a}: the braces are themselves.
+          else out += `\\{${parts[0]}\\}`;
+          i = j;
+          continue;
+        }
+      }
+      out += escapeChar(c);
+      i++;
+    }
+    return [out, i];
+  };
+  const parts: string[] = [];
+  for (let i = 0; ;) {
+    const [source, k] = alternative(i, false);
+    parts.push(source);
+    if (k >= p.length) break;
+    i = k + 1;
+  }
+  return { source: parts.join("|"), exact };
 }
 
 export function isProtected(name: string, patterns: readonly string[]): boolean {
-  return [...PROTECTED_BRANCHES, ...patterns].some((p) => branchMatches(p, name));
+  return [...PROTECTED_BRANCHES, ...patterns].some((p) => p.trim() !== "" && branchMatches(p, name));
+}
+
+/** A force push of `branch` to `destination`: refused when either name is protected (VS Code's Git checks the local one). */
+export function forcePushProtected(branch: string, destination: string, patterns: readonly string[]): boolean {
+  return isProtected(destination, patterns) || isProtected(branch, patterns);
 }
 
 /**
