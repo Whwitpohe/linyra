@@ -333,9 +333,10 @@ export function repoCounts(c: RepoCompare): string {
 /**
  * Why Merge ◀ into ▶… leaves a repository out: a merge would conflict, ▶ is no local branch there,
  * ▶ is checked out in another worktree (its files there would not follow), or ▶ moved since it was compared.
- * Release… also: ▶ is behind its upstream (its push would be refused).
+ * Release… also: ▶ is behind its upstream (its push would be refused). Unchecked: whether the merge
+ * would conflict is not known yet.
  */
-export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "remote" | "worktree" | "moved" | "behind"; into: string };
+export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "unchecked" } | { name: string; why: "remote" | "worktree" | "moved" | "behind"; into: string };
 
 /**
  * The repositories Merge ◀ into ▶… leaves out, grouped by why: `summary` is one line for a
@@ -344,9 +345,10 @@ export type MergeSkip = { name: string; why: "conflict"; files: number } | { nam
 export function mergeSkips(skipped: readonly MergeSkip[]): { summary: string; detail: string } {
   const groups = new Map<string, { title: (n: number) => string; names: string[] }>();
   for (const s of skipped) {
-    const key = s.why === "conflict" ? "conflict" : `${s.why}\0${s.into}`;
+    const key = s.why === "conflict" || s.why === "unchecked" ? s.why : `${s.why}\0${s.into}`;
     const repos = (n: number) => plural(n, "repository", "repositories");
     const title = s.why === "conflict" ? (n: number) => localize("{0}: a merge would conflict", repos(n))
+      : s.why === "unchecked" ? (n: number) => localize("{0}: not checked for conflicts yet (Refresh)", repos(n))
       : s.why === "remote" ? (n: number) => localize("{0}: {1} is not a local branch", repos(n), s.into)
       : s.why === "worktree" ? (n: number) => localize("{0}: {1} is checked out in another worktree", repos(n), s.into)
       : s.why === "behind" ? (n: number) => localize("{0}: {1} is behind its upstream (Update Project first)", repos(n), s.into)

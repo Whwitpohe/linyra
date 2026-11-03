@@ -552,6 +552,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const skipped: MergeSkip[] = [];
     await runPool(targets, 8, async ({ repo, result }) => {
       if (result.conflicts && result.conflicts.length > 0) { skipped.push({ name: repo.name, why: "conflict", files: result.conflicts.length }); return; }
+      // Not checked yet (its check did not land): a clean merge is not known, so it is not offered.
+      if (result.conflicts === undefined) { skipped.push({ name: repo.name, why: "unchecked" }); return; }
       const into = result.rightName;
       // ▶ as a local branch: where it is, the worktree that has it checked out (if one does), its upstream.
       const out = await this.deps.log.countedRun(repo.root, ["for-each-ref", "--format=%(objectname)%00%(worktreepath)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream:track)", `refs/heads/${into}`], new AbortController().signal).catch(() => "");
@@ -582,6 +584,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
 
   /** Each listed repository's commits only on ◀ (the same change on both left out): the release notes' sections. */
   private async noteSections(group = true) {
+    // Every repository still being read is in the notes too, once it lands.
+    await this.deps.store.readsDone();
     // The repositories picked together (or All); else every one.
     const sel = this.deps.selection.repoId;
     const targets = (group && sel !== undefined && isGroupSelection(sel) ? groupOf(this.deps.store, sel) : differing(this.deps.store)).filter((x) => x.result.left > 0);
@@ -750,7 +754,7 @@ function mergeHow(p: MergePlan): string {
 }
 
 function skipReason(s: MergeSkip): string {
-  return s.why === "conflict" ? localize("would conflict") : s.why === "remote" ? localize("not a local branch")
+  return s.why === "conflict" ? localize("would conflict") : s.why === "unchecked" ? localize("not checked for conflicts") : s.why === "remote" ? localize("not a local branch")
     : s.why === "worktree" ? localize("checked out in another worktree") : s.why === "behind" ? localize("behind its upstream") : localize("moved since the comparison");
 }
 

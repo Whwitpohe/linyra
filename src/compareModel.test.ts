@@ -190,4 +190,5 @@ const skips = mergeSkips([
 assert.strictEqual(skips.summary, "2 repositories: main is checked out in another worktree · 1 repository: a merge would conflict · 1 repository: origin/main is not a local branch");
 assert.strictEqual(skips.detail, "2 repositories: main is checked out in another worktree\nacme-web, acme-libs\n\n1 repository: a merge would conflict\nacme-api (2 files)\n\n1 repository: origin/main is not a local branch\nacme-docs");
 assert.strictEqual(mergeSkips([{ name: "acme-web", why: "behind", into: "main" }]).summary, "1 repository: main is behind its upstream (Update Project first)", "Release…");
+assert.strictEqual(mergeSkips([{ name: "acme-web", why: "unchecked" }, { name: "acme-api", why: "unchecked" }]).detail, "2 repositories: not checked for conflicts yet (Refresh)\nacme-web, acme-api", "no clean merge known: not offered");
 console.log("ok - Merge leaves repositories out grouped by why");

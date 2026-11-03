@@ -25,6 +25,9 @@ export interface CompareDeps {
   repos(): readonly Repo[];
 }
 
+/** Waits for every one of them, whatever each one's outcome. */
+const settled = (runs: readonly Promise<unknown>[]) => Promise.all(runs.map((r) => r.catch(() => undefined)));
+
 /** A result as the tests and the list name it. */
 export function rowLabel(name: string, c: RepoCompare): string {
   switch (c.kind) {
@@ -66,10 +69,18 @@ export class CompareStore implements vscode.Disposable {
     return this.checks > 0;
   }
   private checks = 0;
-  /** The merge checks under way: Merge ◀ into ▶ waits for them. */
-  private checked: Promise<void> = Promise.resolve();
-  conflictsChecked(): Promise<void> {
-    return this.checked;
+  /** The reads and the merge checks under way: Merge ◀ into ▶, Release… and the release notes wait for them. */
+  private readonly readsRunning = new Set<Promise<void>>();
+  private readonly checksRunning = new Set<Promise<void>>();
+
+  /** Every read under way has landed, and so have the merge checks those reads start. */
+  async conflictsChecked(): Promise<void> {
+    while (this.readsRunning.size + this.checksRunning.size > 0) await settled([...this.readsRunning, ...this.checksRunning]);
+  }
+
+  /** Every read under way has landed (its merge checks may still run). */
+  async readsDone(): Promise<void> {
+    while (this.readsRunning.size > 0) await settled([...this.readsRunning]);
   }
 
   /** A new pair: everything in flight stops, every ticked repository is read. null forgets it. */
@@ -133,7 +144,16 @@ export class CompareStore implements vscode.Disposable {
     });
   }
 
-  private async read(repos: readonly Repo[]): Promise<void> {
+  /** A read, known until it lands: conflictsChecked() waits for it and for the checks it starts. */
+  private read(repos: readonly Repo[]): Promise<void> {
+    const run = this.readNow(repos);
+    this.readsRunning.add(run);
+    const done = () => { this.readsRunning.delete(run); };
+    void run.then(done, done);
+    return run;
+  }
+
+  private async readNow(repos: readonly Repo[]): Promise<void> {
     const p = this.current;
     if (!p || repos.length === 0) return;
     const gen = this.gen;
@@ -178,9 +198,10 @@ export class CompareStore implements vscode.Disposable {
       this.changed();
     }, signal).then(() => undefined, () => undefined).finally(() => {
       this.checks--;
+      this.checksRunning.delete(run);
       this.changed();
     });
-    this.checked = Promise.all([this.checked, run]).then(() => undefined);
+    this.checksRunning.add(run);
   }
 
   private async readOne(r: Repo, p: Pair, signal: AbortSignal): Promise<RepoCompare> {
