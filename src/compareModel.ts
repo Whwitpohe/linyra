@@ -104,27 +104,41 @@ export function validPair(p: unknown): p is Pair {
 }
 
 /**
+ * The refs a name is looked up as, in order: a full ref as given; else the branch, the remote
+ * branch (what the Branch picker lists), then a tag (the branch sheet's Compare… on one). Never
+ * git's loose lookup, where a tag beats a branch of the same name and "cafe" may be a commit.
+ */
+export function refsOf(name: string): string[] {
+  return name.startsWith("refs/") ? [name] : [`refs/heads/${name}`, `refs/remotes/${name}`, `refs/tags/${name}`];
+}
+
+/**
  * Every name of both sides, its commit and its tree, in one spawn (git cat-file --batch-check):
  * a repository uses the first name of each side it has, and the same tree means the same files.
  */
 export function resolveInput(p: Pair): string {
-  return [...candidates(p.left), ...candidates(p.right)].flatMap((name) => [`${name}^{commit}`, `${name}^{tree}`]).join("\n") + "\n";
+  return [...candidates(p.left), ...candidates(p.right)].flatMap((name) => refsOf(name).flatMap((ref) => [`${ref}^{commit}`, `${ref}^{tree}`])).join("\n") + "\n";
 }
 
 export interface Resolved { name: string; sha: string; tree: string }
 
 export function parseResolve(p: Pair, out: string): { left?: Resolved; right?: Resolved } {
   const lines = out.split("\n");
-  const id = (i: number, type: string) => new RegExp(`^([0-9a-f]{40}(?:[0-9a-f]{24})?) ${type} `).exec(lines[i] ?? "")?.[1];
-  const first = (names: readonly string[], from: number): Resolved | undefined => {
-    for (const [k, name] of names.entries()) {
-      const sha = id(from + 2 * k, "commit"), tree = id(from + 2 * k + 1, "tree");
-      if (sha && tree) return { name, sha, tree };
+  let at = 0;
+  const id = (type: string) => new RegExp(`^([0-9a-f]{40}(?:[0-9a-f]{24})?) ${type} `).exec(lines[at++] ?? "")?.[1];
+  // Every line of a side is read, found or not: the other side's lines follow them.
+  const first = (names: readonly string[]): Resolved | undefined => {
+    let found: Resolved | undefined;
+    for (const name of names) {
+      for (let n = refsOf(name).length; n > 0; n--) {
+        const sha = id("commit"), tree = id("tree");
+        if (!found && sha && tree) found = { name, sha, tree };
+      }
     }
-    return undefined;
+    return found;
   };
-  const left = candidates(p.left);
-  return { left: first(left, 0), right: first(candidates(p.right), 2 * left.length) };
+  const left = first(candidates(p.left));
+  return { left, right: first(candidates(p.right)) };
 }
 
 export function mergeBaseArgs(l: string, r: string): string[] {
