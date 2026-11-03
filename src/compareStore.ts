@@ -225,16 +225,18 @@ export class CompareStore implements vscode.Disposable {
         this.deps.run(r.root, sideCountArgs("left", l, rt), signal).then(parseSideCount),
         this.deps.run(r.root, sideCountArgs("right", l, rt), signal).then(parseSideCount),
       ]);
-      // A side with no commit of its own: merging cannot conflict, so there is nothing to check.
-      const trivial = left.only + left.same === 0 || right.only + right.same === 0;
+      // A side with no commit of its own but merges (they are not counted) shares the other's root.
+      // It can still conflict: merges that resolved the same files differently (criss-cross). So
+      // every pair is checked; the counts cannot tell a side with no commit at all from one with merges.
+      const related = left.only + left.same === 0 || right.only + right.same === 0;
       let base: string | null = null;
-      if (this.noMergeTree && !trivial) {
+      if (this.noMergeTree && !related) {
         // A git without merge-tree --write-tree: the split point tells whether they share history.
         base = await this.mergeBase(r, l, rt, signal);
         if (base === null) return { kind: "nobase" };
       }
       return { kind: "differs", leftName: L.name, rightName: R.name, leftSha: l, rightSha: rt, base, left: left.only, right: right.only, sameLeft: left.same, sameRight: right.same,
-        conflicts: trivial ? [] : this.noMergeTree ? null : undefined };
+        conflicts: this.noMergeTree ? null : undefined };
     } catch (e) {
       if (isAbortError(e)) throw e;
       return { kind: "error", reason: e instanceof Error ? e.message : String(e) };
