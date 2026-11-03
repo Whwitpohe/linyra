@@ -8,7 +8,7 @@ import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forward
 import { runPool } from "./pool";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
-import { gitText } from "./actionErrors";
+import { gitText, whyOf } from "./actionErrors";
 import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport, type CheckoutBlock } from "./smartCheckout";
 import { FETCH_ENV } from "./upstream";
 
@@ -161,16 +161,24 @@ export class MultiRepo {
     return this.exclusive(async () => {
       const all = await this.read(only);
       // Every branch with commits to send, the checked-out one first: one log each, only for those ahead.
+      // A branch whose commits cannot be read is named in the report; the repository's others still go.
+      const unread: { name: string; reason: string; failed: true }[] = [];
       const listed = (await runPool(all, WRITE_CONCURRENCY, async (x) => {
         const guarded = protectionPatterns(vscode.workspace.getConfiguration("git", vscode.Uri.file(x.repo.root)).get<unknown>("branchProtection", []));
         const rows = await Promise.all((x.data ? pushPlans(x.data) : []).map(async (plan) => {
-          const commits = parseOutgoing(await this.host.run(x.repo.root, plan.current ? multiCommands.outgoing(!plan.setUpstream) : multiCommands.outgoingOf(plan.branch, `${plan.remote}/${plan.destination}`), WRITE_SIGNAL));
+          let commits: ReturnType<typeof parseOutgoing>;
+          try {
+            commits = parseOutgoing(await this.host.run(x.repo.root, plan.current ? multiCommands.outgoing(!plan.setUpstream) : multiCommands.outgoingOf(plan.branch, `${plan.remote}/${plan.destination}`), WRITE_SIGNAL));
+          } catch (e) {
+            unread.push({ name: x.repo.name, reason: localize("{0}: its commits to push could not be read ({1})", plan.branch, whyOf(e)), failed: true });
+            return undefined;
+          }
           return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && forcePushProtected(plan.branch, plan.destination, guarded) } : undefined;
         }));
         return rows.filter((r): r is NonNullable<typeof r> => r !== undefined);
       }, WRITE_SIGNAL)).flatMap((s) => (s.status === "fulfilled" ? s.value : []));
       // Diverged on a protected branch: a push would be rejected and a force push is not offered.
-      const blocked = listed.filter((r) => r.blocked).map((r) => ({ name: r.repo.name, reason: localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", r.plan.branch, r.plan.remote, r.plan.destination) }));
+      const blocked = [...listed.filter((r) => r.blocked).map((r) => ({ name: r.repo.name, reason: localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", r.plan.branch, r.plan.remote, r.plan.destination) })), ...unread];
       // Ready to push first; diverged ones (ahead and behind) in a section of their own, not ticked: being
       // behind is usually someone else's push (Update Project brings it in). Ticked anyway, a diverged
       // branch is force pushed, after a confirmation naming what the remote loses.

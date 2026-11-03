@@ -387,14 +387,17 @@ export function forcePushProtected(branch: string, destination: string, patterns
 
 /**
  * Where the checked-out branch goes: its upstream when it has one, otherwise the same name on
- * origin (or the only remote), with --set-upstream. undefined: detached, or nowhere to push.
+ * origin (or the only remote), with --set-upstream. An upstream that is gone (deleted on the
+ * remote) is published again where it was, with --set-upstream, as a branch never pushed: there is
+ * no remote branch to count from. undefined: detached, or nowhere to push.
  */
 export function pushPlan(data: Branches): PushPlan | undefined {
   const branch = data.branches.find((b) => b.kind === "local" && b.current);
   if (!branch) return undefined;
   const upstreamRemote = [...data.remotes].sort((a, b) => b.length - a.length).find((r) => branch.upstream?.startsWith(`${r}/`));
   if (upstreamRemote) {
-    const plan: PushPlan = { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: false };
+    const plan: PushPlan = { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: branch.gone === true };
+    if (branch.gone) return plan;
     // Both ahead and behind: the remote branch has commits that are not on this one.
     const remoteSha = data.branches.find((b) => b.kind === "remote" && b.name === branch.upstream)?.sha;
     return branch.ahead > 0 && branch.behind > 0 && remoteSha ? { ...plan, lease: remoteSha, behind: branch.behind } : plan;
@@ -413,7 +416,8 @@ export function pushPlans(data: Branches): PushPlan[] {
   const plans: PushPlan[] = current ? [{ ...current, current: true }] : [];
   const remotes = [...data.remotes].sort((a, b) => b.length - a.length);
   for (const b of data.branches) {
-    if (b.kind !== "local" || b.current || !b.upstream || b.ahead === 0) continue;
+    // Gone upstreams, as no upstream: nothing counted to send (Publish is for the checked-out one).
+    if (b.kind !== "local" || b.current || !b.upstream || b.gone || b.ahead === 0) continue;
     // An upstream that is another local branch: nothing to send to a remote.
     const remote = remotes.find((r) => b.upstream!.startsWith(`${r}/`));
     if (!remote) continue;

@@ -1184,6 +1184,7 @@
   "Linyra: aborted in {0} repositories.": "Linyra：已在 {0} 个仓库中中止。",
   "{0}: no file has conflicts.": "{0}：没有冲突的文件。",
   "{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first": "{0} 与 {1}/{2} 已分叉：受保护的分支从不强制推送，请先拉取",
+  "{0}: its commits to push could not be read ({1})": "{0}：无法读取它要推送的提交（{1}）",
   "diverged: force push": "已分叉：强制推送",
   "Force push {0} to {1} in {2}?": "在 {2} 中把 {0} 强制推送到 {1}？",
   "Force push {0} repositories?": "强制推送 {0} 个仓库？",

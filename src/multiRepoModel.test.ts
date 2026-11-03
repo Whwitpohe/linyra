@@ -377,6 +377,53 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.deepStrictEqual(multiCommands.outgoingOf("master", "origin/master"), ["log", "--format=%h%x00%s", "--max-count=1000", "refs/remotes/origin/master..refs/heads/master", "--"]);
   assert.throws(() => multiCommands.outgoingOf("master", "origin/master..HEAD"), "a range is never smuggled in");
   console.log("ok - Push… plans every local branch with commits for its remote upstream, the checked-out one first");
+  // Its upstream deleted on the remote: published again where it was, as a branch never pushed.
+  const gone = listing([line("refs/heads/acme-feature", sha, "*", "origin/acme-feature", "[gone]", "", ""), line("refs/heads/develop", sha, " ", "origin/develop", "[ahead 1]", "", ""),
+    line("refs/heads/old", sha, " ", "origin/old", "[gone]", "", ""), line("refs/remotes/origin/develop", sha, " ", "", "", "", "")], ["origin"]);
+  assert.strictEqual(gone.branches[0].gone, true);
+  assert.deepStrictEqual(pushPlans(gone), [{ branch: "acme-feature", remote: "origin", destination: "acme-feature", setUpstream: true, current: true },
+    { branch: "develop", remote: "origin", destination: "develop", setUpstream: false }], "the other branches stay; one not checked out with a gone upstream has nothing counted to send");
+  console.log("ok - Push… publishes a checked-out branch whose upstream is gone again, beside the repository's other branches");
+}
+
+{
+  // Real git: the checked-out branch's remote branch was deleted (and pruned), another branch is ahead.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-pushgone-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const read = (cwd: string) => parseBranches(git(cwd, branchArgs()), git(cwd, ["remote"]).split(/\r?\n/).filter(Boolean));
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    git(seed, ["branch", "develop"]);
+    const origin = path.join(home, "origin.git");
+    git(home, ["clone", "-q", "--bare", seed, origin]);
+    const web = path.join(home, "acme-web");
+    git(home, ["clone", "-q", origin, web]);
+    git(web, ["switch", "-q", "--track", "-c", "develop", "origin/develop"]);
+    fs.writeFileSync(path.join(web, "d.txt"), "d\n");
+    git(web, ["add", "d.txt"]); git(web, ["commit", "-q", "-m", "feat: on develop"]);
+    git(web, ["switch", "-q", "-c", "acme-feature"]);
+    fs.writeFileSync(path.join(web, "f.txt"), "f\n");
+    git(web, ["add", "f.txt"]); git(web, ["commit", "-q", "-m", "feat: the feature"]);
+    git(web, ["push", "-q", "-u", "origin", "acme-feature"]);
+    git(seed, ["--git-dir", origin, "branch", "-D", "acme-feature"]);
+    git(web, ["fetch", "-q", "--prune"]);
+    fs.writeFileSync(path.join(web, "g.txt"), "g\n");
+    git(web, ["add", "g.txt"]); git(web, ["commit", "-q", "-m", "feat: after the remote branch went"]);
+    const plans = pushPlans(read(web));
+    assert.deepStrictEqual(plans.map((p) => [p.branch, p.setUpstream]), [["acme-feature", true], ["develop", false]], "both branches listed");
+    const [feature, develop] = plans;
+    assert.deepStrictEqual(parseOutgoing(git(web, multiCommands.outgoing(!feature.setUpstream))).map((c) => c.subject), ["feat: after the remote branch went", "feat: the feature", "feat: on develop"],
+      "what no remote has, as for a branch never pushed");
+    assert.deepStrictEqual(parseOutgoing(git(web, multiCommands.outgoingOf(develop.branch, `${develop.remote}/${develop.destination}`))).map((c) => c.subject), ["feat: on develop"]);
+    git(web, multiCommands.push(feature.remote, feature.branch, feature.destination, feature.setUpstream));
+    assert.strictEqual(git(web, ["rev-parse", "--abbrev-ref", "@{upstream}"]), "origin/acme-feature", "published again, and tracking it");
+    assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "acme-feature"]), git(web, ["rev-parse", "HEAD"]));
+    console.log("ok - real git: a checked-out branch whose remote branch is gone is published again; the repository's other branch is still listed");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 }
 
 {
