@@ -66,6 +66,8 @@ const OTHER = "c".repeat(40);
   });
   assert.deepStrictEqual(parseShow("merge\n\x1e\x00\n1\t0\tside.txt\x00").files, [{ path: "side.txt", added: 1, deleted: 0 }]);
   assert.deepStrictEqual(parseShow("empty commit\n\x1e\x00"), { message: "empty commit", files: [] });
+  assert.deepStrictEqual(parseShow("four\x1epart\n\nbody \x1e too\n\x1e\x00\n1\t0\todd\x1ename.txt\x00"), { message: "four\x1epart\n\nbody \x1e too", files: [{ path: "odd\x1ename.txt", added: 1, deleted: 0 }] }, "an RS in the message or a path is text");
+  assert.deepStrictEqual(parseShow(":100644 100644 aaaaaaa bbbbbbb M\x00odd\x1ename.txt\x001\t0\todd\x1ename.txt\x00"), { message: "", files: [{ path: "odd\x1ename.txt", added: 1, deleted: 0, status: "M" }] }, "git diff --raw --numstat has no message");
   console.log("ok - parseShow splits the full message from the file list");
 }
 

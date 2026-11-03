@@ -294,6 +294,19 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     }
     assert.deepStrictEqual(all.map((c) => c.subject).sort(), Array.from({ length: 10 }, (_, i) => `c${i}`).sort());
     console.log("ok - real git: one backwards-dated commit does not truncate paging");
+    // A subject holding git's record separator (RS) is one commit, and paging stays aligned.
+    const odd = { id: path.join(home, "acme-odd"), root: path.join(home, "acme-odd"), name: "acme-odd" };
+    makeRepo(odd.root, ["c1", "c2", "c3", "four\x1epart", "c5", "c6"].map((message, i) => ({ time: 1000 + i * 100, author: "rin" as const, message })), home);
+    const oddRows: string[] = [];
+    let oddPrev: QueryState | null = null;
+    for (let guard = 0; guard < 20; guard++) {
+      const page = await fetchPage({ repos: [odd], filter: ALL, pageSize: 2, concurrency: 4, now: 5000, prev: oddPrev, run: runGit, signal: new AbortController().signal });
+      oddRows.push(...page.rows.map((c) => c.subject));
+      oddPrev = page.state;
+      if (page.done) break;
+    }
+    assert.deepStrictEqual(oddRows, ["c6", "c5", "four\x1epart", "c3", "c2", "c1"]);
+    console.log("ok - real git: an RS in a subject neither drops its commit nor shifts the next page");
     const topological: Commit[] = [];
     let topoPrev: QueryState | null = null;
     for (let guard = 0; guard < 50; guard++) {
