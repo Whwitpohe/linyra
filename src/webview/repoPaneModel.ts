@@ -98,6 +98,11 @@ export class PaneWidth {
   private wanted = DEFAULT_REPO_PANE_WIDTH;
   shown = DEFAULT_REPO_PANE_WIDTH;
 
+  /** What the layout saves: the width the user chose, not what a narrow panel left of it. */
+  get chosen(): number {
+    return this.wanted;
+  }
+
   /** A drag, a key step or the saved layout: this becomes the user's width. */
   set(width: number, total: number): number {
     this.wanted = clampPaneWidth(width, Number.POSITIVE_INFINITY);

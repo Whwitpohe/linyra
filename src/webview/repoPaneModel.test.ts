@@ -56,6 +56,13 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.strictEqual(w.fit(1400), 250, "and the user's width comes back when there is room again");
   assert.strictEqual(w.set(40, 1400), 120, "a drag is still clamped");
   assert.strictEqual(w.fit(1400), 120, "and what it clamped to is what the user chose");
+  // Saved while squeezed (another layout change, or a drag's end), then restored by the next init.
+  w.set(398, 1400);
+  assert.strictEqual(w.fit(560), 260);
+  assert.strictEqual(w.chosen, 398, "the layout saves the chosen width, not the squeezed one");
+  const restored = new PaneWidth();
+  restored.set(w.chosen, 560);
+  assert.strictEqual(restored.fit(1400), 398, "so a wide panel shows it again");
   console.log("ok - resizing never forgets the pane width the user chose");
 }
 {
