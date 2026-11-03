@@ -111,6 +111,27 @@ export class PaneWidth {
   }
 }
 
+/**
+ * Where the Repo List's cursor goes when its rows change under it (marks, branches, a search): onto
+ * the row it was on, by key, wherever that row is now. Only when that row left does it move: to the
+ * nearest row above it that stayed (as a collapse moves it to the parent), else below, and never
+ * onto a stopped operation's row, whose Enter runs the next step.
+ */
+export function keptCursor(before: readonly { key: string }[], at: number, after: readonly { key: string; kind: string }[]): number {
+  const index = new Map(after.map((r, i) => [r.key, i]));
+  const key = before[at]?.key;
+  const same = key === undefined ? undefined : index.get(key);
+  if (same !== undefined) return same;
+  if (key === undefined) return Math.max(0, Math.min(at, after.length - 1));
+  const stayed = (j: number) => {
+    const i = index.get(before[j].key);
+    return i !== undefined && after[i].kind !== "operation" ? i : undefined;
+  };
+  for (let j = at - 1; j >= 0; j--) { const i = stayed(j); if (i !== undefined) return i; }
+  for (let j = at + 1; j < before.length; j++) { const i = stayed(j); if (i !== undefined) return i; }
+  return Math.max(0, after.findIndex((r) => r.kind !== "operation"));
+}
+
 export type PaneRow =
   | { kind: "all" }
   | { kind: "profile"; profile: ResolvedProfile; active: boolean }
