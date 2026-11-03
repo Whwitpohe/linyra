@@ -1,4 +1,5 @@
 import { HISTORY_FORMAT, LOG_FORMAT, startedRecords } from "./gitLog";
+import { localize } from "./i18n";
 import { parseSearch, planSearch, searchFlags, type SearchPlan } from "./searchQuery";
 import { isSha, type Repo } from "./types";
 
@@ -149,16 +150,150 @@ export function escapeRegex(text: string): string {
 }
 
 /**
- * Why a message search cannot be sent to git in regex mode; undefined when it can. JavaScript's
- * parser stands in for git's POSIX one: it accepts every ERE that matters here.
+ * Why a search box expression cannot be sent to git in regex mode; undefined when it can. The box
+ * reads JavaScript's syntax (its parser checks it), and git's POSIX expressions must say the same
+ * (toEre).
  */
 export function regexProblem(text: string): string | undefined {
   try {
     new RegExp(text);
-    return undefined;
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
   }
+  const ere = toEre(text);
+  return "problem" in ere ? ere.problem : undefined;
+}
+
+/** A search box expression as git reads it (toEre); one regexProblem refuses is searched as text. */
+export function gitRegex(text: string): string {
+  const ere = toEre(text);
+  return "pattern" in ere ? ere.pattern : escapeRegex(text);
+}
+
+/** JavaScript's class escapes in POSIX's words: on their own, and inside a bracket expression. */
+const CLASSES: Record<string, string> = { d: "[0-9]", D: "[^0-9]", s: "[[:space:]]", S: "[^[:space:]]", w: "[[:alnum:]_]", W: "[^[:alnum:]_]" };
+const CLASS_ITEMS: Record<string, string> = { d: "0-9", s: "[:space:]", w: "[:alnum:]_" };
+const POSIX_CLASSES = new Set(["alnum", "alpha", "blank", "cntrl", "digit", "graph", "lower", "print", "punct", "space", "upper", "xdigit"]);
+/** RE_DUP_MAX on macOS, the least every POSIX regex takes (glibc's is higher). */
+const MAX_REPEAT = 255;
+
+type Ere = { pattern: string; end: number } | { problem: string };
+
+const jsOnly = (what: string): Ere => ({ problem: localize("JavaScript's {0} is not in git's regular expressions", what) });
+
+/**
+ * A search box expression (JavaScript's syntax) as a POSIX extended expression that glibc, macOS
+ * and Git for Windows read alike. glibc reads \d as d, so \d \s \w and \D \S \W become bracket
+ * expressions; an escaped punctuation character and a { that is no quantifier become literal; a
+ * [...] class is rebuilt by POSIX's rules, where a backslash is a character. What git's expressions
+ * cannot say is a problem, rather than an error from every repository or a search that silently
+ * finds nothing: (?...) groups and lookaround, lazy quantifiers, back-references and other letter
+ * escapes, and \b and \B, which macOS has not.
+ */
+function toEre(text: string): Ere {
+  let out = "";
+  // What came last can take a quantifier: a { after it is one, if it reads as one.
+  let atom = false;
+  for (let i = 0; i < text.length;) {
+    const c = text[i];
+    if (c === "\\") {
+      const d = text[i + 1] ?? "";
+      if (d === "b" || d === "B") return { problem: localize("{0} is not in git's regular expressions on every system: use Match Whole Word", `\\${d}`) };
+      if (CLASSES[d]) out += CLASSES[d];
+      else if (/[0-9A-Za-z]/.test(d)) return jsOnly(`\\${d}`);
+      else out += escapeRegex(d);
+      i += 2;
+      atom = true;
+      continue;
+    }
+    if (c === "[") {
+      const bracket = bracketToEre(text, i);
+      if ("problem" in bracket) return bracket;
+      out += bracket.pattern;
+      i = bracket.end;
+      atom = true;
+      continue;
+    }
+    if (c === "(" && text[i + 1] === "?") return jsOnly(text.slice(i, text[i + 2] === "<" && "=!".includes(text[i + 3] ?? "") ? i + 4 : i + 3));
+    const interval = c === "{" && atom ? /^\{(\d+)(?:,(\d*))?\}/.exec(text.slice(i)) : null;
+    if (c === "*" || c === "+" || c === "?" || interval) {
+      const q = interval ? interval[0] : c;
+      if (interval && Math.max(Number(interval[1]), Number(interval[2] || 0)) > MAX_REPEAT) return { problem: localize("git repeats at most 255 times: {0}", q) };
+      if (text[i + q.length] === "?") return jsOnly(`${q}?`);
+      out += q;
+      i += q.length;
+      atom = false;
+      continue;
+    }
+    out += c === "{" || c === "}" ? `\\${c}` : c;
+    atom = c !== "(" && c !== "|" && c !== "^" && c !== "$";
+    i++;
+  }
+  return { pattern: out, end: text.length };
+}
+
+/**
+ * A JavaScript class from the [ at `start` as a POSIX bracket expression: ] first, then the
+ * characters, ranges and classes, then [, ^ and - where they are characters too.
+ */
+function bracketToEre(text: string, start: number): Ere {
+  let i = start + 1;
+  const negate = text[i] === "^";
+  if (negate) i++;
+  // JavaScript: [] matches nothing and [^] anything; to git, [] and [^] open a class holding ].
+  if (text[i] === "]") return jsOnly(negate ? "[^]" : "[]");
+  const chars = new Set<string>();
+  const parts: string[] = [];
+  const member = (): { char: string } | { item: string } | { problem: string } | undefined => {
+    const c = text[i];
+    if (c === undefined || c === "]") return undefined;
+    if (c === "\\") {
+      const d = text[i + 1] ?? "";
+      i += 2;
+      if (CLASS_ITEMS[d]) return { item: CLASS_ITEMS[d] };
+      // \D \S \W have no form inside a bracket expression; \b is a backspace there.
+      if (/[0-9A-Za-z]/.test(d)) return { problem: localize("JavaScript's {0} is not in git's regular expressions", `[\\${d}]`) };
+      return { char: d };
+    }
+    // A POSIX class typed as one ([[:alpha:]]) is one: JavaScript would read [, :, a… and a ].
+    const posix = /^\[:([a-z]+):\]/.exec(text.slice(i));
+    if (posix && POSIX_CLASSES.has(posix[1])) {
+      i += posix[0].length;
+      return { item: posix[0] };
+    }
+    i++;
+    return { char: c };
+  };
+  for (let m = member(); m; m = member()) {
+    if ("problem" in m) return m;
+    if ("item" in m) {
+      parts.push(m.item);
+      continue;
+    }
+    // A range: a character, -, a character. Next to a class, JavaScript reads the - as itself.
+    if (text[i] === "-" && text[i + 1] !== "]" && text[i + 1] !== undefined) {
+      i++;
+      const to = member();
+      if (to && "problem" in to) return to;
+      if (to && "char" in to) {
+        // Ends that POSIX reads by their place in the class: write those as characters.
+        if (`${m.char}${to.char}`.split("").some((x) => "[]^-".includes(x))) return jsOnly(`${m.char}-${to.char}`);
+        parts.push(`${m.char}-${to.char}`);
+        continue;
+      }
+      chars.add("-");
+      if (to) parts.push(to.item);
+    }
+    chars.add(m.char);
+  }
+  if (text[i] !== "]") return { problem: "Unterminated character class" };
+  const take = (c: string) => chars.delete(c);
+  const [close, open, caret, dash] = [take("]"), take("["), take("^"), take("-")];
+  // [ last but for ^ and -, so it never starts [: [. or [=; ^ never first unless it negates.
+  const lead = `${close ? "]" : ""}${[...chars].join("")}${parts.join("")}${open ? "[" : ""}`;
+  if (!lead && caret && !dash) return { pattern: negate ? "[^^]" : "\\^", end: i + 1 };
+  const body = lead ? `${lead}${caret ? "^" : ""}${dash ? "-" : ""}` : `${dash ? "-" : ""}${caret ? "^" : ""}`;
+  return { pattern: `[${negate ? "^" : ""}${body}]`, end: i + 1 };
 }
 
 const latest = (a: number | undefined, b: number | undefined) => (a === undefined ? b : b === undefined ? a : Math.max(a, b));

@@ -1,7 +1,7 @@
 // The Log's search language, after GitLens 19.5's: words, "quoted phrases" and operators such as
 // author: or file:, each pushed down into `git log` as git's own flags (constraint 1: git does the
 // searching, JavaScript only merges what it returns). Pure: no vscode, no DOM.
-import { authorPatterns, escapeRegex, isValidRef, meAuthor, normalizePath, regexProblem, type FilterState } from "./filterModel";
+import { authorPatterns, escapeRegex, gitRegex, isValidRef, meAuthor, normalizePath, regexProblem, type FilterState } from "./filterModel";
 import { localize } from "./i18n";
 import type { Codicon } from "./webview/codicons";
 
@@ -501,7 +501,7 @@ export function searchFlags(plan: SearchPlan, f: FilterState, me?: string): stri
   // An invalid expression (the box refuses it) is searched as text rather than failing every repository.
   const term = (v: string, literal = false) => {
     const expression = regex && !literal && regexProblem(v) === undefined;
-    const pattern = expression ? v : ere ? escapeRegex(v) : v;
+    const pattern = expression ? gitRegex(v) : ere ? escapeRegex(v) : v;
     return word ? wholeWord(pattern, v, expression) : pattern;
   };
   const person = (q: PersonTerm) => term(q.value, q.me);
@@ -522,7 +522,7 @@ export function searchFlags(plan: SearchPlan, f: FilterState, me?: string): stri
   args.push(...committers.map((c) => `--committer=${c}`));
   if (plan.change !== undefined) {
     const c = plan.change;
-    if (regex && regexProblem(c) === undefined) args.push(`-G${word ? wholeWord(c, c, true) : c}`);
+    if (regex && regexProblem(c) === undefined) args.push(`-G${word ? wholeWord(gitRegex(c), c, true) : gitRegex(c)}`);
     else if (word) args.push("--pickaxe-regex", `-S${wholeWord(escapeRegex(c), c, false)}`);
     else args.push(`-S${c}`);
   }

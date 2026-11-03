@@ -67,6 +67,8 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.ok(errors("fix -message:wip")[0].includes("-message:"), "a bare word is a message: term too");
   assert.deepStrictEqual(errors("fix(api", { regex: true }).length, 1, "an invalid expression, in regex mode");
   assert.deepStrictEqual(errors("fix(api"), [], "is plain text otherwise");
+  assert.deepStrictEqual(errors("(?:fix) author:a+?", { regex: true }).length, 2, "what git's expressions cannot say: before every repository fails");
+  assert.deepStrictEqual(errors("(?:fix)"), [], "and only in regex mode");
   assert.deepStrictEqual(errors("author:@me", { regex: true }), [], "@me is not an expression");
   assert.strictEqual(errors("commit:xyz").length, 1);
   assert.strictEqual(errors("commit:abc").length, 1, "a hash needs 4 digits");
@@ -98,6 +100,9 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("ACME", { matchCase: true }), ["--fixed-strings", "--grep=ACME"], "Match Case drops --regexp-ignore-case");
   assert.deepStrictEqual(flags("fix(api|web)", { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=fix(api|web)"]);
   assert.deepStrictEqual(flags("fix(api", { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=fix\\(api"], "an invalid expression is searched as text if it reaches git");
+  assert.deepStrictEqual(flags(String.raw`issue\s\d+`, { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=issue[[:space:]][0-9]+"], "JavaScript's \\s and \\d, as POSIX classes");
+  assert.deepStrictEqual(flags(String.raw`change:v\d`, { regex: true }), ["--regexp-ignore-case", "-Gv[0-9]"]);
+  assert.deepStrictEqual(flags(String.raw`author:\w+@example`, { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--author=[[:alnum:]_]+@example"]);
   assert.deepStrictEqual(flags("--output=/tmp/x"), ["--regexp-ignore-case", "--fixed-strings", "--grep=--output=/tmp/x"], "a value never becomes an option");
   console.log("ok - messages: words OR together, Match All ANDs them, -message: inverts, toggles pick git's matching");
 }
@@ -357,6 +362,27 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
       assert.deepStrictEqual(await mine(f), ["feat: mine"], JSON.stringify(f));
     }
     console.log("ok - real git: Me and @me match the whole address, not addresses that contain it");
+  }
+  {
+    // Regex mode reads JavaScript's syntax; git reads POSIX's. Each finds what JavaScript would.
+    const root = path.join(home, "acme-regex");
+    makeRepo(root, ["issue 12", "issue{", "a]b", "x\\y", "fix the issue", "Xüber merged", "über merged", "cafés", "café ok"].map((message, i) => ({ time: 100 + i, author: "dana" as const, message })), home);
+    const found = async (text: string, f: Partial<FilterState> = { regex: true }) => {
+      const page = await fetchPage({ repos: [{ id: root, root, name: "acme-regex" }], filter: { ...ALL, ...f, text }, pageSize: 50, concurrency: 1, now: 1000, prev: null,
+        run: runGit, signal: new AbortController().signal });
+      assert.deepStrictEqual(page.failures, [], `${text}: no repository fails`);
+      return page.rows.map((c) => c.subject);
+    };
+    assert.deepStrictEqual(await found(String.raw`"issue \d+"`), ["issue 12"], "\\d is a digit, not a d");
+    assert.deepStrictEqual(await found(String.raw`"issue\s[\d]"`), ["issue 12"]);
+    assert.deepStrictEqual(await found("issue{"), ["issue{"], "a { that is no quantifier is a character");
+    assert.deepStrictEqual(await found(String.raw`[\]]`), ["a]b"]);
+    assert.deepStrictEqual(await found(String.raw`^[\[:x]\\`), ["x\\y"], "[ and : in a class never make a POSIX [: class");
+    assert.deepStrictEqual(await found(String.raw`x\\y`), ["x\\y"]);
+    assert.deepStrictEqual(await found(String.raw`^\w+\s\d+$`), ["issue 12"]);
+    assert.deepStrictEqual(await found(String.raw`^[a-z]\W[a-z]$`), ["x\\y", "a]b"], "\\W");
+    assert.deepStrictEqual(await found("(?:issue)"), [], "refused by the box: nothing runs");
+    console.log("ok - real git: regex mode's \\d, \\s, \\w, [ … ] and { find what they say, in git's own expressions");
   }
 })().catch((e) => {
   console.error(e);

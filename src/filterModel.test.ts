@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, followUnion, historyArgs, historyInput, historyPathsArgs, isValidRef, logArgs, parseFollow, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, escapeRegex, gitRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, followUnion, historyArgs, historyInput, historyPathsArgs, isValidRef, logArgs, parseFollow, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -268,6 +268,22 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(escapeRegex(String.raw`a.b[c]^$|\ `.trim()), String.raw`a\.b\[c\]\^\$\|\\`);
   assert.strictEqual(regexProblem("fix(api|web)"), undefined);
   assert.ok(regexProblem("fix(api"), "an unbalanced group is refused before git sees it");
+  // JavaScript's syntax, as git's POSIX expressions say it everywhere (glibc reads \d as d).
+  assert.strictEqual(gitRegex(String.raw`issue \d+`), "issue [0-9]+");
+  assert.strictEqual(gitRegex(String.raw`\s\S\w\W\D`), "[[:space:]][^[:space:]][[:alnum:]_][^[:alnum:]_][^0-9]");
+  assert.strictEqual(gitRegex(String.raw`[\d\s_-]x`), "[_0-9[:space:]-]x", "inside a class too; - last");
+  assert.strictEqual(gitRegex(String.raw`[^\w.]`), "[^.[:alnum:]_]");
+  assert.strictEqual(gitRegex(String.raw`[\]\\a]`), "[]\\a]", "] first; a backslash in a POSIX class is itself");
+  assert.strictEqual(gitRegex(String.raw`[\^]|[a^]|[\[:x]`), String.raw`\^|[a^]|[:x[]`, "^ never first unless it negates; [ never opens [: [. or [=");
+  assert.strictEqual(gitRegex(String.raw`[a-\d]`), "[a0-9-]", "next to a class, - is itself");
+  assert.deepStrictEqual(["[a-z0-9]", "[[:alpha:]]+", "a{2}b{2,}c{1,3}", "fix(api|web)", "^x$"].map(gitRegex), ["[a-z0-9]", "[[:alpha:]]+", "a{2}b{2,}c{1,3}", "fix(api|web)", "^x$"]);
+  assert.deepStrictEqual(["issue{", "{,2}", "a}", String.raw`\/\-\<\>\.`].map(gitRegex), ["issue\\{", "\\{,2\\}", "a\\}", "/-<>\\."], "what JavaScript reads as characters stays characters ({ is git's interval, \\< its word start)");
+  for (const bad of ["(?:issue)", "fix (?=issue)", "(?!x)", "(?<=a)b", "(?<!a)b", "(?<n>a)", "a+?", "a*?", "a??", "a{2}?", String.raw`(a)\1`, String.raw`\x41`, String.raw`\t`, String.raw`\0`, String.raw`[\D]`, String.raw`[\b]`, "[]", "[^]", "a{256}", "[[:alpha:]", String.raw`[\]-a]`]) {
+    assert.ok(regexProblem(bad), `refused: ${bad}`);
+  }
+  assert.match(regexProblem(String.raw`\bfix\b`) ?? "", /Match Whole Word/, "macOS has no \\b: Whole Word works everywhere");
+  assert.match(regexProblem("(?:issue)") ?? "", /\(\?:/, "the message names what git lacks");
+  assert.strictEqual(regexProblem("a{255}"), undefined);
   assert.deepStrictEqual([sanitizeFilter({ ...ALL, regex: true, matchCase: true }).regex, sanitizeFilter({ ...ALL, regex: "yes" }).regex], [true, undefined]);
   assert.ok(!sameExceptText({ ...ALL, regex: true }, ALL), "toggling regex reloads at once, not debounced");
   assert.ok(sameExceptText({ ...ALL, matchCase: false }, ALL), "absent and false are the same");
