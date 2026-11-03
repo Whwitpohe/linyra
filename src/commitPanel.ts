@@ -6,7 +6,7 @@ import { whyOf } from "./actionErrors";
 import { decorationFor } from "./changesModel";
 import { splitTemplate } from "./commitMessageModel";
 import { gitDirOf, readHead } from "./repoHead";
-import { checkedLabel, checkOnly, commitFiles, commitPartly, commitPlan, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
+import { checkedLabel, checkOnly, commitFiles, commitPartly, commitPlan, conflictsBlocking, describeCommit, filesUnder, ignoreLine, isAdded, pruneChoices, rowsById, setChecked, withIgnored, type CommitGrouping, type CommitPlan, type CommitRow } from "./commitModel";
 import { COMMIT_PROMPT_MESSAGES, type CommitHostMessage, type CommitWebviewMessage } from "./commitProtocol";
 import { PromptPort } from "./promptPort";
 import type { RunOptions } from "./git";
@@ -592,13 +592,16 @@ export class CommitPanel implements vscode.TreeDataProvider<CommitRow>, vscode.F
    * are staged and the commit takes the index, which finishes it (as the JetBrains Commit window does).
    */
   private async commitOne(p: CommitPlan, message: string, { amend, signOff, author }: { amend: boolean; signOff: boolean; author: string | undefined }): Promise<void> {
+    const op = (await readHead(p.root).catch(() => undefined))?.operation;
+    const wholeIndex = op === "merge" || op === "cherry-pick" || op === "revert";
+    // Never with a file still conflicted, whatever stopped there (a stash pop, a rebase, am too):
+    // git add would mark it resolved, git commit --only take it, its markers and all.
+    const unmerged = (await this.deps.run(p.root, ["diff", "--name-only", "-z", "--diff-filter=U", "--"])).split("\0").filter(Boolean);
+    const left = conflictsBlocking(p, unmerged, wholeIndex);
+    if (left > 0) throw new Error(left === 1 ? localize("1 file still has conflicts: resolve it first (Resolve Conflicts…)") : localize("{0} files still have conflicts: resolve them first (Resolve Conflicts…)", left));
     if (p.add.length > 0) await this.withPaths(p.root, p.add, ["add"]);
     const options = [...(amend ? ["--amend"] : []), ...(signOff ? ["--signoff"] : []), ...(author ? [`--author=${author}`] : []), "--file=-"];
-    const op = (await readHead(p.root).catch(() => undefined))?.operation;
-    if (op === "merge" || op === "cherry-pick" || op === "revert") {
-      // Never with a file still conflicted: git add would mark it resolved, its markers and all.
-      const left = (await this.deps.run(p.root, ["diff", "--name-only", "-z", "--diff-filter=U", "--"])).split("\0").filter(Boolean).length;
-      if (left > 0) throw new Error(left === 1 ? localize("1 file still has conflicts: resolve it first (Resolve Conflicts…)") : localize("{0} files still have conflicts: resolve them first (Resolve Conflicts…)", left));
+    if (wholeIndex) {
       await this.withPaths(p.root, p.paths, ["add", "-A"]);
       await this.deps.run(p.root, ["commit", ...options], undefined, { input: message });
       return;

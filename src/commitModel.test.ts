@@ -1,7 +1,14 @@
 import * as assert from "assert";
-import { branchLine, branchText, checkedLabel, checkOnly, commitFiles, commitPartly, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
+import { execFileSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { branchLine, branchText, checkedLabel, checkOnly, commitFiles, commitPartly, conflictsBlocking, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
+import { gitEnv, makeRepo } from "./fixtures";
+import { runGit } from "./git";
 import type { FileChange } from "./types";
 import type { RepoWork } from "./uncommittedModel";
+import { gitWithPaths, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
 
 const f = (path: string, status: FileChange["status"], extra: Partial<FileChange> = {}): FileChange => ({ path, status, added: 1, deleted: 0, ...extra });
 const web: RepoWork = {
@@ -196,3 +203,54 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   assert.strictEqual(commitPartly([], [{ name: "acme-api", why: "acme hook says no" }]), "Linyra could not commit: acme-api (acme hook says no). The message is kept: fix that, then Commit again.");
   console.log("ok - Commit… checks one repository's files; a partial commit names who committed, who did not, and that Commit retries");
 }
+
+{
+  // A conflicted file is never committed: in a stopped merge none may be left (the commit takes the index), elsewhere none checked.
+  const plan = { paths: ["src/app.ts", "notes.md"] };
+  assert.strictEqual(conflictsBlocking(plan, ["src/app.ts"], false), 1, "checked and conflicted");
+  assert.strictEqual(conflictsBlocking(plan, ["old.css"], false), 0, "conflicted, not checked: git commit --only leaves it out");
+  assert.strictEqual(conflictsBlocking(plan, ["old.css"], true), 1, "a merge's commit takes the index: any conflict stops it");
+  assert.strictEqual(conflictsBlocking(plan, [], true), 0);
+  console.log("ok - a commit refuses a checked file still conflicted, and in a merge any");
+}
+
+void (async () => {
+  // Real git: what the Commit side bar plans, read as the store reads a repository.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-commit-test-"));
+  Object.assign(process.env, gitEnv(home), { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" });
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: process.env, encoding: "utf8", stdio: "pipe" });
+  const read = async (root: string): Promise<RepoWork> => {
+    const out = await runGit(root, statusArgs([]));
+    const split = splitStatus(out);
+    const head = headOf(out);
+    const staged = workFiles(split.staged, parseNumstat(split.staged.length > 0 ? await runGit(root, stagedNumstatArgs(head, [])) : ""));
+    const changes = workFiles(split.changes, parseNumstat(split.changes.length > 0 ? await runGit(root, unstagedNumstatArgs([])) : ""));
+    return { repoId: root, root, name: path.basename(root), head, staged, changes, editedAt: null, canStage: true };
+  };
+  const unmerged = async (root: string) => (await runGit(root, ["diff", "--name-only", "-z", "--diff-filter=U", "--"])).split("\0").filter(Boolean);
+  try {
+    // A stash pop that conflicted: no merge, cherry-pick or revert, the file checked as any change is.
+    const web = path.join(home, "acme-web");
+    makeRepo(web, [{ time: 1000, author: "dana", message: "feat: base", files: { "f.txt": "base\n", "other.txt": "o\n" } }], home);
+    fs.writeFileSync(path.join(web, "f.txt"), "stashed\n");
+    git(web, ["stash", "-q"]);
+    fs.writeFileSync(path.join(web, "f.txt"), "head\n");
+    git(web, ["commit", "-qam", "feat: head"]);
+    assert.throws(() => git(web, ["stash", "pop"]), "the pop stops on the conflict");
+    fs.writeFileSync(path.join(web, "other.txt"), "o2\n");
+    const w = await read(web);
+    const [plan] = commitPlan([w], new Map());
+    assert.deepStrictEqual(plan.paths, ["f.txt", "other.txt"], "the conflicted file is checked by default");
+    assert.strictEqual(conflictsBlocking(plan, await unmerged(web), false), 1, "so Commit refuses it");
+    const [rest] = commitPlan([w], new Map([[fileKey(web, "f.txt"), false]]));
+    assert.strictEqual(conflictsBlocking(rest, await unmerged(web), false), 0, "unchecked, the other file commits");
+    await gitWithPaths(runGit, web, rest.paths, ["commit", "--only", "--file=-"], { input: "fix: other" });
+    assert.match(git(web, ["show", "HEAD:f.txt"]), /^head\n$/, "no conflict marker committed");
+    console.log("ok - real git: after a stash pop that conflicted, the conflicted file is refused and the others commit");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

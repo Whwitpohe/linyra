@@ -334,6 +334,18 @@ export function commitPlan(works: readonly RepoWork[], choices: Choices): Commit
   });
 }
 
+/**
+ * How many files a commit would take with their conflict markers, of those git lists as unmerged
+ * (`git diff --diff-filter=U`). In a merge, cherry-pick or revert that stopped, the commit takes
+ * the whole index (`wholeIndex`): every one counts. Otherwise (a stash pop that conflicted, a
+ * rebase or am that stopped) the checked ones do: git commit --only takes such a file as it is.
+ */
+export function conflictsBlocking(p: Pick<CommitPlan, "paths">, unmerged: readonly string[], wholeIndex: boolean): number {
+  if (wholeIndex) return unmerged.length;
+  const checked = new Set(p.paths);
+  return unmerged.filter((f) => checked.has(f)).length;
+}
+
 /** What the Commit button will take, under it: "3 files checked in 2 repositories". */
 export function checkedLabel(checked: { files: number; repos: number }): string {
   if (checked.files === 0) return localize("No files checked");
