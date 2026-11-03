@@ -333,8 +333,9 @@ export function repoCounts(c: RepoCompare): string {
 /**
  * Why Merge ◀ into ▶… leaves a repository out: a merge would conflict, ▶ is no local branch there,
  * ▶ is checked out in another worktree (its files there would not follow), or ▶ moved since it was compared.
+ * Release… also: ▶ is behind its upstream (its push would be refused).
  */
-export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "remote" | "worktree" | "moved"; into: string };
+export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "remote" | "worktree" | "moved" | "behind"; into: string };
 
 /**
  * The repositories Merge ◀ into ▶… leaves out, grouped by why: `summary` is one line for a
@@ -348,6 +349,7 @@ export function mergeSkips(skipped: readonly MergeSkip[]): { summary: string; de
     const title = s.why === "conflict" ? (n: number) => localize("{0}: a merge would conflict", repos(n))
       : s.why === "remote" ? (n: number) => localize("{0}: {1} is not a local branch", repos(n), s.into)
       : s.why === "worktree" ? (n: number) => localize("{0}: {1} is checked out in another worktree", repos(n), s.into)
+      : s.why === "behind" ? (n: number) => localize("{0}: {1} is behind its upstream (Update Project first)", repos(n), s.into)
       : (n: number) => localize("{0}: {1} moved since the comparison (Refresh)", repos(n), s.into);
     const g = groups.get(key) ?? groups.set(key, { title, names: [] }).get(key)!;
     g.names.push(s.why === "conflict" ? localize("{0} ({1})", s.name, plural(s.files, "file")) : s.name);

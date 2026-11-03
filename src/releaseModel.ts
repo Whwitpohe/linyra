@@ -24,9 +24,27 @@ export function parseUpstream(out: string): { remote: string; ref: string } | un
   return remote && ref.startsWith("refs/heads/") ? { remote, ref } : undefined;
 }
 
-/** ▶ to its upstream, and the tag with it, in one push. */
+/**
+ * ▶ to its upstream, and the tag with it, in one push. Atomic: when the remote refuses ▶ (it has
+ * commits ▶ lacks), the tag stays off it too, not on a commit the remote's ▶ never gets.
+ */
 export function releasePushArgs(remote: string, into: string, upstreamRef: string, tag?: string): string[] {
-  return ["push", "--quiet", "--", checked(remote), `refs/heads/${checked(into)}:${upstreamRef}`, ...(tag ? [`refs/tags/${checked(tag)}`] : [])];
+  return ["push", "--quiet", ...(tag ? ["--atomic"] : []), "--", checked(remote), `refs/heads/${checked(into)}:${upstreamRef}`, ...(tag ? [`refs/tags/${checked(tag)}`] : [])];
+}
+
+/** The tag alone, after ▶ (a remote that takes no atomic push). */
+export function releaseTagPushArgs(remote: string, tag: string): string[] {
+  return ["push", "--quiet", "--", checked(remote), `refs/tags/${checked(tag)}`];
+}
+
+/** Some hosts take no atomic push: ▶ is then pushed first, and the tag only once ▶ is there. */
+export function atomicUnsupported(message: string): boolean {
+  return /does not support --atomic/i.test(message);
+}
+
+/** How many commits ▶'s upstream has that ▶ lacks, from for-each-ref's %(upstream:track) ("[ahead 1, behind 2]"). */
+export function behindOf(track: string): number {
+  return Number(/\bbehind (\d+)/.exec(track)?.[1] ?? 0);
 }
 
 /** The tag's message: "Release v1.4.0", then that repository's commits from the notes. */

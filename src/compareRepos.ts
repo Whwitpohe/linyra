@@ -13,7 +13,7 @@ import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
 import type { MultiResult } from "./multiRepo";
 import { checkValue, listValue, textValue } from "./formModel";
-import { parseUpstream, releasePushArgs, releaseReport, releaseSpec, releaseTagArgs, tagMessage } from "./releaseModel";
+import { atomicUnsupported, behindOf, parseUpstream, releasePushArgs, releaseReport, releaseSpec, releaseTagArgs, releaseTagPushArgs, tagMessage } from "./releaseModel";
 import { sameFolder } from "./folders";
 
 /** What Compare needs beyond the side views' deps: the merge across repositories (Branches Across Repositories' machinery). */
@@ -547,17 +547,19 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
    * branch still where the comparison saw it, and not checked out in another worktree. ▶ checked out
    * here: `git merge`; not checked out: the merge is made without a checkout.
    */
-  private async mergePlans(targets: readonly { repo: Repo; result: Differs }[]): Promise<{ plans: MergePlan[]; skipped: MergeSkip[] }> {
+  private async mergePlans(targets: readonly { repo: Repo; result: Differs }[], opts: { upToDate?: boolean } = {}): Promise<{ plans: MergePlan[]; skipped: MergeSkip[] }> {
     const plans: MergePlan[] = [];
     const skipped: MergeSkip[] = [];
     await runPool(targets, 8, async ({ repo, result }) => {
       if (result.conflicts && result.conflicts.length > 0) { skipped.push({ name: repo.name, why: "conflict", files: result.conflicts.length }); return; }
       const into = result.rightName;
       // ▶ as a local branch: where it is, the worktree that has it checked out (if one does), its upstream.
-      const out = await this.deps.log.countedRun(repo.root, ["for-each-ref", "--format=%(objectname)%00%(worktreepath)%00%(upstream:remotename)%00%(upstream:remoteref)", `refs/heads/${into}`], new AbortController().signal).catch(() => "");
-      const [sha = "", worktree = "", remote = "", remoteRef = ""] = out.trim().split("\0");
+      const out = await this.deps.log.countedRun(repo.root, ["for-each-ref", "--format=%(objectname)%00%(worktreepath)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream:track)", `refs/heads/${into}`], new AbortController().signal).catch(() => "");
+      const [sha = "", worktree = "", remote = "", remoteRef = "", track = ""] = out.trim().split("\0");
       if (!sha) { skipped.push({ name: repo.name, why: "remote", into: short(into) }); return; }
       if (sha !== result.rightSha) { skipped.push({ name: repo.name, why: "moved", into }); return; }
+      // Release…: a ▶ behind its upstream would be released without the remote's commits, and its push refused.
+      if (opts.upToDate && behindOf(track) > 0) { skipped.push({ name: repo.name, why: "behind", into }); return; }
       // Git names the worktree by its real path; the repository's root may reach it by another.
       const here = worktree !== "" && await sameFolder(worktree, repo.root);
       if (worktree !== "" && !here) { skipped.push({ name: repo.name, why: "worktree", into }); return; }
@@ -623,7 +625,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       return undefined;
     }
     const notes = releaseNotes(sections);
-    const { plans, skipped } = await this.mergePlans(differing(this.deps.store));
+    const { plans, skipped } = await this.mergePlans(differing(this.deps.store), { upToDate: true });
     if (!this.holds(pair)) return this.changedMeanwhile();
     if (plans.length === 0) {
       this.nothingToMerge(mergeSkips(skipped));
@@ -653,7 +655,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     if (!this.holds(pair)) return this.changedMeanwhile();
     // The form may have stayed open a while: planned again, as the repositories are now (a checkout
     // meanwhile turns a git merge into a merge without a checkout). One that can no longer merge is named.
-    const now = await this.mergePlans(differing(this.deps.store).filter((x) => ids.has(x.repo.id)));
+    const now = await this.mergePlans(differing(this.deps.store).filter((x) => ids.has(x.repo.id)), { upToDate: true });
     if (!this.holds(pair)) return this.changedMeanwhile();
     const chosen = now.plans;
     const title = localize("Release {0} into {1}", from, into);
@@ -674,8 +676,15 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
       await runPool(merged, 4, async (p) => {
         const up = p.upstream;
         if (!up) { failures.push(`${p.repo.name} (${localize("{0} has no upstream", p.into)})`); return; }
-        try { await run(p.repo, releasePushArgs(up.remote, p.into, up.ref, tagged.includes(p) ? tag : undefined)); pushed.push(p.repo.name); }
-        catch (e) { failures.push(`${p.repo.name} (${localize("push")}: ${gitMessage(e)})`); }
+        const withTag = tagged.includes(p) ? tag : undefined;
+        try {
+          await run(p.repo, releasePushArgs(up.remote, p.into, up.ref, withTag)).catch(async (e: unknown) => {
+            if (!withTag || !atomicUnsupported(gitMessage(e))) throw e;
+            await run(p.repo, releasePushArgs(up.remote, p.into, up.ref));
+            await run(p.repo, releaseTagPushArgs(up.remote, withTag));
+          });
+          pushed.push(p.repo.name);
+        } catch (e) { failures.push(`${p.repo.name} (${localize("push")}: ${gitMessage(e)})`); }
       }, new AbortController().signal);
     }
     const report = releaseReport({ title, merged: merge.done, stopped: merge.stopped.map((s) => s.name), tag, tagged: tagged.map((p) => p.repo.name), pushed, failures });
@@ -742,6 +751,6 @@ function mergeHow(p: MergePlan): string {
 
 function skipReason(s: MergeSkip): string {
   return s.why === "conflict" ? localize("would conflict") : s.why === "remote" ? localize("not a local branch")
-    : s.why === "worktree" ? localize("checked out in another worktree") : localize("moved since the comparison");
+    : s.why === "worktree" ? localize("checked out in another worktree") : s.why === "behind" ? localize("behind its upstream") : localize("moved since the comparison");
 }
 
