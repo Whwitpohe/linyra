@@ -55,6 +55,13 @@ const diff = "diff --git a/src/app.ts b/src/app.ts\nindex 1111111..2222222 10064
 
     git(target, amArgs(), mbox);
     assert.strictEqual(git(target, ["log", "-1", "--format=%s|%an"]), "feat: one|dana", "as a commit, with its author");
+
+    // git's own diff removing an SQL comment: that hunk line reads "--- create…", and is no file.
+    fs.writeFileSync(path.join(source, "init.sql"), "-- create the users table\nCREATE TABLE users (id int);\n");
+    git(source, ["add", "init.sql"]);
+    git(source, ["commit", "-qm", "feat: users"]);
+    fs.writeFileSync(path.join(source, "init.sql"), "CREATE TABLE users (id int);\n");
+    assert.deepStrictEqual(patchSources(git(source, ["diff"]) + "\n"), ["init.sql"]);
     console.log("ok - real git: a patch applied as changes, by three-way merge with conflicts, and as commits");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
@@ -72,4 +79,19 @@ const diff = "diff --git a/src/app.ts b/src/app.ts\nindex 1111111..2222222 10064
   assert.deepStrictEqual(patchFit(repos, 3, new Map([["acme-libs", 2], ["acme-api", 1]])).offer.map((r) => r.id), ["acme-libs", "acme-api", "acme-web"], "none fits: all, best first");
   assert.strictEqual(patchFit(repos, 0, new Map()).sure, undefined, "a patch that only adds files: asked");
   console.log("ok - Apply Patch… finds the repository from the files the patch changes");
+}
+
+{
+  // A hunk's own lines can look like headers: a removed "-- comment" is "--- comment", an added "++ x" is "+++ x".
+  const sql = "diff --git a/db/init.sql b/db/init.sql\nindex 1111111..2222222 100644\n--- a/db/init.sql\n+++ b/db/init.sql\n"
+    + "@@ -1,3 +1,3 @@\n--- create the users table\n+++ create the user table\n CREATE TABLE users (id int);\n-DROP TABLE old;\n+DROP TABLE older;\n";
+  assert.deepStrictEqual(patchSources(sql), ["db/init.sql"], "a removed SQL comment is not a file the patch expects");
+  const repos = [{ id: "acme-api" }, { id: "acme-web" }];
+  assert.strictEqual(patchFit(repos, patchSources(sql).length, new Map([["acme-api", 1]])).sure?.id, "acme-api", "so the one repository with db/init.sql fits");
+  // A plain unified diff (no diff --git): its files from its headers too, never from its hunks.
+  const plain = "--- notes.md\t2026-10-29\r\n+++ notes.md\t2026-10-29\r\n@@ -1,2 +1,2 @@\r\n-- one\r\n++ two\r\n kept\r\n\\ No newline at end of file\r\n"
+    + "--- a/b c.md\t\n+++ b/b c.md\t\n@@ -1 +1 @@\n--- x\n+++ y\n";
+  assert.deepStrictEqual(patchFiles(plain), ["notes.md", "b c.md"], "CRLF, a date after the tab, a path with a space (git's trailing tab)");
+  assert.deepStrictEqual(patchSources(plain), ["notes.md", "b c.md"]);
+  console.log("ok - Apply Patch… reads file headers only between hunks");
 }
