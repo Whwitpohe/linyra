@@ -15,6 +15,7 @@ const WRITE_SIGNAL = new AbortController().signal;
 /** Writes may take the index lock; git's words stay English for stoppedReason; never an editor. */
 const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C", GIT_EDITOR: "true" };
 import { guardCheckout } from "./smartCheckout";
+import { repoBusy } from "./repoBusy";
 
 const short = (sha: string) => sha.slice(0, 7);
 const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
@@ -39,8 +40,6 @@ export interface CommitActionHost {
  * operation, and asks before moving a branch or HEAD.
  */
 export class CommitActions {
-  /** Repositories with an action running: a second one waits for nothing and does nothing. */
-  private readonly busy = new Set<string>();
   /** The last error shown (integration test seam). */
   lastError: string | undefined;
 
@@ -55,11 +54,13 @@ export class CommitActions {
       const many = this.host.selection?.() ?? [];
       if (many.length > 1 && many.some((x) => x.repo.id === repo.id && x.commit.sha === commit.sha)) return this.runMany(action, many);
     }
-    if (this.busy.has(repo.id)) {
+    // A write already running there (another row's, the Repo List's, one across repositories, a
+    // Pull): this one waits for nothing and does nothing.
+    const release = repoBusy.take(repo.id);
+    if (!release) {
       void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name));
       return;
     }
-    this.busy.add(repo.id);
     let wrote = false;
     try {
       const done = await this.perform(action, repo, commit);
@@ -80,7 +81,7 @@ export class CommitActions {
           await this.host.changed(repo.id);
         }
       } finally {
-        this.busy.delete(repo.id);
+        release();
       }
     }
   }
@@ -94,8 +95,8 @@ export class CommitActions {
     for (const { repo, commit } of selected) (byRepo.get(repo.id) ?? byRepo.set(repo.id, { repo, commits: [] }).get(repo.id)!).commits.push(commit);
     const done: string[] = [], stopped: string[] = [];
     for (const { repo, commits } of byRepo.values()) {
-      if (this.busy.has(repo.id)) { stopped.push(`${repo.name} (${localize("busy")})`); continue; }
-      this.busy.add(repo.id);
+      const release = repoBusy.take(repo.id);
+      if (!release) { stopped.push(`${repo.name} (${localize("busy")})`); continue; }
       const ordered = action === "cherryPick" ? [...commits].reverse() : commits;
       const merges = new Set(ordered.filter((c) => c.parents.length > 1).map((c) => c.sha));
       try {
@@ -110,7 +111,7 @@ export class CommitActions {
           await this.host.discovery.branchRepository(repo.root)?.status?.();
           await this.host.changed(repo.id);
         } finally {
-          this.busy.delete(repo.id);
+          release();
         }
       }
     }

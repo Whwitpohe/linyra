@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { debounce } from "./debounce";
 import type { RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
+import { repoBusy } from "./repoBusy";
 import type { RepoDiscovery } from "./repoDiscovery";
 import type { Repo } from "./types";
 import type { UncommittedStore } from "./uncommittedStore";
@@ -214,6 +215,9 @@ export class SyncController implements vscode.Disposable {
    */
   async pull(repo: Repo): Promise<void> {
     if (this.pulling.has(repo.id)) return;
+    // Another write running there (a commit row's, the Repo List's, one across repositories): said, and nothing pulled.
+    const release = repoBusy.take(repo.id);
+    if (!release) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
     this.pulling.add(repo.id);
     try {
       // Both would fetch into the same remote-tracking refs: let Fetch All finish first.
@@ -233,6 +237,7 @@ export class SyncController implements vscode.Disposable {
       }
     } finally {
       this.pulling.delete(repo.id);
+      release();
     }
     // The new commits, the branch's distance from its upstream, and its working tree.
     void this.host.uncommitted.readRepo(repo.id);
@@ -271,13 +276,17 @@ export class SyncController implements vscode.Disposable {
     const all = this.host.repos();
     const plan = pullPlan(all.map((r) => r.id), Object.fromEntries(this.sync));
     const byId = (id: string) => all.find((r) => r.id === id)!;
-    const repos = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
-    if (repos.length === 0 && plan.diverged.length === 0) {
+    const waiting = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
+    if (waiting.length === 0 && plan.diverged.length === 0) {
       void vscode.window.showInformationMessage(plan.pull.length > 0
         ? localize("Linyra: the repositories behind their upstream are already being pulled.")
         : localize("Linyra: no repository is behind its upstream (as of the last fetch)."));
       return { pulled: [], skipped: [] };
     }
+    // One write per repository: one a write already runs in (a commit row's, the Repo List's, one
+    // across repositories) is left as it was, and named.
+    const held = repoBusy.takeEach(waiting.map((r) => r.id));
+    const repos = waiting.filter((r) => held.taken.includes(r.id));
     for (const r of repos) this.pulling.add(r.id);
     const outer = this.fetchCtl.signal;
     let settled: PromiseSettledResult<string>[];
@@ -288,11 +297,13 @@ export class SyncController implements vscode.Disposable {
         runPool(repos, Math.min(this.host.maxConcurrency(), FETCH_CONCURRENCY), (r) => this.host.run(r.root, pullArgs(), NEVER_ABORT, { env: { ...FETCH_ENV, LC_ALL: "C" } }), outer));
     } finally {
       for (const r of repos) this.pulling.delete(r.id);
+      held.release();
     }
     if (outer.aborted) return { pulled: [], skipped: [] };
     const pulled = repos.filter((_, i) => settled[i].status === "fulfilled");
     const skipped = [
       ...repos.flatMap((r, i) => { const s = settled[i]; return s.status === "rejected" ? [{ name: r.name, reason: pullReason(messageOf(s.reason)) }] : []; }),
+      ...waiting.filter((r) => held.busy.includes(r.id)).map((r) => ({ name: r.name, reason: localize("busy") })),
       ...plan.diverged.map((id) => ({ name: byId(id).name, reason: localize("it has diverged from its upstream") })),
     ];
     if (skipped.length > 0) {

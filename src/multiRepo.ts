@@ -6,6 +6,7 @@ import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
 import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, mergePlan, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
 import { runPool } from "./pool";
+import { repoBusy } from "./repoBusy";
 import type { Repo } from "./types";
 import { gitMessage, type Ask } from "./uncommittedActions";
 import { gitText, whyOf } from "./actionErrors";
@@ -265,9 +266,18 @@ export class MultiRepo {
 
   /** Update Project's other branches (otherBranches): the fast-forwards, run as one pool; the diverged named. */
   private async forwardOthers(repos: readonly Repo[], tracks: (r: Repo) => BranchTrack[], result: MultiResult): Promise<void> {
-    const plan = repos.flatMap((repo) => { const o = otherBranches(tracks(repo)); return o.forward.map((branch) => ({ repo, branch })); });
+    const planned = repos.flatMap((repo) => { const o = otherBranches(tracks(repo)); return o.forward.map((branch) => ({ repo, branch })); });
     const notForwarded: NonNullable<MultiResult["notForwarded"]> = repos.flatMap((repo) => otherBranches(tracks(repo)).diverged.map((b) => ({ name: repo.name, branch: b.name, reason: localize("it has diverged from its upstream") })));
-    const settled = await runPool(plan, WRITE_CONCURRENCY, ({ repo, branch }) => this.git(repo, multiCommands.fastForward(branch)), WRITE_SIGNAL);
+    // A write running there already (a commit row's, the Repo List's, a Pull): its branches are left, and named.
+    const held = repoBusy.takeEach([...new Set(planned.map((p) => p.repo.id))]);
+    const plan = planned.filter((p) => held.taken.includes(p.repo.id));
+    notForwarded.push(...planned.filter((p) => held.busy.includes(p.repo.id)).map((p) => ({ name: p.repo.name, branch: p.branch.name, reason: localize("busy"), failed: true })));
+    let settled: PromiseSettledResult<string>[];
+    try {
+      settled = await runPool(plan, WRITE_CONCURRENCY, ({ repo, branch }) => this.git(repo, multiCommands.fastForward(branch)), WRITE_SIGNAL);
+    } finally {
+      held.release();
+    }
     const forwarded = new Map<Repo, string[]>();
     settled.forEach((s, i) => {
       const { repo, branch } = plan[i];
@@ -449,9 +459,20 @@ export class MultiRepo {
     return i === undefined ? undefined : shared[i]?.name;
   }
 
-  /** Runs one write per repository (a few at a time) under the Log's progress; never stops at the first failure. */
-  private async each(title: string, repos: readonly Repo[], work: (repo: Repo) => Promise<unknown>): Promise<MultiResult> {
-    const settled = await vscode.window.withProgress({ location: { viewId: this.host.viewId }, title }, () => runPool(repos, WRITE_CONCURRENCY, (r) => work(r), WRITE_SIGNAL));
+  /**
+   * Runs one write per repository (a few at a time) under the Log's progress; never stops at the
+   * first failure. Each repository is held while it runs (repoBusy): one a write already runs in (a
+   * commit row's, the Repo List's, a Pull) is left as it was, and named.
+   */
+  private async each(title: string, all: readonly Repo[], work: (repo: Repo) => Promise<unknown>): Promise<MultiResult> {
+    const held = repoBusy.takeEach(all.map((r) => r.id));
+    const repos = all.filter((r) => held.taken.includes(r.id));
+    let settled: PromiseSettledResult<unknown>[];
+    try {
+      settled = await vscode.window.withProgress({ location: { viewId: this.host.viewId }, title }, () => runPool(repos, WRITE_CONCURRENCY, (r) => work(r), WRITE_SIGNAL));
+    } finally {
+      held.release();
+    }
     const result: MultiResult = { done: [], unchanged: [], stopped: [], skipped: [] };
     settled.forEach((s, i) => {
       if (s.status === "fulfilled") { result.done.push(repos[i].name); return; }
@@ -460,6 +481,7 @@ export class MultiRepo {
       if (stoppedOnConflicts(message)) result.stopped.push({ name: repos[i].name, reason: localize(updateReason(message)) });
       else result.skipped.push({ name: repos[i].name, reason: localize(updateReason(message)), failed: true });
     });
+    result.skipped.push(...all.filter((r) => held.busy.includes(r.id)).map((r) => ({ name: r.name, reason: localize("busy"), failed: true })));
     if (repos.length) await this.host.changed(repos.map((r) => r.id));
     return result;
   }
