@@ -121,12 +121,8 @@ export function keyNote(d: Pick<DraftProfile, "baseUrl">, state: KeyState, mode:
 /** A typed key is bound to the address it was typed for: the address moved to another origin, so it was cleared. */
 export const droppedKeyText = (origin: string): string => localize("The key you typed was for {0}, so it was cleared. Type it again for this address.", hostOf(origin));
 
-/** Text from a provider without the key in it: some gateways echo the key they were given. */
-export function redactKey(text: string, key: string | undefined): string;
-export function redactKey(text: string | undefined, key: string | undefined): string | undefined;
-export function redactKey(text: string | undefined, key: string | undefined): string | undefined {
-  return text && key && key.length >= 4 ? text.split(key).join("…") : text;
-}
+/** Text from a provider without the key in it: one rule for this page and for every feature's errors. */
+export { redactKey } from "./errors";
 
 /** A key typed with characters a header cannot carry, or none where one is usually needed. */
 export function keyMessage(d: Pick<DraftProfile, "baseUrl">, state: KeyState, choice: KeyChoice): FieldMessage | undefined {

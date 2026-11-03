@@ -1,7 +1,13 @@
 import * as assert from "assert";
+import * as http from "http";
+import type { AddressInfo } from "net";
 import { configureI18n } from "../i18n";
-import { AiTimeout, asAiError, httpError, networkError, providerDetail } from "./errors";
-import { AiError } from "./types";
+import { AiTimeout, asAiError, httpError, networkError, providerDetail, providerFailure, redactKey } from "./errors";
+import { nodeFetch } from "./net";
+import { anthropicProvider } from "./providers/anthropic";
+import { geminiProvider } from "./providers/gemini";
+import { openAiProvider } from "./providers/openai";
+import { AiError, type AiProfile } from "./types";
 
 configureI18n("en");
 
@@ -58,3 +64,48 @@ configureI18n("en");
   assert.strictEqual(asAiError(new Error("something odd")).kind, "server");
   console.log("ok - a cancel, a timeout and other failures become the right AiError");
 }
+
+{
+  const key = "sk-fake-a1b2/c3+d4";
+  assert.strictEqual(redactKey(`Invalid key ${key}; url ?key=${encodeURIComponent(key)}`, key), "Invalid key …; url ?key=…", "as typed and %-encoded");
+  const safe = providerFailure(httpError(401, `Incorrect API key provided: ${key}`), key);
+  assert.ok(!safe.message.includes(key) && !safe.http?.detail?.includes(key));
+  assert.strictEqual(safe.kind, "auth");
+  assert.strictEqual(safe.http?.status, 401, "the status stays");
+  assert.ok(!providerFailure(new Error(`bad header Bearer ${key}`), key).message.includes(key));
+  const clean = httpError(429, "quota");
+  assert.strictEqual(providerFailure(clean, key), clean, "nothing to cut: the same error");
+  console.log("ok - a provider's failure never holds the key: its message and the provider's words");
+}
+
+// Each provider against a local server that echoes the key it got in its error, as some gateways
+// do: the AiError the service logs, shows and writes into the answer never holds it.
+void (async () => {
+  const key = "sk-live-THISISTHEFAKEKEY1234";
+  const server = http.createServer((req, res) => {
+    const got = String(req.headers.authorization ?? req.headers["x-api-key"] ?? req.headers["x-goog-api-key"] ?? "").replace(/^Bearer /, "");
+    req.resume();
+    res.writeHead(401, { "content-type": "application/json", "x-should-retry": "false" });
+    res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: `Invalid API key: ${got}` } }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    for (const p of [openAiProvider(nodeFetch()), anthropicProvider(nodeFetch()), geminiProvider(nodeFetch())]) {
+      const profile: AiProfile = { id: "p", label: "x", protocol: p.protocol, baseUrl: p.protocol === "anthropic" ? base : `${base}/v1`, model: "m", effort: "default" };
+      const signal = new AbortController().signal;
+      const raw = await p.send(profile, key, { system: "", turns: [{ role: "user", content: "hi" }], signal }).then(() => undefined, (e: unknown) => e);
+      assert.ok(asAiError(raw).message.includes(key), `${p.protocol}: the server did echo the key`);
+      const failure = providerFailure(raw, key, signal, profile.baseUrl);
+      assert.strictEqual(failure.kind, "auth", p.protocol);
+      // The Output log's line, the notification and the answer document are all made from these.
+      for (const surface of [failure.message, failure.http?.detail ?? ""]) assert.ok(!surface.includes(key), `${p.protocol}: ${surface}`);
+    }
+    console.log("ok - OpenAI, Anthropic (its SDK) and Gemini: a key the server echoes is cut out of the error");
+  } finally {
+    server.close();
+  }
+})().catch((e: unknown) => {
+  console.error(e);
+  process.exit(1);
+});
