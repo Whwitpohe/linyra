@@ -115,7 +115,9 @@ export function splitStatus(stdout: string): { staged: WorkEntry[]; changes: Wor
     const parts = t.split(" ");
     const kind = t[0];
     if (kind === "?") {
-      changes.push({ path: t.slice(2), status: "A", untracked: true });
+      // "inner/": a repository of its own inside this one (git lists none of its files). Not a
+      // file to commit: git add would record it as a bare gitlink, with no .gitmodules.
+      if (!t.endsWith("/")) changes.push({ path: t.slice(2), status: "A", untracked: true });
     } else if (kind === "1") {
       const [x, y] = parts[1];
       const path = parts.slice(8).join(" ");

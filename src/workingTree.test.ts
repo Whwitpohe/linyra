@@ -59,6 +59,12 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   console.log("ok - git status splits into Staged (index) and Changes (working tree); a file can be in both");
 }
 {
+  // A repository inside this one, untracked: git lists it as "acme-libs/" (with --untracked-files=all too).
+  const s = splitStatus(["? acme-libs/", "? acme-libs.md", "? docs/vendor/acme-api/"].join("\0") + "\0");
+  assert.deepStrictEqual(s.changes.map((e) => e.path), ["acme-libs.md"], "a nested repository is not a new file to commit");
+  console.log("ok - an untracked nested repository is not listed as a file");
+}
+{
   assert.deepStrictEqual(stagedNumstatArgs("a".repeat(40), [":(literal)src"]), ["diff", "--cached", "a".repeat(40), "--numstat", "-z", "-M", "--", ":(literal)src"]);
   assert.deepStrictEqual(stagedNumstatArgs(null, []).slice(0, 3), ["diff", "--cached", EMPTY_TREE], "no commit yet: against the empty tree");
   assert.deepStrictEqual(unstagedNumstatArgs([]), ["diff", "--numstat", "-z", "--"], "index ↔ working tree");
@@ -138,6 +144,16 @@ void (async () => {
       assert.deepStrictEqual(staged(), [":top", "pages/d.vue"]);
     }
     console.log("ok - real git: checked paths go to git add, add -A, commit --only and reset as files, never as patterns");
+
+    // A repository inside this one: git lists its folder, none of its files.
+    const inner = path.join(web, "acme-libs");
+    fs.mkdirSync(inner);
+    git(inner, ["init", "-q"]);
+    fs.writeFileSync(path.join(inner, "lib.txt"), "l\n");
+    const out = await runGit(web, statusArgs([]));
+    assert.ok(out.split("\0").includes("? acme-libs/"), "git's own word for it");
+    assert.ok(!splitStatus(out).changes.some((e) => e.path.startsWith("acme-libs")));
+    console.log("ok - real git: an untracked nested repository is not listed as a file");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
