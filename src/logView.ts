@@ -369,7 +369,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.postHistoryWork(true);
         // A reload on its way posts its page to this webview too.
         if (this.queryState === null) { if (!this.reloading) await this.reload(); }
-        else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+        else {
+          this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+          // Highlight Current Branch: what the last read found for these rows (no git process).
+          if (this.layoutStore.layout().highlightHead) this.post({ type: "offHead", keys: this.offHeadKeys });
+        }
         return;
       case "filter": {
         let next = sanitizeFilter(m.filter);
@@ -1256,9 +1260,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }));
     // A repository whose HEAD could not be read (unborn, failed) dims nothing.
     const keys = this.rows.filter((c) => { const set = onHead.get(c.repoId); return set !== undefined && !set.has(c.sha); }).map(commitKey);
+    this.offHeadKeys = keys;
     this.post({ type: "offHead", keys });
   }
   private offHeadEpoch = 0;
+  /** The last rev-list's answer, posted again to a new webview. */
+  private offHeadKeys: string[] = [];
   /** Topological order was slow in a repository without a commit-graph: offer to write one. */
   private readonly graphHint = new CommitGraphHint((cwd, args, signal, opts) => this.run(cwd, args, signal, opts));
   private hintCommitGraph(pageMs: number): void {

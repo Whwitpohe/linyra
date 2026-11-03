@@ -2064,6 +2064,26 @@ describe("Linyra panel", () => {
     assert.strictEqual((await snapshot()).readyCount, before, "the webview was destroyed and re-created");
   });
 
+  it("Highlight Current Branch survives a re-created webview, without a git process", async () => {
+    await send({ type: "filter", filter: ALL });
+    await until("six rows", (x) => x.rows.length === 6);
+    const offHead = (x: LogSnapshot) => x.posts.offHead?.count ?? 0;
+    const asked = offHead(await snapshot());
+    await send({ type: "layout", highlightHead: true });
+    await until("the rows HEAD does not reach", (x) => offHead(x) > asked);
+    const mark = await waitFor("git to go quiet", async () => {
+      const a = await snapshot();
+      await sleep(1000);
+      const b = await snapshot();
+      return b.spawnLog.length === a.spawnLog.length ? b : undefined;
+    });
+    // The page a new webview gets again comes with them.
+    await send({ type: "ready" });
+    const s = await until("posted again", (x) => offHead(x) > offHead(mark));
+    assert.deepStrictEqual(s.spawnLog.slice(mark.spawnLog.length).filter((x) => x.cmd === "rev-list"), [], "from what was read, not read again");
+    await send({ type: "layout", highlightHead: false });
+  });
+
   it("switching git.path takes effect at once, and a path that cannot run falls back", async function () {
     if (process.platform === "win32") this.skip(); // the wrapper is a shell script
     const fs = require("fs") as typeof import("fs");
