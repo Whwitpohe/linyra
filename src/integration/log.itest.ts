@@ -539,6 +539,14 @@ describe("Linyra panel", () => {
       s = await until("the Commit list again", (x) => x.logMode === "commits");
       assert.deepStrictEqual({ rows: s.rows.map((r) => r.subject), filter: s.filter }, before, "filters and rows exactly as they were");
       assert.ok(!s.changes.items[0]?.includes("not committed"), "the Changes view shows a commit again, not uncommitted work");
+
+      // The summary row's chip: acme-web's work on the Commits side. The Uncommitted side keeps the row it selected.
+      await send({ type: "showWork", repoId: web.id });
+      await until("acme-web's work from the summary row", (x) => x.changes.items[0]?.startsWith("acme-web | ") === true && x.changes.items[0].includes("not committed"));
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("acme-api's files again: the row the Uncommitted side has selected", (x) => x.logMode === "uncommitted" && x.changes.items[0]?.startsWith("acme-api | 2 files · not committed") === true);
+      await send({ type: "logMode", mode: "commits" });
+      await until("the Commit list again", (x) => x.logMode === "commits");
     } finally {
       await closeEditors();
       for (const root of [web.root, api.root]) {

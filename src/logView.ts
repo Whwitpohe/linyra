@@ -356,7 +356,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (this.firstLoad) await this.firstLoad;
         else await this.loadRepos();
         // A new webview starts on Commits (the host follows it rather than disagree), unless it
-        // was opened to show uncommitted work.
+        // was opened to show uncommitted work. Its Uncommitted list starts on its first row.
+        this.workRepo = undefined;
         this.setLogMode(this.openUncommitted ? "uncommitted" : "commits");
         this.openUncommitted = false;
         this.postInit(true);
@@ -1559,8 +1560,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
   private logMode: "commits" | "uncommitted" = "commits";
-  /** The repository whose files the Changes view shows on the Uncommitted side. */
+  /** The repository whose files the Changes view shows on the Uncommitted side: the row its list selected (selectWork). */
   private workRepo: string | undefined;
+  /**
+   * The summary row's repository (its chip; undefined: the most recently edited). Apart from
+   * workRepo: the Uncommitted side keeps its own selection, and the Changes view shows that one.
+   */
+  private summaryRepo: string | undefined;
   /** What the Changes view showed before the switch went to Uncommitted, or the summary row was selected (it comes back). */
   private commitsTree: ReturnType<ChangesTree["current"]> = null;
   /** The Commits side's summary row of uncommitted work is selected: the Changes view shows that work (showWork). */
@@ -1579,7 +1585,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.commitsCombined = this.deps.changes.currentCombined();
       this.workShown = true;
     }
-    this.workRepo = typeof repoId === "string" ? repoId : undefined;
+    this.summaryRepo = typeof repoId === "string" ? repoId : undefined;
     this.showWorkTree();
   }
 
@@ -1645,7 +1651,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private showWorkTree(): void {
     if (!this.showingWork()) return;
     const rows = this.workRows();
-    const id = rows.some((r) => r.repoId === this.workRepo) ? this.workRepo : rows[0]?.repoId;
+    // The list's selection falls back to its first row the same way (webview/workList.ts).
+    const wanted = this.logMode === "uncommitted" ? this.workRepo : this.summaryRepo;
+    const id = rows.some((r) => r.repoId === wanted) ? wanted : rows[0]?.repoId;
     const work = id ? this.deps.uncommitted.get(id) : undefined;
     const repo = id ? this.repos.find((r) => r.id === id) : undefined;
     if (!work || !repo) {
