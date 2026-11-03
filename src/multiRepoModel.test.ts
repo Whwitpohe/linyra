@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, forcePushProtected, forwardReason, headDistance, isProtected, mergePlan, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, protectionPatterns, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, forcePushProtected, forwardReason, headDistance, isProtected, mergePlan, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, protectionPatterns, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagPushReason, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -69,6 +69,14 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork", "origin"])), "origin");
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork"])), "fork", "the only remote");
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["a", "b"])), undefined);
+  // Why a tag's push failed: never "run Update Project".
+  assert.strictEqual(tagPushReason("To example.com:acme-web.git\n ! [rejected]        v1.4.0 -> v1.4.0 (already exists)\nerror: failed to push some refs to 'example.com:acme-web.git'\nhint: Updates were rejected because the tag already exists in the remote."), "the remote already has a tag of that name");
+  assert.strictEqual(tagPushReason("fatal: Authentication failed for 'https://example.com/acme-web.git/'"), "the remote refused the sign-in: sign in to it, then try again");
+  assert.strictEqual(tagPushReason("fatal: unable to access 'https://example.com/acme-api.git/': Could not resolve host: example.com"), "the remote could not be reached: check the network and the remote's address");
+  assert.strictEqual(tagPushReason("To example.com:acme-web.git\n ! [remote rejected] v1.4.0 -> v1.4.0 (pre-receive hook declined)\nerror: failed to push some refs to 'example.com:acme-web.git'"), "[remote rejected] v1.4.0 -> v1.4.0 (pre-receive hook declined)");
+  const tagged = multiReport("Tag v1.4.0", "tag", { done: ["acme-libs"], unchanged: [], stopped: [], skipped: [], notPushed: [{ name: "acme-api", reason: "no remote to push to" }, { name: "acme-ops", reason: "no remote to push to" }] });
+  assert.deepStrictEqual(tagged, { level: "info", text: "Tag v1.4.0 — Tagged: acme-libs. Tagged here, not pushed: acme-api, acme-ops (no remote to push to)." }, "no remote: nothing failed");
+  assert.strictEqual(multiReport("Tag v1.4.0", "tag", { done: [], unchanged: [], stopped: [], skipped: [], notPushed: [{ name: "acme-api", reason: "x", failed: true }] }).level, "warning");
   console.log("ok - Tag Across Repositories: annotated or lightweight, and where each repository's tag is pushed");
 }
 
@@ -253,6 +261,15 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
     assert.strictEqual(git(seed, ["--git-dir", origin, "cat-file", "-t", "v1.4.0"]), "tag", "annotated, and on the remote");
     assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "v1.4.0^{commit}"]), git(web, ["rev-parse", "HEAD"]));
     console.log("ok - real git: a tag on the checked-out commit, pushed to the branch's remote");
+    // acme-api tags another commit with the same name: created here, its push refused, said as such.
+    git(api, ["fetch", "-q", "--no-tags"]);
+    git(api, multiCommands.tag("v1.4.0", ""));
+    const refused = fails(api, multiCommands.pushTag(tagRemote(read(api))!, "v1.4.0"));
+    assert.strictEqual(tagPushReason(refused), "the remote already has a tag of that name", refused);
+    assert.notStrictEqual(git(seed, ["--git-dir", origin, "rev-parse", "v1.4.0^{commit}"]), git(api, ["rev-parse", "HEAD"]), "the remote's tag is untouched");
+    const report = multiReport("Tag v1.4.0", "tag", { done: ["acme-libs"], unchanged: [], stopped: [], skipped: [], notPushed: [{ name: "acme-api", reason: tagPushReason(refused), failed: true }] });
+    assert.deepStrictEqual(report, { level: "warning", text: "Tag v1.4.0 — Tagged: acme-libs. Tagged here, not pushed: acme-api (the remote already has a tag of that name)." });
+    console.log("ok - real git: a tag made here whose push is refused is reported as tagged, not pushed, with why");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

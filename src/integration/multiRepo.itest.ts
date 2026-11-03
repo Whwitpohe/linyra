@@ -257,7 +257,9 @@ describe("Across repositories", () => {
     const form = await vscode.commands.executeCommand<LastForm>("linyra._itest.lastForm");
     assert.deepStrictEqual(form.spec.fields.map((f) => f.label), ["Tag name", "Message (optional)", "Push the tag to each repository's remote", "Repositories"], "one form, no \"lightweight\"");
     assert.deepStrictEqual(r?.done, ["acme-web"]);
-    assert.deepStrictEqual(r?.skipped.map((s) => `${s.name}: ${s.reason}`).sort(), ["acme-api: tagged, but it has no remote to push to", "acme-libs: tagged, but it has no remote to push to"]);
+    // Tagged there too, only not pushed: never "left as they were".
+    assert.deepStrictEqual(r?.skipped, []);
+    assert.deepStrictEqual(r?.notPushed?.map((s) => `${s.name}: ${s.reason}`).sort(), ["acme-api: no remote to push to", "acme-libs: no remote to push to"]);
     for (const x of repos) {
       assert.strictEqual(git(x.root, ["cat-file", "-t", "ci-v1"]), "tag", `${x.name}: annotated`);
       assert.strictEqual(git(x.root, ["rev-parse", "ci-v1^{commit}"]), git(x.root, ["rev-parse", "HEAD"]));

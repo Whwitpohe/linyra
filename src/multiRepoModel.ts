@@ -454,6 +454,19 @@ export function updateReason(message: string): string {
   return pull === message.trim() ? failureReason(message) ?? (errorLine(message) || pull) : pull;
 }
 
+/**
+ * Why a tag's push failed, in a few words: the remote's tag of that name, a sign-in or the network
+ * (failureReason), else git's own line. Never "run Update Project": a tag has nothing to pull first.
+ */
+export function tagPushReason(message: string): string {
+  if (/already exists/i.test(message)) return localize("the remote already has a tag of that name");
+  const known = failureReason(message);
+  if (known && !/\[rejected\]|non-fast-forward|fetch first|updates were rejected/i.test(message)) return known;
+  const lines = message.split("\n").map((l) => l.trim());
+  // git's "! [remote rejected] v1.4.0 -> v1.4.0 (pre-receive hook declined)" says more than its "failed to push some refs".
+  return lines.find((l) => /^! \[/.test(l))?.replace(/^! /, "") ?? (errorLine(message) || message.trim());
+}
+
 /** git stopped half-way (a merge or rebase on conflicts): the repository is mid-operation, not as it was. */
 export const stoppedOnConflicts = (message: string): boolean => /\bconflict/i.test(message);
 
@@ -519,6 +532,8 @@ export interface Outcome {
   forwarded?: readonly { name: string; branches: readonly string[] }[];
   /** Update Project: other branches left as they were (diverged, or git refused), by repository and why. */
   notForwarded?: readonly { name: string; branch: string; reason: string; failed?: boolean }[];
+  /** Tag Across: tagged here, but the tag is not on the remote (no remote, or its push failed: `failed`), and why. */
+  notPushed?: readonly { name: string; reason: string; failed?: boolean }[];
 }
 
 export type ReportKind = "update" | "checkout" | "create" | "merge" | "push" | "tag";
@@ -538,10 +553,10 @@ function names(list: readonly string[]): string {
  * something stopped or failed. `commits`: Push… names how many commits it sent.
  */
 export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?: number): { level: "info" | "warning"; text: string } {
-  const total = r.done.length + r.unchanged.length + r.stopped.length + r.skipped.length;
-  const level = r.stopped.length > 0 || r.skipped.some((s) => s.failed) || (r.notForwarded ?? []).some((n) => n.failed) ? "warning" : "info";
-  const forwarded = r.forwarded ?? [], notForwarded = r.notForwarded ?? [];
-  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0 && forwarded.length === 0 && notForwarded.length === 0) {
+  const forwarded = r.forwarded ?? [], notForwarded = r.notForwarded ?? [], notPushed = r.notPushed ?? [];
+  const total = r.done.length + r.unchanged.length + r.stopped.length + r.skipped.length + notPushed.length;
+  const level = r.stopped.length > 0 || [...r.skipped, ...notForwarded, ...notPushed].some((s) => s.failed) ? "warning" : "info";
+  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0 && forwarded.length === 0 && notForwarded.length === 0 && notPushed.length === 0) {
     if (total === 0) return { level, text: localize("{0}: nothing to do.", what) };
     if (kind === "update") return { level, text: total === 1 ? localize("{0}: {1} is already up to date.", what, r.unchanged[0]) : localize("{0}: all {1} repositories already up to date.", what, total) };
     if (kind === "checkout") return { level, text: localize("{0}: every repository is already on it.", what) };
@@ -554,10 +569,15 @@ export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?
   }
   if (r.unchanged.length > 0) parts.push(localize(kind === "update" ? "Already up to date: {0}." : kind === "checkout" ? "Already on it: {0}." : "Nothing to do: {0}.", names(r.unchanged)));
   if (r.stopped.length > 0) parts.push(localize("Stopped on conflicts, resolve or abort: {0}.", names(r.stopped.map((s) => s.name))));
-  // Left as they were, one group per reason: "acme-api, acme-libs (no upstream branch)".
-  const why = new Map<string, string[]>();
-  for (const s of r.skipped) why.set(s.reason, [...(why.get(s.reason) ?? []), s.name]);
-  if (why.size > 0) parts.push(localize("Left as they were: {0}.", [...why].map(([reason, list]) => `${names(list)} (${reason})`).join("; ")));
+  // One group per reason: "acme-api, acme-libs (no upstream branch)".
+  const byReason = (list: readonly { name: string; reason: string }[]) => {
+    const why = new Map<string, string[]>();
+    for (const s of list) why.set(s.reason, [...(why.get(s.reason) ?? []), s.name]);
+    return [...why].map(([reason, repos]) => `${names(repos)} (${reason})`).join("; ");
+  };
+  // Tagged here, not on the remote: the tag exists, so never "left as they were".
+  if (notPushed.length > 0) parts.push(localize("Tagged here, not pushed: {0}.", byReason(notPushed)));
+  if (r.skipped.length > 0) parts.push(localize("Left as they were: {0}.", byReason(r.skipped)));
   // The other branches: "master in acme-web, acme-api; release-1.4 in acme-libs".
   const where = (byBranch: Map<string, string[]>) => [...byBranch].map(([branch, repos]) => localize("{0} in {1}", branch, names(repos))).join("; ");
   if (forwarded.length > 0) {

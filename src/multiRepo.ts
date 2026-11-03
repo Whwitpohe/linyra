@@ -4,11 +4,11 @@ import { isValidRef } from "./filterModel";
 import { checkValue, listValue, textValue } from "./formModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, mergePlan, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
-import { runPool } from "./pool";
+import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, mergePlan, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagPushReason, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
+import { isAbortError, runPool } from "./pool";
 import { repoBusy } from "./repoBusy";
 import type { Repo } from "./types";
-import { gitMessage, type Ask } from "./uncommittedActions";
+import type { Ask } from "./uncommittedActions";
 import { gitText, whyOf } from "./actionErrors";
 import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport, type CheckoutBlock } from "./smartCheckout";
 import { FETCH_ENV } from "./upstream";
@@ -53,6 +53,8 @@ export interface MultiResult {
   /** Update Project: the other branches fast-forwarded, and those left as they were (multiReport). */
   forwarded?: { name: string; branches: string[] }[];
   notForwarded?: { name: string; branch: string; reason: string; failed?: boolean }[];
+  /** Tag Across: tagged, but not pushed (no remote, or its push failed: `failed`). */
+  notPushed?: { name: string; reason: string; failed?: boolean }[];
 }
 
 /**
@@ -346,26 +348,28 @@ export class MultiRepo {
       const taken = all.filter((x) => x.data?.branches.some((b) => b.kind === "tag" && b.name === name));
       const act = all.filter((x) => x.data && !taken.includes(x));
       if (!act.length) return this.report(localize("Tag {0}", name), "tag", { done: [], unchanged: [], stopped: [], skipped: taken.map((x) => ({ name: x.repo.name, reason: localize("the tag already exists") })) });
-      const noRemote: string[] = [];
+      // Tagged, but not on the remote: no remote to push to, or its push failed (git's reason). The
+      // tag is there either way, so the repository is not "left as it was".
+      const notPushed: NonNullable<MultiResult["notPushed"]> = [];
       const result = await this.each(localize("Tagging {0}", name), act.map((x) => x.repo), async (repo) => {
         const data = act.find((x) => x.repo.id === repo.id)!.data!;
         await this.git(repo, multiCommands.tag(name, message));
         if (!push) return;
         const remote = tagRemote(data);
-        if (!remote) { noRemote.push(repo.name); return; }
+        if (!remote) { notPushed.push({ name: repo.name, reason: localize("no remote to push to") }); return; }
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), PUSH_TIMEOUT_MS);
         try {
           await this.host.run(repo.root, multiCommands.pushTag(remote, name), ctl.signal, { tree: true, env: WRITE_ENV });
         } catch (e) {
-          throw new Error(localize("tagged, but not pushed: {0}", gitMessage(e)));
+          notPushed.push({ name: repo.name, reason: isAbortError(e) ? localize("no answer after {0} s", PUSH_TIMEOUT_MS / 1000) : tagPushReason(gitText(e)), failed: true });
         } finally {
           clearTimeout(timer);
         }
       });
       result.skipped.push(...taken.map((x) => ({ name: x.repo.name, reason: localize("the tag already exists") })));
-      result.skipped.push(...noRemote.map((n) => ({ name: n, reason: localize("tagged, but it has no remote to push to") })));
-      result.done = result.done.filter((n) => !noRemote.includes(n));
+      result.done = result.done.filter((n) => !notPushed.some((x) => x.name === n));
+      result.notPushed = notPushed;
       return this.report(localize("Tag {0}", name), "tag", result);
     });
   }
