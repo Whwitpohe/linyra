@@ -16,6 +16,11 @@ export interface QueryState {
   /** File history: every name the file has had, learned on the first page. */
   historyPaths?: string[];
   topology?: TopoMergeState;
+  /**
+   * Each repository's last record read, the one at --skip minus one: the next read asks for it
+   * again, and a different commit there means its history moved since (see fetchPage).
+   */
+  tails?: Map<string, string>;
 }
 
 export interface PageRequest {
@@ -32,6 +37,11 @@ export interface PageRequest {
   me?: ReadonlyMap<string, string>;
   /** File history: only this repository, only this path (followed across renames). */
   history?: { repoId: string; path: string } | null;
+  /**
+   * A first page read as deep as an earlier one of the same list: each repository's records, at
+   * once. A list read again (after a fetch, or when history moved) keeps the rows it showed.
+   */
+  depth?: ReadonlyMap<string, number>;
 }
 
 /** Repositories with at least one selected branch, and those with none. */
@@ -47,6 +57,11 @@ export interface PageResult {
   failures: RepoFailure[];
   state: QueryState;
   done: boolean;
+  /**
+   * Load More found history moved under the list (a commit, a reset, a fetch since it was read):
+   * rows is the whole list again, from the top and a page deeper, not a page to append.
+   */
+  restarted?: boolean;
 }
 
 /** Fetch rounds per page; each round drains at least one repo, so this only bounds pathological input. */
@@ -63,6 +78,14 @@ export const MAX_BATCH = 2000;
  */
 export function batchSize(fetched: number, pageSize: number): number {
   return Math.max(pageSize, Math.min(fetched, MAX_BATCH));
+}
+
+/**
+ * How deep a query read each repository: a first page read this deep lists the same rows again
+ * (one record more where git had nothing left, so it still knows it has reached the end).
+ */
+export function depthOf(state: QueryState | null): Map<string, number> | undefined {
+  return state ? new Map([...state.progress].map(([id, p]) => [id, p.exhausted ? p.fetched + 1 : p.fetched])) : undefined;
 }
 
 /**
@@ -141,11 +164,21 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     return { branches, found: refs.filter((x) => x?.length).length, missing: refs.filter((x) => !x?.length).length };
   };
 
+  // --skip counts positions in git's walk, and the walk moves when history does (a commit, a reset,
+  // a fetch): Load More asks each repository again for the last record it read, one before its
+  // --skip, in the same git process. Only reads that continue an earlier page do.
+  const tails = new Map(req.prev?.tails);
+  const continuing = new Set(tails.keys());
+  let moved = false;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const targets = [...progress]
       .filter(([, p]) => !p.exhausted && p.pending.length < req.pageSize)
       .map(([id]) => byId.get(id)!);
-    const wanted = targets.map((repo) => batchSize(progress.get(repo.id)!.fetched, req.pageSize));
+    const wanted = targets.map((repo) => {
+      const p = progress.get(repo.id)!;
+      return Math.max(batchSize(p.fetched, req.pageSize), p.fetched === 0 ? req.depth?.get(repo.id) ?? 0 : 0);
+    });
+    const overlap = targets.map((repo) => (continuing.delete(repo.id) && progress.get(repo.id)!.fetched > 0 ? 1 : 0));
     const settled = await runPool(
       targets,
       req.concurrency,
@@ -156,7 +189,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         // A repository without a selected branch has nothing to show. With ref: too, both hold:
         // it needs a selected branch, and walks ref:'s revisions (logArgs).
         if (branches.length && !p.refs?.length) return "";
-        const o = { pageSize: wanted[i], now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), refs: p.refs, search };
+        const o = { pageSize: wanted[i] + overlap[i], now, cursor: { skip: p.fetched - overlap[i] }, me: req.me?.get(repo.id), refs: p.refs, search };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);
       },
       req.signal,
@@ -167,9 +200,20 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       const repo = targets[i];
       const p = progress.get(repo.id)!;
       if (result.status === "fulfilled") {
-        const records = countRecords(result.value);
+        let records = countRecords(result.value);
+        let commits = req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id);
+        if (overlap[i]) {
+          // Another commit there: rows above it came or went, and --skip would repeat or pass some.
+          if (commits[0]?.sha !== tails.get(repo.id)) { moved = true; return; }
+          commits = commits.slice(1);
+          records--;
+        }
         p.fetched += records;
-        const commits = req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id);
+        // Known only when every record parsed: then the last commit is the last record.
+        if (records > 0) {
+          if (commits.length === records) tails.set(repo.id, commits[records - 1].sha);
+          else tails.delete(repo.id);
+        }
         // The selected branches it was walked from (ref: walks its own revisions instead).
         if (branches.length && search.refs.length === 0) for (const c of commits) c.ref = p.refs?.map((r) => r.replace(/^refs\/(heads|remotes|tags)\//, "")).join(", ");
         p.pending.push(...commits);
@@ -180,10 +224,18 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         failures.push({ repoId: repo.id, name: repo.name, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) });
       }
     });
+    if (moved && req.prev) {
+      // The list again from the top, each repository a batch deeper than it was read: the rows it
+      // showed stay listed (and selected), the new ones join, nothing twice. A first page never
+      // continues an earlier one, so this happens once.
+      const depth = new Map([...req.prev.progress].map(([id, p]) => [id, p.fetched + batchSize(p.fetched, req.pageSize)]));
+      return { ...(await fetchPage({ ...req, prev: null, now, depth })), restarted: true };
+    }
 
     const rows = topology ? takeTopoReady(progress, topology) : takeReady(progress);
     const done = [...progress.values()].every((p) => p.exhausted && p.pending.length === 0);
-    if (rows.length > 0 || done) return { rows, failures, state: { now, progress, historyPaths, ...(topology ? { topology } : {}) }, done, branchUse: branchUse() };
+    const state: QueryState = { now, progress, historyPaths, ...(topology ? { topology } : {}), tails };
+    if (rows.length > 0 || done) return { rows, failures, state, done, branchUse: branchUse() };
   }
-  return { rows: [], failures, state: { now, progress, historyPaths, ...(topology ? { topology } : {}) }, done: false, branchUse: branchUse() };
+  return { rows: [], failures, state: { now, progress, historyPaths, ...(topology ? { topology } : {}), tails }, done: false, branchUse: branchUse() };
 }

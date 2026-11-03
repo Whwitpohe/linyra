@@ -10,7 +10,7 @@ import { readReferences } from "./commitReferences";
 import { debounce } from "./debounce";
 import { toolbarCommand, type ToolbarState } from "./toolbarModel";
 import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
-import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
+import { depthOf, fetchPage, type BranchUse, type PageResult, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, CommitRef, HistoryWork, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
 import { distinctPaths, editedLabel, previewLabel, tags, totals, workKinds } from "./uncommittedModel";
@@ -928,10 +928,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return branches.length === 1 ? branches[0] : "";
   }
 
-  /** Fetch All brought remote branches: new Branch box suggestions, and a branch-mode page read again. */
+  /**
+   * Fetch All moved remote-tracking branches, which the Log walks (--remotes when no branch is
+   * picked, a remote branch, ref:): new Branch box suggestions, and the list again, as deep as it was.
+   */
   private async remotesFetched(): Promise<void> {
     this.suggestions.branchesChanged();
-    if (selectedBranches(this.filter).length) await this.reload();
+    await this.reload(depthOf(this.queryState));
   }
 
   private postSync(byRepo: Record<string, AheadBehind>): void {
@@ -1076,7 +1079,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return this.reloadCtl !== undefined && !this.reloadCtl.signal.aborted;
   }
 
-  private async reload(): Promise<void> {
+  /** depth: each repository read as deep as the list was (depthOf), so its rows and selection stay. */
+  private async reload(depth?: ReadonlyMap<string, number>): Promise<void> {
     this.stats.reloads++;
     this.query.abort();
     this.queryState = null; // Load More waits for this reload's first page
@@ -1099,27 +1103,32 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       // The commits do not wait for the uncommitted read: its rows follow as they land.
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: null, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
+        now: nowSec(), prev: null, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history, depth,
       });
       if (ctl.signal.aborted) return;
-      this.rows = page.rows;
-      this.listed = new Map(page.rows.map((c) => [commitKey(c), c]));
-      this.failures = page.failures;
-      this.done = page.done;
-      this.queryState = page.state;
-      this.branchUse = page.branchUse;
       if (!this.stats.firstRowsAt && page.rows.length > 0) this.stats.firstRowsAt = Date.now();
       this.stats.fetchMs = Date.now() - t;
       this.hintCommitGraph(this.stats.fetchMs);
       this.startBackgroundReads();
-      this.clearTreeIfGone();
-      this.refreshCurrentReferences();
-      this.post({ type: "page", rows: this.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
+      this.listFirstPage(page);
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not read the log: {0}", messageOf(e)));
     }
     if (this.reloadCtl === ctl) this.reloadCtl = undefined;
     if (!ctl.signal.aborted) void this.deps.uncommitted.readIfScopeChanged();
+  }
+
+  /** A first page replaces the list: the webview keeps the selected commit (and the scroll) while it is listed. */
+  private listFirstPage(page: PageResult): void {
+    this.rows = page.rows;
+    this.listed = new Map(page.rows.map((c) => [commitKey(c), c]));
+    this.failures = page.failures;
+    this.done = page.done;
+    this.queryState = page.state;
+    this.branchUse = page.branchUse;
+    this.clearTreeIfGone();
+    this.refreshCurrentReferences();
+    this.post({ type: "page", rows: this.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
   }
 
   private async loadMore(): Promise<void> {
@@ -1136,13 +1145,22 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       });
       // A reload (from the host) started meanwhile: its first page owns the list, not this one.
       if (ctl.signal.aborted || this.queryState !== prev) return;
-      this.rows = this.rows.concat(page.rows);
-      for (const c of page.rows) this.listed.set(commitKey(c), c);
+      this.hintCommitGraph(Date.now() - t);
+      // History moved under the list since it was read: the list again, from the top and deeper.
+      if (page.restarted) return this.listFirstPage(page);
+      // Never a commit the list already has: two rows of one commit are two selections and a fork in the graph.
+      const rows: Commit[] = [];
+      for (const c of page.rows) {
+        const key = commitKey(c);
+        if (this.listed.has(key)) continue;
+        this.listed.set(key, c);
+        rows.push(c);
+      }
+      this.rows = this.rows.concat(rows);
       this.failures = this.failures.concat(page.failures);
       this.done = page.done;
       this.queryState = page.state;
-      this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
-      this.hintCommitGraph(Date.now() - t);
+      this.post({ type: "page", rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
       void this.readOffHead();
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not load more commits: {0}", messageOf(e)));

@@ -3,9 +3,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { DEFAULT_FILTER, type FilterState } from "./filterModel";
-import { gitEnv, makeRepo } from "./fixtures";
+import { execFileSync } from "child_process";
+import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
-import { batchSize, fetchPage, MAX_BATCH, type QueryState, type RunGit } from "./logQuery";
+import { batchSize, depthOf, fetchPage, MAX_BATCH, type QueryState, type RunGit } from "./logQuery";
 import { compareCommits } from "./mergeStream";
 import { isAbortError } from "./pool";
 import { commitKey, type Commit, type Repo } from "./types";
@@ -123,9 +124,55 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const calls: string[][] = [];
     const all = (await pageAll([WEB], { [WEB.root]: walk }, 2, calls)).flat();
     assert.deepStrictEqual(all.map(commitKey), walk.map(commitKey), "a growing batch still lists every commit once, in order");
-    assert.deepStrictEqual(calls.map((c) => Number(arg(c, "--max-count="))), [2, 2, 4, 8, 16], "each read asks for as many as were read before");
-    assert.deepStrictEqual(calls.map((c) => Number(arg(c, "--skip=") ?? 0)), [0, 2, 4, 8, 16]);
+    // Each later read also asks again for the last record read (one before its --skip): it must still be there.
+    assert.deepStrictEqual(calls.map((c) => Number(arg(c, "--max-count="))), [2, 3, 5, 9, 17], "each read asks for as many as were read before");
+    assert.deepStrictEqual(calls.map((c) => Number(arg(c, "--skip=") ?? 0)), [0, 1, 3, 7, 15]);
     console.log("ok - deep paging grows each repository's batch, so --skip walks history a logarithmic number of times");
+  }
+  {
+    // History moved between pages: a commit made in a terminal or VS Code's Source Control, or a reset.
+    const walk = Array.from({ length: 10 }, (_, i) => mk(WEB, 10_000 - i * 10, `c${9 - i}`));
+    const data: Record<string, Commit[]> = { [WEB.root]: [...walk] };
+    const calls: string[][] = [];
+    const run = fakeRun(data, calls);
+    const subjects = (p: { rows: Commit[] }) => p.rows.map((c) => c.subject);
+    const p1 = await fetchPage(req({ repos: [WEB], pageSize: 4, run }));
+    assert.deepStrictEqual(subjects(p1), ["c9", "c8", "c7", "c6"]);
+    const still = await fetchPage(req({ repos: [WEB], pageSize: 4, run, prev: p1.state }));
+    assert.ok(!still.restarted && subjects(still).join() === "c5,c4,c3,c2", `unmoved: the next page (${subjects(still).join()})`);
+
+    data[WEB.root] = [mk(WEB, 20_000, "new"), ...walk];
+    const grown = await fetchPage(req({ repos: [WEB], pageSize: 4, run, prev: p1.state }));
+    assert.strictEqual(grown.restarted, true, "a commit above: the list is read again, not appended to");
+    assert.deepStrictEqual(subjects(grown), ["new", "c9", "c8", "c7", "c6", "c5", "c4", "c3"], "from the top and a page deeper; c6 once");
+    assert.deepStrictEqual([arg(calls.at(-1)!, "--max-count="), arg(calls.at(-1)!, "--skip=")], ["8", undefined], "in one read, from the top");
+    const after = await fetchPage(req({ repos: [WEB], pageSize: 4, run, prev: grown.state }));
+    assert.ok(!after.restarted && subjects(after).join() === "c2,c1,c0" && after.done, `and paging goes on from there (${subjects(after).join()})`);
+
+    data[WEB.root] = walk.slice(2);
+    const reset = await fetchPage(req({ repos: [WEB], pageSize: 4, run, prev: p1.state }));
+    assert.strictEqual(reset.restarted, true, "c9 and c8 reset away: read again");
+    assert.deepStrictEqual(subjects(reset), ["c7", "c6", "c5", "c4", "c3", "c2", "c1", "c0"], "c5 and c4 are not passed over");
+    console.log("ok - Load More reads the list again when history moved under it: no row twice, none passed over");
+  }
+  {
+    // A first page as deep as an earlier list (Fetch All's reload): the same rows, in one read each.
+    const walk = Array.from({ length: 30 }, (_, i) => mk(WEB, 10_000 - i));
+    const data = { [WEB.root]: walk, [API.root]: [mk(API, 9_990), mk(API, 5)] };
+    let prev: QueryState | null = null;
+    let listed: Commit[] = [];
+    for (let i = 0; i < 3; i++) {
+      const page = await fetchPage(req({ repos: [WEB, API], pageSize: 4, run: fakeRun(data), prev }));
+      listed = listed.concat(page.rows);
+      prev = page.state;
+    }
+    const calls: string[][] = [];
+    const again = await fetchPage(req({ repos: [WEB, API], pageSize: 4, run: fakeRun(data, calls), depth: depthOf(prev) }));
+    assert.deepStrictEqual(again.rows.map(commitKey), listed.map(commitKey), "the rows listed before, no fewer");
+    assert.deepStrictEqual(calls.map((c) => [c[0], arg(c, "--max-count=")]), [[WEB.root, String(prev!.progress.get(WEB.id)!.fetched)], [API.root, "4"]]);
+    assert.strictEqual(again.state.progress.get(API.id)!.exhausted, true, "a repository read to its end still knows it");
+    assert.strictEqual(depthOf(null), undefined);
+    console.log("ok - a list read again as deep as before lists the same rows, one git log per repository");
   }
   {
     const rebased = Array.from({ length: 450 }, () => mk(WEB, 5000));
@@ -260,6 +307,25 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const indexes = new Map(topological.map((c, i) => [c.sha, i]));
     topological.forEach((c, i) => c.parents.forEach((parent) => assert.ok(i < indexes.get(parent)!, "every child precedes its parent, across page boundaries and reversed dates")));
     console.log("ok - real git: topological sorting survives reversed dates and pagination");
+
+    // A commit, then a reset, between Load Mores: git's walk moved under --skip each time.
+    const moving = { id: path.join(home, "acme-moving"), root: path.join(home, "acme-moving"), name: "acme-moving" };
+    makeRepo(moving.root, Array.from({ length: 10 }, (_, i) => ({ time: 1000 + i * 100, author: "rin" as const, message: `c${i}` })), home);
+    const read = (prev: QueryState | null) => fetchPage({ repos: [moving], filter: ALL, pageSize: 4, concurrency: 4, now: 5000, prev, run: runGit, signal: new AbortController().signal });
+    let shown = await read(null);
+    const list = shown.rows.map((c) => c.subject);
+    commitAt(moving.root, home, { time: 2000, author: "dana", message: "from a terminal" });
+    shown = await read(shown.state);
+    assert.ok(shown.restarted, "a new commit on top: the list is read again");
+    assert.deepStrictEqual(shown.rows.map((c) => c.subject), ["from a terminal", "c9", "c8", "c7", "c6", "c5", "c4", "c3"]);
+    assert.ok(list.every((s) => shown.rows.some((c) => c.subject === s)), "every row listed before is still listed");
+    execFileSync("git", ["reset", "-q", "--hard", "HEAD~3"], { cwd: moving.root, env: gitEnv(home), stdio: "pipe" });
+    shown = await read(shown.state);
+    assert.ok(shown.restarted, "a reset: read again");
+    assert.deepStrictEqual(shown.rows.map((c) => c.subject), ["c7", "c6", "c5", "c4", "c3", "c2", "c1", "c0"], "nothing reset away, nothing passed over");
+    shown = await read(shown.state);
+    assert.ok(!shown.restarted && shown.rows.length === 0 && shown.done, "then it pages on to the end");
+    console.log("ok - real git: Load More after a commit or a reset lists every commit once");
   }
 })().catch((e) => {
   console.error(e);
