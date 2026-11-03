@@ -1,5 +1,10 @@
 // Uncommitted changes, read from git: what is staged and what is not (new untracked files
-// included), each with its +/- counts. Pure: no vscode import.
+// included), each with its +/- counts; and git given those files as its pathspec. Pure: no vscode import.
+import { randomBytes } from "crypto";
+import { promises as fs } from "fs";
+import * as os from "os";
+import * as path from "path";
+import type { RunOptions } from "./git";
 import type { ChangeStatus, FileChange } from "./types";
 
 /** git's empty tree: what a repository with no commit yet is compared with. */
@@ -137,6 +142,25 @@ export function stagedNumstatArgs(head: string | null, pathspecs: readonly strin
 /** +/- of what is not staged: the working tree against the index. */
 export function unstagedNumstatArgs(pathspecs: readonly string[]): string[] {
   return ["diff", "--numstat", "-z", "--", ...pathspecs];
+}
+
+/** Writes take the index lock and never open an editor. */
+const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", GIT_EDITOR: "true" };
+
+/**
+ * git with `paths` as its pathspec, given through a file: no command line grows with the number
+ * of files. Each path is literal: a file named "v[0-9].txt" or ":top" is that file, never a
+ * pattern that takes others along. (`:(literal)` on each, not GIT_LITERAL_PATHSPECS: that would
+ * reach the hooks git runs as well.)
+ */
+export async function gitWithPaths(run: (cwd: string, args: string[], signal?: AbortSignal, opts?: RunOptions) => Promise<string>, root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
+  const list = path.join(os.tmpdir(), `linyra-paths-${randomBytes(8).toString("hex")}`);
+  try {
+    await fs.writeFile(list, paths.map((p) => `:(literal)${p}`).join("\0"));
+    await run(root, [...args, `--pathspec-from-file=${list}`, "--pathspec-file-nul"], undefined, { ...opts, env: { ...WRITE_ENV, ...opts.env } });
+  } finally {
+    await fs.rm(list, { force: true });
+  }
 }
 
 /** One side's file list, with its counts. Untracked files count 0/0 (new, not binary). */

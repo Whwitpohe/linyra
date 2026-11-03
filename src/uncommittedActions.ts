@@ -1,7 +1,5 @@
 import { localize } from "./i18n";
-import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { checkValues, initialValues, type FormSpec, type FormValues } from "./formModel";
@@ -12,6 +10,7 @@ import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
 import { addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
+import { gitWithPaths } from "./workingTree";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
 interface Target { repoId: string; group?: Group; path?: string }
@@ -436,20 +435,6 @@ export class UncommittedActions {
     await openWorkDiff(work, group, file, preserveFocus);
   }
 
-}
-
-/** Writes take the index lock and never open an editor. */
-const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", GIT_EDITOR: "true" };
-
-/** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */
-export async function gitWithPaths(run: UncommittedActionsDeps["run"], root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
-  const list = path.join(os.tmpdir(), `linyra-paths-${randomBytes(8).toString("hex")}`);
-  try {
-    await fs.writeFile(list, paths.join("\0"));
-    await run(root, [...args, `--pathspec-from-file=${list}`, "--pathspec-file-nul"], undefined, { ...opts, env: { ...WRITE_ENV, ...opts.env } });
-  } finally {
-    await fs.rm(list, { force: true });
-  }
 }
 
 /** A new file goes from the disk, and the folders it leaves empty with it (never the repository's root). */

@@ -12,9 +12,10 @@ import { PromptPort } from "./promptPort";
 import type { RunOptions } from "./git";
 import { localize } from "./i18n";
 import { runPool } from "./pool";
-import { gitMessage, gitWithPaths, openHeadDiff, type Ask, type UncommittedActions } from "./uncommittedActions";
+import { gitMessage, openHeadDiff, type Ask, type UncommittedActions } from "./uncommittedActions";
 import { totals, viewLabel, withAdded } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
+import { gitWithPaths } from "./workingTree";
 import { renderCommitHtml } from "./webview/commit/html";
 import { ACCENT_COLORS } from "./webview/view";
 
