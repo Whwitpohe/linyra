@@ -283,7 +283,7 @@ describe("Commit actions", () => {
   });
 
   it("stashes changes, lists the stash in the tree's data, applies, pops and drops it", async () => {
-    const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
+    const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; sha: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
     fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");
     // One box: the message, and Include new files toggled on (off is the first default).
     await answer("ci stash|toggle");
@@ -295,11 +295,16 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
     assert.deepStrictEqual((await stashes()).map((s) => s.ref), ["stash@{0}"]);
     assert.match((await stashes())[0].subject, /ci stash/);
-    await vscode.commands.executeCommand("linyra.stash.apply", { repoId, ref: "stash@{0}" });
+    // What a stash row's menu sends: its ref, and its commit (the stash acted on, wherever stash@{n} moved).
+    const row = async () => ({ repoId, ref: "stash@{0}", sha: (await stashes())[0]?.sha });
+    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}", sha: "0".repeat(40) });
+    assert.strictEqual((await stashes()).length, 1, "a row whose stash is not listed any more drops nothing");
+    assert.match((await said()) ?? "", /The stashes of acme-api changed/);
+    await vscode.commands.executeCommand("linyra.stash.apply", await row());
     assert.ok(fs.existsSync(path.join(root, "stash-me.txt")), "apply brings the work back");
     assert.strictEqual((await stashes()).length, 1, "and keeps the stash");
     fs.rmSync(path.join(root, "stash-me.txt"));
-    await vscode.commands.executeCommand("linyra.stash.pop", { repoId, ref: "stash@{0}" });
+    await vscode.commands.executeCommand("linyra.stash.pop", await row());
     assert.ok(fs.existsSync(path.join(root, "stash-me.txt")));
     assert.strictEqual((await stashes()).length, 0, "pop removes it");
     // Remembered: on now, so toggled off for tracked changes only.
@@ -309,10 +314,10 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
     assert.strictEqual((await stashes()).length, 1);
     await answer("No");
-    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
+    await vscode.commands.executeCommand("linyra.stash.drop", await row());
     assert.strictEqual((await stashes()).length, 1, "declined: kept");
     await answer("Drop");
-    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
+    await vscode.commands.executeCommand("linyra.stash.drop", await row());
     assert.strictEqual((await stashes()).length, 0);
     // Only a new file, with Include new files off (as left): nothing stashed, and said so, not "stashed".
     fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");

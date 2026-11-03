@@ -355,7 +355,8 @@ export class RepoPane {
       if (row.kind === "stash") {
         const s = row.stash;
         rowAt[i] = keep(row.key, sig(row.repo.id, s, row.label), () => indent(h("div", { ...base(" branch-row stash-row"), "aria-selected": "false", title: `${s.subject}\n${s.ref} · ${absoluteTime(s.time)}`,
-          "data-vscode-context": JSON.stringify({ webviewSection: "stash", repoId: row.repo.id, ref: s.ref, preventDefaultContextMenuItems: true }),
+          // sha: Apply, Pop and Drop find this stash by its commit, wherever stash@{n} has moved since.
+          "data-vscode-context": JSON.stringify({ webviewSection: "stash", repoId: row.repo.id, ref: s.ref, sha: s.sha, preventDefaultContextMenuItems: true }),
         }, [this.twisty(undefined), h("span", { class: "branch-mark", "aria-hidden": "true" }, [codiconElement("archive")]), h("span", { class: "branch-name" }, [row.label])])));
         return;
       }

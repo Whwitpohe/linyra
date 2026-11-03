@@ -12,10 +12,11 @@ import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, SCHEME } from "./revisionUri";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
-import { isStashRef, nothingStashed, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
+import { isStashRef, nothingStashed, parseStashes, stashBySha, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
 import { compareWithWorkingTree } from "./workingTreeDiff";
 import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
+import { stashLogStamp } from "./stashLog";
 import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
 import { droppedArgs, forcePushPrompt, isProtected, parseDropped } from "./multiRepoModel";
 import { gitText, whyOf } from "./actionErrors";
@@ -52,6 +53,8 @@ const STASH_UNTRACKED = "linyra.stash.untracked";
 export class BranchController implements vscode.Disposable {
   private state: BranchSidebarState;
   private readonly shown = new Map<string, Branches>();
+  /** refs/stash's reflog as each shown repository's stashes were listed (stashLogStamp). */
+  private readonly stashStamps = new Map<string, string>();
   private readonly reading = new Map<string, Promise<Branches | undefined>>();
   private readonly busy = new Set<string>();
   private readonly ctl = new AbortController();
@@ -101,6 +104,8 @@ export class BranchController implements vscode.Disposable {
       // stashes), remote names from VS Code's Git when it watches the repository, and the stash
       // list only where there is one.
       const known = this.deps.discovery.remotes(repo.root);
+      // Before the listing: a stash pushed or dropped while git reads is a change stashesTouched sees.
+      const stashes = await stashLogStamp(repo.root);
       const [output, remoteList, worktrees] = await Promise.all([
         this.deps.run(repo.root, [...branchArgs(), "refs/stash"], this.ctl.signal),
         known ? Promise.resolve(known.join("\n")) : this.deps.run(repo.root, ["remote"], this.ctl.signal),
@@ -113,6 +118,7 @@ export class BranchController implements vscode.Disposable {
       if (worktrees.length > 0) data.worktrees = worktrees;
       if (this.ctl.signal.aborted) return;
       this.shown.set(repoId, data);
+      this.stashStamps.set(repoId, stashes);
       this.deps.post({ type: "branchTree", repoId, data });
       return data;
     }).catch((e: unknown) => {
@@ -137,6 +143,19 @@ export class BranchController implements vscode.Disposable {
   async refresh(repoId?: string): Promise<void> {
     const ids = repoId ? [repoId] : [...this.shown.keys()];
     await Promise.all(ids.filter((id) => this.shown.has(id)).map(async (id) => { await this.reading.get(id); await this.load(id); }));
+  }
+
+  /**
+   * VS Code's Git saw the repository change and HEAD did not move: a stash pushed, popped or
+   * dropped in Source Control or a terminal is such a change. refs/stash's reflog says whether the
+   * listed stashes are still the stashes (a file's size and time, no git process); only when they
+   * are not is the repository read again.
+   */
+  async stashesTouched(repoId: string): Promise<void> {
+    const repo = this.deps.repos().find((r) => r.id === repoId);
+    if (!repo || !this.shown.has(repoId)) return;
+    await this.reading.get(repoId);
+    if ((await stashLogStamp(repo.root)) !== this.stashStamps.get(repoId)) await this.refresh(repoId);
   }
 
   async action(action: BranchAction, arg: unknown): Promise<void> {
@@ -430,17 +449,24 @@ export class BranchController implements vscode.Disposable {
 
   /**
    * A stash row: Show its changes, Apply or Pop it (keeping its staged state), or Drop it (asks).
-   * The stash is found again by its ref in a fresh listing, so a list that moved meanwhile is not
-   * acted on blind.
+   * The stash is found again by its commit in a fresh listing: a stash pushed or dropped elsewhere
+   * since the row was drawn moves every stash@{n}, and the row's own stash is the one acted on.
    */
   async stash(action: StashAction, arg: unknown): Promise<void> {
-    const a = arg as { repoId?: unknown; ref?: unknown } | undefined;
+    const a = arg as { repoId?: unknown; ref?: unknown; sha?: unknown } | undefined;
     const repo = this.deps.repos().find((r) => r.id === a?.repoId);
     if (!repo || !isStashRef(a?.ref)) return;
     if (action !== "show" && this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
     const data = await this.load(repo.id);
-    const s = data?.stashes?.find((x) => x.ref === a.ref);
-    if (!s) return;
+    if (!data) return;
+    // Enter on a row names only its ref, and Show only reads; everything else needs the row's commit.
+    const s = action === "show" && a.sha === undefined ? data.stashes?.find((x) => x.ref === a.ref) : stashBySha(data.stashes ?? [], a.sha);
+    if (!s) {
+      // Gone, or the row was drawn before the list changed: load() has drawn the list as it is now.
+      this.lastError = localize("The stashes of {0} changed since they were listed: the Repo List shows them as they are now. Pick the stash again.", repo.name);
+      void vscode.window.showInformationMessage(this.lastError);
+      return;
+    }
     if (action === "show") { await this.showStash(repo, s); return; }
     this.busy.add(repo.id);
     try {

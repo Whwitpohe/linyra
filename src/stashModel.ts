@@ -24,13 +24,21 @@ export function isStashRef(ref: unknown): ref is string {
   return typeof ref === "string" && /^stash@\{\d+\}$/.test(ref);
 }
 
+/**
+ * The stash a row showed, in a fresh listing: found by its commit, never by its stash@{n}, which
+ * names another stash once one is pushed or dropped elsewhere. undefined: it is not there any more.
+ */
+export function stashBySha(stashes: readonly Stash[], sha: unknown): Stash | undefined {
+  return typeof sha === "string" && /^[0-9a-f]{40,64}$/.test(sha) ? stashes.find((s) => s.sha === sha) : undefined;
+}
+
 /** The label a stash row shows: its message, without git's "On <branch>:" prefix (the branch goes in the tooltip). */
 export function stashLabel(s: Stash): string {
   const m = /^(?:WIP on|On) [^:]*: (.*)$/.exec(s.subject);
   return (m ? m[1] : s.subject).trim() || s.ref;
 }
 
-/** Explicit argv: a stash is only ever named by a checked stash@{n}. */
+/** Explicit argv: a stash is only ever named by a checked stash@{n} (found by stashBySha just before). */
 export const stashCommands = {
   push: (message: string, untracked: boolean) => ["stash", "push", ...(untracked ? ["--include-untracked"] : []), "-m", message.trim()],
   apply: (ref: string) => ["stash", "apply", "--index", check(ref)],

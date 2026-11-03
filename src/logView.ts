@@ -959,7 +959,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!repo) return;
     // Any report: a merge that stopped or a rebase step leaves HEAD's commit where it was.
     this.marks.touched(repo.id);
-    if (!headMoved) return;
+    // A stash pushed or dropped elsewhere moves no HEAD either: the Repo List checks its stashes.
+    if (!headMoved) { void this.branchSidebar?.stashesTouched(repo.id); return; }
     this.refsChanged.fire(repo.id);
     this.upstream.touched(repo.id);
   }

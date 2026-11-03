@@ -741,6 +741,7 @@
   "Message for the stash in {0}": "{0} 中储藏的说明",
   "Stash message": "储藏说明",
   "Stash {0} has no changes to show.": "储藏 {0} 没有可显示的更改。",
+  "The stashes of {0} changed since they were listed: the Repo List shows them as they are now. Pick the stash again.": "{0} 的储藏在列出后已有变化：仓库列表现在显示的是最新的储藏。请重新选择储藏。",
   "File to compare in {0}": "要在 {0} 中比较的文件",
   "{0} ({1}) — {2}": "{0}（{1}）— {2}",
   "the stash's changes conflict with the working tree: resolve them in Source Control (the stash is kept)": "储藏的更改与工作区冲突：请在源代码管理中解决（储藏会保留）",
