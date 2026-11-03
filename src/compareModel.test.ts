@@ -38,6 +38,10 @@ assert.deepStrictEqual(mergeBaseArgs(A, B), ["merge-base", A, B]);
 assert.deepStrictEqual(mergeTreeArgs(A, B), ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", A, B]);
 assert.deepStrictEqual(parseMergeTree(`${T1}\0`), { tree: T1, conflicts: [] }, "merges cleanly");
 assert.deepStrictEqual(parseMergeTree(`${T1}\0src/a.ts\0src/b.ts\0src/a.ts\0`), { tree: T1, conflicts: ["src/a.ts", "src/b.ts"] }, "each conflicted file once");
+assert.deepStrictEqual(parseMergeTree(`${"e".repeat(64)}\0`), { tree: "e".repeat(64), conflicts: [] }, "a SHA-256 repository");
+// git exits 1 on an error too, with nothing on stdout: no answer, not "merges cleanly".
+assert.strictEqual(parseMergeTree(""), undefined);
+assert.strictEqual(parseMergeTree("merge-tree: feature - not something we can merge\n"), undefined);
 assert.strictEqual(mergeTreeFailure("refusing to merge unrelated histories"), "nobase");
 assert.strictEqual(mergeTreeFailure("unknown option `write-tree'"), "unsupported", "git before 2.38");
 assert.strictEqual(mergeTreeFailure("bad object"), "error");

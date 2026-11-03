@@ -139,10 +139,13 @@ export function mergeTreeArgs(l: string, r: string): string[] {
   return ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", l, r];
 }
 
-/** merge-tree -z --name-only: the merged tree's id, then each conflicted file once. */
-export function parseMergeTree(out: string): { tree: string; conflicts: string[] } {
+/**
+ * merge-tree -z --name-only: the merged tree's id, then each conflicted file once. git also exits 1
+ * on an error, with nothing on stdout: an answer that does not start with a tree id is no answer.
+ */
+export function parseMergeTree(out: string): { tree: string; conflicts: string[] } | undefined {
   const [tree = "", ...paths] = out.split("\0").filter(Boolean);
-  return { tree, conflicts: [...new Set(paths)] };
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) ? { tree, conflicts: [...new Set(paths)] } : undefined;
 }
 
 /** Why merge-tree did not answer: no shared history, a git too old for it, or another failure. */

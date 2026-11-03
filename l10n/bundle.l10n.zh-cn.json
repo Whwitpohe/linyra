@@ -859,6 +859,7 @@
   "behind its upstream": "落后于上游",
   "Ctrl/Shift-click selects several": "按住 Ctrl/Shift 点击可以选多个",
   "Checking whether a merge would conflict…": "正在检查合并是否会冲突…",
+  "git merge-tree did not name the merged tree.": "git merge-tree 没有给出合并后的树。",
   "{0} modified": "{0} 个修改",
   "{0} deleted": "{0} 个删除",
   "{0} renamed": "{0} 个重命名",

@@ -9,7 +9,7 @@ import {
   resolveInput, setRemoteNames, sideCountArgs, type Pair, type RepoCompare, type Side, type SideCommit,
 } from "./compareModel";
 import { GitError } from "./git";
-import { objectsDir } from "./mergeCheck";
+import { objectsDir, scratchEnv } from "./mergeCheck";
 import type { RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import { branchSuggestions } from "./repos";
@@ -267,7 +267,7 @@ export class CompareStore implements vscode.Disposable {
     const objects = await objectsDir(r.root);
     if (!objects) return "unknown";
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "linyra-merge-"));
-    const env = { GIT_OBJECT_DIRECTORY: dir, GIT_ALTERNATE_OBJECT_DIRECTORIES: objects };
+    const env = scratchEnv(dir, objects);
     try {
       let out: string;
       try {
@@ -281,7 +281,9 @@ export class CompareStore implements vscode.Disposable {
           return why === "nobase" ? "nobase" : "unknown";
         }
       }
+      // Exit 1 with no tree id: an error, not a list of conflicts.
       const merged = parseMergeTree(out);
+      if (!merged) return "unknown";
       return { conflicts: merged.conflicts, value: await then(merged, env) };
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
@@ -311,6 +313,7 @@ export class CompareStore implements vscode.Disposable {
     let to = from.sha;
     if (!(await ancestor(into.sha, from.sha))) {
       const merged = parseMergeTree(await run(mergeTreeArgs(into.sha, from.sha)));
+      if (!merged) throw new Error(localize("git merge-tree did not name the merged tree."));
       to = (await run(["commit-tree", merged.tree, "-p", into.sha, "-p", from.sha, "-F", "-"], `Merge branch '${from.name}' into ${into.name}\n`)).trim();
     }
     await run(["update-ref", "-m", `merge ${from.name}: Merge made by Linyra`, `refs/heads/${into.name}`, to, into.sha]);
