@@ -8,7 +8,7 @@ import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { actionPaths, addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, distinctPaths, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 import { gitWithPaths } from "./workingTree";
 
@@ -338,7 +338,7 @@ export class UncommittedActions {
     // A confirmed action runs on the files the prompt listed, not on what is there after it closed.
     for (const r of picks) {
       try {
-        await run(r, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
+        await run(r, actionPaths(r.files, new Set(distinctPaths(r.work))));
       } catch (e) {
         this.showError(localize("Linyra could not {0} {1} in {2}: {3}.", localize(verb), r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file"), r.work.name, gitMessage(e)));
       }
@@ -372,7 +372,7 @@ export class UncommittedActions {
       : discardPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
     await this.act(picks, "discard", async (r) => {
-      const plan = rollbackPlan(r.files, r.staged);
+      const plan = rollbackPlan(r.files, r.staged, new Set(distinctPaths(r.work)));
       if (plan.unadd.length > 0) await this.unadd(r.work, plan.unadd);
       if (plan.paths.length > 0) await this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
     });

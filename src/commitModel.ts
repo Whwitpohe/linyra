@@ -5,13 +5,15 @@ import { localize } from "./i18n";
 import { kindCounts, sumKinds, type KindCounts } from "./changeKinds";
 import { fileTree, type TreeNode } from "./fileTree";
 import type { ChangeStatus, FileChange } from "./types";
-import { NO_UNCOMMITTED_VIEW, type RepoWork } from "./uncommittedModel";
+import { movedFrom, NO_UNCOMMITTED_VIEW, type RepoWork } from "./uncommittedModel";
 
 /** One changed path of a repository. Its staged and unstaged halves are one row: a commit takes the file as it is. */
 export interface CommitFile {
   path: string;
-  /** A staged rename's old name: the commit takes both. */
+  /** A staged rename's or copy's old name: shown beside it, its diff starts there. */
   oldPath?: string;
+  /** A rename's old name that no row of its own lists: the commit takes it too, recording the move. */
+  movedFrom?: string;
   status?: ChangeStatus;
   /** Not tracked yet: Unversioned Files, unchecked until the user checks it. */
   untracked: boolean;
@@ -64,15 +66,21 @@ export function commitFiles(w: RepoWork): CommitFile[] {
   const byPath = new Map<string, { staged?: FileChange; change?: FileChange }>();
   for (const f of w.staged) byPath.set(f.path, { ...byPath.get(f.path), staged: f });
   for (const f of w.changes) byPath.set(f.path, { ...byPath.get(f.path), change: f });
-  return [...byPath].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, { staged, change }]) => ({
-    path,
-    ...(staged?.oldPath ? { oldPath: staged.oldPath } : {}),
-    // Deleted from the working tree after it was staged: the commit deletes it.
-    status: change?.status === "D" ? "D" : staged?.status ?? change?.status,
-    untracked: change?.untracked === true,
-    staged: staged !== undefined,
-    changed: change !== undefined,
-  }));
+  const listed = new Set(byPath.keys());
+  return [...byPath].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([path, { staged, change }]) => {
+    // A copy's source, or a new file made at a rename's old name, is never committed unchecked.
+    const moved = staged && movedFrom(staged, listed);
+    return {
+      path,
+      ...(staged?.oldPath ? { oldPath: staged.oldPath } : {}),
+      ...(moved ? { movedFrom: moved } : {}),
+      // Deleted from the working tree after it was staged: the commit deletes it.
+      status: change?.status === "D" ? "D" : staged?.status ?? change?.status,
+      untracked: change?.untracked === true,
+      staged: staged !== undefined,
+      changed: change !== undefined,
+    };
+  });
 }
 
 export function isChecked(choices: Choices, repoId: string, f: CommitFile): boolean {
@@ -315,7 +323,7 @@ export interface CommitPlan {
   root: string;
   /** How many checked files. */
   files: number;
-  /** What git commit --only takes: every checked path, and a staged rename's old name. */
+  /** What git commit --only takes: every checked path, and the old name its rename moved (movedFrom). */
   paths: string[];
   /** Checked new files: git add first, so the commit can take them. */
   add: string[];
@@ -328,7 +336,7 @@ export function commitPlan(works: readonly RepoWork[], choices: Choices): Commit
     if (checked.length === 0) return [];
     return [{
       repoId: w.repoId, name: w.name, root: w.root, files: checked.length,
-      paths: [...new Set(checked.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))],
+      paths: [...new Set(checked.flatMap((f) => (f.movedFrom ? [f.path, f.movedFrom] : [f.path])))],
       add: checked.filter((f) => f.untracked).map((f) => f.path),
     }];
   });

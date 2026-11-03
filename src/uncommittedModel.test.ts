@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { viewLabel, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, withAdded, withoutFiles, withUnadded, editedLabel, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, workKinds, type RepoWork, type UNode } from "./uncommittedModel";
+import { actionPaths, viewLabel, describeUncommitted, diffFor, deletePrompt, discardPlan, discardPrompt, distinctPaths, rollbackPlan, withAdded, withoutFiles, withUnadded, editedLabel, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, workKinds, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -47,14 +47,23 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   assert.deepStrictEqual(discardPrompt("acme-web", [...web.staged, ...web.changes], false, web.staged), { message: "Discard changes in 2 files in acme-web?", detail: "This can't be undone. Staged changes are discarded too. The new file stays: Delete… removes it.", button: "Discard Changes" });
   const added = f("src/added.ts", "A");
   const moved = f("src/b.ts", "R", 0, 0, { oldPath: "src/a.ts" });
-  assert.deepStrictEqual(discardPlan([moved, ...web.changes], [moved]), { paths: ["src/b.ts", "src/a.ts", "src/app.ts", "src/new.ts", "notes.md"], unstage: ["src/b.ts", "src/a.ts"], remove: ["src/b.ts", "src/new.ts"] });
+  // Every path of the repository's work: a rename's old name is not one, the rename moved it.
+  const listed = new Set(["src/b.ts", ...distinctPaths(web), "src/added.ts"]);
+  assert.deepStrictEqual(discardPlan([moved, ...web.changes], [moved], listed), { paths: ["src/b.ts", "src/a.ts", "src/app.ts", "src/new.ts", "notes.md"], unstage: ["src/b.ts", "src/a.ts"], remove: ["src/b.ts", "src/new.ts"] });
   // Only the Changes half of a staged new file: it is restored to the index, not deleted.
-  assert.deepStrictEqual(discardPlan([added], []).remove, []);
+  assert.deepStrictEqual(discardPlan([added], [], listed).remove, []);
   // Discard Changes, as the JetBrains IDEs' Rollback: an added file (edited since, too) leaves version control and stays.
   const addedEdited = f("src/added.ts", "M");
-  assert.deepStrictEqual(rollbackPlan([added, addedEdited], [added]), { paths: [], unstage: [], remove: [], unadd: ["src/added.ts"] });
+  assert.deepStrictEqual(rollbackPlan([added, addedEdited], [added], listed), { paths: [], unstage: [], remove: [], unadd: ["src/added.ts"] });
   // A rename moves back; a new file is not Discard's: Delete… removes it.
-  assert.deepStrictEqual(rollbackPlan([moved, ...web.changes], [moved]), { ...discardPlan([moved, web.changes[0], web.changes[2]], [moved]), unadd: [] });
+  assert.deepStrictEqual(rollbackPlan([moved, ...web.changes], [moved], listed), { ...discardPlan([moved, web.changes[0], web.changes[2]], [moved], listed), unadd: [] });
+  // A new file made at the rename's old name has a row of its own: Rollback of the rename never touches it.
+  assert.deepStrictEqual(rollbackPlan([moved], [moved], new Set([...listed, "src/a.ts"])), { paths: ["src/b.ts"], unstage: ["src/b.ts"], remove: ["src/b.ts"], unadd: [] });
+  // A copy's source is another file, as it was: neither unstaged nor taken back with the copy.
+  const copy = f("src/copy.ts", "C", 0, 0, { oldPath: "src/a.ts" });
+  assert.deepStrictEqual(rollbackPlan([copy], [copy], listed), { paths: ["src/copy.ts"], unstage: ["src/copy.ts"], remove: ["src/copy.ts"], unadd: [] });
+  assert.deepStrictEqual(actionPaths([moved, copy], listed), ["src/b.ts", "src/a.ts", "src/copy.ts"], "Stage and Unstage: a rename with its old name, a copy alone");
+  assert.deepStrictEqual(actionPaths([moved], new Set(["src/a.ts"])), ["src/b.ts"]);
   assert.deepStrictEqual(discardPrompt("acme-web", [added, addedEdited], true, [added]), {
     message: 'Discard changes in "src/added.ts"?', detail: "The added file leaves version control and stays on disk as a new file.", button: "Discard File",
   });

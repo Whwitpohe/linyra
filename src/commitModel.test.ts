@@ -214,6 +214,18 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   console.log("ok - a commit refuses a checked file still conflicted, and in a merge any");
 }
 
+{
+  // A staged rename takes its old name along, to record the move; never a copy's source, nor a new file made at the old name.
+  const renamed: RepoWork = { ...web, staged: [f("b.txt", "R", { oldPath: "a.txt" })], changes: [f("a.txt", "A", { untracked: true })] };
+  assert.strictEqual(commitFiles(renamed).find((x) => x.path === "b.txt")?.oldPath, "a.txt", "still shown as the rename");
+  assert.deepStrictEqual(commitPlan([renamed], new Map())[0].paths, ["b.txt"], "the new a.txt is unchecked: it stays out");
+  assert.deepStrictEqual(commitPlan([renamed], new Map([[fileKey(web.repoId, "a.txt"), true]]))[0].paths, ["a.txt", "b.txt"], "checked, it goes in as itself");
+  const copied: RepoWork = { ...web, staged: [f("copy.txt", "C", { oldPath: "src.txt" }), f("src.txt", "M")], changes: [] };
+  assert.deepStrictEqual(commitPlan([copied], new Map([[fileKey(web.repoId, "src.txt"), false]]))[0].paths, ["copy.txt"], "a copy's source, unchecked, keeps its staged edit out");
+  assert.deepStrictEqual(commitPlan([{ ...copied, staged: [copied.staged[0]] }], new Map())[0].paths, ["copy.txt"], "a copy never takes its source");
+  console.log("ok - a rename's old name goes with it, a copy's source and a new file at the old name only when checked");
+}
+
 void (async () => {
   // Real git: what the Commit side bar plans, read as the store reads a repository.
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-commit-test-"));
@@ -247,6 +259,40 @@ void (async () => {
     await gitWithPaths(runGit, web, rest.paths, ["commit", "--only", "--file=-"], { input: "fix: other" });
     assert.match(git(web, ["show", "HEAD:f.txt"]), /^head\n$/, "no conflict marker committed");
     console.log("ok - real git: after a stash pop that conflicted, the conflicted file is refused and the others commit");
+
+    const api = path.join(home, "acme-api");
+    const eight = "1\n2\n3\n4\n5\n6\n7\n8\n";
+    const source = eight.replace(/\d/g, "s$&");
+    makeRepo(api, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": eight, "src.txt": source } }], home);
+    const commit = async (paths: readonly string[], message: string) => gitWithPaths(runGit, api, paths, ["commit", "--only", "--file=-"], { input: message });
+    const shown = () => git(api, ["show", "--name-status", "-z", "--format=", "-M", "HEAD"]).split("\0").filter(Boolean);
+    // A rename alone: its old name goes with it, and the commit records the move.
+    git(api, ["mv", "a.txt", "b.txt"]);
+    const [moved] = commitPlan([await read(api)], new Map());
+    assert.deepStrictEqual(moved.paths, ["b.txt", "a.txt"]);
+    await commit(moved.paths, "refactor: b");
+    assert.deepStrictEqual(shown(), ["R100", "a.txt", "b.txt"]);
+    // A rename, then a new file at the old name, unchecked: the new file is not committed.
+    git(api, ["mv", "b.txt", "c.txt"]);
+    fs.writeFileSync(path.join(api, "b.txt"), "new b\n");
+    const [past] = commitPlan([await read(api)], new Map());
+    assert.deepStrictEqual(past.paths, ["c.txt"]);
+    await commit(past.paths, "refactor: c");
+    assert.strictEqual(git(api, ["show", "HEAD:b.txt"]), eight, "b.txt as it was: the unchecked new file stays out");
+    assert.match(git(api, ["status", "--porcelain"]), /^\?\? b\.txt$/m, "and stays on disk, new");
+    // A copy (diff.renames=copies), its source's staged edit unchecked: the copy alone.
+    git(api, ["config", "diff.renames", "copies"]);
+    fs.copyFileSync(path.join(api, "src.txt"), path.join(api, "copy.txt"));
+    fs.writeFileSync(path.join(api, "src.txt"), source.replace("s8\n", "edit\n"));
+    git(api, ["add", "src.txt", "copy.txt"]);
+    const copied = await read(api);
+    assert.strictEqual(copied.staged.find((x) => x.path === "copy.txt")?.status, "C", "git status reports the copy");
+    const [copy] = commitPlan([copied], new Map([[fileKey(api, "src.txt"), false], [fileKey(api, "b.txt"), false]]));
+    assert.deepStrictEqual(copy.paths, ["copy.txt"]);
+    await commit(copy.paths, "feat: copy");
+    assert.strictEqual(git(api, ["show", "HEAD:src.txt"]), source, "the source's edit is not committed");
+    assert.match(git(api, ["status", "--porcelain"]), /^M  src\.txt$/m, "it stays staged");
+    console.log("ok - real git: a rename commits with its old name, never a new file there, nor a copy's source");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
