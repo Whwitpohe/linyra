@@ -66,6 +66,16 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   console.log("ok - a rename in the working tree only keeps its old name");
 }
 {
+  // A submodule: "S<c><m><u>", c the commit it is checked out at changed, m its tracked files, u new ones (git 2.43).
+  const sub = (xy: string, s: string) => `1 ${xy} ${s} 160000 160000 160000 ${H} ${H} acme-libs`;
+  const changed = (...lines: string[]) => splitStatus(lines.join("\0") + "\0").changes.map((e) => e.path);
+  assert.deepStrictEqual(changed(sub(".M", "S.MU"), sub(".M", "S..U"), sub(".M", "S.M.")), [], "only its own files changed: nothing here to commit");
+  assert.deepStrictEqual(changed(sub(".M", "SC.U")), ["acme-libs"], "at another commit: that is a change");
+  const s = splitStatus(sub("MM", "S..U") + "\0");
+  assert.deepStrictEqual([s.staged.map((e) => e.path), s.changes], [["acme-libs"], []], "its new commit staged; its new files are its own");
+  console.log("ok - a submodule is a change only where its commit moved");
+}
+{
   // A repository inside this one, untracked: git lists it as "acme-libs/" (with --untracked-files=all too).
   const s = splitStatus(["? acme-libs/", "? acme-libs.md", "? docs/vendor/acme-api/"].join("\0") + "\0");
   assert.deepStrictEqual(s.changes.map((e) => e.path), ["acme-libs.md"], "a nested repository is not a new file to commit");
@@ -161,6 +171,22 @@ void (async () => {
     assert.ok(out.split("\0").includes("? acme-libs/"), "git's own word for it");
     assert.ok(!splitStatus(out).changes.some((e) => e.path.startsWith("acme-libs")));
     console.log("ok - real git: an untracked nested repository is not listed as a file");
+
+    // A submodule (a gitlink) with only its files changed: nothing of it for acme-web to commit.
+    const api = path.join(home, "acme-api");
+    makeRepo(api, [{ time: 1000, author: "dana", message: "feat: api", files: { "api.txt": "a\n" } }], home);
+    const sub = path.join(home, "acme-app");
+    makeRepo(sub, [{ time: 1000, author: "dana", message: "feat: app", files: { "app.txt": "a\n" } }], home);
+    git(sub, ["clone", "-q", api, "acme-api"]);
+    git(sub, ["add", "acme-api"]);
+    git(sub, ["commit", "-qm", "feat: the api"]);
+    fs.writeFileSync(path.join(sub, "acme-api", "api.txt"), "wip\n");
+    fs.writeFileSync(path.join(sub, "acme-api", "new.txt"), "n\n");
+    const changes = async () => splitStatus(await runGit(sub, statusArgs([]))).changes.map((e) => e.path);
+    assert.deepStrictEqual(await changes(), [], "edited and new files inside it only");
+    git(path.join(sub, "acme-api"), ["commit", "-qam", "feat: wip"]);
+    assert.deepStrictEqual(await changes(), ["acme-api"], "checked out at a new commit: a change to commit");
+    console.log("ok - real git: a submodule is a change only once its commit moved");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

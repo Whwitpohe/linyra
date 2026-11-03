@@ -102,6 +102,12 @@ const blobOf = (oid: string | undefined): { blob?: string } => (oid && /^[0-9a-f
 const letter = (c: string): ChangeStatus => (c === "A" ? "A" : c === "D" ? "D" : c === "T" ? "T" : "M");
 
 /**
+ * A submodule checked out at the commit the index has, its own files changed (the sub field
+ * "S.MU", "S..U"): the working tree has nothing of it for this repository to commit.
+ */
+const onlyItsFiles = (sub: string | undefined): boolean => sub?.[0] === "S" && sub[1] !== "C";
+
+/**
  * `git status --porcelain=v2 -z` as Source Control shows it: the index half (Staged) and the
  * working-tree half (Changes). A file staged and changed again is in both.
  */
@@ -122,7 +128,7 @@ export function splitStatus(stdout: string): { staged: WorkEntry[]; changes: Wor
       const [x, y] = parts[1];
       const path = parts.slice(8).join(" ");
       if (x !== ".") staged.push({ path, status: letter(x), ...blobOf(parts[7]) });
-      if (y !== ".") changes.push({ path, status: letter(y) });
+      if (y !== "." && !onlyItsFiles(parts[2])) changes.push({ path, status: letter(y) });
     } else if (kind === "2") {
       const [x, y] = parts[1];
       const path = parts.slice(9).join(" ");
@@ -130,7 +136,7 @@ export function splitStatus(stdout: string): { staged: WorkEntry[]; changes: Wor
       if (x !== ".") staged.push({ path, oldPath, status: x === "C" ? "C" : "R", ...blobOf(parts[7]) });
       // Renamed in the working tree only (mv, then git add -N): still a rename, from its old name,
       // which git lists nowhere else.
-      if (y !== ".") changes.push({ path, ...(x === "." && (y === "R" || y === "C") ? { oldPath, status: y } : { status: letter(y) }) });
+      if (y !== "." && !onlyItsFiles(parts[2])) changes.push({ path, ...(x === "." && (y === "R" || y === "C") ? { oldPath, status: y } : { status: letter(y) }) });
     } else if (kind === "u") {
       changes.push({ path: parts.slice(10).join(" "), status: "M", conflicted: true });
     }
