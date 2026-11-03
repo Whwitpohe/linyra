@@ -14,9 +14,11 @@ export class GitError extends Error {
   }
 }
 
-// Overrides that keep output parseable whatever the user's git config says.
+// Overrides that keep output parseable whatever the user's git config says. log.showRoot=false
+// would leave a root commit's files out of git show and File History.
 const CONFIG = [
   "-c", "log.showSignature=false",
+  "-c", "log.showRoot=true",
   "-c", "core.quotepath=off",
   "-c", "i18n.logOutputEncoding=UTF-8",
   "-c", "color.ui=never",

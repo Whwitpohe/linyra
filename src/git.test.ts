@@ -136,6 +136,13 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     git(api, ["config", "--unset", "i18n.logOutputEncoding"]);
     git(api, ["config", "--unset", "log.showSignature"]);
     console.log("ok - user git config cannot change the output encoding or add signature lines");
+    git(api, ["config", "log.showRoot", "false"]);
+    const rootSha = (await log(ALL)).at(-1)!.sha;
+    assert.ok(parseShow(await runGit(api, showArgs(rootSha))).files.some((f) => f.path === "upload.go" && f.status === "A"), "the root commit's files");
+    const rootRow = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 50, now: 10_000, paths: ["upload.go"] })), api, "upload.go").at(-1)!;
+    assert.deepStrictEqual([rootRow.sha, rootRow.file?.status, rootRow.file?.added], [rootSha, "A", 1], "File History's first row adds the file");
+    git(api, ["config", "--unset", "log.showRoot"]);
+    console.log("ok - log.showRoot=false cannot hide a root commit's files");
   }
   {
     const [renameSha, , , rootSha] = (await log(ALL)).map((c) => c.sha);
