@@ -24,6 +24,17 @@ const CONFIG = [
   "-c", "color.ui=never",
 ];
 
+/**
+ * A UTF-8 LC_CTYPE where the environment's is not one (and LC_ALL does not decide): git's regular
+ * expressions read characters rather than bytes only then, so a Whole Word edge next to ü or é and
+ * ignoring case beyond ASCII hold, as they must for the UTF-8 that i18n.logOutputEncoding asks for.
+ * Messages keep the user's language. macOS names the locale UTF-8; Git for Windows picks its own.
+ */
+export function utf8Ctype(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): Record<string, string> {
+  if (platform === "win32" || env.LC_ALL || /utf-?8/i.test(env.LC_CTYPE || env.LANG || "")) return {};
+  return { LC_CTYPE: platform === "darwin" ? "UTF-8" : "C.UTF-8" };
+}
+
 /** git's message for a failure: its fatal:/error: line (hint: lines come first), else the first line. */
 export function errorLine(stderr: string): string {
   const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l !== "");
@@ -72,7 +83,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       detached: opts.tree === true && process.platform !== "win32",
       windowsHide: true,
       // No credential prompts; no index.lock contention with VS Code's own git.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
+      env: { ...process.env, ...utf8Ctype(process.env), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
     });
     const onAbort = () => {
       if (child.pid !== undefined) killTree(child.pid);

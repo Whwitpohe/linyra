@@ -113,6 +113,7 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("fix(api)", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}fix\\(api\\)`], "only on the sides that are word characters");
   assert.deepStrictEqual(flags("a.b|c", { wholeWord: true, regex: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}(a.b|c)${E}`], "and around a whole expression");
   assert.ok(!flags("fix", { wholeWord: true }).join(" ").includes("\\b"), "no \\b: GNU's alone");
+  assert.deepStrictEqual(flags("über café", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}über${E}`, `--grep=${S}café${E}`], "a word starting or ending with a letter beyond ASCII has its edges too");
   console.log("ok - Whole Word wraps literal words and expressions in a word's POSIX edges");
 }
 
@@ -366,7 +367,7 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   {
     // Regex mode reads JavaScript's syntax; git reads POSIX's. Each finds what JavaScript would.
     const root = path.join(home, "acme-regex");
-    makeRepo(root, ["issue 12", "issue{", "a]b", "x\\y", "fix the issue", "Xüber merged", "über merged", "cafés", "café ok"].map((message, i) => ({ time: 100 + i, author: "dana" as const, message })), home);
+    makeRepo(root, ["issue 12", "issue{", "a]b", "x\\y", "fix the issue", "Xüber merged", "über merged", "cafés", "café ok", "Ääüber x"].map((message, i) => ({ time: 100 + i, author: "dana" as const, message })), home);
     const found = async (text: string, f: Partial<FilterState> = { regex: true }) => {
       const page = await fetchPage({ repos: [{ id: root, root, name: "acme-regex" }], filter: { ...ALL, ...f, text }, pageSize: 50, concurrency: 1, now: 1000, prev: null,
         run: runGit, signal: new AbortController().signal });
@@ -383,6 +384,11 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
     assert.deepStrictEqual(await found(String.raw`^[a-z]\W[a-z]$`), ["x\\y", "a]b"], "\\W");
     assert.deepStrictEqual(await found("(?:issue)"), [], "refused by the box: nothing runs");
     console.log("ok - real git: regex mode's \\d, \\s, \\w, [ … ] and { find what they say, in git's own expressions");
+    // Whole Word with letters beyond ASCII at a word's ends, in the locale runGit gives git.
+    const words = (await found("über", { wholeWord: true })).filter((s) => process.platform === "linux" || s !== "Ääüber x");
+    assert.deepStrictEqual(words, ["über merged"], "not Xüber, and (in a UTF-8 locale) not Ääüber");
+    assert.deepStrictEqual(await found("café", { wholeWord: true }), ["café ok"], "not cafés");
+    console.log("ok - real git: Whole Word holds at the edges of words that start or end beyond ASCII");
   }
 })().catch((e) => {
   console.error(e);

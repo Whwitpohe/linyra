@@ -7,7 +7,7 @@ import { parseShow, showArgs } from "./commitDetail";
 import { DEFAULT_FILTER, historyArgs, historyInput, historyPathsArgs, logArgs, parseFollow, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { whyOf } from "./actionErrors";
-import { errorLine, GitError, GitRunner, runGit } from "./git";
+import { errorLine, GitError, GitRunner, runGit, utf8Ctype } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
@@ -38,6 +38,14 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   assert.strictEqual(errorLine("\nsomething odd happened\n"), "something odd happened", "no fatal/error line: the first real line");
   assert.strictEqual(errorLine("hint: only hints\n"), "hint: only hints");
   console.log("ok - a git failure is reported by its fatal:/error: line, not its first hint");
+}
+{
+  assert.deepStrictEqual(utf8Ctype({}, "linux"), { LC_CTYPE: "C.UTF-8" }, "no locale at all: git's expressions would read bytes");
+  assert.deepStrictEqual(utf8Ctype({ LANG: "C" }, "linux"), { LC_CTYPE: "C.UTF-8" });
+  assert.deepStrictEqual(utf8Ctype({}, "darwin"), { LC_CTYPE: "UTF-8" }, "macOS's name for it");
+  assert.deepStrictEqual([utf8Ctype({ LANG: "de_DE.UTF-8" }, "linux"), utf8Ctype({ LC_CTYPE: "en_US.utf8" }, "linux"), utf8Ctype({ LC_ALL: "C" }, "linux"), utf8Ctype({}, "win32")], [{}, {}, {}, {}],
+    "a UTF-8 locale is kept, LC_ALL decides for itself, and Git for Windows picks its own");
+  console.log("ok - git runs with a UTF-8 LC_CTYPE where the environment has none");
 }
 (async () => {
   {

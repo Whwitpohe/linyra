@@ -445,10 +445,14 @@ export function searchSkips(plan: Pick<SearchPlan, "authors" | "committers">, me
 const WORD_START = "(^|[^[:alnum:]_])";
 const WORD_END = "([^[:alnum:]_]|$)";
 
+/** A word character in any script, as git's [:alnum:] reads one in a UTF-8 locale (JavaScript's \w is ASCII). */
+const WORD_FIRST = /^[\p{L}\p{M}\p{N}_]/u;
+const WORD_LAST = /[\p{L}\p{M}\p{N}_]$/u;
+
 /** Whole Word: a word's edge on each side that starts or ends with a word character (or around a whole expression). */
 function wholeWord(pattern: string, raw: string, regex: boolean): string {
   if (regex) return `${WORD_START}(${pattern})${WORD_END}`;
-  return `${/^\w/.test(raw) ? WORD_START : ""}${pattern}${/\w$/.test(raw) ? WORD_END : ""}`;
+  return `${WORD_FIRST.test(raw) ? WORD_START : ""}${pattern}${WORD_LAST.test(raw) ? WORD_END : ""}`;
 }
 
 /** The same expression for JavaScript, which reads no POSIX classes (bothPattern's shortcut only). */
