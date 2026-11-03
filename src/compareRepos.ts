@@ -624,6 +624,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     }
     const notes = releaseNotes(sections);
     const { plans, skipped } = await this.mergePlans(differing(this.deps.store));
+    if (!this.holds(pair)) return this.changedMeanwhile();
     if (plans.length === 0) {
       this.nothingToMerge(mergeSkips(skipped));
       return undefined;
@@ -646,9 +647,14 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const tag = textValue(values, "tag"), push = checkValue(values, "push");
     await this.state.update(RELEASE_PUSH, push);
     const ids = new Set(listValue(values, "repos"));
+    // The form is not modal: ⇄, another pair or Compare hidden meanwhile and the form's title, notes
+    // and tag no longer match what Compare holds. Nothing runs then.
+    await this.deps.store.conflictsChecked();
+    if (!this.holds(pair)) return this.changedMeanwhile();
     // The form may have stayed open a while: planned again, as the repositories are now (a checkout
     // meanwhile turns a git merge into a merge without a checkout). One that can no longer merge is named.
     const now = await this.mergePlans(differing(this.deps.store).filter((x) => ids.has(x.repo.id)));
+    if (!this.holds(pair)) return this.changedMeanwhile();
     const chosen = now.plans;
     const title = localize("Release {0} into {1}", from, into);
     const merge = await this.deps.mergeEach(title, chosen, now.skipped.map((s) => ({ name: s.name, reason: localize("changed since the form opened: {0}", skipReason(s)), failed: true })), { quiet: true });
@@ -678,6 +684,18 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     // Nothing merged: nothing was released, so no notes to copy.
     if (merge.done.length === 0) return undefined;
     return { merged: merge.done, tagged: tagged.map((p) => p.repo.name), pushed, notes: await this.finish(notes) };
+  }
+
+  /** Compare still holds this pair, the same way round. */
+  private holds(pair: Pair): boolean {
+    const now = this.deps.store.pair;
+    return now !== null && now.left === pair.left && now.right === pair.right;
+  }
+
+  /** Release… read one comparison and Compare now holds another (or none): nothing ran. */
+  private changedMeanwhile(): undefined {
+    void vscode.window.showWarningMessage(localize("Compare changed while Release… was open, so nothing was released. Run Release… again."));
+    return undefined;
   }
 
   /** The release notes on the clipboard, and open beside as Markdown. */

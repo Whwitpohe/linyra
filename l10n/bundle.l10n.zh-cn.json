@@ -1243,6 +1243,7 @@
   "Release…": "发版…",
   "Release…: pick in Compare what to release (◀) and where it goes (▶), then run Release… again.": "发版…：先在比较中选好要发版的（◀）和发版到哪里（▶），再运行一次“发版…”。",
   "Nothing to release: no commit is only on {0}.": "没有可发版的内容：没有只在 {0} 上的提交。",
+  "Compare changed while Release… was open, so nothing was released. Run Release… again.": "“发版…”打开期间比较发生了变化，因此没有发版。请再运行一次“发版…”。",
   "{0} has no upstream": "{0} 没有上游",
   "push": "推送",
   "Release notes copied.": "已复制发版说明。",
