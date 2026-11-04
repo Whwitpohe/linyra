@@ -1,8 +1,8 @@
 import { localize } from "./i18n";
 import * as vscode from "vscode";
 import type { RunGit } from "./logQuery";
-import { runPool } from "./pool";
-import { commandText, isReadOnly, parseCommandLine, runReport, type RunResult } from "./runAcrossModel";
+import { isAbortError, runPool } from "./pool";
+import { commandText, isReadOnly, parseCommandLine, RUN_TIMEOUT_MS, runReport, runTimeout, type RunResult } from "./runAcrossModel";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
 import { FETCH_ENV } from "./upstream";
@@ -18,8 +18,6 @@ export interface RunAcrossHost {
   changed(repoIds: readonly string[]): Promise<void>;
 }
 
-/** A command that hangs (a credential helper waiting, a huge log) stops after this long. */
-const TIMEOUT_MS = 120_000;
 /** A command that may write runs a few at a time, as Linyra's own writes do. */
 const WRITE_CONCURRENCY = 4;
 
@@ -58,9 +56,26 @@ export class RunAcross implements vscode.TextDocumentContentProvider, vscode.Dis
     const reads = isReadOnly(args);
     if (!reads && !(await this.host.ask.warning(localize("Run “git {0}” in {1} repositories?", shown, repos.length),
       localize("It runs as typed in each ticked repository, a few at a time, without prompts. Linyra cannot undo what it does."), localize("Run")))) return undefined;
-    const settled = await vscode.window.withProgress({ location: { viewId: this.host.viewId }, title: `git ${shown}` }, () =>
-      runPool(repos, reads ? this.host.concurrency() : WRITE_CONCURRENCY, (r) => this.one(r, args, reads), new AbortController().signal));
-    const results = settled.map((s, i): RunResult => (s.status === "fulfilled" ? s.value : { repo: repos[i].name, code: null, stdout: "", stderr: String(s.reason) }));
+    // A read that hangs stops at its timeout (runTimeout). A write is never stopped by a timer: still
+    // running then, it is named, and stopped (with the ones not started yet) only if the user says so.
+    const stop = new AbortController(), running = new Set<string>();
+    const slow = reads ? undefined : setTimeout(() => {
+      if (running.size === 0) return;
+      const button = localize("Stop");
+      void vscode.window.showWarningMessage(localize("“git {0}” is still running in {1} after {2} s. Stopping it now can leave a repository halfway through what it writes.", shown, [...running].join(", "), RUN_TIMEOUT_MS / 1000), button)
+        .then((pick) => { if (pick === button) stop.abort(); });
+    }, RUN_TIMEOUT_MS);
+    let settled: PromiseSettledResult<RunResult>[];
+    try {
+      settled = await vscode.window.withProgress({ location: { viewId: this.host.viewId }, title: `git ${shown}` }, () =>
+        runPool(repos, reads ? this.host.concurrency() : WRITE_CONCURRENCY, async (r) => {
+          running.add(r.name);
+          try { return await this.one(r, args, stop.signal); } finally { running.delete(r.name); }
+        }, stop.signal));
+    } finally {
+      clearTimeout(slow);
+    }
+    const results = settled.map((s, i): RunResult => (s.status === "fulfilled" ? s.value : { repo: repos[i].name, code: null, stdout: "", stderr: isAbortError(s.reason) ? localize("not run: stopped before it started") : String(s.reason) }));
     this.lastResults = results;
     const uri = vscode.Uri.from({ scheme: RunAcross.scheme, path: `/git ${args[0]} ${++this.count}.txt` });
     this.docs.set(uri.toString(), runReport(shown, results));
@@ -75,9 +90,14 @@ export class RunAcross implements vscode.TextDocumentContentProvider, vscode.Dis
     return results;
   }
 
-  private async one(repo: Repo, args: string[], reads: boolean): Promise<RunResult> {
+  /** One repository's run: stopped at its timeout (a read only), or when `stop` is (the user said so). */
+  private async one(repo: Repo, args: string[], stop: AbortSignal): Promise<RunResult> {
+    const reads = isReadOnly(args);
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+    const limit = runTimeout(args);
+    const timer = limit === undefined ? undefined : setTimeout(() => ctl.abort(), limit);
+    const onStop = () => ctl.abort();
+    stop.addEventListener("abort", onStop, { once: true });
     let stderr = "";
     try {
       const stdout = await this.host.run(repo.root, args, ctl.signal, {
@@ -89,9 +109,13 @@ export class RunAcross implements vscode.TextDocumentContentProvider, vscode.Dis
       return { repo: repo.name, code: 0, stdout, stderr };
     } catch (e) {
       const err = e as { exitCode?: unknown; stdout?: unknown };
-      return { repo: repo.name, code: ctl.signal.aborted ? null : typeof err.exitCode === "number" ? err.exitCode : null, stdout: typeof err.stdout === "string" ? err.stdout : "", stderr: stderr || (e instanceof Error ? e.message : String(e)) };
+      // Stopped: said under its output, the timeout's or the user's.
+      const why = !ctl.signal.aborted ? "" : stop.aborted ? localize("stopped when you asked") : localize("stopped after {0} s without an answer", (limit ?? 0) / 1000);
+      return { repo: repo.name, code: ctl.signal.aborted ? null : typeof err.exitCode === "number" ? err.exitCode : null, stdout: typeof err.stdout === "string" ? err.stdout : "",
+        stderr: [stderr || (e instanceof Error ? e.message : String(e)), why].filter(Boolean).join("\n") };
     } finally {
       clearTimeout(timer);
+      stop.removeEventListener("abort", onStop);
     }
   }
 

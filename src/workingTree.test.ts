@@ -1,5 +1,11 @@
 import * as assert from "assert";
-import { branchOf, EMPTY_TREE, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
+import { execFileSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { gitEnv, makeRepo } from "./fixtures";
+import { runGit } from "./git";
+import { branchOf, EMPTY_TREE, gitWithPaths, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
 
 // git status --porcelain=v2 -z: "1 XY sub mH mI mW hH hI path", "2 XY … Xscore path\0orig", "? path", "u XY …".
 const H = "0".repeat(40);
@@ -53,6 +59,29 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   console.log("ok - git status splits into Staged (index) and Changes (working tree); a file can be in both");
 }
 {
+  // mv old.txt new.txt, then git add -N new.txt: renamed in the working tree only, the old name in no other entry.
+  const s = splitStatus(`2 .R N... 100644 100644 100644 ${H} ${H} R100 new.txt\0old.txt\0` + `2 RM N... 100644 100644 100644 ${H} ${H} R100 b.md\0a.md\0`);
+  assert.deepStrictEqual(s.changes, [{ path: "new.txt", oldPath: "old.txt", status: "R" }, { path: "b.md", status: "M" }], "still a rename, from its old name; a staged rename's own edit is not one");
+  assert.deepStrictEqual(s.staged.map((e) => [e.path, e.oldPath, e.status]), [["b.md", "a.md", "R"]]);
+  console.log("ok - a rename in the working tree only keeps its old name");
+}
+{
+  // A submodule: "S<c><m><u>", c the commit it is checked out at changed, m its tracked files, u new ones (git 2.43).
+  const sub = (xy: string, s: string) => `1 ${xy} ${s} 160000 160000 160000 ${H} ${H} acme-libs`;
+  const changed = (...lines: string[]) => splitStatus(lines.join("\0") + "\0").changes.map((e) => e.path);
+  assert.deepStrictEqual(changed(sub(".M", "S.MU"), sub(".M", "S..U"), sub(".M", "S.M.")), [], "only its own files changed: nothing here to commit");
+  assert.deepStrictEqual(changed(sub(".M", "SC.U")), ["acme-libs"], "at another commit: that is a change");
+  const s = splitStatus(sub("MM", "S..U") + "\0");
+  assert.deepStrictEqual([s.staged.map((e) => e.path), s.changes], [["acme-libs"], []], "its new commit staged; its new files are its own");
+  console.log("ok - a submodule is a change only where its commit moved");
+}
+{
+  // A repository inside this one, untracked: git lists it as "acme-libs/" (with --untracked-files=all too).
+  const s = splitStatus(["? acme-libs/", "? acme-libs.md", "? docs/vendor/acme-api/"].join("\0") + "\0");
+  assert.deepStrictEqual(s.changes.map((e) => e.path), ["acme-libs.md"], "a nested repository is not a new file to commit");
+  console.log("ok - an untracked nested repository is not listed as a file");
+}
+{
   assert.deepStrictEqual(stagedNumstatArgs("a".repeat(40), [":(literal)src"]), ["diff", "--cached", "a".repeat(40), "--numstat", "-z", "-M", "--", ":(literal)src"]);
   assert.deepStrictEqual(stagedNumstatArgs(null, []).slice(0, 3), ["diff", "--cached", EMPTY_TREE], "no commit yet: against the empty tree");
   assert.deepStrictEqual(unstagedNumstatArgs([]), ["diff", "--numstat", "-z", "--"], "index ↔ working tree");
@@ -95,3 +124,73 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   assert.strictEqual(branchOf(z(OID, "# branch.head main") + renamed + "\0")?.name, "main", "a rename's old name never overrides the header");
   console.log("ok - branchOf: the branch, its upstream and the distance from git status --branch (detached, unpublished, gone, uncounted)");
 }
+
+void (async () => {
+  // Real git: the paths the Commit side bar and Rollback hand to git are files, never patterns.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-paths-test-"));
+  Object.assign(process.env, gitEnv(home), { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" });
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: process.env, encoding: "utf8", stdio: "pipe" });
+  const names = (out: string) => out.split("\0").filter(Boolean).sort();
+  try {
+    const web = path.join(home, "acme-web");
+    makeRepo(web, [{ time: 1000, author: "dana", message: "feat: base", files: { "v1.txt": "1\n", "v7.txt": "7\n", "pages/d.vue": "d\n" } }], home);
+    const write = (file: string, text: string) => fs.writeFileSync(path.join(web, file), text);
+    const staged = () => names(git(web, ["diff", "--cached", "--name-only", "-z"]));
+    write("v1.txt", "1 wip\n");
+    write("v7.txt", "7 wip\n");
+    write("v[0-9].txt", "new\n");
+    await gitWithPaths(runGit, web, ["v[0-9].txt"], ["add"]);
+    assert.deepStrictEqual(staged(), ["v[0-9].txt"], "git add: only the checked file, not v1.txt and v7.txt its name matches as a pattern");
+    await gitWithPaths(runGit, web, ["v[0-9].txt"], ["commit", "--only", "--file=-"], { input: "feat: v" });
+    assert.deepStrictEqual(names(git(web, ["show", "--name-only", "-z", "--format=", "HEAD"])), ["v[0-9].txt"], "git commit --only: only the checked file");
+    assert.deepStrictEqual(names(git(web, ["diff", "--name-only", "-z"])), ["v1.txt", "v7.txt"], "the others are left as they were");
+
+    // A stopped merge's add -A, and Remove from VCS's reset: the same.
+    write("pages/[id].vue", "id\n");
+    write("pages/d.vue", "d wip\n");
+    await gitWithPaths(runGit, web, ["pages/[id].vue"], ["add", "-A"]);
+    assert.deepStrictEqual(staged(), ["pages/[id].vue"], "git add -A: not pages/d.vue");
+    git(web, ["add", "pages/d.vue"]);
+    await gitWithPaths(runGit, web, ["pages/[id].vue"], ["reset", "-q"]);
+    assert.deepStrictEqual(staged(), ["pages/d.vue"], "git reset: only the file named");
+    if (process.platform !== "win32") {
+      // ":top" is git's short magic for "top": a file of that name, never the other one.
+      write(":top", "colon\n");
+      write("top", "plain\n");
+      await gitWithPaths(runGit, web, [":top"], ["add"]);
+      assert.deepStrictEqual(staged(), [":top", "pages/d.vue"]);
+    }
+    console.log("ok - real git: checked paths go to git add, add -A, commit --only and reset as files, never as patterns");
+
+    // A repository inside this one: git lists its folder, none of its files.
+    const inner = path.join(web, "acme-libs");
+    fs.mkdirSync(inner);
+    git(inner, ["init", "-q"]);
+    fs.writeFileSync(path.join(inner, "lib.txt"), "l\n");
+    const out = await runGit(web, statusArgs([]));
+    assert.ok(out.split("\0").includes("? acme-libs/"), "git's own word for it");
+    assert.ok(!splitStatus(out).changes.some((e) => e.path.startsWith("acme-libs")));
+    console.log("ok - real git: an untracked nested repository is not listed as a file");
+
+    // A submodule (a gitlink) with only its files changed: nothing of it for acme-web to commit.
+    const api = path.join(home, "acme-api");
+    makeRepo(api, [{ time: 1000, author: "dana", message: "feat: api", files: { "api.txt": "a\n" } }], home);
+    const sub = path.join(home, "acme-app");
+    makeRepo(sub, [{ time: 1000, author: "dana", message: "feat: app", files: { "app.txt": "a\n" } }], home);
+    git(sub, ["clone", "-q", api, "acme-api"]);
+    git(sub, ["add", "acme-api"]);
+    git(sub, ["commit", "-qm", "feat: the api"]);
+    fs.writeFileSync(path.join(sub, "acme-api", "api.txt"), "wip\n");
+    fs.writeFileSync(path.join(sub, "acme-api", "new.txt"), "n\n");
+    const changes = async () => splitStatus(await runGit(sub, statusArgs([]))).changes.map((e) => e.path);
+    assert.deepStrictEqual(await changes(), [], "edited and new files inside it only");
+    git(path.join(sub, "acme-api"), ["commit", "-qam", "feat: wip"]);
+    assert.deepStrictEqual(await changes(), ["acme-api"], "checked out at a new commit: a change to commit");
+    console.log("ok - real git: a submodule is a change only once its commit moved");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

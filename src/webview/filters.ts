@@ -116,6 +116,11 @@ export class FilterBar {
     this.searchBox.setRepos(names);
   }
 
+  /** The extension host's platform, for the box's regex checks (git's expressions differ on macOS). */
+  setPlatform(platform: NodeJS.Platform | undefined): void {
+    this.searchBox.setPlatform(platform);
+  }
+
   setAiAvailable(available: boolean): void {
     this.searchBox.setAiAvailable(available);
   }

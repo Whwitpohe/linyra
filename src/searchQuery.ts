@@ -1,7 +1,7 @@
 // The Log's search language, after GitLens 19.5's: words, "quoted phrases" and operators such as
 // author: or file:, each pushed down into `git log` as git's own flags (constraint 1: git does the
 // searching, JavaScript only merges what it returns). Pure: no vscode, no DOM.
-import { authorPatterns, escapeRegex, isValidRef, normalizePath, regexProblem, type FilterState } from "./filterModel";
+import { authorPatterns, escapeRegex, gitRegex, isValidRef, meAuthor, normalizePath, regexProblem, type FilterState } from "./filterModel";
 import { localize } from "./i18n";
 import type { Codicon } from "./webview/codicons";
 
@@ -325,6 +325,8 @@ export interface SearchPlan {
 export interface SearchContext {
   /** Known repository names: a repo: naming none of them is an error. */
   repoNames?: readonly string[];
+  /** The platform git runs on, for a webview that has no process of its own (regexProblem). */
+  platform?: NodeJS.Platform;
 }
 
 /**
@@ -342,7 +344,7 @@ export function planSearch(f: Pick<FilterState, "text" | "path"> & SearchToggles
   if (f.regex) {
     for (const op of ["message:", "-message:", "author:", "committer:", "change:"] as const) {
       for (const t of tokens(op)) {
-        const problem = t.value === "@me" ? undefined : regexProblem(t.value);
+        const problem = t.value === "@me" ? undefined : regexProblem(t.value, ctx.platform);
         if (problem) fail(t, localize("Invalid regular expression: {0}", problem));
       }
     }
@@ -422,9 +424,15 @@ export function searchRepos<R extends { name: string }>(plan: Pick<SearchPlan, "
   return plan.repos.length === 0 ? [...repos] : repos.filter((r) => plan.repos.some((v) => repoMatches(v, r.name)));
 }
 
+/** An author: or committer: value; @me is this repository's whole address (meAuthor), always literal. */
+interface PersonTerm {
+  value: string;
+  me?: true;
+}
+
 /** Values with @me for this repository; [] when every value was @me and it has no user.email. */
-function withMe(values: readonly string[], me: string | undefined): string[] {
-  return values.flatMap((v) => (v !== "@me" ? [v] : me ? [me] : []));
+function withMe(values: readonly string[], me: string | undefined): PersonTerm[] {
+  return values.flatMap((v): PersonTerm[] => (v !== "@me" ? [{ value: v }] : me?.trim() ? [{ value: meAuthor(me), me: true }] : []));
 }
 
 /** author: or committer: values that only @me could have filled, in a repository with no user.email. */
@@ -439,10 +447,14 @@ export function searchSkips(plan: Pick<SearchPlan, "authors" | "committers">, me
 const WORD_START = "(^|[^[:alnum:]_])";
 const WORD_END = "([^[:alnum:]_]|$)";
 
+/** A word character in any script, as git's [:alnum:] reads one in a UTF-8 locale (JavaScript's \w is ASCII). */
+const WORD_FIRST = /^[\p{L}\p{M}\p{N}_]/u;
+const WORD_LAST = /[\p{L}\p{M}\p{N}_]$/u;
+
 /** Whole Word: a word's edge on each side that starts or ends with a word character (or around a whole expression). */
 function wholeWord(pattern: string, raw: string, regex: boolean): string {
   if (regex) return `${WORD_START}(${pattern})${WORD_END}`;
-  return `${/^\w/.test(raw) ? WORD_START : ""}${pattern}${/\w$/.test(raw) ? WORD_END : ""}`;
+  return `${WORD_FIRST.test(raw) ? WORD_START : ""}${pattern}${WORD_LAST.test(raw) ? WORD_END : ""}`;
 }
 
 /** The same expression for JavaScript, which reads no POSIX classes (bothPattern's shortcut only). */
@@ -493,15 +505,17 @@ export function searchFlags(plan: SearchPlan, f: FilterState, me?: string): stri
   const both = picked.length > 0 && queryAuthors.length > 0;
   const ere = regex || word || both;
   // An invalid expression (the box refuses it) is searched as text rather than failing every repository.
-  const term = (v: string) => {
-    const pattern = regex && regexProblem(v) === undefined ? v : ere ? escapeRegex(v) : v;
-    return word ? wholeWord(pattern, v, regex && pattern === v) : pattern;
+  const term = (v: string, literal = false) => {
+    const expression = regex && !literal && regexProblem(v) === undefined;
+    const pattern = expression ? gitRegex(v) : ere ? escapeRegex(v) : v;
+    return word ? wholeWord(pattern, v, expression) : pattern;
   };
+  const person = (q: PersonTerm) => term(q.value, q.me);
   const grep = [...plan.messages, ...plan.excluded].map((v) => `--grep=${term(v)}`);
   const authors = both
-    ? picked.flatMap((p) => queryAuthors.flatMap((q) => (!regex && !word ? bothLiteral(p, q, icase) : bothPattern(p, term(q), icase))))
-    : picked.length > 0 ? picked.map((p) => (ere ? escapeRegex(p) : p)) : queryAuthors.map(term);
-  const committers = withMe(plan.committers, me).map(term);
+    ? picked.flatMap((p) => queryAuthors.flatMap((q) => (!regex && !word ? bothLiteral(p, q.value, icase) : bothPattern(p, person(q), icase))))
+    : picked.length > 0 ? picked.map((p) => (ere ? escapeRegex(p) : p)) : queryAuthors.map(person);
+  const committers = withMe(plan.committers, me).map(person);
 
   const args: string[] = [];
   const patterns = grep.length + authors.length + committers.length > 0;
@@ -514,7 +528,7 @@ export function searchFlags(plan: SearchPlan, f: FilterState, me?: string): stri
   args.push(...committers.map((c) => `--committer=${c}`));
   if (plan.change !== undefined) {
     const c = plan.change;
-    if (regex && regexProblem(c) === undefined) args.push(`-G${word ? wholeWord(c, c, true) : c}`);
+    if (regex && regexProblem(c) === undefined) args.push(`-G${word ? wholeWord(gitRegex(c), c, true) : gitRegex(c)}`);
     else if (word) args.push("--pickaxe-regex", `-S${wholeWord(escapeRegex(c), c, false)}`);
     else args.push(`-S${c}`);
   }

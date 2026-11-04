@@ -137,3 +137,23 @@ export function asAiError(error: unknown, signal?: AbortSignal, url?: string): A
   if (links.some((l) => l.code) || (error instanceof TypeError && /fetch failed|network/i.test(links[0]?.message ?? ""))) return networkError(error, url);
   return new AiError(oneLine(links[0]?.message || String(error)), "server");
 }
+
+/** Text from a provider without the key in it (as typed, or %-encoded in a URL): some gateways echo the key they were given. */
+export function redactKey(text: string, key: string | undefined): string;
+export function redactKey(text: string | undefined, key: string | undefined): string | undefined;
+export function redactKey(text: string | undefined, key: string | undefined): string | undefined {
+  if (!text || !key || key.length < 4) return text;
+  const encoded = encodeURIComponent(key);
+  const out = text.split(key).join("…");
+  return encoded === key ? out : out.split(encoded).join("…");
+}
+
+/**
+ * A provider call's failure as the features show it, log it and write it into an answer: an
+ * AiError (asAiError) whose message and provider's words never hold the key.
+ */
+export function providerFailure(error: unknown, key: string | undefined, signal?: AbortSignal, url?: string): AiError {
+  const e = asAiError(error, signal, url);
+  const message = redactKey(e.message, key), detail = redactKey(e.http?.detail, key);
+  return message === e.message && detail === e.http?.detail ? e : new AiError(message, e.kind, e.http && { ...e.http, detail });
+}

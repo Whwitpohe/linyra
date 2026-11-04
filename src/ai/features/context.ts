@@ -42,6 +42,8 @@ function unquote(s: string): string {
   return new TextDecoder().decode(new Uint8Array(bytes));
 }
 const stripPrefix = (s: string, prefix: string): string => (s.startsWith(prefix) ? s.slice(prefix.length) : s);
+/** A ---/+++ line's path. git ends the line with a TAB when the name has a space (a TAB in a name is quoted, so this one is not part of it). */
+const headerPath = (s: string): string => unquote(s.endsWith("\t") ? s.slice(0, -1) : s);
 
 /** A patch, one section per file: `diff --git` starts each; the path comes from +++/---, a rename, or the header. */
 export function splitPatch(patch: string): FileDiff[] {
@@ -55,8 +57,8 @@ export function splitPatch(patch: string): FileDiff[] {
     let path: string | undefined, oldPath: string | undefined, from: string | undefined;
     for (const line of lines.slice(1)) {
       if (line.startsWith("@@")) break;
-      if (line.startsWith("+++ ")) { const p = unquote(line.slice(4)); if (p !== "/dev/null") path = stripPrefix(p, "b/"); }
-      else if (line.startsWith("--- ")) { const p = unquote(line.slice(4)); if (p !== "/dev/null") from = stripPrefix(p, "a/"); }
+      if (line.startsWith("+++ ")) { const p = headerPath(line.slice(4)); if (p !== "/dev/null") path = stripPrefix(p, "b/"); }
+      else if (line.startsWith("--- ")) { const p = headerPath(line.slice(4)); if (p !== "/dev/null") from = stripPrefix(p, "a/"); }
       else if (line.startsWith("rename from ")) oldPath = unquote(line.slice(12));
       else if (line.startsWith("rename to ")) path = unquote(line.slice(10));
     }
@@ -97,6 +99,11 @@ export function newFileDiff(path: string, content: string | undefined, limits: L
   const body = content.length > limits.newFileChars ? `${content.slice(0, limits.newFileChars)}\n… (cut here)` : content;
   const lines = body.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
   return { path, text: `diff --git a/${path} b/${path}\nnew file (not tracked yet)\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1,${lines.length} @@\n${lines.map((l) => `+${l}`).join("\n")}\n` };
+}
+
+/** A new symbolic link not in git yet, as git would add it: the path it points to, never what is there. */
+export function newLinkDiff(path: string, target: string): FileDiff {
+  return { path, text: `diff --git a/${path} b/${path}\nnew file mode 120000 (a symbolic link, not tracked yet)\n--- /dev/null\n+++ b/${path}\n@@ -0,0 +1 @@\n+${target.replace(/[\r\n]+/g, " ")}\n\\ No newline at end of file\n` };
 }
 
 /** One line for the prompt naming what it leaves out, or "" when nothing is. */

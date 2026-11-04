@@ -1,9 +1,16 @@
 import * as assert from "assert";
+import { execFileSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
-  bothPaths, candidates, COMMIT_PAGE, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure,
-  mergeSkips, mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, pushRecent, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
+  bothPaths, candidates, COMMIT_PAGE, conflictNames, conflictNote, isConflict, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mergeMessage, mergeTreeArgs, mergeTreeFailure,
+  mergeSkips, mirror, pairDuplicates, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog, pickerGroups, previewPaths, pushRecent, refsOf, releaseNotes, repoCounts, resolveInput, sideLabel, sideOf,
   sidePage, repoDescription, sideCountArgs, summaryLabel, tabTitle, validPair, type RepoCompare,
 } from "./compareModel";
+import { commitAt, gitEnv, makeRepo } from "./fixtures";
+import { multiCommands } from "./multiRepoModel";
+import type { FileChange } from "./types";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -24,25 +31,136 @@ console.log("ok - a pair is names git accepts as branches; a side may list sever
 const T1 = "1".repeat(40);
 const T2 = "2".repeat(40);
 const p0 = { left: "develop develop-k", right: "master main" };
-assert.strictEqual(resolveInput(p0), "develop^{commit}\ndevelop^{tree}\ndevelop-k^{commit}\ndevelop-k^{tree}\nmaster^{commit}\nmaster^{tree}\nmain^{commit}\nmain^{tree}\n");
-// cat-file --batch-check answers one line per name: the first each side has wins.
+// Each name as a branch, a remote branch, then a tag: never git's loose lookup.
+const asRefs = (name: string) => [`refs/heads/${name}`, `refs/remotes/${name}`, `refs/tags/${name}`];
+assert.deepStrictEqual(refsOf("origin/main"), ["refs/heads/origin/main", "refs/remotes/origin/main", "refs/tags/origin/main"]);
+assert.deepStrictEqual(refsOf("refs/tags/v1.4.0"), ["refs/tags/v1.4.0"], "a full ref as given");
+assert.strictEqual(resolveInput({ left: "develop", right: "main" }), [...asRefs("develop"), ...asRefs("main")].flatMap((r) => [`${r}^{commit}`, `${r}^{tree}`]).join("\n") + "\n");
+// cat-file --batch-check answers two lines per ref: the first name each side has wins, as its first ref.
 const answer = (lines: string[]) => lines.join("\n") + "\n";
-assert.deepStrictEqual(parseResolve(p0, answer(["develop^{commit} missing", "develop^{tree} missing", `${A} commit 200`, `${T1} tree 90`, "master^{commit} missing", "master^{tree} missing", `${B} commit 210`, `${T2} tree 95`])),
+const none = (name: string) => asRefs(name).flatMap((r) => [`${r}^{commit} missing`, `${r}^{tree} missing`]);
+const has = (name: string, at: number, sha: string, tree: string) => asRefs(name).flatMap((r, i) => (i === at ? [`${sha} commit 200`, `${tree} tree 90`] : [`${r}^{commit} missing`, `${r}^{tree} missing`]));
+assert.deepStrictEqual(parseResolve(p0, answer([...none("develop"), ...has("develop-k", 1, A, T1), ...none("master"), ...has("main", 0, B, T2)])),
   { left: { name: "develop-k", sha: A, tree: T1 }, right: { name: "main", sha: B, tree: T2 } });
-assert.deepStrictEqual(parseResolve(p0, answer([`${A} commit 200`, `${T1} tree 90`, `${C} commit 1`, `${T2} tree 1`, `${B} commit 210`, `${T1} tree 90`, "main^{commit} missing", "main^{tree} missing"])),
+assert.deepStrictEqual(parseResolve(p0, answer([...has("develop", 0, A, T1), ...has("develop-k", 0, C, T2), ...has("master", 2, B, T1), ...none("main")])),
   { left: { name: "develop", sha: A, tree: T1 }, right: { name: "master", sha: B, tree: T1 } }, "the first one wins even when a later one exists too");
-assert.deepStrictEqual(parseResolve(p0, answer(["develop^{commit} missing", "develop^{tree} missing", "develop-k^{commit} ambiguous", "develop-k^{tree} ambiguous", `${B} commit 1`, `${T1} tree 1`, "", ""])).left, undefined, "none of a side's names: missing");
+assert.deepStrictEqual(parseResolve({ left: "main", right: "x" }, answer([`${A} commit 1`, `${T1} tree 1`, `${B} commit 1`, `${T2} tree 1`, ...none("x")])).left, { name: "main", sha: A, tree: T1 }, "the branch before the remote branch");
+assert.deepStrictEqual(parseResolve(p0, answer([...none("develop"), ...none("develop-k"), ...has("master", 0, B, T1), ...none("main")])).left, undefined, "none of a side's names: missing");
 console.log("ok - each repository uses the first name of each side it has, all resolved in one git process");
+
+{
+  // Real git: a tag named like the branch, and a branch named like a commit's hash. The branch
+  // wins over the tag; a name no ref has is missing, though git would read it as that commit.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-compare-"));
+  const git = (args: string[], input?: string) => execFileSync("git", args, { cwd: repo, input, env: gitEnv(home), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+  const repo = path.join(home, "acme-api");
+  try {
+    makeRepo(repo, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "1\n" } }], home);
+    const base = git(["rev-parse", "HEAD"]).trim();
+    git(["tag", "release-1.4"]);
+    git(["branch", "release-1.4"]);
+    commitAt(repo, home, { time: 1100, author: "rin", message: "fix: on main", files: { "a.txt": "2\n" } });
+    git(["update-ref", "refs/heads/release-1.4", "HEAD"]);
+    const prefix = base.slice(0, 7);
+    const p = { left: `${prefix} release-1.4`, right: "main" };
+    const r = parseResolve(p, git(["cat-file", "--batch-check"], resolveInput(p)));
+    assert.deepStrictEqual([r.left?.name, r.left?.sha], ["release-1.4", git(["rev-parse", "refs/heads/release-1.4"]).trim()], "the branch, not the tag; not the commit the hash names");
+    const t = { left: "release-1.4", right: "refs/tags/release-1.4" };
+    assert.strictEqual(parseResolve(t, git(["cat-file", "--batch-check"], resolveInput(t))).right?.sha, base, "the tag, named in full");
+    console.log("ok - real git: a branch before a tag of its name, and no name read as a commit's hash");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
 
 assert.deepStrictEqual(mergeBaseArgs(A, B), ["merge-base", A, B]);
 assert.deepStrictEqual(mergeTreeArgs(A, B), ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", A, B]);
 assert.deepStrictEqual(parseMergeTree(`${T1}\0`), { tree: T1, conflicts: [] }, "merges cleanly");
 assert.deepStrictEqual(parseMergeTree(`${T1}\0src/a.ts\0src/b.ts\0src/a.ts\0`), { tree: T1, conflicts: ["src/a.ts", "src/b.ts"] }, "each conflicted file once");
+assert.deepStrictEqual(parseMergeTree(`${"e".repeat(64)}\0`), { tree: "e".repeat(64), conflicts: [] }, "a SHA-256 repository");
+// git exits 1 on an error too, with nothing on stdout: no answer, not "merges cleanly".
+assert.strictEqual(parseMergeTree(""), undefined);
+assert.strictEqual(parseMergeTree("merge-tree: feature - not something we can merge\n"), undefined);
 assert.strictEqual(mergeTreeFailure("refusing to merge unrelated histories"), "nobase");
 assert.strictEqual(mergeTreeFailure("unknown option `write-tree'"), "unsupported", "git before 2.38");
 assert.strictEqual(mergeTreeFailure("bad object"), "error");
 assert.ok(isConflict(["src/a.ts"], { path: "src/a.ts" }) && isConflict(["old.ts"], { path: "new.ts", oldPath: "old.ts" }) && !isConflict(null, { path: "src/a.ts" }));
 console.log("ok - the merge check: merge-tree in memory, its conflicted files, and why it could not tell");
+
+{
+  // ◀ renamed old.txt to new.txt and edited it; ▶ edited old.txt. merge-tree names the conflict new.txt.
+  const renamed: FileChange = { path: "new.txt", oldPath: "old.txt", status: "R", added: 1, deleted: 1 };
+  const edited: FileChange = { path: "old.txt", status: "M", added: 1, deleted: 1 };
+  const names = conflictNames(["new.txt"], [renamed]);
+  assert.ok(isConflict(names, renamed) && isConflict(names, edited), "both sides' rows are the conflict");
+  assert.strictEqual(conflictNames(null, [renamed]), null);
+  assert.deepStrictEqual(conflictNames(["other.txt"], [renamed]), ["other.txt"], "a rename adds its old name only when its new one conflicts");
+  const files = { left: [renamed], right: [edited] };
+  assert.deepStrictEqual(previewPaths("left", renamed, ["new.txt"], files), { merged: "new.txt", right: "old.txt" });
+  assert.deepStrictEqual(previewPaths("right", edited, ["new.txt"], files), { merged: "new.txt", right: "old.txt" });
+  // The other way: ▶ renamed it, ◀ edited the old name. ▶ has it as new.txt now.
+  const swapped = { left: [edited], right: [renamed] };
+  assert.deepStrictEqual(previewPaths("left", edited, ["new.txt"], swapped), { merged: "new.txt", right: "new.txt" });
+  assert.deepStrictEqual(previewPaths("right", renamed, ["new.txt"], swapped), { merged: "new.txt", right: "new.txt" });
+  assert.deepStrictEqual(previewPaths("left", { path: "a.ts" }, ["a.ts"], { left: [], right: [] }), { merged: "a.ts", right: "a.ts" }, "no rename");
+  console.log("ok - a conflict on a file one side renamed: both sides' rows, and the merged file under the name the merge keeps");
+}
+
+{
+  // Real git: the rename on ◀, the edit on ▶, and what merge-tree and Files mode name.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-compare-"));
+  const repo = path.join(home, "acme-web");
+  const git = (args: string[]) => {
+    try { return execFileSync("git", args, { cwd: repo, env: gitEnv(home), encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }); }
+    catch (e) { if ((e as { status?: number }).status === 1) return String((e as { stdout?: unknown }).stdout); throw e; }
+  };
+  try {
+    const lines = Array.from({ length: 20 }, (_, i) => `${i + 1}`);
+    const text = (at: number, s: string) => lines.map((l, i) => (i === at ? s : l)).join("\n") + "\n";
+    makeRepo(repo, [{ time: 1000, author: "dana", message: "feat: base", files: { "old.txt": text(-1, "") } }], home);
+    git(["switch", "-q", "-c", "release-1.4"]);
+    commitAt(repo, home, { time: 1100, author: "dana", message: "refactor: rename", files: { "old.txt": null, "new.txt": text(9, "release") } });
+    git(["switch", "-q", "main"]);
+    commitAt(repo, home, { time: 1200, author: "rin", message: "fix: on main", files: { "old.txt": text(9, "main") } });
+    const merged = parseMergeTree(git(mergeTreeArgs("release-1.4", "main")))!;
+    assert.deepStrictEqual(merged.conflicts, ["new.txt"]);
+    const files = { left: parseFiles(git(filesArgs("main", "release-1.4"))), right: parseFiles(git(filesArgs("release-1.4", "main"))) };
+    const names = conflictNames(merged.conflicts, [...files.left, ...files.right]);
+    assert.deepStrictEqual([files.left.map((f) => isConflict(names, f)), files.right.map((f) => isConflict(names, f))], [[true], [true]], "the rename and the edit");
+    for (const side of ["left", "right"] as const) {
+      const at = previewPaths(side, files[side][0], merged.conflicts, files);
+      assert.match(git(["cat-file", "blob", `${merged.tree}:${at.merged}`]), /^<<<<<<< /m, `${side}: the merged file, its markers`);
+      assert.strictEqual(git(["cat-file", "blob", `main:${at.right}`]), text(9, "main"), `${side}: ▶ as it is now`);
+    }
+    console.log("ok - real git: a conflict on a file ◀ renamed is found on both sides, and its merge previews");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+{
+  // Real git: ▶ checked out; ◀ moved on after the comparison (a fetch, a commit). The merge takes ◀
+  // as compared, named as its branch, not the new commit nobody checked.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-compare-"));
+  const repo = path.join(home, "acme-web");
+  const git = (args: string[]) => execFileSync("git", args, { cwd: repo, env: { ...gitEnv(home), GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  try {
+    makeRepo(repo, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "1\n" } }], home);
+    git(["switch", "-q", "-c", "release-1.4"]);
+    commitAt(repo, home, { time: 1100, author: "dana", message: "feat: billing page", files: { "billing.ts": "export {};\n" } });
+    const compared = git(["rev-parse", "HEAD"]);
+    commitAt(repo, home, { time: 1200, author: "rin", message: "feat: not reviewed", files: { "late.ts": "export {};\n" } });
+    git(["switch", "-q", "main"]);
+    commitAt(repo, home, { time: 1300, author: "dana", message: "fix: on main", files: { "a.txt": "2\n" } });
+    git(multiCommands.merge(compared, mergeMessage("release-1.4", "main")));
+    assert.deepStrictEqual(git(["rev-list", "--parents", "-1", "HEAD"]).split(" ").slice(2), [compared], "◀ as compared");
+    assert.strictEqual(git(["log", "-1", "--format=%s"]), "Merge branch 'release-1.4' into main");
+    assert.ok(!fs.existsSync(path.join(repo, "late.ts")), "◀'s later commit is not merged");
+    console.log("ok - real git: Merge ◀ into ▶ where ▶ is checked out merges ◀ as compared, named as its branch");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
 assert.deepStrictEqual(sideCountArgs("left", A, B), ["rev-list", "--left-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(sideCountArgs("right", A, B), ["rev-list", "--right-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(parseSideCount("2\t1\n"), { only: 2, same: 1 });
@@ -189,4 +307,6 @@ const skips = mergeSkips([
 ]);
 assert.strictEqual(skips.summary, "2 repositories: main is checked out in another worktree · 1 repository: a merge would conflict · 1 repository: origin/main is not a local branch");
 assert.strictEqual(skips.detail, "2 repositories: main is checked out in another worktree\nacme-web, acme-libs\n\n1 repository: a merge would conflict\nacme-api (2 files)\n\n1 repository: origin/main is not a local branch\nacme-docs");
+assert.strictEqual(mergeSkips([{ name: "acme-web", why: "behind", into: "main" }]).summary, "1 repository: main is behind its upstream (Update Project first)", "Release…");
+assert.strictEqual(mergeSkips([{ name: "acme-web", why: "unchecked" }, { name: "acme-api", why: "unchecked" }]).detail, "2 repositories: not checked for conflicts yet (Refresh)\nacme-web, acme-api", "no clean merge known: not offered");
 console.log("ok - Merge leaves repositories out grouped by why");

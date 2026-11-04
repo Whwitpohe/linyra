@@ -104,27 +104,41 @@ export function validPair(p: unknown): p is Pair {
 }
 
 /**
+ * The refs a name is looked up as, in order: a full ref as given; else the branch, the remote
+ * branch (what the Branch picker lists), then a tag (the branch sheet's Compare… on one). Never
+ * git's loose lookup, where a tag beats a branch of the same name and "cafe" may be a commit.
+ */
+export function refsOf(name: string): string[] {
+  return name.startsWith("refs/") ? [name] : [`refs/heads/${name}`, `refs/remotes/${name}`, `refs/tags/${name}`];
+}
+
+/**
  * Every name of both sides, its commit and its tree, in one spawn (git cat-file --batch-check):
  * a repository uses the first name of each side it has, and the same tree means the same files.
  */
 export function resolveInput(p: Pair): string {
-  return [...candidates(p.left), ...candidates(p.right)].flatMap((name) => [`${name}^{commit}`, `${name}^{tree}`]).join("\n") + "\n";
+  return [...candidates(p.left), ...candidates(p.right)].flatMap((name) => refsOf(name).flatMap((ref) => [`${ref}^{commit}`, `${ref}^{tree}`])).join("\n") + "\n";
 }
 
 export interface Resolved { name: string; sha: string; tree: string }
 
 export function parseResolve(p: Pair, out: string): { left?: Resolved; right?: Resolved } {
   const lines = out.split("\n");
-  const id = (i: number, type: string) => new RegExp(`^([0-9a-f]{40}(?:[0-9a-f]{24})?) ${type} `).exec(lines[i] ?? "")?.[1];
-  const first = (names: readonly string[], from: number): Resolved | undefined => {
-    for (const [k, name] of names.entries()) {
-      const sha = id(from + 2 * k, "commit"), tree = id(from + 2 * k + 1, "tree");
-      if (sha && tree) return { name, sha, tree };
+  let at = 0;
+  const id = (type: string) => new RegExp(`^([0-9a-f]{40}(?:[0-9a-f]{24})?) ${type} `).exec(lines[at++] ?? "")?.[1];
+  // Every line of a side is read, found or not: the other side's lines follow them.
+  const first = (names: readonly string[]): Resolved | undefined => {
+    let found: Resolved | undefined;
+    for (const name of names) {
+      for (let n = refsOf(name).length; n > 0; n--) {
+        const sha = id("commit"), tree = id("tree");
+        if (!found && sha && tree) found = { name, sha, tree };
+      }
     }
-    return undefined;
+    return found;
   };
-  const left = candidates(p.left);
-  return { left: first(left, 0), right: first(candidates(p.right), 2 * left.length) };
+  const left = first(candidates(p.left));
+  return { left, right: first(candidates(p.right)) };
 }
 
 export function mergeBaseArgs(l: string, r: string): string[] {
@@ -139,10 +153,21 @@ export function mergeTreeArgs(l: string, r: string): string[] {
   return ["merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", l, r];
 }
 
-/** merge-tree -z --name-only: the merged tree's id, then each conflicted file once. */
-export function parseMergeTree(out: string): { tree: string; conflicts: string[] } {
+/**
+ * merge-tree -z --name-only: the merged tree's id, then each conflicted file once. git also exits 1
+ * on an error, with nothing on stdout: an answer that does not start with a tree id is no answer.
+ */
+export function parseMergeTree(out: string): { tree: string; conflicts: string[] } | undefined {
   const [tree = "", ...paths] = out.split("\0").filter(Boolean);
-  return { tree, conflicts: [...new Set(paths)] };
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(tree) ? { tree, conflicts: [...new Set(paths)] } : undefined;
+}
+
+/**
+ * Merge ◀ into ▶'s commit message, with or without a checkout: ◀ is merged as the commit compared,
+ * so git would name it by its hash; the branch names it.
+ */
+export function mergeMessage(from: string, into: string): string {
+  return `Merge branch '${from}' into ${into}`;
 }
 
 /** Why merge-tree did not answer: no shared history, a git too old for it, or another failure. */
@@ -155,6 +180,31 @@ export function mergeTreeFailure(message: string): "nobase" | "unsupported" | "e
 /** A conflict as merge-tree names it: the file, or (renamed) its other name. */
 export function isConflict(conflicts: readonly string[] | null | undefined, f: { path: string; oldPath?: string }): boolean {
   return !!conflicts && (conflicts.includes(f.path) || (f.oldPath !== undefined && conflicts.includes(f.oldPath)));
+}
+
+/**
+ * The names a merge's conflicts go by on both sides. merge-tree names a conflicted file as the
+ * merge keeps it: one side renamed it, so it is its new name, and the other side's file, still
+ * under the old name, conflicts too. `renamed`: either side's files (only renames count).
+ */
+export function conflictNames(conflicts: readonly string[] | null | undefined, renamed: readonly { path: string; oldPath?: string }[]): readonly string[] | null | undefined {
+  if (!conflicts) return conflicts;
+  const names = new Set(conflicts);
+  for (const f of renamed) if (f.oldPath !== undefined && conflicts.includes(f.path)) names.add(f.oldPath);
+  return [...names];
+}
+
+/**
+ * Preview Merge Result of a conflicted file on one side: its name in the merged tree (merge-tree's,
+ * which keeps a rename from either side) and ▶'s name for it now. `files`: each side's files.
+ */
+export function previewPaths(side: Side, f: { path: string; oldPath?: string }, conflicts: readonly string[], files: { left: readonly FileChange[]; right: readonly FileChange[] }): { merged: string; right: string } {
+  const names = new Set([f.path, ...(f.oldPath !== undefined ? [f.oldPath] : [])]);
+  // The other side's change to the same file: under its name, or renamed from it.
+  const other = files[side === "left" ? "right" : "left"].find((o) => names.has(o.path) || (o.oldPath !== undefined && names.has(o.oldPath)));
+  const right = side === "right" ? f.path : other?.path ?? tipPaths(side, f).right;
+  const merged = [f.path, other?.path, f.oldPath, other?.oldPath].find((n): n is string => n !== undefined && conflicts.includes(n));
+  return { merged: merged ?? right, right };
 }
 
 /** A Repositories row's merge note: "2 conflicts", "merges cleanly", or nothing when git cannot tell. */
@@ -333,8 +383,10 @@ export function repoCounts(c: RepoCompare): string {
 /**
  * Why Merge ◀ into ▶… leaves a repository out: a merge would conflict, ▶ is no local branch there,
  * ▶ is checked out in another worktree (its files there would not follow), or ▶ moved since it was compared.
+ * Release… also: ▶ is behind its upstream (its push would be refused). Unchecked: whether the merge
+ * would conflict is not known yet.
  */
-export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "remote" | "worktree" | "moved"; into: string };
+export type MergeSkip = { name: string; why: "conflict"; files: number } | { name: string; why: "unchecked" } | { name: string; why: "remote" | "worktree" | "moved" | "behind"; into: string };
 
 /**
  * The repositories Merge ◀ into ▶… leaves out, grouped by why: `summary` is one line for a
@@ -343,11 +395,13 @@ export type MergeSkip = { name: string; why: "conflict"; files: number } | { nam
 export function mergeSkips(skipped: readonly MergeSkip[]): { summary: string; detail: string } {
   const groups = new Map<string, { title: (n: number) => string; names: string[] }>();
   for (const s of skipped) {
-    const key = s.why === "conflict" ? "conflict" : `${s.why}\0${s.into}`;
+    const key = s.why === "conflict" || s.why === "unchecked" ? s.why : `${s.why}\0${s.into}`;
     const repos = (n: number) => plural(n, "repository", "repositories");
     const title = s.why === "conflict" ? (n: number) => localize("{0}: a merge would conflict", repos(n))
+      : s.why === "unchecked" ? (n: number) => localize("{0}: not checked for conflicts yet (Refresh)", repos(n))
       : s.why === "remote" ? (n: number) => localize("{0}: {1} is not a local branch", repos(n), s.into)
       : s.why === "worktree" ? (n: number) => localize("{0}: {1} is checked out in another worktree", repos(n), s.into)
+      : s.why === "behind" ? (n: number) => localize("{0}: {1} is behind its upstream (Update Project first)", repos(n), s.into)
       : (n: number) => localize("{0}: {1} moved since the comparison (Refresh)", repos(n), s.into);
     const g = groups.get(key) ?? groups.set(key, { title, names: [] }).get(key)!;
     g.names.push(s.why === "conflict" ? localize("{0} ({1})", s.name, plural(s.files, "file")) : s.name);

@@ -145,6 +145,16 @@ describe("Commit actions", () => {
     assert.strictEqual(git(["branch", "--show-current"]), "main");
     const s = await until("the Log after the reset", (x) => !x.rows.some((r) => r.sha === tip));
     assert.ok(s.rows.some((r) => r.sha === start));
+    // A commit made while the question is open was not counted in it: nothing is reset.
+    try {
+      await vscode.commands.executeCommand("linyra._itest.beforeAnswer", async () => { git(["commit", "-q", "--allow-empty", "-m", "test: committed while asked"]); });
+      await answer("Mixed"); await answer("Reset");
+      await act("commitReset", start);
+      assert.strictEqual(git(["log", "-1", "--format=%s"]), "test: committed while asked", "the commit made meanwhile stays");
+    } finally {
+      await vscode.commands.executeCommand("linyra._itest.beforeAnswer", undefined);
+      git(["reset", "-q", "--hard", start]);
+    }
   });
 
   it("edits the subject of HEAD, keeping its body, and undoes it with its changes staged", async () => {
@@ -204,6 +214,30 @@ describe("Commit actions", () => {
     await reply(fromMenu.id); // cancelled: nothing changes
     await viaMenu;
     assert.strictEqual(head(), reworded);
+    git(["reset", "-q", "--hard", start]);
+  });
+
+  it("Edit Commit Message amends nothing when a commit was made while its question was open", async () => {
+    type Asked = { id: number; request: { kind: string; value?: string }; at: unknown };
+    const lastPrompt = () => vscode.commands.executeCommand<Asked | undefined>("linyra._itest.lastPrompt");
+    await answer(undefined);
+    fs.writeFileSync(path.join(root, "race.txt"), "race\n");
+    git(["add", "race.txt"]);
+    git(["commit", "-q", "-m", "feat: to be reworded later"]);
+    const made = head();
+    await send({ type: "refresh" });
+    await listed(made);
+    const before = (await lastPrompt())?.id ?? 0;
+    const done = send({ type: "rowAction", action: "reword", repoId, sha: made, at: { x: 700, y: 120, w: 22, h: 22 } } as WebviewMessage);
+    const asked = await waitFor("the question in the Log", async () => { const p = await lastPrompt(); return p && p.id > before ? p : undefined; });
+    // While the box is open, a commit in a terminal: HEAD is no longer the row's commit.
+    git(["commit", "-q", "--allow-empty", "-m", "feat: committed meanwhile"]);
+    const meanwhile = head();
+    await vscode.commands.executeCommand("linyra._itest.promptAnswer", asked.id, { value: "feat: reworded too late" });
+    await done;
+    assert.strictEqual(head(), meanwhile, "nothing amended");
+    assert.strictEqual(git(["log", "-1", "--format=%s"]), "feat: committed meanwhile");
+    assert.strictEqual(git(["log", "-1", "--format=%s", made]), "feat: to be reworded later");
     git(["reset", "-q", "--hard", start]);
   });
 
@@ -283,7 +317,7 @@ describe("Commit actions", () => {
   });
 
   it("stashes changes, lists the stash in the tree's data, applies, pops and drops it", async () => {
-    const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
+    const stashes = async () => ((await vscode.commands.executeCommand<{ repos: Record<string, { stashes?: { ref: string; sha: string; subject: string }[] }> }>("linyra._itest.branches")).repos[repoId]?.stashes ?? []);
     fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");
     // One box: the message, and Include new files toggled on (off is the first default).
     await answer("ci stash|toggle");
@@ -295,11 +329,16 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra._itest.send", { type: "branchSidebar", action: "load", repoId });
     assert.deepStrictEqual((await stashes()).map((s) => s.ref), ["stash@{0}"]);
     assert.match((await stashes())[0].subject, /ci stash/);
-    await vscode.commands.executeCommand("linyra.stash.apply", { repoId, ref: "stash@{0}" });
+    // What a stash row's menu sends: its ref, and its commit (the stash acted on, wherever stash@{n} moved).
+    const row = async () => ({ repoId, ref: "stash@{0}", sha: (await stashes())[0]?.sha });
+    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}", sha: "0".repeat(40) });
+    assert.strictEqual((await stashes()).length, 1, "a row whose stash is not listed any more drops nothing");
+    assert.match((await said()) ?? "", /The stashes of acme-api changed/);
+    await vscode.commands.executeCommand("linyra.stash.apply", await row());
     assert.ok(fs.existsSync(path.join(root, "stash-me.txt")), "apply brings the work back");
     assert.strictEqual((await stashes()).length, 1, "and keeps the stash");
     fs.rmSync(path.join(root, "stash-me.txt"));
-    await vscode.commands.executeCommand("linyra.stash.pop", { repoId, ref: "stash@{0}" });
+    await vscode.commands.executeCommand("linyra.stash.pop", await row());
     assert.ok(fs.existsSync(path.join(root, "stash-me.txt")));
     assert.strictEqual((await stashes()).length, 0, "pop removes it");
     // Remembered: on now, so toggled off for tracked changes only.
@@ -309,10 +348,10 @@ describe("Commit actions", () => {
     await vscode.commands.executeCommand("linyra.stash.create", { webviewSection: "repo", repoId });
     assert.strictEqual((await stashes()).length, 1);
     await answer("No");
-    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
+    await vscode.commands.executeCommand("linyra.stash.drop", await row());
     assert.strictEqual((await stashes()).length, 1, "declined: kept");
     await answer("Drop");
-    await vscode.commands.executeCommand("linyra.stash.drop", { repoId, ref: "stash@{0}" });
+    await vscode.commands.executeCommand("linyra.stash.drop", await row());
     assert.strictEqual((await stashes()).length, 0);
     // Only a new file, with Include new files off (as left): nothing stashed, and said so, not "stashed".
     fs.writeFileSync(path.join(root, "stash-me.txt"), "wip\n");

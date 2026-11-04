@@ -4,7 +4,7 @@
 import * as vscode from "vscode";
 import { localize } from "../i18n";
 import { outputLog } from "../outputLog";
-import { asAiError, cancelled } from "./errors";
+import { cancelled, providerFailure } from "./errors";
 import { registerAi } from "./index";
 import { nodeFetch } from "./net";
 import { AiDocuments } from "./present";
@@ -132,7 +132,8 @@ export class LinyraAi implements AiService, vscode.Disposable {
     try {
       response = await this.providers[profile.protocol].send(profile, key, request);
     } catch (e) {
-      const failure = asAiError(e, request.signal, profile.baseUrl);
+      // Without the key before anything logs, shows or writes it: some gateways echo the key they got.
+      const failure = providerFailure(e, key, request.signal, profile.baseUrl);
       if (failure.kind !== "cancelled") outputLog().warn(`AI ${profile.protocol} ${profile.model}: ${failure.kind}: ${failure.message}`);
       throw failure;
     }

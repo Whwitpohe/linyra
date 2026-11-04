@@ -18,11 +18,12 @@ import type { Ask } from "../../uncommittedActions";
 import type { UncommittedStore } from "../../uncommittedStore";
 import { runAsk, type AskHost, type AskResult } from "./askAi";
 import type { AiFeatures } from "./commands";
+import { notificationText } from "../untrusted";
 import { branchName, confirmation, field, planAcross, planFetch, planPull, planPush, planStash, resolveRepos, type AcrossKind, type RepoName, type WritePlan } from "./tools";
 
 const MAX_LISTED = 30;
 const MAX_BRANCHES = 40;
-/** A short answer is a notification; a longer one opens in the editor area. */
+/** A short answer is a notification (its links never live: notificationText); a longer one opens in the editor area. */
 const SHORT_ANSWER = 280;
 const HEX = /^[0-9a-f]{7,64}$/i;
 
@@ -98,7 +99,7 @@ export class AskAi {
           try {
             await p.run();
           } catch (e) {
-            void vscode.window.showErrorMessage(localize("{0} failed: {1}", p.plan.title, messageOf(e)));
+            void vscode.window.showErrorMessage(notificationText(localize("{0} failed: {1}", p.plan.title, messageOf(e))));
           }
         }
       } else {
@@ -106,7 +107,7 @@ export class AskAi {
       }
     }
     const answer = [result.answer || (result.planned.length ? "" : localize("The model gave no answer.")), result.limited ? localize("(Stopped after {0} tool calls.)", result.calls.length) : "", note].filter(Boolean).join(" ");
-    if (answer && answer.length <= SHORT_ANSWER && !answer.includes("\n")) void vscode.window.showInformationMessage(answer);
+    if (answer && answer.length <= SHORT_ANSWER && !answer.includes("\n")) void vscode.window.showInformationMessage(notificationText(answer));
     else if (answer) await this.deps.features.present(ai, localize("Ask AI"), async (write) => write(`> ${question.replace(/\n/g, "\n> ")}\n\n${answer}\n`));
     return result;
   }

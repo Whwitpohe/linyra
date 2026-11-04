@@ -2,7 +2,7 @@ import { localize } from "./i18n";
 // Uncommitted work as the Log's switch and the Uncommitted view show it. Pure: no vscode import.
 import { kindCounts, type KindCounts } from "./changeKinds";
 import { fileTree, type TreeNode } from "./fileTree";
-import type { FileChange } from "./types";
+import type { ChangeStatus, FileChange } from "./types";
 import type { BranchStatus } from "./workingTree";
 
 export interface RepoWork {
@@ -86,16 +86,34 @@ export function diffFor(group: Group, f: FileChange, alsoStaged: boolean): { lef
 }
 
 /**
+ * A rename's old name, when an action on the file takes it too: the rename moved it, so a commit
+ * records the move and Rollback brings it back. Never a copy's source (the copy left it as it was),
+ * nor a path a row of its own lists (`listed`: every path of the repository's work): that is
+ * another file now, one made at the old name, and only its own row acts on it.
+ */
+export function movedFrom(f: { oldPath?: string; status?: ChangeStatus }, listed: ReadonlySet<string>): string | undefined {
+  return f.oldPath !== undefined && f.status === "R" && !listed.has(f.oldPath) ? f.oldPath : undefined;
+}
+
+/** The paths an action on files takes: each one's own, and the old name a rename moved (movedFrom). */
+export function actionPaths(files: readonly FileChange[], listed: ReadonlySet<string>): string[] {
+  return [...new Set(files.flatMap((f) => {
+    const old = movedFrom(f, listed);
+    return old ? [f.path, old] : [f.path];
+  }))];
+}
+
+/**
  * What Discard does to the files it listed. `staged` are the listed files taken from the Staged
  * group: they are unstaged first. A file new to the index (added, or a rename's or copy's new
- * name) is then untracked, so it is deleted, like a new file never staged.
+ * name) is then untracked, so it is deleted, like a new file never staged. `listed`: every path
+ * of the repository's work; no path beyond the files and the old names their renames moved is touched.
  */
-export function discardPlan(files: readonly FileChange[], staged: readonly FileChange[]): { paths: string[]; unstage: string[]; remove: string[] } {
-  const both = (f: FileChange) => (f.oldPath ? [f.path, f.oldPath] : [f.path]);
+export function discardPlan(files: readonly FileChange[], staged: readonly FileChange[], listed: ReadonlySet<string>): { paths: string[]; unstage: string[]; remove: string[] } {
   const isNew = (f: FileChange) => f.untracked === true || (staged.includes(f) && (f.status === "A" || f.status === "R" || f.status === "C"));
   return {
-    paths: [...new Set(files.flatMap(both))],
-    unstage: [...new Set(staged.flatMap(both))],
+    paths: actionPaths(files, listed),
+    unstage: actionPaths(staged, listed),
     remove: [...new Set(files.filter(isNew).map((f) => f.path))],
   };
 }
@@ -109,10 +127,10 @@ export const addedPaths = (staged: readonly FileChange[]): Set<string> => new Se
  * an added file only leaves version control (`unadd`: unstaged, kept on disk). New files are not
  * changes to discard: Delete… removes them.
  */
-export function rollbackPlan(files: readonly FileChange[], staged: readonly FileChange[]): { paths: string[]; unstage: string[]; remove: string[]; unadd: string[] } {
+export function rollbackPlan(files: readonly FileChange[], staged: readonly FileChange[], listed: ReadonlySet<string>): { paths: string[]; unstage: string[]; remove: string[]; unadd: string[] } {
   const added = addedPaths(staged);
   const rest = (list: readonly FileChange[]) => list.filter((f) => !added.has(f.path) && !f.untracked);
-  return { ...discardPlan(rest(files), rest(staged)), unadd: [...added] };
+  return { ...discardPlan(rest(files), rest(staged), listed), unadd: [...added] };
 }
 
 /**

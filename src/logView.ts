@@ -10,7 +10,7 @@ import { readReferences } from "./commitReferences";
 import { debounce } from "./debounce";
 import { toolbarCommand, type ToolbarState } from "./toolbarModel";
 import { DEFAULT_FILTER, gitDate, hashQuery, normalizePath, pathspecOf, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
-import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
+import { depthOf, fetchPage, type BranchUse, type PageResult, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, CommitRef, HistoryWork, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
 import { distinctPaths, editedLabel, previewLabel, tags, totals, workKinds } from "./uncommittedModel";
@@ -356,7 +356,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (this.firstLoad) await this.firstLoad;
         else await this.loadRepos();
         // A new webview starts on Commits (the host follows it rather than disagree), unless it
-        // was opened to show uncommitted work.
+        // was opened to show uncommitted work. Its Uncommitted list starts on its first row.
+        this.workRepo = undefined;
         this.setLogMode(this.openUncommitted ? "uncommitted" : "commits");
         this.openUncommitted = false;
         this.postInit(true);
@@ -368,7 +369,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.postHistoryWork(true);
         // A reload on its way posts its page to this webview too.
         if (this.queryState === null) { if (!this.reloading) await this.reload(); }
-        else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+        else {
+          this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+          // Highlight Current Branch: what the last read found for these rows (no git process).
+          if (this.layoutStore.layout().highlightHead) this.post({ type: "offHead", keys: this.offHeadKeys });
+        }
         return;
       case "filter": {
         let next = sanitizeFilter(m.filter);
@@ -511,7 +516,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.toolbarChanged();
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoId: repo.id, repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layoutStore.layout(), history, profiles: this.profiles.resolved(), ...(forceMode ? { logMode: this.logMode } : {}) });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layoutStore.layout(), history, profiles: this.profiles.resolved(), platform: process.platform, ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**
@@ -928,10 +933,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return branches.length === 1 ? branches[0] : "";
   }
 
-  /** Fetch All brought remote branches: new Branch box suggestions, and a branch-mode page read again. */
+  /**
+   * Fetch All moved remote-tracking branches, which the Log walks (--remotes when no branch is
+   * picked, a remote branch, ref:): new Branch box suggestions, and the list again, as deep as it was.
+   */
   private async remotesFetched(): Promise<void> {
     this.suggestions.branchesChanged();
-    if (selectedBranches(this.filter).length) await this.reload();
+    await this.reload(depthOf(this.queryState));
   }
 
   private postSync(byRepo: Record<string, AheadBehind>): void {
@@ -951,7 +959,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!repo) return;
     // Any report: a merge that stopped or a rebase step leaves HEAD's commit where it was.
     this.marks.touched(repo.id);
-    if (!headMoved) return;
+    // A stash pushed or dropped elsewhere moves no HEAD either: the Repo List checks its stashes.
+    if (!headMoved) { void this.branchSidebar?.stashesTouched(repo.id); return; }
     this.refsChanged.fire(repo.id);
     this.upstream.touched(repo.id);
   }
@@ -1076,7 +1085,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return this.reloadCtl !== undefined && !this.reloadCtl.signal.aborted;
   }
 
-  private async reload(): Promise<void> {
+  /** depth: each repository read as deep as the list was (depthOf), so its rows and selection stay. */
+  private async reload(depth?: ReadonlyMap<string, number>): Promise<void> {
     this.stats.reloads++;
     this.query.abort();
     this.queryState = null; // Load More waits for this reload's first page
@@ -1099,27 +1109,32 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       // The commits do not wait for the uncommitted read: its rows follow as they land.
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: null, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
+        now: nowSec(), prev: null, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history, depth,
       });
       if (ctl.signal.aborted) return;
-      this.rows = page.rows;
-      this.listed = new Map(page.rows.map((c) => [commitKey(c), c]));
-      this.failures = page.failures;
-      this.done = page.done;
-      this.queryState = page.state;
-      this.branchUse = page.branchUse;
       if (!this.stats.firstRowsAt && page.rows.length > 0) this.stats.firstRowsAt = Date.now();
       this.stats.fetchMs = Date.now() - t;
       this.hintCommitGraph(this.stats.fetchMs);
       this.startBackgroundReads();
-      this.clearTreeIfGone();
-      this.refreshCurrentReferences();
-      this.post({ type: "page", rows: this.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
+      this.listFirstPage(page);
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not read the log: {0}", messageOf(e)));
     }
     if (this.reloadCtl === ctl) this.reloadCtl = undefined;
     if (!ctl.signal.aborted) void this.deps.uncommitted.readIfScopeChanged();
+  }
+
+  /** A first page replaces the list: the webview keeps the selected commit (and the scroll) while it is listed. */
+  private listFirstPage(page: PageResult): void {
+    this.rows = page.rows;
+    this.listed = new Map(page.rows.map((c) => [commitKey(c), c]));
+    this.failures = page.failures;
+    this.done = page.done;
+    this.queryState = page.state;
+    this.branchUse = page.branchUse;
+    this.clearTreeIfGone();
+    this.refreshCurrentReferences();
+    this.post({ type: "page", rows: this.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
   }
 
   private async loadMore(): Promise<void> {
@@ -1136,13 +1151,22 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       });
       // A reload (from the host) started meanwhile: its first page owns the list, not this one.
       if (ctl.signal.aborted || this.queryState !== prev) return;
-      this.rows = this.rows.concat(page.rows);
-      for (const c of page.rows) this.listed.set(commitKey(c), c);
+      this.hintCommitGraph(Date.now() - t);
+      // History moved under the list since it was read: the list again, from the top and deeper.
+      if (page.restarted) return this.listFirstPage(page);
+      // Never a commit the list already has: two rows of one commit are two selections and a fork in the graph.
+      const rows: Commit[] = [];
+      for (const c of page.rows) {
+        const key = commitKey(c);
+        if (this.listed.has(key)) continue;
+        this.listed.set(key, c);
+        rows.push(c);
+      }
+      this.rows = this.rows.concat(rows);
       this.failures = this.failures.concat(page.failures);
       this.done = page.done;
       this.queryState = page.state;
-      this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
-      this.hintCommitGraph(Date.now() - t);
+      this.post({ type: "page", rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
       void this.readOffHead();
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(localize("Linyra could not load more commits: {0}", messageOf(e)));
@@ -1237,9 +1261,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }));
     // A repository whose HEAD could not be read (unborn, failed) dims nothing.
     const keys = this.rows.filter((c) => { const set = onHead.get(c.repoId); return set !== undefined && !set.has(c.sha); }).map(commitKey);
+    this.offHeadKeys = keys;
     this.post({ type: "offHead", keys });
   }
   private offHeadEpoch = 0;
+  /** The last rev-list's answer, posted again to a new webview. */
+  private offHeadKeys: string[] = [];
   /** Topological order was slow in a repository without a commit-graph: offer to write one. */
   private readonly graphHint = new CommitGraphHint((cwd, args, signal, opts) => this.run(cwd, args, signal, opts));
   private hintCommitGraph(pageMs: number): void {
@@ -1413,9 +1440,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
     if (await this.revealCommit(repoId, sha)) return;
     if (this.history) await this.setHistory(null);
+    // Found by its hash on the Commits side, where the search box shows what found it.
+    this.setLogMode("commits");
     this.filter = { ...this.filter, text: sha };
     this.persistFilter();
-    this.postInit();
+    this.postInit(true);
     this.reloadSoon.cancel();
     await this.reload();
     await this.revealCommit(repoId, sha);
@@ -1423,9 +1452,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async revealCommit(repoId: string, sha: string): Promise<boolean> {
     if (!this.findCommit(repoId, sha)) return false;
+    // A commit is shown on the Commits side: from the Uncommitted side the switch goes back. The
+    // selection first, so the page does not bring the summary row's work back with the switch.
+    const switching = this.logMode !== "commits";
+    this.setLogMode("commits");
     this.leaveWork();
     const ref = { repoId, sha };
     this.post({ type: "setSelection", items: [ref], focus: ref });
+    if (switching) this.postInit(true);
     await this.showDetail(repoId, sha);
     return true;
   }
@@ -1541,8 +1575,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
   private logMode: "commits" | "uncommitted" = "commits";
-  /** The repository whose files the Changes view shows on the Uncommitted side. */
+  /** The repository whose files the Changes view shows on the Uncommitted side: the row its list selected (selectWork). */
   private workRepo: string | undefined;
+  /**
+   * The summary row's repository (its chip; undefined: the most recently edited). Apart from
+   * workRepo: the Uncommitted side keeps its own selection, and the Changes view shows that one.
+   */
+  private summaryRepo: string | undefined;
   /** What the Changes view showed before the switch went to Uncommitted, or the summary row was selected (it comes back). */
   private commitsTree: ReturnType<ChangesTree["current"]> = null;
   /** The Commits side's summary row of uncommitted work is selected: the Changes view shows that work (showWork). */
@@ -1561,7 +1600,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.commitsCombined = this.deps.changes.currentCombined();
       this.workShown = true;
     }
-    this.workRepo = typeof repoId === "string" ? repoId : undefined;
+    this.summaryRepo = typeof repoId === "string" ? repoId : undefined;
     this.showWorkTree();
   }
 
@@ -1627,7 +1666,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private showWorkTree(): void {
     if (!this.showingWork()) return;
     const rows = this.workRows();
-    const id = rows.some((r) => r.repoId === this.workRepo) ? this.workRepo : rows[0]?.repoId;
+    // The list's selection falls back to its first row the same way (webview/workList.ts).
+    const wanted = this.logMode === "uncommitted" ? this.workRepo : this.summaryRepo;
+    const id = rows.some((r) => r.repoId === wanted) ? wanted : rows[0]?.repoId;
     const work = id ? this.deps.uncommitted.get(id) : undefined;
     const repo = id ? this.repos.find((r) => r.id === id) : undefined;
     if (!work || !repo) {

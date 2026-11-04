@@ -57,12 +57,31 @@ export function checkoutStep(data: Branches, name: string): CheckoutStep {
   return remotes.length === 1 ? "track" : "missing";
 }
 
+/**
+ * What Merge into Current merges in one repository: the local branch, else the one remote branch of
+ * that name, as a full ref; git reads a short name as a tag first. undefined: nothing to merge (`why`).
+ */
+export function mergePlan(data: Branches, name: string): { ref: string; label: string } | { why: string } {
+  if (!data.current) return { why: localize("no branch checked out") };
+  if (data.current === name) return { why: localize("it is the current branch") };
+  const local = data.branches.find((b) => b.kind === "local" && b.name === name);
+  if (local) return { ref: local.ref, label: local.name };
+  const remotes = data.branches.filter((b) => b.kind === "remote" && b.remoteBranch === name);
+  return remotes.length === 1 ? { ref: remotes[0].ref, label: remotes[0].name } : { why: localize("no such branch") };
+}
+
 /** Explicit argv; names are checked against git's ref rules, so none can read as an option. */
 export const multiCommands = {
+  /** git switch takes a branch name only: a tag of the same name is never checked out. */
   checkout: (name: string) => ["switch", "--no-guess", checkName(name)],
-  track: (name: string, remote: string) => ["switch", "--track", "-c", checkName(name), `${remote}/${checkName(name)}`],
+  /** The remote branch as a full ref: a tag or local branch named origin/x would win the short name. */
+  track: (name: string, remote: string) => ["switch", "--track", "-c", checkName(name), `refs/remotes/${checkName(`${remote}/${name}`)}`],
   create: (name: string) => ["switch", "-c", checkName(name)],
-  merge: (ref: string) => ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--no-edit", "--quiet", "--", checkName(ref)],
+  /**
+   * `ref`: a full ref (mergePlan) wherever a tag could share the name. `message`: the merge
+   * commit's, for a commit merged by its hash (Compare's ◀ as compared).
+   */
+  merge: (ref: string, message?: string) => ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--no-edit", "--quiet", ...(message ? ["-m", message] : []), "--", checkName(ref)],
   /**
    * Update Project. No autostash on purpose: it would put local edits back with conflict markers
    * and still exit 0. A repository whose local changes are in the way is skipped and named.
@@ -182,26 +201,203 @@ const plural = (n: number) => localize(n === 1 ? "{0} commit" : "{0} commits", n
 /** Branches never force pushed: main and master, and VS Code's git.branchProtection globs. */
 export const PROTECTED_BRANCHES = ["main", "master"];
 
-/** A glob of git.branchProtection: * within a name segment, ** across, ? one character. */
+/** git.branchProtection as VS Code's Git reads it: one pattern or a list, each trimmed, empty ones dropped. */
+export function protectionPatterns(value: unknown): string[] {
+  return (Array.isArray(value) ? value : [value]).map((p) => (typeof p === "string" ? p.trim() : "")).filter((p) => p !== "");
+}
+
+/**
+ * A glob of git.branchProtection, read as VS Code's Git reads it (picomatch 2): * and ? within a
+ * name segment, ** as whole segments across any number of them (release/** protects release too),
+ * {a,b} (nested, globs inside), {a..c}, [0-9] and [^0-9], "quoted" text, \ escapes, a leading !
+ * negates; and what picomatch passes on to its regular expression: a | between alternatives, a +
+ * after a class or a brace group (one or more). What is not read exactly protects more, never
+ * less: an extglob +(…) or a group (…) matches anything there, a POSIX [[:digit:]] or [!…] any one
+ * character (picomatch 2 reads [!a] as "!" or "a", a shell as "not a"), {1..10} any run in the
+ * segment; a negated pattern with any of those, or one that cannot be read (\d, an unclosed group),
+ * protects every branch.
+ */
 export function branchMatches(pattern: string, name: string): boolean {
-  const re = pattern.split(/(\*\*|\*|\?)/).map((part) => (part === "**" ? ".*" : part === "*" ? "[^/]*" : part === "?" ? "[^/]" : part.replace(/[.+^${}()|[\]\\]/g, "\\$&"))).join("");
-  return new RegExp(`^${re}$`).test(name);
+  let p = pattern.trim();
+  // picomatch's own first test: a pattern that is the name matches it.
+  if (p === name) return true;
+  if (p.startsWith("./")) p = p.slice(2);
+  // picomatch's fast path (no / ( ) [ ] { } " and no leading * or !): | and + are themselves there.
+  const fast = !/(^[*!]|[/()[\]{}"])/.test(p);
+  let negated = false;
+  while (p.startsWith("!") && !p.startsWith("!(")) { negated = !negated; p = p.slice(1); }
+  let glob: { source: string; exact: boolean };
+  let re: RegExp;
+  try {
+    glob = globSource(p, fast);
+    re = new RegExp(`^(?:${glob.source})$`);
+  } catch {
+    return true;
+  }
+  const hit = re.test(name);
+  return negated ? !glob.exact || !hit : hit;
+}
+
+const escapeChar = (c: string) => c.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+/** A character as itself inside a [ … ] class: \ ] ^ [ escaped, and an escaped - (a bare one makes a range). */
+const literal = (c: string, escaped: boolean) => (/[\\\]^[]/.test(c) || (escaped && c === "-") ? `\\${c}` : c);
+
+/** A glob as a regular expression's source; `exact` false where it matches more than the glob does. Throws on one it cannot read. */
+function globSource(p: string, fast: boolean): { source: string; exact: boolean } {
+  let exact = true;
+  const unread = (): never => { throw new Error(`not read: ${p}`); };
+  // The closing character for the opening one at i (nested pairs counted, escapes skipped), or -1.
+  const closing = (i: number, open: string, close: string): number => {
+    let depth = 0;
+    for (let j = i; j < p.length; j++) {
+      if (p[j] === "\\") j++;
+      else if (p[j] === open) depth++;
+      else if (p[j] === close && --depth === 0) return j;
+    }
+    return -1;
+  };
+  // A [ … ] class at i, or undefined when it is not closed (then [ is itself).
+  const bracket = (i: number): { source: string; end: number } | undefined => {
+    let j = i + 1;
+    const bang = p[j] === "!", negate = bang || p[j] === "^";
+    if (negate) j++;
+    const first = j;
+    let posix = false, cls = "";
+    for (; j < p.length && (p[j] !== "]" || j === first); j++) {
+      if (p[j] === "\\" && j + 1 < p.length) cls += literal(p[++j], true);
+      else if (p[j] === "[" && /[:.=]/.test(p[j + 1] ?? "")) {
+        const close = p.indexOf(`${p[j + 1]}]`, j + 2);
+        if (close < 0) return undefined;
+        posix = true;
+        j = close + 1;
+      } else cls += literal(p[j], false);
+    }
+    if (j >= p.length) return undefined;
+    if (posix || bang) { exact = false; return { source: "[^/]", end: j + 1 }; }
+    return { source: negate ? `[^${cls}/]` : `[${cls}]`, end: j + 1 };
+  };
+  // Past a group's ")" at i: picomatch hands a ? or + right after it to the regular expression, as part of it.
+  const pastGroup = (i: number) => { let j = i + 1; while (p[j] === "?" || p[j] === "+") j++; return j; };
+  // One alternative from i: to the end, a | (not on the fast path), or (inside braces) its "," or "}".
+  const alternative = (i: number, inBraces: boolean): [string, number] => {
+    const start = i;
+    let out = "";
+    // What came last, for the + after it: a class or a group repeats ("one or more"); `covered`
+    // already matches anything there; `paren` a lone ")" (picomatch hands ? and + after it on too).
+    let last: "class" | "group" | "covered" | "paren" | undefined;
+    const ends = (j: number) => j >= p.length || (!fast && p[j] === "|") || (inBraces && (p[j] === "," || p[j] === "}"));
+    while (!ends(i)) {
+      const c = p[i], before = last;
+      last = undefined;
+      if (c === "\\") {
+        if (i + 1 >= p.length) { out += "\\\\"; i++; continue; }
+        // \d, \w, \b… reach picomatch's regular expression as they are.
+        if (/[A-Za-z0-9]/.test(p[i + 1])) unread();
+        out += escapeChar(p[i + 1]); i += 2; continue;
+      }
+      // (An extglob +( or ?( comes first, as in picomatch.)
+      if (!fast && c === "+" && p[i + 1] !== "(" && (before === "class" || before === "group" || before === "paren")) { out += "+"; i++; continue; }
+      if (!fast && c === "+" && p[i + 1] !== "(" && before === "covered") { last = "covered"; i++; continue; }
+      if (!fast && c === "?" && p[i + 1] !== "(" && before === "paren") { out += "?"; i++; continue; }
+      if (c === '"' && !fast) {
+        // "…": the text as it is.
+        const close = p.indexOf('"', i + 1), end = close < 0 ? p.length : close;
+        for (const ch of p.slice(i + 1, end)) out += escapeChar(ch);
+        i = end + 1;
+        continue;
+      }
+      if (c === "(" || ("+*?@!".includes(c) && p[i + 1] === "(")) {
+        // An extglob, or a group picomatch hands to its regular expression: anything there.
+        const close = closing(c === "(" ? i : i + 1, "(", ")");
+        if (close < 0) unread();
+        exact = false; out += ".*"; last = "covered"; i = pastGroup(close);
+        continue;
+      }
+      if (c === ")") { out += "\\)"; last = "paren"; i++; continue; }
+      if (c === "*") {
+        let j = i;
+        while (p[j] === "*") j++;
+        const run = j - i, segmentStart = i === start || p[i - 1] === "/" || p[i - 1] === ")", segmentEnd = ends(j) || p[j] === "/";
+        if (run === 1 || !segmentStart) out += "[^/]*";
+        // **x, ***: picomatch reads some within a segment, some across: anything there.
+        else if (run > 2 || !segmentEnd) { exact = false; out += ".*"; }
+        else if (i === start || !out.endsWith("\\/")) {
+          // **, or **/ in front: any segments, none included.
+          out += ends(j) ? ".*" : "(?:.*\\/)?";
+          if (!ends(j)) j++;
+        } else {
+          // /** at the end, or /**/ inside: the slash before and any segments, or nothing.
+          out = out.slice(0, -2) + (ends(j) ? "(?:\\/.*)?" : "(?:\\/.*)?\\/");
+          if (!ends(j)) j++;
+        }
+        i = j;
+        continue;
+      }
+      if (c === "?") { out += "[^/]"; i++; continue; }
+      if (c === "[") {
+        const b = bracket(i);
+        if (b) { out += b.source; last = "class"; i = b.end; continue; }
+      }
+      if (c === "{") {
+        const close = closing(i, "{", "}");
+        if (close > i) {
+          const parts: string[] = [];
+          let j = i + 1;
+          for (;;) {
+            const [source, k] = alternative(j, true);
+            parts.push(source);
+            j = k + 1;
+            if (p[k] !== "," && p[k] !== "|") break;
+          }
+          const body = p.slice(i + 1, close), range = /^(.)\.\.(.)$/.exec(body);
+          last = "group";
+          if (parts.length > 1) out += `(?:${parts.join("|")})`;
+          // {1..3}, {a..c}: one character of the range (either way round); a longer one ({1..10}), any run in the segment.
+          else if (range) out += `[${[range[1], range[2]].sort().map((x) => literal(x, true)).join("-")}]`;
+          else if (/^[^{}]*\.\.[^{}]*$/.test(body)) { exact = false; out += "[^/]*"; last = "covered"; }
+          // {a}: the braces are themselves.
+          else out += `\\{${parts[0]}\\}`;
+          i = j;
+          continue;
+        }
+      }
+      out += escapeChar(c);
+      i++;
+    }
+    return [out, i];
+  };
+  const parts: string[] = [];
+  for (let i = 0; ;) {
+    const [source, k] = alternative(i, false);
+    parts.push(source);
+    if (k >= p.length) break;
+    i = k + 1;
+  }
+  return { source: parts.join("|"), exact };
 }
 
 export function isProtected(name: string, patterns: readonly string[]): boolean {
-  return [...PROTECTED_BRANCHES, ...patterns].some((p) => branchMatches(p, name));
+  return [...PROTECTED_BRANCHES, ...patterns].some((p) => p.trim() !== "" && branchMatches(p, name));
+}
+
+/** A force push of `branch` to `destination`: refused when either name is protected (VS Code's Git checks the local one). */
+export function forcePushProtected(branch: string, destination: string, patterns: readonly string[]): boolean {
+  return isProtected(destination, patterns) || isProtected(branch, patterns);
 }
 
 /**
  * Where the checked-out branch goes: its upstream when it has one, otherwise the same name on
- * origin (or the only remote), with --set-upstream. undefined: detached, or nowhere to push.
+ * origin (or the only remote), with --set-upstream. An upstream that is gone (deleted on the
+ * remote) is published again where it was, with --set-upstream, as a branch never pushed: there is
+ * no remote branch to count from. undefined: detached, or nowhere to push.
  */
 export function pushPlan(data: Branches): PushPlan | undefined {
   const branch = data.branches.find((b) => b.kind === "local" && b.current);
   if (!branch) return undefined;
   const upstreamRemote = [...data.remotes].sort((a, b) => b.length - a.length).find((r) => branch.upstream?.startsWith(`${r}/`));
   if (upstreamRemote) {
-    const plan: PushPlan = { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: false };
+    const plan: PushPlan = { branch: branch.name, remote: upstreamRemote, destination: branch.upstream!.slice(upstreamRemote.length + 1), setUpstream: branch.gone === true };
+    if (branch.gone) return plan;
     // Both ahead and behind: the remote branch has commits that are not on this one.
     const remoteSha = data.branches.find((b) => b.kind === "remote" && b.name === branch.upstream)?.sha;
     return branch.ahead > 0 && branch.behind > 0 && remoteSha ? { ...plan, lease: remoteSha, behind: branch.behind } : plan;
@@ -220,7 +416,8 @@ export function pushPlans(data: Branches): PushPlan[] {
   const plans: PushPlan[] = current ? [{ ...current, current: true }] : [];
   const remotes = [...data.remotes].sort((a, b) => b.length - a.length);
   for (const b of data.branches) {
-    if (b.kind !== "local" || b.current || !b.upstream || b.ahead === 0) continue;
+    // Gone upstreams, as no upstream: nothing counted to send (Publish is for the checked-out one).
+    if (b.kind !== "local" || b.current || !b.upstream || b.gone || b.ahead === 0) continue;
     // An upstream that is another local branch: nothing to send to a remote.
     const remote = remotes.find((r) => b.upstream!.startsWith(`${r}/`));
     if (!remote) continue;
@@ -255,6 +452,19 @@ export function updateReason(message: string): string {
   const pull = pullReason(message);
   // Nothing recognized: git's main line, not the whole of its stderr.
   return pull === message.trim() ? failureReason(message) ?? (errorLine(message) || pull) : pull;
+}
+
+/**
+ * Why a tag's push failed, in a few words: the remote's tag of that name, a sign-in or the network
+ * (failureReason), else git's own line. Never "run Update Project": a tag has nothing to pull first.
+ */
+export function tagPushReason(message: string): string {
+  if (/already exists/i.test(message)) return localize("the remote already has a tag of that name");
+  const known = failureReason(message);
+  if (known && !/\[rejected\]|non-fast-forward|fetch first|updates were rejected/i.test(message)) return known;
+  const lines = message.split("\n").map((l) => l.trim());
+  // git's "! [remote rejected] v1.4.0 -> v1.4.0 (pre-receive hook declined)" says more than its "failed to push some refs".
+  return lines.find((l) => /^! \[/.test(l))?.replace(/^! /, "") ?? (errorLine(message) || message.trim());
 }
 
 /** git stopped half-way (a merge or rebase on conflicts): the repository is mid-operation, not as it was. */
@@ -322,6 +532,8 @@ export interface Outcome {
   forwarded?: readonly { name: string; branches: readonly string[] }[];
   /** Update Project: other branches left as they were (diverged, or git refused), by repository and why. */
   notForwarded?: readonly { name: string; branch: string; reason: string; failed?: boolean }[];
+  /** Tag Across: tagged here, but the tag is not on the remote (no remote, or its push failed: `failed`), and why. */
+  notPushed?: readonly { name: string; reason: string; failed?: boolean }[];
 }
 
 export type ReportKind = "update" | "checkout" | "create" | "merge" | "push" | "tag";
@@ -341,10 +553,10 @@ function names(list: readonly string[]): string {
  * something stopped or failed. `commits`: Push… names how many commits it sent.
  */
 export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?: number): { level: "info" | "warning"; text: string } {
-  const total = r.done.length + r.unchanged.length + r.stopped.length + r.skipped.length;
-  const level = r.stopped.length > 0 || r.skipped.some((s) => s.failed) || (r.notForwarded ?? []).some((n) => n.failed) ? "warning" : "info";
-  const forwarded = r.forwarded ?? [], notForwarded = r.notForwarded ?? [];
-  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0 && forwarded.length === 0 && notForwarded.length === 0) {
+  const forwarded = r.forwarded ?? [], notForwarded = r.notForwarded ?? [], notPushed = r.notPushed ?? [];
+  const total = r.done.length + r.unchanged.length + r.stopped.length + r.skipped.length + notPushed.length;
+  const level = r.stopped.length > 0 || [...r.skipped, ...notForwarded, ...notPushed].some((s) => s.failed) ? "warning" : "info";
+  if (r.done.length === 0 && r.stopped.length === 0 && r.skipped.length === 0 && forwarded.length === 0 && notForwarded.length === 0 && notPushed.length === 0) {
     if (total === 0) return { level, text: localize("{0}: nothing to do.", what) };
     if (kind === "update") return { level, text: total === 1 ? localize("{0}: {1} is already up to date.", what, r.unchanged[0]) : localize("{0}: all {1} repositories already up to date.", what, total) };
     if (kind === "checkout") return { level, text: localize("{0}: every repository is already on it.", what) };
@@ -357,10 +569,15 @@ export function multiReport(what: string, kind: ReportKind, r: Outcome, commits?
   }
   if (r.unchanged.length > 0) parts.push(localize(kind === "update" ? "Already up to date: {0}." : kind === "checkout" ? "Already on it: {0}." : "Nothing to do: {0}.", names(r.unchanged)));
   if (r.stopped.length > 0) parts.push(localize("Stopped on conflicts, resolve or abort: {0}.", names(r.stopped.map((s) => s.name))));
-  // Left as they were, one group per reason: "acme-api, acme-libs (no upstream branch)".
-  const why = new Map<string, string[]>();
-  for (const s of r.skipped) why.set(s.reason, [...(why.get(s.reason) ?? []), s.name]);
-  if (why.size > 0) parts.push(localize("Left as they were: {0}.", [...why].map(([reason, list]) => `${names(list)} (${reason})`).join("; ")));
+  // One group per reason: "acme-api, acme-libs (no upstream branch)".
+  const byReason = (list: readonly { name: string; reason: string }[]) => {
+    const why = new Map<string, string[]>();
+    for (const s of list) why.set(s.reason, [...(why.get(s.reason) ?? []), s.name]);
+    return [...why].map(([reason, repos]) => `${names(repos)} (${reason})`).join("; ");
+  };
+  // Tagged here, not on the remote: the tag exists, so never "left as they were".
+  if (notPushed.length > 0) parts.push(localize("Tagged here, not pushed: {0}.", byReason(notPushed)));
+  if (r.skipped.length > 0) parts.push(localize("Left as they were: {0}.", byReason(r.skipped)));
   // The other branches: "master in acme-web, acme-api; release-1.4 in acme-libs".
   const where = (byBranch: Map<string, string[]>) => [...byBranch].map(([branch, repos]) => localize("{0} in {1}", branch, names(repos))).join("; ");
   if (forwarded.length > 0) {

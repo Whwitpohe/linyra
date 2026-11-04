@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { branchArgs, parseBranches, type Branches } from "./branchModel";
 import { gitEnv, makeRepo } from "./fixtures";
-import { branchMatches, checkoutStep, forcePushPrompt, forwardReason, headDistance, isProtected, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
+import { branchMatches, checkoutStep, forcePushPrompt, forcePushProtected, forwardReason, headDistance, isProtected, mergePlan, multiCommands, multiReport, otherBranches, parseBranchTracks, parseOutgoing, protectionPatterns, pushPlan, pushPlans, sharedBranches, stoppedOnConflicts, tagPushReason, tagRemote, updateMethodOrder, updateMethodSetting, updateReason } from "./multiRepoModel";
 
 const sha = "a".repeat(40);
 const line = (...fields: string[]) => fields.join("\0");
@@ -69,7 +69,45 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork", "origin"])), "origin");
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["fork"])), "fork", "the only remote");
   assert.strictEqual(tagRemote(listing([line("refs/heads/develop", sha, "*", "", "", "", "")], ["a", "b"])), undefined);
+  // Why a tag's push failed: never "run Update Project".
+  assert.strictEqual(tagPushReason("To example.com:acme-web.git\n ! [rejected]        v1.4.0 -> v1.4.0 (already exists)\nerror: failed to push some refs to 'example.com:acme-web.git'\nhint: Updates were rejected because the tag already exists in the remote."), "the remote already has a tag of that name");
+  assert.strictEqual(tagPushReason("fatal: Authentication failed for 'https://example.com/acme-web.git/'"), "the remote refused the sign-in: sign in to it, then try again");
+  assert.strictEqual(tagPushReason("fatal: unable to access 'https://example.com/acme-api.git/': Could not resolve host: example.com"), "the remote could not be reached: check the network and the remote's address");
+  assert.strictEqual(tagPushReason("To example.com:acme-web.git\n ! [remote rejected] v1.4.0 -> v1.4.0 (pre-receive hook declined)\nerror: failed to push some refs to 'example.com:acme-web.git'"), "[remote rejected] v1.4.0 -> v1.4.0 (pre-receive hook declined)");
+  const tagged = multiReport("Tag v1.4.0", "tag", { done: ["acme-libs"], unchanged: [], stopped: [], skipped: [], notPushed: [{ name: "acme-api", reason: "no remote to push to" }, { name: "acme-ops", reason: "no remote to push to" }] });
+  assert.deepStrictEqual(tagged, { level: "info", text: "Tag v1.4.0 — Tagged: acme-libs. Tagged here, not pushed: acme-api, acme-ops (no remote to push to)." }, "no remote: nothing failed");
+  assert.strictEqual(multiReport("Tag v1.4.0", "tag", { done: [], unchanged: [], stopped: [], skipped: [], notPushed: [{ name: "acme-api", reason: "x", failed: true }] }).level, "warning");
   console.log("ok - Tag Across Repositories: annotated or lightweight, and where each repository's tag is pushed");
+}
+
+{
+  // git.branchProtection as VS Code's Git (picomatch 2.3) matches it. `true` beside picomatch's false: protects more on purpose.
+  const table: [pattern: string, name: string, protects: boolean][] = [
+    ["{develop,staging}", "staging", true], ["{develop,staging}", "develop", true], ["{develop,staging}", "dev", false],
+    ["release/{1.4,1.5}", "release/1.4", true], ["release/{1.4,1.5}", "release/1.6", false],
+    ["{a,{b,c}}", "c", true], ["{acme,rel*}/x", "release/x", true], ["{a,b/*}", "b/x", true], ["x{a,}", "x", true], ["{a}", "a", false], ["{a}", "{a}", true],
+    ["{a,b", "a", false], ["v{1..3}", "v2", true], ["v{1..3}", "v4", false], ["{c..a}", "b", true],
+    ["release/[0-9]*", "release/1.4", true], ["release/[0-9]*", "release/x", false], ["[^a]bc", "xbc", true], ["[^a]bc", "abc", false],
+    ["[]a]", "]", true], ["[a-c]", "b", true], ["[^a]", "/", false],
+    ["release/[!0-9]*", "release/x", true], ["release/[!0-9]*", "release/1", true], ["[[:digit:]]", "5", true],
+    [" develop", "develop", true], ["develop ", "develop", true],
+    ["release/**", "release", true], ["release/**", "release/1.4/hotfix", true], ["release/**", "releases", false],
+    ["**/main", "main", true], ["**/main", "acme/x/main", true], ["a/**/b", "a/b", true], ["a/**/b", "a/x/y/b", true], ["**", "a/b", true],
+    ["a**", "a/b", false], ["release/*", "release", false], ["*", "a/b", false], ["a?b", "a/b", false], ["?ain", "main", true],
+    ["release-+(0|1|2|3|4|5|6|7|8|9).*", "release-1.4", true], ["@(main|dev)", "dev", true], ["!(main)", "dev", true],
+    ["release/(1.4|1.5)", "release/1.4", true], ["release/1.4|release/1.5", "release/1.5", true], ["fix|feat", "fix", false], ["fix|feat", "fix|feat", true],
+    ["release/[0-9]+.*", "release/14.x", true], ["{a,b}+", "abba", true], ["a)?b", "ab", true], ["\"main\"", "main", true],
+    ["!main", "develop", true], ["!main", "main", false], ["!!main", "main", true], ["!release/*", "release/1.4", false], ["!+(a|b)", "a", true],
+    ["a\\*b", "a*b", true], ["a\\*b", "axb", false], ["a.b", "axb", false], ["a\\d", "a5", true], ["(a", "a", true], ["[z-a]", "b", true], ["./main", "main", true],
+  ];
+  for (const [pattern, name, protects] of table) assert.strictEqual(branchMatches(pattern, name), protects, `${JSON.stringify(pattern)} on ${name}`);
+  assert.deepStrictEqual(protectionPatterns([" release/* ", "", 7, "main"]), ["release/*", "main"], "trimmed, empty and non-text dropped");
+  assert.deepStrictEqual(protectionPatterns("develop"), ["develop"], "one pattern, as VS Code's Git takes it too");
+  assert.deepStrictEqual(protectionPatterns(undefined), []);
+  assert.ok(isProtected("staging", protectionPatterns(["{develop,staging}"])) && isProtected("release/1.4", ["release/[0-9]*"]));
+  assert.ok(forcePushProtected("release/1.4", "acme-1.4", ["release/*"]), "the local name counts, as in VS Code's Git");
+  assert.ok(forcePushProtected("acme-1.4", "main", []) && !forcePushProtected("acme-1.4", "acme-1.4", ["release/*"]));
+  console.log("ok - git.branchProtection globs match as VS Code's Git reads them, and what is not read exactly protects more");
 }
 
 {
@@ -106,6 +144,43 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.deepStrictEqual(multiCommands.update("ffOnly"), ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"]);
   assert.strictEqual(updateReason("fatal: Not possible to fast-forward, aborting."), "it has diverged from its upstream: merge or rebase it");
   console.log("ok - Update Project's method: the setting, the last one first, and fast-forward only");
+}
+
+{
+  // Real git: a branch and a tag both named release-1.4 (and a tag named like the remote branch).
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-multi-tagged-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const read = (cwd: string) => parseBranches(git(cwd, branchArgs()), git(cwd, ["remote"]).split(/\r?\n/).filter(Boolean));
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    git(seed, ["switch", "-q", "-c", "release-1.4"]);
+    fs.writeFileSync(path.join(seed, "branch.txt"), "on the branch\n");
+    git(seed, ["add", "branch.txt"]); git(seed, ["commit", "-q", "-m", "feat: on release-1.4"]);
+    git(seed, ["switch", "-q", "main"]);
+    const web = path.join(home, "acme-web");
+    git(home, ["clone", "-q", seed, web]);
+    git(web, ["branch", "release-1.4", "origin/release-1.4"]);
+    fs.writeFileSync(path.join(web, "tag.txt"), "tagged elsewhere\n");
+    git(web, ["add", "tag.txt"]); git(web, ["commit", "-q", "-m", "feat: tagged"]);
+    git(web, ["tag", "release-1.4"]); git(web, ["tag", "origin/release-1.4"]);
+    git(web, ["reset", "-q", "--hard", "HEAD~1"]);
+    const plan = mergePlan(read(web), "release-1.4");
+    assert.deepStrictEqual(plan, { ref: "refs/heads/release-1.4", label: "release-1.4" });
+    git(web, multiCommands.merge("ref" in plan ? plan.ref : ""));
+    assert.ok(fs.existsSync(path.join(web, "branch.txt")) && !fs.existsSync(path.join(web, "tag.txt")), "the branch is merged, not the tag");
+    git(web, ["branch", "-q", "-D", "release-1.4"]);
+    assert.deepStrictEqual(mergePlan(read(web), "release-1.4"), { ref: "refs/remotes/origin/release-1.4", label: "origin/release-1.4" }, "only on the remote: its full ref");
+    git(web, multiCommands.track("release-1.4", "origin"));
+    assert.strictEqual(git(web, ["config", "branch.release-1.4.merge"]), "refs/heads/release-1.4", "tracks the remote branch, though a tag has its short name");
+    assert.strictEqual(git(web, ["rev-parse", "HEAD"]), git(web, ["rev-parse", "refs/remotes/origin/release-1.4"]));
+    assert.deepStrictEqual(mergePlan(read(web), "release-1.4"), { why: "it is the current branch" });
+    assert.deepStrictEqual(mergePlan(read(web), "acme-missing"), { why: "no such branch" });
+    console.log("ok - real git: Merge into Current and Check Out across repositories take the branch, never a tag of its name");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 }
 
 {
@@ -186,6 +261,15 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
     assert.strictEqual(git(seed, ["--git-dir", origin, "cat-file", "-t", "v1.4.0"]), "tag", "annotated, and on the remote");
     assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "v1.4.0^{commit}"]), git(web, ["rev-parse", "HEAD"]));
     console.log("ok - real git: a tag on the checked-out commit, pushed to the branch's remote");
+    // acme-api tags another commit with the same name: created here, its push refused, said as such.
+    git(api, ["fetch", "-q", "--no-tags"]);
+    git(api, multiCommands.tag("v1.4.0", ""));
+    const refused = fails(api, multiCommands.pushTag(tagRemote(read(api))!, "v1.4.0"));
+    assert.strictEqual(tagPushReason(refused), "the remote already has a tag of that name", refused);
+    assert.notStrictEqual(git(seed, ["--git-dir", origin, "rev-parse", "v1.4.0^{commit}"]), git(api, ["rev-parse", "HEAD"]), "the remote's tag is untouched");
+    const report = multiReport("Tag v1.4.0", "tag", { done: ["acme-libs"], unchanged: [], stopped: [], skipped: [], notPushed: [{ name: "acme-api", reason: tagPushReason(refused), failed: true }] });
+    assert.deepStrictEqual(report, { level: "warning", text: "Tag v1.4.0 — Tagged: acme-libs. Tagged here, not pushed: acme-api (the remote already has a tag of that name)." });
+    console.log("ok - real git: a tag made here whose push is refused is reported as tagged, not pushed, with why");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -310,6 +394,53 @@ const listing = (lines: string[], remotes: string[]): Branches => parseBranches(
   assert.deepStrictEqual(multiCommands.outgoingOf("master", "origin/master"), ["log", "--format=%h%x00%s", "--max-count=1000", "refs/remotes/origin/master..refs/heads/master", "--"]);
   assert.throws(() => multiCommands.outgoingOf("master", "origin/master..HEAD"), "a range is never smuggled in");
   console.log("ok - Push… plans every local branch with commits for its remote upstream, the checked-out one first");
+  // Its upstream deleted on the remote: published again where it was, as a branch never pushed.
+  const gone = listing([line("refs/heads/acme-feature", sha, "*", "origin/acme-feature", "[gone]", "", ""), line("refs/heads/develop", sha, " ", "origin/develop", "[ahead 1]", "", ""),
+    line("refs/heads/old", sha, " ", "origin/old", "[gone]", "", ""), line("refs/remotes/origin/develop", sha, " ", "", "", "", "")], ["origin"]);
+  assert.strictEqual(gone.branches[0].gone, true);
+  assert.deepStrictEqual(pushPlans(gone), [{ branch: "acme-feature", remote: "origin", destination: "acme-feature", setUpstream: true, current: true },
+    { branch: "develop", remote: "origin", destination: "develop", setUpstream: false }], "the other branches stay; one not checked out with a gone upstream has nothing counted to send");
+  console.log("ok - Push… publishes a checked-out branch whose upstream is gone again, beside the repository's other branches");
+}
+
+{
+  // Real git: the checked-out branch's remote branch was deleted (and pruned), another branch is ahead.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-pushgone-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...ID, LC_ALL: "C" }, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  const read = (cwd: string) => parseBranches(git(cwd, branchArgs()), git(cwd, ["remote"]).split(/\r?\n/).filter(Boolean));
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    git(seed, ["branch", "develop"]);
+    const origin = path.join(home, "origin.git");
+    git(home, ["clone", "-q", "--bare", seed, origin]);
+    const web = path.join(home, "acme-web");
+    git(home, ["clone", "-q", origin, web]);
+    git(web, ["switch", "-q", "--track", "-c", "develop", "origin/develop"]);
+    fs.writeFileSync(path.join(web, "d.txt"), "d\n");
+    git(web, ["add", "d.txt"]); git(web, ["commit", "-q", "-m", "feat: on develop"]);
+    git(web, ["switch", "-q", "-c", "acme-feature"]);
+    fs.writeFileSync(path.join(web, "f.txt"), "f\n");
+    git(web, ["add", "f.txt"]); git(web, ["commit", "-q", "-m", "feat: the feature"]);
+    git(web, ["push", "-q", "-u", "origin", "acme-feature"]);
+    git(seed, ["--git-dir", origin, "branch", "-D", "acme-feature"]);
+    git(web, ["fetch", "-q", "--prune"]);
+    fs.writeFileSync(path.join(web, "g.txt"), "g\n");
+    git(web, ["add", "g.txt"]); git(web, ["commit", "-q", "-m", "feat: after the remote branch went"]);
+    const plans = pushPlans(read(web));
+    assert.deepStrictEqual(plans.map((p) => [p.branch, p.setUpstream]), [["acme-feature", true], ["develop", false]], "both branches listed");
+    const [feature, develop] = plans;
+    assert.deepStrictEqual(parseOutgoing(git(web, multiCommands.outgoing(!feature.setUpstream))).map((c) => c.subject), ["feat: after the remote branch went", "feat: the feature", "feat: on develop"],
+      "what no remote has, as for a branch never pushed");
+    assert.deepStrictEqual(parseOutgoing(git(web, multiCommands.outgoingOf(develop.branch, `${develop.remote}/${develop.destination}`))).map((c) => c.subject), ["feat: on develop"]);
+    git(web, multiCommands.push(feature.remote, feature.branch, feature.destination, feature.setUpstream));
+    assert.strictEqual(git(web, ["rev-parse", "--abbrev-ref", "@{upstream}"]), "origin/acme-feature", "published again, and tracking it");
+    assert.strictEqual(git(seed, ["--git-dir", origin, "rev-parse", "acme-feature"]), git(web, ["rev-parse", "HEAD"]));
+    console.log("ok - real git: a checked-out branch whose remote branch is gone is published again; the repository's other branch is still listed");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 }
 
 {

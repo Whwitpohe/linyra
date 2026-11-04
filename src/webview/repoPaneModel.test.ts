@@ -1,5 +1,7 @@
 import * as assert from "assert";
-import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, PaneWidth, fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos, paneRows, type PaneRow } from "./repoPaneModel";
+import { DEFAULT_BRANCH_SIDEBAR } from "../branchModel";
+import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, PaneWidth, fuzzyMatch, isChecked, keptCursor, pickOnly, toggleRepo, visibleRepos, paneRows, type PaneRow } from "./repoPaneModel";
+import { repoTreeKey, treeRows, withOperations } from "./repoTreeModel";
 
 const all = ["/ws/acme-api", "/ws/acme-libs", "/ws/acme-web"];
 const repos = all.map((id) => ({ id, name: id.slice(4) }));
@@ -54,6 +56,13 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.strictEqual(w.fit(1400), 250, "and the user's width comes back when there is room again");
   assert.strictEqual(w.set(40, 1400), 120, "a drag is still clamped");
   assert.strictEqual(w.fit(1400), 120, "and what it clamped to is what the user chose");
+  // Saved while squeezed (another layout change, or a drag's end), then restored by the next init.
+  w.set(398, 1400);
+  assert.strictEqual(w.fit(560), 260);
+  assert.strictEqual(w.chosen, 398, "the layout saves the chosen width, not the squeezed one");
+  const restored = new PaneWidth();
+  restored.set(w.chosen, 560);
+  assert.strictEqual(restored.fit(1400), 398, "so a wide panel shows it again");
   console.log("ok - resizing never forgets the pane width the user chose");
 }
 {
@@ -66,4 +75,23 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.deepStrictEqual(kinds(paneRows(repos, "", [], ["/ws/acme-web"])), ["all", "acme-web", "acme-api", "acme-libs"]);
   assert.deepStrictEqual(kinds(paneRows(repos, "api", [backend], ["/ws/acme-web"])), ["all", "acme-api"], "searching repositories hides profiles");
   console.log("ok - paneRows: All, profiles, repositories");
+}
+{
+  const repos = ["acme-web", "acme-api", "acme-libs"].map((name) => ({ id: `/w/${name}`, root: `/w/${name}`, name }));
+  const at = (rows: readonly { key: string }[], name: string) => rows.findIndex((r) => r.key === repoTreeKey(`/w/${name}`));
+  const before = treeRows(repos, "", [], null, new Map(), DEFAULT_BRANCH_SIDEBAR);
+  // The marks arrive after the cursor went to acme-libs: acme-api stopped in a merge, its row inserted above.
+  const after = withOperations(before, new Map([["/w/acme-api", { operation: "merge" as const, conflicts: 0 }]]));
+  assert.strictEqual(after[at(before, "acme-libs")].kind, "operation", "the cursor's old index is now the stopped merge's row");
+  assert.strictEqual(keptCursor(before, at(before, "acme-libs"), after), at(after, "acme-libs"), "the cursor stays on acme-libs");
+  assert.strictEqual(keptCursor(before, at(before, "acme-api"), after), at(after, "acme-api"));
+  assert.strictEqual(keptCursor(after, at(after, "acme-libs"), before), at(before, "acme-libs"), "and when the row above goes");
+  // Its row left: the nearest row above that stayed, never a stopped operation's.
+  const gone = after.filter((r) => r.key !== repoTreeKey("/w/acme-libs"));
+  assert.strictEqual(keptCursor(after, at(after, "acme-libs"), gone), at(gone, "acme-api"), "acme-libs gone: acme-api, not its merge row");
+  const top = [{ key: "x", kind: "repo" }, { key: "op", kind: "operation" }, { key: "y", kind: "repo" }];
+  assert.strictEqual(keptCursor(top, 0, top.slice(1)), 1, "nothing above: the nearest row below that is not an operation");
+  assert.strictEqual(keptCursor([], 0, after), 0, "a first render starts at the top");
+  assert.strictEqual(keptCursor(after, 2, []), 0);
+  console.log("ok - the Repo List's cursor stays on its row when rows arrive above it, and never lands on a stopped merge");
 }

@@ -10,11 +10,46 @@ export function isMailbox(text: string): boolean {
   return /^From [0-9a-f]{40,64} /.test(text.trimStart());
 }
 
+/** A header's path: its a/ or b/ dropped, and a plain diff's tab and date after it. */
+function headerPath(text: string, prefix: string): string {
+  const p = text.replace(/\t.*$/, "");
+  return p.startsWith(prefix) ? p.slice(prefix.length) : p;
+}
+
+/**
+ * A patch's file headers: a "--- old" line and the "+++ new" line right after it, read only
+ * between hunks. A hunk's own lines can look like one (a removed "-- note" line is "--- note"),
+ * so each hunk is passed over by the line counts its "@@ -a,b +c,d @@" gives.
+ */
+function headers(text: string): { from: string; to: string }[] {
+  const lines = text.split(/\r?\n/);
+  const out: { from: string; to: string }[] = [];
+  let old = 0, now = 0; // the hunk's lines still to come, on each side
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (old > 0 || now > 0) {
+      if (line.startsWith("-")) old--;
+      else if (line.startsWith("+")) now--;
+      // Kept on both sides (" ", or "" where a tool trimmed it); "\ No newline at end of file" is neither.
+      else if (!line.startsWith("\\")) { old--; now--; }
+      continue;
+    }
+    const hunk = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
+    if (hunk) {
+      old = hunk[1] === undefined ? 1 : Number(hunk[1]);
+      now = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    } else if (line.startsWith("--- ") && lines[i + 1]?.startsWith("+++ ")) {
+      out.push({ from: headerPath(line.slice(4), "a/"), to: headerPath(lines[++i].slice(4), "b/") });
+    }
+  }
+  return out;
+}
+
 /** The files a patch changes, by their new names ("diff --git a/x b/y", else "+++ b/y"). */
 export function patchFiles(text: string): string[] {
   const files = new Set<string>();
   for (const m of text.matchAll(/^diff --git a\/.+? b\/(.+?)\r?$/gm)) files.add(m[1]);
-  if (files.size === 0) for (const m of text.matchAll(/^\+\+\+ (?:b\/)?(.+?)(?:\t.*)?\r?$/gm)) if (m[1] !== "/dev/null") files.add(m[1]);
+  if (files.size === 0) for (const h of headers(text)) if (h.to !== "/dev/null") files.add(h.to);
   return [...files];
 }
 
@@ -42,7 +77,7 @@ export function amArgs(): string[] {
  */
 export function patchSources(text: string): string[] {
   const files = new Set<string>();
-  for (const m of text.matchAll(/^--- (?:a\/)?(.+?)(?:\t.*)?\r?$/gm)) if (m[1] !== "/dev/null") files.add(m[1]);
+  for (const h of headers(text)) if (h.from !== "/dev/null") files.add(h.from);
   return [...files];
 }
 

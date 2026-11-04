@@ -28,7 +28,10 @@ function parseRaw(tokens: readonly string[]): Map<string, ChangeStatus> {
 }
 
 export function parseShow(stdout: string): { message: string; files: FileChange[] } {
-  const end = stdout.indexOf("\x1e");
+  // The message ends at the last RS before git's first NUL: a message never holds a NUL, but it
+  // may hold an RS, and a path after it may too.
+  const nul = stdout.indexOf("\0");
+  const end = stdout.lastIndexOf("\x1e", nul < 0 ? Infinity : nul);
   const body = end < 0 ? stdout : stdout.slice(end + 1);
   const status = parseRaw(body.split("\0"));
   const files = parseNumstat(body).map((f) => {

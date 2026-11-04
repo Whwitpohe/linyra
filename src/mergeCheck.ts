@@ -31,6 +31,16 @@ export async function objectsDir(root: string): Promise<string | undefined> {
 }
 
 /**
+ * The environment of a merge in memory: the objects it makes go to `scratch`, the repository's
+ * own are only read. git splits the alternates on ":" (";" on Windows): a path holding one is
+ * given C-quoted, which git reads as one path (a path starting with " or # too).
+ */
+export function scratchEnv(scratch: string, objects: string, sep: string = path.delimiter): Record<string, string> {
+  const alternate = objects.includes(sep) || /^["#]/.test(objects) ? `"${objects.replace(/[\\"]/g, (c) => `\\${c}`)}"` : objects;
+  return { GIT_OBJECT_DIRECTORY: scratch, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternate };
+}
+
+/**
  * How many files a merge of `left` and `right` would leave conflicted: 0 merges cleanly. null when
  * it cannot be told (git before 2.38 has no merge-tree --write-tree, unrelated histories, an error).
  */
@@ -41,14 +51,14 @@ export async function conflictCount(run: RunGit, root: string, left: string, rig
   try {
     let out: string;
     try {
-      out = await run(root, mergeTreeArgs(left, right), signal, { env: { GIT_OBJECT_DIRECTORY: dir, GIT_ALTERNATE_OBJECT_DIRECTORIES: objects } });
+      out = await run(root, mergeTreeArgs(left, right), signal, { env: scratchEnv(dir, objects) });
     } catch (e) {
       if (isAbortError(e)) throw e;
-      // Exit 1: conflicts, listed on stdout.
+      // Exit 1: conflicts, listed on stdout (or an error, with no tree id there).
       if (e instanceof GitError && e.exitCode === 1) out = e.stdout;
       else return null;
     }
-    return parseMergeTree(out).conflicts.length;
+    return parseMergeTree(out)?.conflicts.length ?? null;
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { commandText, isReadOnly, parseCommandLine, runReport } from "./runAcrossModel";
+import { commandText, isReadOnly, parseCommandLine, RUN_TIMEOUT_MS, runReport, runTimeout } from "./runAcrossModel";
 
 {
   assert.deepStrictEqual(parseCommandLine("status -sb"), ["status", "-sb"]);
@@ -20,6 +20,10 @@ import { commandText, isReadOnly, parseCommandLine, runReport } from "./runAcros
     assert.ok(!isReadOnly(parseCommandLine(rw) as string[]), rw);
   }
   console.log("ok - commands that only read run at once; anything that may write is asked first");
+  // A read that hangs is stopped at the timeout; a write never is by a timer (only when the user says so).
+  assert.strictEqual(runTimeout(["log", "-p"]), RUN_TIMEOUT_MS);
+  for (const rw of [["pull"], ["rebase", "main"], ["checkout", "main"], ["gc"]]) assert.strictEqual(runTimeout(rw), undefined, rw.join(" "));
+  console.log("ok - Run Git Command Across Repositories stops a hung read at its timeout, never a write");
 }
 
 {

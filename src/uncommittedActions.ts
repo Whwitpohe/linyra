@@ -1,7 +1,5 @@
 import { localize } from "./i18n";
-import { randomBytes } from "crypto";
 import { promises as fs } from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { checkValues, initialValues, type FormSpec, type FormValues } from "./formModel";
@@ -10,8 +8,9 @@ import { errorLine, type RunOptions } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { actionPaths, addedPaths, deletePrompt, describeUncommitted, diffFor, discardPrompt, distinctPaths, rollbackPlan, totals, withoutFiles, withUnadded, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
+import { gitWithPaths } from "./workingTree";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
 interface Target { repoId: string; group?: Group; path?: string }
@@ -339,7 +338,7 @@ export class UncommittedActions {
     // A confirmed action runs on the files the prompt listed, not on what is there after it closed.
     for (const r of picks) {
       try {
-        await run(r, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
+        await run(r, actionPaths(r.files, new Set(distinctPaths(r.work))));
       } catch (e) {
         this.showError(localize("Linyra could not {0} {1} in {2}: {3}.", localize(verb), r.one ? r.files[0].path : plural(new Set(r.files.map((f) => f.path)).size, "file"), r.work.name, gitMessage(e)));
       }
@@ -373,7 +372,7 @@ export class UncommittedActions {
       : discardPrompt(plural(picks.length, "repository", "repositories"), picks.flatMap((r) => r.files), false, picks.flatMap((r) => r.staged));
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
     await this.act(picks, "discard", async (r) => {
-      const plan = rollbackPlan(r.files, r.staged);
+      const plan = rollbackPlan(r.files, r.staged, new Set(distinctPaths(r.work)));
       if (plan.unadd.length > 0) await this.unadd(r.work, plan.unadd);
       if (plan.paths.length > 0) await this.deps.discovery.discard(r.work.root, plan.paths, plan.remove, plan.unstage);
     });
@@ -436,20 +435,6 @@ export class UncommittedActions {
     await openWorkDiff(work, group, file, preserveFocus);
   }
 
-}
-
-/** Writes take the index lock and never open an editor. */
-const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", GIT_EDITOR: "true" };
-
-/** git with `paths` as its pathspec, given through a file: no command line grows with the number of files. */
-export async function gitWithPaths(run: UncommittedActionsDeps["run"], root: string, paths: readonly string[], args: string[], opts: RunOptions = {}): Promise<void> {
-  const list = path.join(os.tmpdir(), `linyra-paths-${randomBytes(8).toString("hex")}`);
-  try {
-    await fs.writeFile(list, paths.join("\0"));
-    await run(root, [...args, `--pathspec-from-file=${list}`, "--pathspec-file-nul"], undefined, { ...opts, env: { ...WRITE_ENV, ...opts.env } });
-  } finally {
-    await fs.rm(list, { force: true });
-  }
 }
 
 /** A new file goes from the disk, and the folders it leaves empty with it (never the repository's root). */

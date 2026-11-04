@@ -14,13 +14,43 @@ export class GitError extends Error {
   }
 }
 
-// Overrides that keep output parseable whatever the user's git config says.
+// Overrides that keep output parseable whatever the user's git config says. log.showRoot=false
+// would leave a root commit's files out of git show and File History.
 const CONFIG = [
   "-c", "log.showSignature=false",
+  "-c", "log.showRoot=true",
   "-c", "core.quotepath=off",
   "-c", "i18n.logOutputEncoding=UTF-8",
   "-c", "color.ui=never",
 ];
+
+/**
+ * A UTF-8 LC_CTYPE where the environment's is not one (and LC_ALL does not decide): git's regular
+ * expressions read characters rather than bytes only then, so a Whole Word edge next to ü or é and
+ * ignoring case beyond ASCII hold, as they must for the UTF-8 that i18n.logOutputEncoding asks for.
+ * Messages keep the user's language. macOS names the locale UTF-8; Git for Windows picks its own.
+ */
+export function utf8Ctype(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): Record<string, string> {
+  if (platform === "win32" || env.LC_ALL || /utf-?8/i.test(env.LC_CTYPE || env.LANG || "")) return {};
+  return { LC_CTYPE: platform === "darwin" ? "UTF-8" : "C.UTF-8" };
+}
+
+/** The git commands Linyra hands the user's patterns to (--grep, --author, -G…): they only read. */
+const PATTERN_COMMANDS = new Set(["log", "rev-list", "grep"]);
+
+/**
+ * Whether git's arguments (before Linyra's CONFIG) run a command that matches the user's patterns:
+ * only those get utf8Ctype. A command that writes keeps the user's environment, as do the hooks it
+ * runs, where a locale the system lacks would make perl and others warn.
+ */
+export function matchesPatterns(args: readonly string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-c" || args[i] === "-C") { i++; continue; }
+    if (args[i].startsWith("-")) continue;
+    return PATTERN_COMMANDS.has(args[i]);
+  }
+  return false;
+}
 
 /** git's message for a failure: its fatal:/error: line (hint: lines come first), else the first line. */
 export function errorLine(stderr: string): string {
@@ -70,7 +100,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       detached: opts.tree === true && process.platform !== "win32",
       windowsHide: true,
       // No credential prompts; no index.lock contention with VS Code's own git.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
+      env: { ...process.env, ...(matchesPatterns(args) ? utf8Ctype(process.env) : {}), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
     });
     const onAbort = () => {
       if (child.pid !== undefined) killTree(child.pid);

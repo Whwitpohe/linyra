@@ -1,6 +1,7 @@
-import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
+import { HISTORY_FORMAT, LOG_FORMAT, startedRecords } from "./gitLog";
+import { localize } from "./i18n";
 import { parseSearch, planSearch, searchFlags, type SearchPlan } from "./searchQuery";
-import type { Repo } from "./types";
+import { isSha, type Repo } from "./types";
 
 export type DatePreset = "24h" | "7d" | "30d" | "all" | "custom";
 
@@ -123,7 +124,7 @@ interface ArgOptions {
   search?: SearchPlan;
 }
 
-function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = []): string[] {
+function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = [], revisions = true): string[] {
   const args = ["log", format, `--max-count=${o.pageSize}`, "--decorate=full"];
   if (f.sort === "topo") args.push("--topo-order");
   // The query's messages, authors (with the Author box's), committers, change: and type:, as git's
@@ -138,7 +139,7 @@ function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonl
   args.push(...extra);
   // After --end-of-options: revisions, never options. After --: paths, never
   // revisions, so a branch named like a folder ("docs") is not ambiguous.
-  args.push(...revisionArgs(o.refs ?? (o.ref ? [o.ref] : selectedBranches(f))));
+  if (revisions) args.push(...revisionArgs(o.refs ?? (o.ref ? [o.ref] : selectedBranches(f))));
   args.push("--", ...paths);
   return args;
 }
@@ -149,16 +150,164 @@ export function escapeRegex(text: string): string {
 }
 
 /**
- * Why a message search cannot be sent to git in regex mode; undefined when it can. JavaScript's
- * parser stands in for git's POSIX one: it accepts every ERE that matters here.
+ * The platform git runs on, read where this module runs beside it (the extension host). A webview
+ * has no process: the host tells it (SearchContext.platform), and until then \b is let through.
  */
-export function regexProblem(text: string): string | undefined {
+const HOST_PLATFORM: NodeJS.Platform | undefined = typeof process === "undefined" ? undefined : process.platform;
+
+/**
+ * Why a search box expression cannot be sent to git in regex mode; undefined when it can. The box
+ * reads JavaScript's syntax (its parser checks it), and git's POSIX expressions must say the same
+ * (toEre).
+ */
+export function regexProblem(text: string, platform: NodeJS.Platform | undefined = HOST_PLATFORM): string | undefined {
   try {
     new RegExp(text);
-    return undefined;
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
   }
+  const ere = toEre(text, platform);
+  return "problem" in ere ? ere.problem : undefined;
+}
+
+/** A search box expression as git reads it (toEre); one regexProblem refuses is searched as text. */
+export function gitRegex(text: string, platform: NodeJS.Platform | undefined = HOST_PLATFORM): string {
+  const ere = toEre(text, platform);
+  return "pattern" in ere ? ere.pattern : escapeRegex(text);
+}
+
+/** JavaScript's class escapes in POSIX's words: on their own, and inside a bracket expression. */
+const CLASSES: Record<string, string> = { d: "[0-9]", D: "[^0-9]", s: "[[:space:]]", S: "[^[:space:]]", w: "[[:alnum:]_]", W: "[^[:alnum:]_]" };
+const CLASS_ITEMS: Record<string, string> = { d: "0-9", s: "[:space:]", w: "[:alnum:]_" };
+const POSIX_CLASSES = new Set(["alnum", "alpha", "blank", "cntrl", "digit", "graph", "lower", "print", "punct", "space", "upper", "xdigit"]);
+/** RE_DUP_MAX on macOS, the least every POSIX regex takes (glibc's is higher). */
+const MAX_REPEAT = 255;
+
+type Ere = { pattern: string; end: number } | { problem: string };
+
+const jsOnly = (what: string): Ere => ({ problem: localize("JavaScript's {0} is not in git's regular expressions", what) });
+
+/**
+ * A search box expression (JavaScript's syntax) as a POSIX extended expression that glibc, macOS
+ * and Git for Windows read alike. glibc reads \d as d, so \d \s \w and \D \S \W become bracket
+ * expressions; an escaped punctuation character and a { that is no quantifier become literal; a
+ * [...] class is rebuilt by POSIX's rules, where a backslash is a character. What git's expressions
+ * cannot say is a problem, rather than an error from every repository or a search that silently
+ * finds nothing: (?...) groups and lookaround, lazy quantifiers, back-references and other letter
+ * escapes. \b and \B stay as written where git reads them (glibc, Git for Windows); macOS' expressions
+ * have neither and would find nothing, so there they are a problem.
+ */
+function toEre(text: string, platform: NodeJS.Platform | undefined): Ere {
+  let out = "";
+  // What came last can take a quantifier: a { after it is one, if it reads as one.
+  let atom = false;
+  for (let i = 0; i < text.length;) {
+    const c = text[i];
+    if (c === "\\") {
+      const d = text[i + 1] ?? "";
+      if (d === "b" || d === "B") {
+        if (platform === "darwin") return { problem: localize("{0} is not in git's regular expressions on macOS: use Match Whole Word", `\\${d}`) };
+        // A word's edge takes no quantifier: a { after it is a character.
+        out += `\\${d}`;
+        i += 2;
+        atom = false;
+        continue;
+      }
+      if (CLASSES[d]) out += CLASSES[d];
+      else if (/[0-9A-Za-z]/.test(d)) return jsOnly(`\\${d}`);
+      else out += escapeRegex(d);
+      i += 2;
+      atom = true;
+      continue;
+    }
+    if (c === "[") {
+      const bracket = bracketToEre(text, i);
+      if ("problem" in bracket) return bracket;
+      out += bracket.pattern;
+      i = bracket.end;
+      atom = true;
+      continue;
+    }
+    if (c === "(" && text[i + 1] === "?") return jsOnly(text.slice(i, text[i + 2] === "<" && "=!".includes(text[i + 3] ?? "") ? i + 4 : i + 3));
+    const interval = c === "{" && atom ? /^\{(\d+)(?:,(\d*))?\}/.exec(text.slice(i)) : null;
+    if (c === "*" || c === "+" || c === "?" || interval) {
+      const q = interval ? interval[0] : c;
+      if (interval && Math.max(Number(interval[1]), Number(interval[2] || 0)) > MAX_REPEAT) return { problem: localize("git repeats at most 255 times: {0}", q) };
+      if (text[i + q.length] === "?") return jsOnly(`${q}?`);
+      out += q;
+      i += q.length;
+      atom = false;
+      continue;
+    }
+    out += c === "{" || c === "}" ? `\\${c}` : c;
+    atom = c !== "(" && c !== "|" && c !== "^" && c !== "$";
+    i++;
+  }
+  return { pattern: out, end: text.length };
+}
+
+/**
+ * A JavaScript class from the [ at `start` as a POSIX bracket expression: ] first, then the
+ * characters, ranges and classes, then [, ^ and - where they are characters too.
+ */
+function bracketToEre(text: string, start: number): Ere {
+  let i = start + 1;
+  const negate = text[i] === "^";
+  if (negate) i++;
+  // JavaScript: [] matches nothing and [^] anything; to git, [] and [^] open a class holding ].
+  if (text[i] === "]") return jsOnly(negate ? "[^]" : "[]");
+  const chars = new Set<string>();
+  const parts: string[] = [];
+  const member = (): { char: string } | { item: string } | { problem: string } | undefined => {
+    const c = text[i];
+    if (c === undefined || c === "]") return undefined;
+    if (c === "\\") {
+      const d = text[i + 1] ?? "";
+      i += 2;
+      if (CLASS_ITEMS[d]) return { item: CLASS_ITEMS[d] };
+      // \D \S \W have no form inside a bracket expression; \b is a backspace there.
+      if (/[0-9A-Za-z]/.test(d)) return { problem: localize("JavaScript's {0} is not in git's regular expressions", `[\\${d}]`) };
+      return { char: d };
+    }
+    // A POSIX class typed as one ([[:alpha:]]) is one: JavaScript would read [, :, a… and a ].
+    const posix = /^\[:([a-z]+):\]/.exec(text.slice(i));
+    if (posix && POSIX_CLASSES.has(posix[1])) {
+      i += posix[0].length;
+      return { item: posix[0] };
+    }
+    i++;
+    return { char: c };
+  };
+  for (let m = member(); m; m = member()) {
+    if ("problem" in m) return m;
+    if ("item" in m) {
+      parts.push(m.item);
+      continue;
+    }
+    // A range: a character, -, a character. Next to a class, JavaScript reads the - as itself.
+    if (text[i] === "-" && text[i + 1] !== "]" && text[i + 1] !== undefined) {
+      i++;
+      const to = member();
+      if (to && "problem" in to) return to;
+      if (to && "char" in to) {
+        // Ends that POSIX reads by their place in the class: write those as characters.
+        if (`${m.char}${to.char}`.split("").some((x) => "[]^-".includes(x))) return jsOnly(`${m.char}-${to.char}`);
+        parts.push(`${m.char}-${to.char}`);
+        continue;
+      }
+      chars.add("-");
+      if (to) parts.push(to.item);
+    }
+    chars.add(m.char);
+  }
+  if (text[i] !== "]") return { problem: "Unterminated character class" };
+  const take = (c: string) => chars.delete(c);
+  const [close, open, caret, dash] = [take("]"), take("["), take("^"), take("-")];
+  // [ last but for ^ and -, so it never starts [: [. or [=; ^ never first unless it negates.
+  const lead = `${close ? "]" : ""}${[...chars].join("")}${parts.join("")}${open ? "[" : ""}`;
+  if (!lead && caret && !dash) return { pattern: negate ? "[^^]" : "\\^", end: i + 1 };
+  const body = lead ? `${lead}${caret ? "^" : ""}${dash ? "-" : ""}` : `${dash ? "-" : ""}${caret ? "^" : ""}`;
+  return { pattern: `[${negate ? "^" : ""}${body}]`, end: i + 1 };
 }
 
 const latest = (a: number | undefined, b: number | undefined) => (a === undefined ? b : b === undefined ? a : Math.max(a, b));
@@ -200,55 +349,106 @@ export function pathspecOf(path: string): string {
 }
 
 /**
- * One file's history with the Log's filters: every name the file has had is a
- * pathspec (see historyPathsArgs). No --follow: it cannot page with --skip, and
- * it stops following when the rename commit itself is filtered out.
+ * One file's history with the Log's filters: the commits the --follow walks found
+ * (historyPathsArgs), given on stdin (historyInput) with --no-walk, so the filters choose among
+ * exactly those and a later file that reused an old name stays out. Every name the file has had
+ * is a pathspec, so each commit shows its change. No --follow here: it cannot page with --skip,
+ * and it stops following when the rename commit itself is filtered out. --no-walk comes after
+ * --max-count, which turns walking back on; it sorts by date unless the walk's own order is kept.
  *
  * --raw gives each row its status letter (and a rename's old name), --numstat its lines added
  * and deleted, in the same process. The line counts cost git a diff of the file per commit:
  * measured 2026-10-29 (Windows, git 2.55, a page of 200), +12–37 ms on real files with 60–140
  * commits, +100 ms (46 → 146 ms) on a 1,500-line file with 5,000 commits.
  */
-export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[] }): string[] {
+export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[]; walkOrder?: boolean }): string[] {
+  const commits = [`--no-walk=${o.walkOrder ? "unsorted" : "sorted"}`, "--stdin"];
   // Literal: a route folder like app/[id]/ is a name, not a glob matching app/i/.
-  return buildArgs(HISTORY_FORMAT, f, o, ["--raw", "--numstat", "-z", "-M"], o.paths.map((p) => `:(literal)${p}`));
+  return buildArgs(HISTORY_FORMAT, f, o, ["--raw", "--numstat", "-z", "-M", ...commits], o.paths.map((p) => `:(literal)${p}`), false);
 }
 
-/** Unfiltered, unpaged --follow walk that only collects the names a file has had. */
-export function historyPathsArgs(path: string, ref?: string | readonly string[]): string[] {
-  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...revisionArgs(typeof ref === "string" ? [ref] : ref ?? []), "--", `:(literal)${path}`];
+/** historyArgs' stdin: the commits the --follow walks found, one per line. */
+export function historyInput(follow: Pick<FileFollow, "commits">): string {
+  return [...follow.commits.keys()].map((sha) => `${sha}\n`).join("");
 }
 
-/** The file's names, newest first; always starts with its current path. */
-export function parseHistoryPaths(stdout: string, path: string): string[] {
-  const names = [path];
-  const add = (p: string | undefined) => {
-    if (p && !names.includes(p)) names.push(p);
+/**
+ * Unfiltered, unpaged --follow walk: each commit git lists for the file, with its name there. In
+ * the Log's order, which decides where git switches to an older name.
+ */
+export function historyPathsArgs(path: string, ref?: string | readonly string[], topo = false): string[] {
+  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e%H", ...(topo ? ["--topo-order"] : []),
+    ...revisionArgs(typeof ref === "string" ? [ref] : ref ?? []), "--", `:(literal)${path}`];
+}
+
+/** What one --follow walk found. */
+export interface FollowWalk {
+  /** The file's names, newest first; always starts with its current path. */
+  names: string[];
+  /** Each commit the walk lists, in its order, with the file's name in it. */
+  commits: Map<string, string>;
+  /** The walk went back through a rename (or copy). */
+  renamed: boolean;
+}
+
+/** A file's history to page through: what its --follow walks found, together. */
+export interface FileFollow {
+  names: string[];
+  /** A commit two walks list keeps the first one's name. */
+  commits: Map<string, string>;
+  /** One --topo-order walk: git keeps its order (--no-walk=unsorted); otherwise git sorts by date. */
+  walkOrder: boolean;
+}
+
+/** A --follow walk's output (historyPathsArgs): RS, the hash and NUL, then one change of the file. */
+export function parseFollow(stdout: string, path: string): FollowWalk {
+  const walk: FollowWalk = { names: [path], commits: new Map(), renamed: false };
+  const add = (p: string) => {
+    if (!walk.names.includes(p)) walk.names.push(p);
   };
-  const t = stdout.split(/[\x00\x1e]/);
-  for (let i = 0; i < t.length; i++) {
-    const m = /^\n*([AMDRCT])\d*$/.exec(t[i]);
-    if (!m) continue;
-    if (m[1] === "R" || m[1] === "C") {
-      add(t[i + 1]);
-      add(t[i + 2]);
-      i += 2;
-    } else {
-      add(t[i + 1]);
-      i += 1;
+  for (const record of startedRecords(stdout)) {
+    const [sha, status, first, second] = record.split("\0");
+    const m = /^\n*([AMDRCT])\d*$/.exec(status ?? "");
+    if (!isSha(sha) || !m) continue;
+    const two = m[1] === "R" || m[1] === "C";
+    const name = two ? second : first;
+    if (!name || (two && !first)) continue; // cut off by a killed process
+    walk.commits.set(sha, name);
+    if (two) {
+      add(first);
+      walk.renamed = true;
     }
+    add(name);
   }
-  return names;
+  return walk;
+}
+
+/** Several tips' walks as one history; `topo`: the walks ran in topological order. */
+export function followUnion(walks: readonly FollowWalk[], path: string, topo: boolean): FileFollow {
+  const follow: FileFollow = { names: [path], commits: new Map(), walkOrder: topo && walks.length === 1 };
+  for (const walk of walks) {
+    for (const name of walk.names) if (!follow.names.includes(name)) follow.names.push(name);
+    for (const [sha, name] of walk.commits) if (!follow.commits.has(sha)) follow.commits.set(sha, name);
+  }
+  return follow;
 }
 
 export const MAX_AUTHORS = 20;
 
 /**
+ * Me as git's author and committer lines name it ("Name <email>"): the whole address in its angle
+ * brackets, so dan@example.com is not jordan@example.com or dan@example.com.au.
+ */
+export function meAuthor(email: string): string {
+  return `<${email.trim()}>`;
+}
+
+/**
  * Every author pattern for one repository: the chips, what is being typed, and Me (that
- * repository's user.email, if it has one). Trimmed, blank-free, de-duplicated ignoring case.
+ * repository's user.email, if it has one: meAuthor). Trimmed, blank-free, de-duplicated ignoring case.
  */
 export function authorPatterns(f: FilterState, me?: string): string[] {
-  const all = [...(f.authors ?? []), f.author, f.mine ? me ?? "" : ""].map((a) => a.trim()).filter((a) => a !== "");
+  const all = [...(f.authors ?? []), f.author, f.mine && me?.trim() ? meAuthor(me) : ""].map((a) => a.trim()).filter((a) => a !== "");
   const seen = new Set<string>();
   return all.filter((a) => {
     const k = a.toLowerCase();

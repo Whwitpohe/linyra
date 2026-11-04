@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { copyText } from "./clipboard";
-import { commitCommands, commitFailed, newRefProblem, parseRefNames, resetDistanceArgs, resetPrompt, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
+import { ALREADY_APPLIED, applyEach, commitCommands, commitFailed, newRefProblem, parseRefNames, resetDistanceArgs, resetPrompt, rewordMessage, stoppedReason, type CommitAction, type ResetMode } from "./commitActionModel";
 import { gitText, whyOf } from "./actionErrors";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
@@ -15,6 +15,7 @@ const WRITE_SIGNAL = new AbortController().signal;
 /** Writes may take the index lock; git's words stay English for stoppedReason; never an editor. */
 const WRITE_ENV = { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C", GIT_EDITOR: "true" };
 import { guardCheckout } from "./smartCheckout";
+import { repoBusy } from "./repoBusy";
 
 const short = (sha: string) => sha.slice(0, 7);
 const plural = (n: number, one: string, many = `${one}s`) => localize("{0} {1}", n, localize(n === 1 ? one : many));
@@ -39,8 +40,6 @@ export interface CommitActionHost {
  * operation, and asks before moving a branch or HEAD.
  */
 export class CommitActions {
-  /** Repositories with an action running: a second one waits for nothing and does nothing. */
-  private readonly busy = new Set<string>();
   /** The last error shown (integration test seam). */
   lastError: string | undefined;
 
@@ -55,11 +54,13 @@ export class CommitActions {
       const many = this.host.selection?.() ?? [];
       if (many.length > 1 && many.some((x) => x.repo.id === repo.id && x.commit.sha === commit.sha)) return this.runMany(action, many);
     }
-    if (this.busy.has(repo.id)) {
+    // A write already running there (another row's, the Repo List's, one across repositories, a
+    // Pull): this one waits for nothing and does nothing.
+    const release = repoBusy.take(repo.id);
+    if (!release) {
       void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name));
       return;
     }
-    this.busy.add(repo.id);
     let wrote = false;
     try {
       const done = await this.perform(action, repo, commit);
@@ -70,7 +71,7 @@ export class CommitActions {
     } catch (e) {
       wrote = true; // a stopped cherry-pick or revert still changed the working tree
       const reason = stoppedReason(action, gitText(e));
-      if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
+      if (reason === ALREADY_APPLIED) await this.skip(repo, action);
       this.lastError = commitFailed(action, short(commit.sha), repo.name, reason ? localize(reason) : whyOf(e));
       void vscode.window.showErrorMessage(this.lastError);
     } finally {
@@ -80,7 +81,7 @@ export class CommitActions {
           await this.host.changed(repo.id);
         }
       } finally {
-        this.busy.delete(repo.id);
+        release();
       }
     }
   }
@@ -94,26 +95,23 @@ export class CommitActions {
     for (const { repo, commit } of selected) (byRepo.get(repo.id) ?? byRepo.set(repo.id, { repo, commits: [] }).get(repo.id)!).commits.push(commit);
     const done: string[] = [], stopped: string[] = [];
     for (const { repo, commits } of byRepo.values()) {
-      if (this.busy.has(repo.id)) { stopped.push(`${repo.name} (${localize("busy")})`); continue; }
-      this.busy.add(repo.id);
+      const release = repoBusy.take(repo.id);
+      if (!release) { stopped.push(`${repo.name} (${localize("busy")})`); continue; }
       const ordered = action === "cherryPick" ? [...commits].reverse() : commits;
-      let applied = 0;
+      const merges = new Set(ordered.filter((c) => c.parents.length > 1).map((c) => c.sha));
       try {
-        for (const c of ordered) {
-          await this.host.run(repo.root, action === "cherryPick" ? commitCommands.cherryPick(c.sha, c.parents.length > 1) : commitCommands.revert(c.sha, c.parents.length > 1), WRITE_SIGNAL, { env: WRITE_ENV });
-          applied++;
-        }
-        done.push(`${repo.name} (${applied})`);
-      } catch (e) {
-        const reason = stoppedReason(action, gitText(e));
-        if (reason && /already on the checked-out branch/.test(reason)) await this.skip(repo, action);
-        stopped.push(`${repo.name} (${localize("{0} of {1} done", applied, ordered.length)}: ${reason ? localize(reason) : whyOf(e)})`);
+        // One whose changes are already there is skipped, and the next one goes on.
+        const r = await applyEach(action, ordered.map((c) => c.sha), (sha) => this.host.run(repo.root, commitCommands[action](sha, merges.has(sha)), WRITE_SIGNAL, { env: WRITE_ENV }),
+          () => this.skip(repo, action), gitText);
+        const already = r.empty > 0 ? `; ${localize("{0} already on the branch", r.empty)}` : "";
+        if (r.error === undefined) done.push(`${repo.name} (${r.applied}${already})`);
+        else stopped.push(`${repo.name} (${localize("{0} of {1} done", r.applied, ordered.length)}${already}: ${r.reason ? localize(r.reason) : whyOf(r.error)})`);
       } finally {
         try {
           await this.host.discovery.branchRepository(repo.root)?.status?.();
           await this.host.changed(repo.id);
         } finally {
-          this.busy.delete(repo.id);
+          release();
         }
       }
     }
@@ -140,7 +138,7 @@ export class CommitActions {
         await git(commitCommands.revert(commit.sha, merge));
         return localize("Reverted {0} in {1}.", short(commit.sha), repo.name);
       case "reset": {
-        const branch = await this.currentBranch(repo);
+        const at = await this.headState(repo), { branch } = at;
         const modes: { mode: ResetMode; label: string; description: string }[] = [
           { mode: "soft", label: localize("Soft"), description: localize("Keep every change, staged") },
           { mode: "mixed", label: localize("Mixed"), description: localize("Keep every change, unstaged") },
@@ -159,6 +157,9 @@ export class CommitActions {
         const pushed = Math.max(0, leaving - (Number(local.trim().split(/\s+/)[0]) || 0));
         const p = resetPrompt({ branch, target: short(commit.sha), repo: repo.name, mode, leaving, pushed, upstream, arriving });
         if (!(await this.host.ask.warning(p.message, p.detail, p.button))) return undefined;
+        // The counts were of HEAD as it was: a commit or checkout made while the questions were open is not reset blind.
+        const now = await this.headState(repo);
+        if (now.sha !== at.sha || now.branch !== at.branch) throw new Error(localize("{0} moved in {1} while you were asked: nothing was reset. Run Reset again.", branch, repo.name));
         await git(commitCommands.reset(commit.sha, mode));
         return localize("Reset {0} to {1} in {2}.", branch, short(commit.sha), repo.name);
       }
@@ -177,15 +178,21 @@ export class CommitActions {
         return localize("Created branch {0} at {1} in {2}.", name, short(commit.sha), repo.name);
       }
       case "undo": case "reword": {
-        // Both rewrite HEAD only: the row must still be HEAD (the Log may be a moment old).
-        const head = (await this.host.run(repo.root, ["rev-parse", "HEAD"], WRITE_SIGNAL)).trim();
-        if (head !== commit.sha) throw new Error(localize("Only the checked-out commit can be changed here; it is no longer {0}.", short(commit.sha)));
+        // Both rewrite HEAD only: the row must still be HEAD (the Log may be a moment old), and still
+        // be once the question is answered, right before the write: a commit made while it was open
+        // (Source Control, a terminal) is not the one to amend or step back from.
+        const stillHead = async () => {
+          const head = (await this.host.run(repo.root, ["rev-parse", "HEAD"], WRITE_SIGNAL)).trim();
+          if (head !== commit.sha) throw new Error(localize("Only the checked-out commit can be changed here; it is no longer {0}.", short(commit.sha)));
+        };
+        await stillHead();
         if (action === "undo" && commit.parents.length !== 1) throw new Error(localize("Only a commit with one parent can be undone here."));
         const pushed = parseRefNames(await this.host.run(repo.root, commitCommands.pushedTo(commit.sha), WRITE_SIGNAL));
         const warning = pushed.length ? localize("It is already on {0}: changing it rewrites history others may have.", pushed.join(", ")) : undefined;
         if (action === "undo") {
           if (!(await this.host.ask.warning(localize("Undo commit {0} in {1}?", short(commit.sha), repo.name),
             [localize("The branch steps back one commit; its changes stay staged."), warning].filter(Boolean).join("\n\n"), localize("Undo Commit")))) return undefined;
+          await stillHead();
           await git(commitCommands.undo(commit.sha));
           return localize("Undid {0} in {1}; its changes are staged.", short(commit.sha), repo.name);
         }
@@ -194,6 +201,7 @@ export class CommitActions {
           { value: commit.subject, validate: (v) => (v.trim() ? undefined : localize("Enter a subject.")) });
         if (!subject?.trim() || subject.trim() === commit.subject) return undefined;
         if (warning && !(await this.host.ask.warning(localize("Edit the message of {0} in {1}?", short(commit.sha), repo.name), warning, localize("Edit Message")))) return undefined;
+        await stillHead();
         await this.host.run(repo.root, commitCommands.reword(), WRITE_SIGNAL, { env: WRITE_ENV, input: rewordMessage(message, subject) });
         return localize("Edited the message of {0} in {1}.", short(commit.sha), repo.name);
       }
@@ -305,6 +313,12 @@ export class CommitActions {
     } });
     if (answer === undefined || newRefProblem(answer, taken, kind)) return undefined;
     return answer.trim();
+  }
+
+  /** HEAD's commit and the checked-out branch's name (HEAD when detached), in one git process. */
+  private async headState(repo: Repo): Promise<{ sha: string; branch: string }> {
+    const [sha = "", ref = ""] = (await this.host.run(repo.root, ["rev-parse", "HEAD", "--symbolic-full-name", "HEAD"], WRITE_SIGNAL).catch(() => "")).trim().split(/\r?\n/);
+    return { sha, branch: ref.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : "HEAD" };
   }
 
   /** The checked-out branch's name, or HEAD when it is detached. */

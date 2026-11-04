@@ -22,6 +22,14 @@ const ops = (text: string) => Object.fromEntries(parseSearch(text).operations);
 const errors = (text: string, f: Partial<FilterState> = {}, repoNames?: string[]) => plan(text, f, repoNames).errors.map((e) => e.message);
 const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${time}`).getTime() / 1000);
 
+{
+  // The webview has no process: it plans with the platform the host sent, as git there reads it.
+  const on = (platform: NodeJS.Platform) => planSearch({ ...ALL, regex: true, text: String.raw`\bfix\b` }, NOW, { platform }).errors.map((e) => e.message);
+  assert.match(on("darwin").join(), /Match Whole Word/, "macOS: \\b is refused under the box");
+  assert.deepStrictEqual([on("linux"), on("win32")], [[], []], "glibc and Git for Windows read \\b");
+  console.log("ok - the box checks regex mode for the platform git runs on, which the host tells the webview");
+}
+
 // ── Parsing: words, phrases and operators, as GitLens reads them ────────────
 {
   assert.deepStrictEqual(ops("retry uploader"), { "message:": ["retry", "uploader"] }, "each word is its own message: term");
@@ -67,6 +75,8 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.ok(errors("fix -message:wip")[0].includes("-message:"), "a bare word is a message: term too");
   assert.deepStrictEqual(errors("fix(api", { regex: true }).length, 1, "an invalid expression, in regex mode");
   assert.deepStrictEqual(errors("fix(api"), [], "is plain text otherwise");
+  assert.deepStrictEqual(errors("(?:fix) author:a+?", { regex: true }).length, 2, "what git's expressions cannot say: before every repository fails");
+  assert.deepStrictEqual(errors("(?:fix)"), [], "and only in regex mode");
   assert.deepStrictEqual(errors("author:@me", { regex: true }), [], "@me is not an expression");
   assert.strictEqual(errors("commit:xyz").length, 1);
   assert.strictEqual(errors("commit:abc").length, 1, "a hash needs 4 digits");
@@ -98,6 +108,9 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("ACME", { matchCase: true }), ["--fixed-strings", "--grep=ACME"], "Match Case drops --regexp-ignore-case");
   assert.deepStrictEqual(flags("fix(api|web)", { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=fix(api|web)"]);
   assert.deepStrictEqual(flags("fix(api", { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=fix\\(api"], "an invalid expression is searched as text if it reaches git");
+  assert.deepStrictEqual(flags(String.raw`issue\s\d+`, { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--grep=issue[[:space:]][0-9]+"], "JavaScript's \\s and \\d, as POSIX classes");
+  assert.deepStrictEqual(flags(String.raw`change:v\d`, { regex: true }), ["--regexp-ignore-case", "-Gv[0-9]"]);
+  assert.deepStrictEqual(flags(String.raw`author:\w+@example`, { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--author=[[:alnum:]_]+@example"]);
   assert.deepStrictEqual(flags("--output=/tmp/x"), ["--regexp-ignore-case", "--fixed-strings", "--grep=--output=/tmp/x"], "a value never becomes an option");
   console.log("ok - messages: words OR together, Match All ANDs them, -message: inverts, toggles pick git's matching");
 }
@@ -108,14 +121,17 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("fix(api)", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}fix\\(api\\)`], "only on the sides that are word characters");
   assert.deepStrictEqual(flags("a.b|c", { wholeWord: true, regex: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}(a.b|c)${E}`], "and around a whole expression");
   assert.ok(!flags("fix", { wholeWord: true }).join(" ").includes("\\b"), "no \\b: GNU's alone");
+  assert.deepStrictEqual(flags("über café", { wholeWord: true }), ["--regexp-ignore-case", "--extended-regexp", `--grep=${S}über${E}`, `--grep=${S}café${E}`], "a word starting or ending with a letter beyond ASCII has its edges too");
   console.log("ok - Whole Word wraps literal words and expressions in a word's POSIX edges");
 }
 
 // ── Authors and committers, with @me and the Author box ─────────────────────
 {
   assert.deepStrictEqual(flags("author:dana author:rin"), ["--regexp-ignore-case", "--fixed-strings", "--author=dana", "--author=rin"], "several authors: any of them");
-  assert.deepStrictEqual(flags("@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=dana@example.com"], "@me is this repository's user.email");
-  assert.deepStrictEqual(flags("author:@rin committer:@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=rin", "--committer=dana@example.com"]);
+  assert.deepStrictEqual(flags("@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=<dana@example.com>"], "@me is this repository's whole address, as the author line has it");
+  assert.deepStrictEqual(flags("author:@rin committer:@me", {}, "dana@example.com"), ["--regexp-ignore-case", "--fixed-strings", "--author=rin", "--committer=<dana@example.com>"]);
+  assert.deepStrictEqual(flags("@me", { regex: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>"], "@me stays literal in regex mode: its dot is no wildcard");
+  assert.deepStrictEqual(flags("@me", { wholeWord: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>"], "its brackets are its edges");
   assert.deepStrictEqual(flags("author:d.n", { regex: true }), ["--regexp-ignore-case", "--extended-regexp", "--author=d.n"], "author: is an expression in regex mode");
   assert.deepStrictEqual(flags("fix", { regex: true, authors: ["d.n+a"] }), ["--regexp-ignore-case", "--extended-regexp", "--grep=fix", "--author=d\\.n\\+a"], "the Author box stays literal");
   assert.ok(searchSkips(plan("author:@me"), undefined), "@me alone in a repository without user.email: nothing is mine there");
@@ -132,10 +148,11 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(flags("author:DANA", { authors: ["dana@example.com"], matchCase: true }), ["--extended-regexp", "--author=dana@example\\.com.*DANA", "--author=DANA.*dana@example\\.com"], "Match Case: DANA is not inside dana@…");
   assert.deepStrictEqual(flags('author:"a <d"', { authors: ["dana@example.com"] }), ["--regexp-ignore-case", "--extended-regexp",
     "--author=dana@example\\.com.*a <d", "--author=a <d.*dana@example\\.com", "--author=a <dana@example\\.com"], "overlapping: one more expression per overlap");
-  assert.deepStrictEqual(flags("author:@me", { authors: ["rin"] }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=rin.*dana@example\\.com", "--author=dana@example\\.com.*rin"]);
+  assert.deepStrictEqual(flags("author:@me", { authors: ["rin"] }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=rin.*<dana@example\\.com>", "--author=<dana@example\\.com>.*rin"]);
+  assert.deepStrictEqual(flags("author:@me", { authors: ["dana@example.com"] }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>"], "@me holds the box's address: it alone decides");
   assert.deepStrictEqual(flags("author:d.n", { regex: true, authors: ["dana@example.com"] }), ["--regexp-ignore-case", "--extended-regexp", "--author=dana@example\\.com"], "an expression matching inside the box's value");
   assert.deepStrictEqual(flags("author:^r", { regex: true, authors: ["dana"] }), ["--regexp-ignore-case", "--extended-regexp", "--author=dana.*(^r)", "--author=(^r).*dana"]);
-  assert.deepStrictEqual(flags("author:rin", { mine: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=dana@example\\.com.*rin", "--author=rin.*dana@example\\.com"], "Me is in the Author box");
+  assert.deepStrictEqual(flags("author:rin", { mine: true }, "dana@example.com"), ["--regexp-ignore-case", "--extended-regexp", "--author=<dana@example\\.com>.*rin", "--author=rin.*<dana@example\\.com>"], "Me is in the Author box");
   console.log("ok - author: and the Author box both hold: git matches expressions needing both");
 }
 
@@ -337,6 +354,52 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
   assert.deepStrictEqual(await subjects("after:2000-01-01"), []);
   assert.deepStrictEqual(await subjects("fix author:"), [], "a pending operator runs nothing");
   console.log("ok - real git: authors, words, Match All, -message:, file:, ref: per repository, change:, @me, Whole Word, AND with the Author box");
+
+  {
+    // Me is the whole address: dana@example.com is not adana@example.com or dana@example.com.au.
+    const mineRoot = path.join(home, "acme-me");
+    makeRepo(mineRoot, [{ time: 100, author: "dana", message: "feat: mine" }], home);
+    for (const [email, message, time] of [["adana@example.com", "feat: a longer address", 200], ["dana@example.com.au", "feat: another domain", 300]] as const) {
+      execFileSync("git", ["commit", "-q", "--allow-empty", "-m", message], { cwd: mineRoot, env: { ...gitEnv(home),
+        GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: email, GIT_AUTHOR_DATE: `@${time} +0000`, GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: email, GIT_COMMITTER_DATE: `@${time} +0000` } });
+    }
+    const mine = async (f: Partial<FilterState>) => (await fetchPage({
+      repos: [{ id: mineRoot, root: mineRoot, name: "acme-me" }], filter: { ...ALL, ...f }, pageSize: 50, concurrency: 1, now: 1000, prev: null, run: runGit,
+      signal: new AbortController().signal, me: new Map([[mineRoot, "dana@example.com"]]),
+    })).rows.map((c) => c.subject);
+    for (const f of [{ mine: true }, { text: "@me" }, { text: "committer:@me" }, { mine: true, regex: true }, { text: "@me", regex: true }, { text: "@me", wholeWord: true }, { mine: true, matchCase: true }, { text: "author:dana", mine: true }]) {
+      assert.deepStrictEqual(await mine(f), ["feat: mine"], JSON.stringify(f));
+    }
+    console.log("ok - real git: Me and @me match the whole address, not addresses that contain it");
+  }
+  {
+    // Regex mode reads JavaScript's syntax; git reads POSIX's. Each finds what JavaScript would.
+    const root = path.join(home, "acme-regex");
+    makeRepo(root, ["issue 12", "issue{", "a]b", "x\\y", "fix the issue", "Xüber merged", "über merged", "cafés", "café ok", "Ääüber x"].map((message, i) => ({ time: 100 + i, author: "dana" as const, message })), home);
+    const found = async (text: string, f: Partial<FilterState> = { regex: true }) => {
+      const page = await fetchPage({ repos: [{ id: root, root, name: "acme-regex" }], filter: { ...ALL, ...f, text }, pageSize: 50, concurrency: 1, now: 1000, prev: null,
+        run: runGit, signal: new AbortController().signal });
+      assert.deepStrictEqual(page.failures, [], `${text}: no repository fails`);
+      return page.rows.map((c) => c.subject);
+    };
+    assert.deepStrictEqual(await found(String.raw`"issue \d+"`), ["issue 12"], "\\d is a digit, not a d");
+    assert.deepStrictEqual(await found(String.raw`"issue\s[\d]"`), ["issue 12"]);
+    assert.deepStrictEqual(await found("issue{"), ["issue{"], "a { that is no quantifier is a character");
+    assert.deepStrictEqual(await found(String.raw`[\]]`), ["a]b"]);
+    assert.deepStrictEqual(await found(String.raw`^[\[:x]\\`), ["x\\y"], "[ and : in a class never make a POSIX [: class");
+    assert.deepStrictEqual(await found(String.raw`x\\y`), ["x\\y"]);
+    assert.deepStrictEqual(await found(String.raw`^\w+\s\d+$`), ["issue 12"]);
+    assert.deepStrictEqual(await found(String.raw`^[a-z]\W[a-z]$`), ["x\\y", "a]b"], "\\W");
+    assert.deepStrictEqual(await found("(?:issue)"), [], "refused by the box: nothing runs");
+    // \b where git reads it (glibc, Git for Windows); macOS refuses it in the box instead.
+    if (process.platform !== "darwin") assert.deepStrictEqual(await found(String.raw`\bissue\b`), ["fix the issue", "issue{", "issue 12"], "\\b is a word's edge");
+    console.log("ok - real git: regex mode's \\d, \\s, \\w, \\b, [ … ] and { find what they say, in git's own expressions");
+    // Whole Word with letters beyond ASCII at a word's ends, in the locale runGit gives git.
+    const words = (await found("über", { wholeWord: true })).filter((s) => process.platform === "linux" || s !== "Ääüber x");
+    assert.deepStrictEqual(words, ["über merged"], "not Xüber, and (in a UTF-8 locale) not Ääüber");
+    assert.deepStrictEqual(await found("café", { wholeWord: true }), ["café ok"], "not cafés");
+    console.log("ok - real git: Whole Word holds at the edges of words that start or end beyond ASCII");
+  }
 })().catch((e) => {
   console.error(e);
   process.exit(1);

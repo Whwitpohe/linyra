@@ -5,8 +5,12 @@ import { isValidRef } from "../../filterModel";
 import { EMPTY_TREE } from "../../workingTree";
 import { splitPatch, type FileDiff } from "./context";
 
-/** Patches read the same whatever the user's diff config says: no color, no external tool, renames found. */
-const PATCH = ["--no-color", "--no-ext-diff", "--no-textconv", "-M", "--unified=3"];
+/**
+ * Patches read the same whatever the user's diff config says: no color, no external tool, renames
+ * found, and paths under a/ and b/ (not diff.mnemonicPrefix's c/ and w/, not diff.noprefix's bare
+ * names): the paths linyra.ai.exclude is matched against are read from them.
+ */
+const PATCH = ["--no-color", "--no-ext-diff", "--no-textconv", "-M", "--unified=3", "--src-prefix=a/", "--dst-prefix=b/"];
 /** Most commits a range read lists (its diff is limited by the prompt's budget). */
 export const RANGE_MAX = 200;
 

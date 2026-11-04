@@ -5,11 +5,11 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { parseShow, showArgs } from "./commitDetail";
 import {
-  bothPaths, filesArgs, sameNow, tipsDiffArgs, logArgs, mergeBaseArgs, mergeTreeArgs, mergeTreeFailure, mirror, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog,
+  bothPaths, filesArgs, sameNow, tipsDiffArgs, logArgs, mergeBaseArgs, mergeMessage, mergeTreeArgs, mergeTreeFailure, mirror, parseFiles, parseMergeTree, parseResolve, parseSideCount, parseSideLog,
   resolveInput, setRemoteNames, sideCountArgs, type Pair, type RepoCompare, type Side, type SideCommit,
 } from "./compareModel";
 import { GitError } from "./git";
-import { objectsDir } from "./mergeCheck";
+import { objectsDir, scratchEnv } from "./mergeCheck";
 import type { RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import { branchSuggestions } from "./repos";
@@ -24,6 +24,9 @@ export interface CompareDeps {
   /** The ticked repositories, in Repo List order. */
   repos(): readonly Repo[];
 }
+
+/** Waits for every one of them, whatever each one's outcome. */
+const settled = (runs: readonly Promise<unknown>[]) => Promise.all(runs.map((r) => r.catch(() => undefined)));
 
 /** A result as the tests and the list name it. */
 export function rowLabel(name: string, c: RepoCompare): string {
@@ -45,6 +48,8 @@ export class CompareStore implements vscode.Disposable {
   private readonly map = new Map<string, RepoCompare>();
   /** Bumped by every new pair and swap: a read of an older one is dropped when it lands. */
   private gen = 0;
+  /** Each repository's last read started: an older one that lands after a newer one is dropped. */
+  private readonly readOf = new Map<string, number>();
   private ctl = new AbortController();
   private inFlight = 0;
   private readonly emitter = new vscode.EventEmitter<void>();
@@ -66,10 +71,18 @@ export class CompareStore implements vscode.Disposable {
     return this.checks > 0;
   }
   private checks = 0;
-  /** The merge checks under way: Merge ◀ into ▶ waits for them. */
-  private checked: Promise<void> = Promise.resolve();
-  conflictsChecked(): Promise<void> {
-    return this.checked;
+  /** The reads and the merge checks under way: Merge ◀ into ▶, Release… and the release notes wait for them. */
+  private readonly readsRunning = new Set<Promise<void>>();
+  private readonly checksRunning = new Set<Promise<void>>();
+
+  /** Every read under way has landed, and so have the merge checks those reads start. */
+  async conflictsChecked(): Promise<void> {
+    while (this.readsRunning.size + this.checksRunning.size > 0) await settled([...this.readsRunning, ...this.checksRunning]);
+  }
+
+  /** Every read under way has landed (its merge checks may still run). */
+  async readsDone(): Promise<void> {
+    while (this.readsRunning.size > 0) await settled([...this.readsRunning]);
   }
 
   /** A new pair: everything in flight stops, every ticked repository is read. null forgets it. */
@@ -133,7 +146,16 @@ export class CompareStore implements vscode.Disposable {
     });
   }
 
-  private async read(repos: readonly Repo[]): Promise<void> {
+  /** A read, known until it lands: conflictsChecked() waits for it and for the checks it starts. */
+  private read(repos: readonly Repo[]): Promise<void> {
+    const run = this.readNow(repos);
+    this.readsRunning.add(run);
+    const done = () => { this.readsRunning.delete(run); };
+    void run.then(done, done);
+    return run;
+  }
+
+  private async readNow(repos: readonly Repo[]): Promise<void> {
     const p = this.current;
     if (!p || repos.length === 0) return;
     const gen = this.gen;
@@ -142,9 +164,12 @@ export class CompareStore implements vscode.Disposable {
     this.changed();
     try {
       await runPool(repos, this.deps.concurrency(), async (r, s) => {
+        const mine = (this.readOf.get(r.id) ?? 0) + 1;
+        this.readOf.set(r.id, mine);
         const result = await this.readOne(r, p, s);
-        // A newer pair or swap, or the repository was unticked meanwhile: drop it.
-        if (gen !== this.gen || signal.aborted || !this.deps.repos().some((x) => x.id === r.id)) return;
+        // A newer pair or swap, a newer read of this repository (its branches moved: Refresh of
+        // it alone), or the repository was unticked meanwhile: drop it.
+        if (gen !== this.gen || signal.aborted || this.readOf.get(r.id) !== mine || !this.deps.repos().some((x) => x.id === r.id)) return;
         this.map.set(r.id, result);
         this.changed();
       }, signal);
@@ -178,9 +203,10 @@ export class CompareStore implements vscode.Disposable {
       this.changed();
     }, signal).then(() => undefined, () => undefined).finally(() => {
       this.checks--;
+      this.checksRunning.delete(run);
       this.changed();
     });
-    this.checked = Promise.all([this.checked, run]).then(() => undefined);
+    this.checksRunning.add(run);
   }
 
   private async readOne(r: Repo, p: Pair, signal: AbortSignal): Promise<RepoCompare> {
@@ -204,16 +230,18 @@ export class CompareStore implements vscode.Disposable {
         this.deps.run(r.root, sideCountArgs("left", l, rt), signal).then(parseSideCount),
         this.deps.run(r.root, sideCountArgs("right", l, rt), signal).then(parseSideCount),
       ]);
-      // A side with no commit of its own: merging cannot conflict, so there is nothing to check.
-      const trivial = left.only + left.same === 0 || right.only + right.same === 0;
+      // A side with no commit of its own but merges (they are not counted) shares the other's root.
+      // It can still conflict: merges that resolved the same files differently (criss-cross). So
+      // every pair is checked; the counts cannot tell a side with no commit at all from one with merges.
+      const related = left.only + left.same === 0 || right.only + right.same === 0;
       let base: string | null = null;
-      if (this.noMergeTree && !trivial) {
+      if (this.noMergeTree && !related) {
         // A git without merge-tree --write-tree: the split point tells whether they share history.
         base = await this.mergeBase(r, l, rt, signal);
         if (base === null) return { kind: "nobase" };
       }
       return { kind: "differs", leftName: L.name, rightName: R.name, leftSha: l, rightSha: rt, base, left: left.only, right: right.only, sameLeft: left.same, sameRight: right.same,
-        conflicts: trivial ? [] : this.noMergeTree ? null : undefined };
+        conflicts: this.noMergeTree ? null : undefined };
     } catch (e) {
       if (isAbortError(e)) throw e;
       return { kind: "error", reason: e instanceof Error ? e.message : String(e) };
@@ -246,7 +274,7 @@ export class CompareStore implements vscode.Disposable {
     const objects = await objectsDir(r.root);
     if (!objects) return "unknown";
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "linyra-merge-"));
-    const env = { GIT_OBJECT_DIRECTORY: dir, GIT_ALTERNATE_OBJECT_DIRECTORIES: objects };
+    const env = scratchEnv(dir, objects);
     try {
       let out: string;
       try {
@@ -260,7 +288,9 @@ export class CompareStore implements vscode.Disposable {
           return why === "nobase" ? "nobase" : "unknown";
         }
       }
+      // Exit 1 with no tree id: an error, not a list of conflicts.
       const merged = parseMergeTree(out);
+      if (!merged) return "unknown";
       return { conflicts: merged.conflicts, value: await then(merged, env) };
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
@@ -290,7 +320,8 @@ export class CompareStore implements vscode.Disposable {
     let to = from.sha;
     if (!(await ancestor(into.sha, from.sha))) {
       const merged = parseMergeTree(await run(mergeTreeArgs(into.sha, from.sha)));
-      to = (await run(["commit-tree", merged.tree, "-p", into.sha, "-p", from.sha, "-F", "-"], `Merge branch '${from.name}' into ${into.name}\n`)).trim();
+      if (!merged) throw new Error(localize("git merge-tree did not name the merged tree."));
+      to = (await run(["commit-tree", merged.tree, "-p", into.sha, "-p", from.sha, "-F", "-"], `${mergeMessage(from.name, into.name)}\n`)).trim();
     }
     await run(["update-ref", "-m", `merge ${from.name}: Merge made by Linyra`, `refs/heads/${into.name}`, to, into.sha]);
   }

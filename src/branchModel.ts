@@ -9,6 +9,8 @@ export interface Branch {
   sha: string;
   current: boolean;
   upstream?: string;
+  /** Its upstream is set but no longer there (deleted on the remote, then pruned). */
+  gone?: boolean;
   ahead: number;
   behind: number;
   remote?: string;
@@ -51,7 +53,7 @@ export function parseBranches(output: string, remotes: string[]): Branches {
     const sha = peeled || object;
     const name = match[2];
     const remote = kind === "remote" ? remoteNames.find((r) => name.startsWith(`${r}/`)) : undefined;
-    branches.push({ ref, sha, name, kind, current: head === "*", upstream: upstream || undefined,
+    branches.push({ ref, sha, name, kind, current: head === "*", upstream: upstream || undefined, ...(upstream && track === "[gone]" ? { gone: true } : {}),
       ahead: Number(/ahead (\d+)/.exec(track)?.[1] ?? 0), behind: Number(/behind (\d+)/.exec(track)?.[1] ?? 0),
       ...(remote ? { remote, remoteBranch: name.slice(remote.length + 1) } : {}) });
   }
@@ -86,4 +88,12 @@ export const branchCommands = {
   worktree: (b: Branch, name: string, destination: string) => ["worktree", "add", "-b", name, "--", destination, b.ref],
   setUpstream: (b: Branch, upstream: string) => ["branch", `--set-upstream-to=${upstream}`, "--", b.name],
   unsetUpstream: (b: Branch) => ["branch", "--unset-upstream", "--", b.name],
+  /**
+   * Pull into Current's fetch of one remote branch into its remote-tracking ref, forced (+) as
+   * git fetch's own refspec is: the ref mirrors the remote, also after a force push there.
+   */
+  fetchRemoteBranch: (b: Branch) => {
+    if (b.kind !== "remote" || !b.remoteBranch || !isValidRef(b.remoteBranch)) throw new Error(`not a remote branch: ${b.ref}`);
+    return `+refs/heads/${b.remoteBranch}:${b.ref}`;
+  },
 };

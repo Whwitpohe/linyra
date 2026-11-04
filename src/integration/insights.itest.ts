@@ -317,6 +317,11 @@ describe("Insights", () => {
     await until("the new commit listed", (s) => s.rows.some((r) => r.sha === c.sha));
     await tell({ type: "reveal", repoId: c.repoId, sha: c.sha });
     await until("its details in the Changes view", (s) => s.changes.description.includes(c.sha.slice(0, 7)));
+    // From the Log's Uncommitted side too: the switch goes back to Commits to show it.
+    await send({ type: "logMode", mode: "uncommitted" });
+    await until("the Uncommitted side", (s) => s.logMode === "uncommitted" && !s.changes.description.includes(c.sha.slice(0, 7)));
+    await tell({ type: "reveal", repoId: c.repoId, sha: c.sha });
+    await until("the Commits side, with its details", (s) => s.logMode === "commits" && s.changes.description.includes(c.sha.slice(0, 7)));
     await tell({ type: "reveal", repoId: c.repoId, sha: "not-a-sha" });
     await tell({ type: "reveal", repoId: "/elsewhere", sha: c.sha });
   });

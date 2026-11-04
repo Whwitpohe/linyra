@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { HISTORY_FORMAT, LOG_FORMAT, parseHistory, parseLog } from "./gitLog";
+import { countRecords, HISTORY_FORMAT, LOG_FORMAT, parseHistory, parseLog } from "./gitLog";
 import { commitKey, isSha } from "./types";
 
 const A = "a".repeat(40);
@@ -40,6 +40,24 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
   const out = subjects.map((s, i) => rec(String(i).repeat(40), 100 - i, "rin", s, "")).join("\n");
   assert.deepStrictEqual(parseLog(out, REPO).map((c) => c.subject), subjects);
   console.log("ok - quotes, unicode, emoji, tabs and backslashes round-trip");
+}
+
+// ── An RS in a subject, a name or an email is text, not the end of a record ─
+{
+  const subjects = ["four\x1epart", "\x1eleading", "trailing\x1e", "two\x1e\x1eseparators"];
+  const out = subjects.map((s, i) => rec(String(i + 1).repeat(40), 100 - i, "rin", s, "")).join("\n") + "\n" + rec(B, 1, "da\x1ena", "last", "") + "\n";
+  assert.deepStrictEqual(parseLog(out, REPO).map((c) => c.subject), [...subjects, "last"]);
+  assert.strictEqual(parseLog(out, REPO).at(-1)!.author, "da\x1ena");
+  assert.strictEqual(countRecords(out), 5, "the page's count is git's records, so --skip resumes after them");
+  const withRefs = [A, "1", "dana", "dana@example.com", "a\x1eb", B, "refs:HEAD -> refs/heads/main"].join("\0") + "\x1e\n";
+  assert.deepStrictEqual([parseLog(withRefs, REPO)[0].subject, countRecords(withRefs)], ["a\x1eb", 1]);
+  const cut = rec(A, 5, "dana", "complete", "") + "\n" + [B, "17586", "da", "dana@example.com", "cut\x1eoff"].join("\0");
+  assert.deepStrictEqual([parseLog(cut, REPO).map((c) => c.sha), countRecords(cut)], [[A], 1], "a record cut off after an RS of its own is still cut off");
+  const hist = "\x1e" + [A, "2", "dana", "dana@example.com", "four\x1epart", "", "refs:"].join("\0") + "\0\n:100644 100644 1111111 2222222 M\0odd\x1ename.ts\0" + "1\t0\todd\x1ename.ts\0"
+    + "\x1e" + [B, "1", "dana", "dana@example.com", "older", "", "refs:"].join("\0") + "\0\n:000000 100644 0000000 1111111 A\0odd\x1ename.ts\0" + "1\t0\todd\x1ename.ts\0";
+  assert.deepStrictEqual(parseHistory(hist, REPO, "odd\x1ename.ts").map((c) => [c.subject, c.file?.path, c.file?.status]), [["four\x1epart", "odd\x1ename.ts", "M"], ["older", "odd\x1ename.ts", "A"]]);
+  assert.strictEqual(countRecords(hist), 2, "File History's records start with RS");
+  console.log("ok - an RS inside a subject, a name or a path neither drops a commit nor shifts paging");
 }
 
 // ── Empty output is an empty history, not an error ──────────────────────────

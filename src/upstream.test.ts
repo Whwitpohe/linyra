@@ -1,5 +1,10 @@
 import * as assert from "assert";
-import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, syncLabel } from "./upstream";
+import { execFileSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { gitEnv, makeRepo } from "./fixtures";
+import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullFastForwardArgs, pullPlan, pullReason, pullSummary, syncLabel } from "./upstream";
 
 {
   assert.deepStrictEqual(aheadBehindArgs(), ["rev-list", "--left-right", "--count", "HEAD...@{upstream}", "--"], "local refs only: no fetch");
@@ -43,4 +48,34 @@ import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, p
   assert.strictEqual(pullSummary(14), "Linyra: pulled 14 repositories");
   assert.strictEqual(pullSummary(1), "Linyra: pulled 1 repository");
   console.log("ok - Pull All Behind: fast-forwards only, and says why it left one alone");
+}
+
+{
+  // Real git, merge.autoStash=true and a local edit to a file the pull brings: plain git pull
+  // puts the edit back with conflict markers and exits 0; Linyra's Pull refuses and changes nothing.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-pull-"));
+  const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+  const env = { ...gitEnv(home), ...ID, LC_ALL: "C" };
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  try {
+    const seed = path.join(home, "seed");
+    makeRepo(seed, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": "one\n" } }], home);
+    const web = path.join(home, "acme-web");
+    git(home, ["clone", "-q", seed, web]);
+    fs.writeFileSync(path.join(seed, "a.txt"), "two\n");
+    git(seed, ["commit", "-q", "-am", "feat: upstream's a"]);
+    for (const key of ["merge.autoStash", "rebase.autoStash"]) git(web, ["config", key, "true"]);
+    fs.writeFileSync(path.join(web, "a.txt"), "mine\n");
+    const before = git(web, ["rev-parse", "HEAD"]);
+    assert.throws(() => git(web, pullFastForwardArgs()), /would be overwritten/);
+    assert.strictEqual(fs.readFileSync(path.join(web, "a.txt"), "utf8"), "mine\n", "the local edit is as it was");
+    assert.strictEqual(git(web, ["rev-parse", "HEAD"]), before, "and the branch did not move");
+    assert.strictEqual(git(web, ["stash", "list"]), "", "nothing stashed");
+    git(web, ["checkout", "--", "a.txt"]);
+    git(web, pullFastForwardArgs());
+    assert.strictEqual(fs.readFileSync(path.join(web, "a.txt"), "utf8"), "two\n", "a clean tree is fast-forwarded");
+    console.log("ok - real git: Pull pins autostash off, so local edits to incoming files stop it instead of turning into conflict markers");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 }

@@ -39,7 +39,7 @@ export class PanelLayout {
     new ResizeObserver(() => this.apply()).observe(this.workspace);
     // Drag (or ←/→) the Repo List's divider; the width is saved by the host when the gesture ends.
     // A wider Repo List leaves the Log less room: Automatic decides again.
-    attachSplitter(this.splitter, { get: () => this.paneWidth.shown, set: (w) => { this.setPaneWidth(w); this.apply(); }, commit: () => this.host.post({ type: "layout", repoPaneWidth: this.paneWidth.shown }) });
+    attachSplitter(this.splitter, { get: () => this.paneWidth.shown, set: (w) => { this.setPaneWidth(w); this.apply(); }, commit: () => this.host.post({ type: "layout", repoPaneWidth: this.paneWidth.chosen }) });
     window.addEventListener("resize", () => this.showPaneWidth(this.paneWidth.fit(window.innerWidth)));
   }
 
@@ -83,7 +83,8 @@ export class PanelLayout {
   }
 
   private save(): void {
-    this.host.post({ type: "layout", repoPaneWidth: this.paneWidth.shown, changesPaneWidth: this.changesWidth, changesPaneHeight: this.changesHeight, showChanges: this.showChanges, changesLayout: this.mode });
+    // The chosen width: a save while the panel is narrow must not make the squeezed one the user's.
+    this.host.post({ type: "layout", repoPaneWidth: this.paneWidth.chosen, changesPaneWidth: this.changesWidth, changesPaneHeight: this.changesHeight, showChanges: this.showChanges, changesLayout: this.mode });
   }
 
   private setPaneWidth(width: number): void {

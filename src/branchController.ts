@@ -12,12 +12,15 @@ import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, SCHEME } from "./revisionUri";
 import type { Repo } from "./types";
 import type { Ask } from "./uncommittedActions";
-import { isStashRef, nothingStashed, parseStashes, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
+import { isStashRef, nothingStashed, parseStashes, stashBySha, stashCommands, stashListArgs, stashStopped, type Stash } from "./stashModel";
 import { compareWithWorkingTree } from "./workingTreeDiff";
 import { guardCheckout } from "./smartCheckout";
 import { readWorktrees } from "./repoHead";
+import { stashLogStamp } from "./stashLog";
+import { pullFastForwardArgs } from "./upstream";
+import { repoBusy } from "./repoBusy";
 import { folderName, hasLocalChanges, worktreeCommands } from "./worktreeModel";
-import { droppedArgs, forcePushPrompt, isProtected, parseDropped } from "./multiRepoModel";
+import { droppedArgs, forcePushPrompt, forcePushProtected, parseDropped, protectionPatterns } from "./multiRepoModel";
 import { gitText, whyOf } from "./actionErrors";
 import { branchDone, branchFailed, deleteAnywayPrompt, deletePrompt, distanceArgs, integratePrompt, parseDistance, stashFailed, unmergedArgs } from "./branchPrompts";
 
@@ -52,8 +55,9 @@ const STASH_UNTRACKED = "linyra.stash.untracked";
 export class BranchController implements vscode.Disposable {
   private state: BranchSidebarState;
   private readonly shown = new Map<string, Branches>();
+  /** refs/stash's reflog as each shown repository's stashes were listed (stashLogStamp). */
+  private readonly stashStamps = new Map<string, string>();
   private readonly reading = new Map<string, Promise<Branches | undefined>>();
-  private readonly busy = new Set<string>();
   private readonly ctl = new AbortController();
   private readonly limiter: Limiter;
   /** Integration-only answer for the native folder picker. */
@@ -101,6 +105,8 @@ export class BranchController implements vscode.Disposable {
       // stashes), remote names from VS Code's Git when it watches the repository, and the stash
       // list only where there is one.
       const known = this.deps.discovery.remotes(repo.root);
+      // Before the listing: a stash pushed or dropped while git reads is a change stashesTouched sees.
+      const stashes = await stashLogStamp(repo.root);
       const [output, remoteList, worktrees] = await Promise.all([
         this.deps.run(repo.root, [...branchArgs(), "refs/stash"], this.ctl.signal),
         known ? Promise.resolve(known.join("\n")) : this.deps.run(repo.root, ["remote"], this.ctl.signal),
@@ -113,6 +119,7 @@ export class BranchController implements vscode.Disposable {
       if (worktrees.length > 0) data.worktrees = worktrees;
       if (this.ctl.signal.aborted) return;
       this.shown.set(repoId, data);
+      this.stashStamps.set(repoId, stashes);
       this.deps.post({ type: "branchTree", repoId, data });
       return data;
     }).catch((e: unknown) => {
@@ -139,13 +146,27 @@ export class BranchController implements vscode.Disposable {
     await Promise.all(ids.filter((id) => this.shown.has(id)).map(async (id) => { await this.reading.get(id); await this.load(id); }));
   }
 
+  /**
+   * VS Code's Git saw the repository change and HEAD did not move: a stash pushed, popped or
+   * dropped in Source Control or a terminal is such a change. refs/stash's reflog says whether the
+   * listed stashes are still the stashes (a file's size and time, no git process); only when they
+   * are not is the repository read again.
+   */
+  async stashesTouched(repoId: string): Promise<void> {
+    const repo = this.deps.repos().find((r) => r.id === repoId);
+    if (!repo || !this.shown.has(repoId)) return;
+    await this.reading.get(repoId);
+    if ((await stashLogStamp(repo.root)) !== this.stashStamps.get(repoId)) await this.refresh(repoId);
+  }
+
   async action(action: BranchAction, arg: unknown): Promise<void> {
     const a = arg as { repoId?: unknown; ref?: unknown } | undefined;
     const repo = this.deps.repos().find((r) => r.id === a?.repoId);
     if (!repo || typeof a?.ref !== "string") return;
-    if (this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
+    // A write holds the repository (shared with every module that writes); a read runs beside it.
     const writes = !["view", "copy", "favorite", "compare", "worktreeDiff"].includes(action);
-    if (writes) this.busy.add(repo.id);
+    const release = writes ? repoBusy.take(repo.id) : () => undefined;
+    if (!release) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
     // The branch's name for the error, and the status-bar line once it worked.
     let label = a.ref.replace(/^refs\/(heads|remotes|tags)\//, "");
     let done: string | undefined;
@@ -278,7 +299,7 @@ export class BranchController implements vscode.Disposable {
         case "pull": {
           if (!b.current) throw new Error(localize("Only the checked-out branch can be pulled."));
           await ensureCurrent();
-          if (native?.pull) await native.pull(); else await run(["pull", "--ff-only"]);
+          if (native?.pull) await native.pull(); else await run(pullFastForwardArgs());
           done = branchDone("pull", { name: b.name, repo: repo.name });
           break;
         }
@@ -302,8 +323,8 @@ export class BranchController implements vscode.Disposable {
           // The question names the commits the remote loses and whose they are; never a protected branch.
           const lease = upstreamRemote && b.ahead > 0 && b.behind > 0 ? data.branches.find((x) => x.kind === "remote" && x.name === b.upstream)?.sha : undefined;
           if (lease) {
-            const guarded = vscode.workspace.getConfiguration("git", vscode.Uri.file(repo.root)).get<string[]>("branchProtection", []);
-            if (isProtected(destination, Array.isArray(guarded) ? guarded : [])) {
+            const guarded = protectionPatterns(vscode.workspace.getConfiguration("git", vscode.Uri.file(repo.root)).get<unknown>("branchProtection", []));
+            if (forcePushProtected(b.name, destination, guarded)) {
               throw new Error(localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", b.name, remote, destination));
             }
             const [log, me] = await Promise.all([run(droppedArgs(b.name, `${remote}/${destination}`)).catch(() => ""), run(["config", "user.email"]).catch(() => "")]);
@@ -324,7 +345,7 @@ export class BranchController implements vscode.Disposable {
           if (action === "pullMerge" || action === "pullRebase") {
             if (!b.remote || !b.remoteBranch) return;
             await ensureCurrent();
-            const refspec = `refs/heads/${b.remoteBranch}:${b.ref}`;
+            const refspec = branchCommands.fetchRemoteBranch(b);
             if (native?.fetch) await native.fetch(b.remote, refspec); else await run(["fetch", "--", b.remote, refspec]);
           }
           // What moves, in counts, and the button says the action.
@@ -355,7 +376,7 @@ export class BranchController implements vscode.Disposable {
       if (writes) {
         try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
         catch (e) { void vscode.window.showErrorMessage(localize("Linyra could not read {0} again: {1}", repo.name, e instanceof Error ? e.message : String(e))); }
-        finally { this.busy.delete(repo.id); }
+        finally { release(); }
       }
     }
   }
@@ -399,8 +420,8 @@ export class BranchController implements vscode.Disposable {
     if (action === "reveal") { await vscode.commands.executeCommand("revealFileInOS", uri); return; }
     if (action === "copyPath") { await copyText(w.path); return; }
     if (w.main) return;
-    if (this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
-    this.busy.add(repo.id);
+    const release = repoBusy.take(repo.id);
+    if (!release) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
     const git = (args: string[]) => this.deps.run(repo.root, args, WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
     try {
       const name = folderName(w.path);
@@ -424,36 +445,47 @@ export class BranchController implements vscode.Disposable {
       const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
       void vscode.window.showErrorMessage(localize("Linyra could not remove the worktree in {0}: {1}", repo.name, typeof stderr === "string" && stderr.trim() ? errorLine(stderr) : e instanceof Error ? e.message : String(e)));
     } finally {
-      try { await this.refresh(repo.id); } finally { this.busy.delete(repo.id); }
+      try { await this.refresh(repo.id); } finally { release(); }
     }
   }
 
   /**
    * A stash row: Show its changes, Apply or Pop it (keeping its staged state), or Drop it (asks).
-   * The stash is found again by its ref in a fresh listing, so a list that moved meanwhile is not
-   * acted on blind.
+   * The stash is found again by its commit in a fresh listing: a stash pushed or dropped elsewhere
+   * since the row was drawn moves every stash@{n}, and the row's own stash is the one acted on.
    */
   async stash(action: StashAction, arg: unknown): Promise<void> {
-    const a = arg as { repoId?: unknown; ref?: unknown } | undefined;
+    const a = arg as { repoId?: unknown; ref?: unknown; sha?: unknown } | undefined;
     const repo = this.deps.repos().find((r) => r.id === a?.repoId);
     if (!repo || !isStashRef(a?.ref)) return;
-    if (action !== "show" && this.busy.has(repo.id)) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
-    const data = await this.load(repo.id);
-    const s = data?.stashes?.find((x) => x.ref === a.ref);
-    if (!s) return;
-    if (action === "show") { await this.showStash(repo, s); return; }
-    this.busy.add(repo.id);
+    // Apply, Pop and Drop hold the repository from the fresh listing to the refresh after; Show only reads.
+    const release = action === "show" ? () => undefined : repoBusy.take(repo.id);
+    if (!release) { void vscode.window.showInformationMessage(localize("A Git operation is already running in {0}.", repo.name)); return; }
     try {
-      if (action === "drop" && !(await this.deps.ask.warning(localize("Drop stash {0} in {1}?", s.ref, repo.name), s.subject, localize("Drop")))) return;
-      await this.deps.run(repo.root, stashCommands[action](s.ref), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
-    } catch (e) {
-      const message = gitText(e);
-      const reason = stashStopped(message);
-      this.lastError = stashFailed(action, s.ref, repo.name, reason ? localize(reason) : whyOf(e));
-      void vscode.window.showErrorMessage(this.lastError);
+      const data = await this.load(repo.id);
+      if (!data) return;
+      // Enter on a row names only its ref, and Show only reads; everything else needs the row's commit.
+      const s = action === "show" && a.sha === undefined ? data.stashes?.find((x) => x.ref === a.ref) : stashBySha(data.stashes ?? [], a.sha);
+      if (!s) {
+        // Gone, or the row was drawn before the list changed: load() has drawn the list as it is now.
+        this.lastError = localize("The stashes of {0} changed since they were listed: the Repo List shows them as they are now. Pick the stash again.", repo.name);
+        void vscode.window.showInformationMessage(this.lastError);
+        return;
+      }
+      if (action === "show") { await this.showStash(repo, s); return; }
+      try {
+        if (action === "drop" && !(await this.deps.ask.warning(localize("Drop stash {0} in {1}?", s.ref, repo.name), s.subject, localize("Drop")))) return;
+        await this.deps.run(repo.root, stashCommands[action](s.ref), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
+      } catch (e) {
+        const message = gitText(e);
+        const reason = stashStopped(message);
+        this.lastError = stashFailed(action, s.ref, repo.name, reason ? localize(reason) : whyOf(e));
+        void vscode.window.showErrorMessage(this.lastError);
+      } finally {
+        await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id);
+      }
     } finally {
-      try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
-      finally { this.busy.delete(repo.id); }
+      release();
     }
   }
 
@@ -466,12 +498,15 @@ export class BranchController implements vscode.Disposable {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     const repo = this.deps.repos().find((r) => r.id === id);
     if (!repo) return;
-    // Busy: said, as the other actions say it, never a click that does nothing.
-    if (this.busy.has(repo.id)) { this.lastError = localize("A Git operation is already running in {0}.", repo.name); void vscode.window.showInformationMessage(this.lastError); return; }
+    // Busy: said, as the other actions say it, never a click that does nothing (before the box, and
+    // again after it: a write may have started while it was open).
+    const busy = () => { this.lastError = localize("A Git operation is already running in {0}.", repo.name); void vscode.window.showInformationMessage(this.lastError); };
+    if (repoBusy.has(repo.id)) { busy(); return; }
     const answer = preset ? { message: preset.message, untracked: preset.untracked } : await this.stashBox(repo);
     if (!answer || !answer.message.trim()) return;
     if (!preset) await this.context.globalState.update(STASH_UNTRACKED, answer.untracked);
-    this.busy.add(repo.id);
+    const release = repoBusy.take(repo.id);
+    if (!release) { busy(); return; }
     try {
       const out = await this.deps.run(repo.root, stashCommands.push(answer.message, answer.untracked), WRITE_SIGNAL, { env: { GIT_OPTIONAL_LOCKS: "1", LC_ALL: "C" } });
       // git saves nothing and still succeeds when there is nothing it may take (only new files, left out).
@@ -487,7 +522,7 @@ export class BranchController implements vscode.Disposable {
       void vscode.window.showErrorMessage(this.lastError);
     } finally {
       try { await this.deps.discovery.branchRepository(repo.root)?.status?.(); await this.deps.changed(repo.id); await this.refresh(repo.id); }
-      finally { this.busy.delete(repo.id); }
+      finally { release(); }
     }
   }
 

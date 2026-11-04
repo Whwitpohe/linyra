@@ -1,17 +1,50 @@
 import { isSha, type ChangeStatus, type Commit } from "./types";
 import { parseDecorations } from "./commitReferences";
 
-// Fields separated by NUL, records terminated by RS (0x1e): no subject can be
-// confused with a delimiter, so nothing needs escaping.
+// Fields separated by NUL, records terminated by RS (0x1e). No field holds a NUL; a subject, a
+// name or a path may hold an RS, so a record ends only at an RS before the next record's hash.
 export const LOG_FORMAT = "--format=%H%x00%ct%x00%an%x00%ae%x00%s%x00%P%x00refs:%D%x1e";
 
+/** Where a record starts: its hash (40 or 64 hex digits) and the NUL after it, past git's newline. */
+const RECORD_START = /^\n*(?:[0-9a-f]{40}|[0-9a-f]{64})\0/;
+
+/**
+ * The records of a log whose records end with RS (LOG_FORMAT). Whatever follows the last one is
+ * git's trailing newline or a record cut off by a killed process: neither is a record. An RS
+ * followed by anything but a hash or the end is text in a field, and stays in it.
+ */
+function endedRecords(stdout: string): string[] {
+  const pieces = stdout.split("\x1e");
+  const records: string[] = [];
+  let current = pieces[0];
+  for (let i = 1; i < pieces.length; i++) {
+    const next = pieces[i];
+    if (RECORD_START.test(next) || (i === pieces.length - 1 && next.trim() === "")) {
+      records.push(current);
+      current = next;
+    } else {
+      current += `\x1e${next}`;
+    }
+  }
+  return records;
+}
+
+/**
+ * The records of a log whose records start with RS and the hash (HISTORY_FORMAT, the --follow
+ * walk's %x1e%H): an RS that a field or a path holds stays in its record.
+ */
+export function startedRecords(stdout: string): string[] {
+  const records: string[] = [];
+  for (const piece of stdout.split("\x1e").slice(1)) {
+    if (records.length === 0 || RECORD_START.test(piece)) records.push(piece);
+    else records[records.length - 1] += `\x1e${piece}`;
+  }
+  return records;
+}
+
 export function parseLog(stdout: string, repoId: string): Commit[] {
-  const records = stdout.split("\x1e");
-  // Whatever follows the last RS is either git's trailing newline or a record
-  // cut off by a killed process; neither is a commit.
-  records.pop();
   const commits: Commit[] = [];
-  for (const record of records) {
+  for (const record of endedRecords(stdout)) {
     const fields = record.replace(/^\n/, "").split("\0");
     if (fields.length !== 6 && !(fields.length === 7 && fields[6].startsWith("refs:"))) continue;
     const [sha, ct, author, email, subject, parents, decorations] = fields;
@@ -24,12 +57,12 @@ export function parseLog(stdout: string, repoId: string): Commit[] {
 }
 
 /**
- * Records git actually emitted, parseable or not. Paging advances --skip by
- * this, not by parsed commits, or one malformed record would misalign every
- * later page.
+ * Records git actually emitted, parseable or not: the Log's end with RS, File History's start
+ * with it. Paging advances --skip by this, not by parsed commits, or one malformed record would
+ * misalign every later page.
  */
 export function countRecords(stdout: string): number {
-  return stdout.split("\x1e").length - 1;
+  return stdout.startsWith("\x1e") ? startedRecords(stdout).length : endedRecords(stdout).length;
 }
 
 /**
@@ -83,10 +116,12 @@ function historyChanges(t: readonly string[], from: number): { entries: HistoryE
 /**
  * One file's commits (git log --raw --numstat -z -M over every name it had), each with that
  * file's path at the time, its status letter and its lines added and deleted (null: binary).
+ * `names`: each commit's name for the file (the --follow walk's), so a commit that also changed
+ * another file under one of its old names shows this file's change.
  */
-export function parseHistory(stdout: string, repoId: string, currentPath: string): Commit[] {
+export function parseHistory(stdout: string, repoId: string, currentPath: string, names?: ReadonlyMap<string, string>): Commit[] {
   const commits: Commit[] = [];
-  for (const record of stdout.split("\x1e").slice(1)) {
+  for (const record of startedRecords(stdout)) {
     const t = record.split("\0");
     if (t.length < 7) continue; // cut off by a killed process
     const [sha, ct, author, email, subject, parents] = t;
@@ -97,7 +132,8 @@ export function parseHistory(stdout: string, repoId: string, currentPath: string
     if (!changes) continue;
     // A merge shows no diff: the file keeps the name the next older row will give it.
     let file: NonNullable<Commit["file"]> = { path: commits.at(-1)?.file?.oldPath ?? commits.at(-1)?.file?.path ?? currentPath };
-    const first = changes.entries[0];
+    const name = names?.get(sha);
+    const first = (name === undefined ? undefined : changes.entries.find((e) => e.path === name)) ?? changes.entries[0];
     if (first) {
       const lines = changes.lines.get(first.path);
       file = { ...first, ...(lines ? lines : {}) };

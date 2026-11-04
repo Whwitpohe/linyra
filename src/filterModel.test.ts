@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, escapeRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, escapeRegex, gitRegex, regexProblem, gitDate, hasOtherAuthors, normalizePath, pathspecOf, followUnion, historyArgs, historyInput, historyPathsArgs, isValidRef, logArgs, parseFollow, sameExceptText, sameFilter, sanitizeFilter, selectRepos, selectedBranches, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -130,7 +130,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.deepStrictEqual(many.filter((x) => x.startsWith("--author=")), ["--author=dana", "--author=rin@example.com", "--author=sa"], "each chip, plus what is being typed");
   assert.strictEqual(many.filter((x) => x === "--fixed-strings").length, 1, "literal matching once, for all of them");
   const withMe = logArgs({ ...ALL, authors: ["rin"], mine: true }, { pageSize: 200, now: 0, me: "dana@example.com" });
-  assert.deepStrictEqual(withMe.filter((x) => x.startsWith("--author=")), ["--author=rin", "--author=dana@example.com"], "Me is one more author, not a replacement");
+  assert.deepStrictEqual(withMe.filter((x) => x.startsWith("--author=")), ["--author=rin", "--author=<dana@example.com>"], "Me is one more author, not a replacement");
   assert.deepStrictEqual(args({ ...ALL, authors: ["dana", "Dana", "", "  "] }).filter((x) => x.startsWith("--author=")), ["--author=dana"], "blank and repeated authors add nothing (case-insensitive)");
   assert.deepStrictEqual(authorPatterns({ ...ALL, authors: ["rin"], mine: true }), ["rin"], "without a repo email, Me adds nothing");
   assert.ok(!hasOtherAuthors({ ...ALL, mine: true }) && hasOtherAuthors({ ...ALL, mine: true, authors: ["rin"] }), "Me alone vs Me plus others");
@@ -148,11 +148,14 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 // ── Me: each repository's own user.email ────────────────────────────────────
 {
   const a = logArgs({ ...ALL, mine: true }, { pageSize: 200, now: NOW, me: "dana@example.com" });
-  assert.ok(a.includes("--author=dana@example.com") && a.includes("--fixed-strings"));
+  assert.ok(a.includes("--author=<dana@example.com>") && a.includes("--fixed-strings"), "the whole address: git matches --author against \"Name <email>\"");
   const both = logArgs({ ...ALL, mine: true, author: "rin" }, { pageSize: 200, now: NOW, me: "dana@example.com" });
-  assert.ok(both.includes("--author=dana@example.com") && both.includes("--author=rin"), "Me is one more author beside the typed one (0.2.0: several authors)");
+  assert.ok(both.includes("--author=<dana@example.com>") && both.includes("--author=rin"), "Me is one more author beside the typed one (0.2.0: several authors)");
+  const regex = logArgs({ ...ALL, mine: true, regex: true }, { pageSize: 200, now: NOW, me: "dana@example.com" });
+  assert.ok(regex.includes(String.raw`--author=<dana@example\.com>`) && regex.includes("--extended-regexp"), "escaped where the patterns are expressions");
+  assert.deepStrictEqual(authorPatterns({ ...ALL, mine: true }, "  "), [], "a blank user.email is no one");
   assert.ok(sanitizeFilter({ ...ALL, mine: true }).mine);
-  console.log("ok - Me becomes --author=<that repository's user.email>");
+  console.log("ok - Me becomes --author=<that repository's user.email>, angle brackets included");
 }
 
 // ── File history: the same filters, one path, followed across renames ──────
@@ -161,15 +164,27 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(a[1], HISTORY_FORMAT);
   assert.ok(a.includes("--grep=fix") && a.includes("--skip=5"));
   assert.ok(!a.includes("--follow"), "no --follow: it cannot page with --skip, and a filtered-out rename would cut the history");
-  assert.deepStrictEqual(a.slice(-10), ["--raw", "--numstat", "-z", "-M", "--branches", "--remotes", "HEAD", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "status letters (--raw) and line counts (--numstat) in one process; the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.deepStrictEqual(a.slice(-9), ["--raw", "--numstat", "-z", "-M", "--no-walk=sorted", "--stdin", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "status letters (--raw) and line counts (--numstat) in one process; the commits from stdin; the paths are always after --, and literal: [id] is a folder, not a glob");
+  assert.ok(!a.includes("--branches") && !a.includes("--end-of-options"), "no revisions: exactly the commits on stdin");
+  assert.ok(a.indexOf("--no-walk=sorted") > a.indexOf("--max-count=200"), "--max-count turns walking back on: --no-walk comes after it");
+  assert.ok(historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["a.ts"], walkOrder: true }).includes("--no-walk=unsorted"), "one --topo-order walk keeps its order");
   assert.ok(!a.includes("--name-status"), "--name-status would replace --numstat: git keeps one of them");
   const inj = historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["--output=/tmp/x"] });
   assert.deepStrictEqual(inj.slice(-2), ["--", ":(literal)--output=/tmp/x"], "a path can never be read as an option");
-  assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
+  assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e%H", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
+  assert.ok(historyPathsArgs("a.ts", undefined, true).includes("--topo-order"), "the walk in the Log's order");
   assert.deepStrictEqual(historyPathsArgs("app/[id]/page.tsx").slice(-1), [":(literal)app/[id]/page.tsx"], "a route folder like [id] is not a glob");
-  assert.deepStrictEqual(parseHistoryPaths("\x1e\x00\nM\x00new.ts\x00\x1e\x00\nR100\x00old.ts\x00new.ts\x00\x1e\x00\nA\x00old.ts\x00", "new.ts"), ["new.ts", "old.ts"]);
-  assert.deepStrictEqual(parseHistoryPaths("", "a.ts"), ["a.ts"], "an untracked file still has its own path");
-  console.log("ok - history first learns every name the file had, then asks for all of them");
+  const [A, B, C] = ["a", "b", "c"].map((x) => x.repeat(40));
+  const walk = parseFollow(`\x1e${A}\x00\nM\x00new.ts\x00\x1e${B}\x00\nR100\x00old.ts\x00new.ts\x00\x1e${C}\x00\nA\x00old.ts\x00`, "new.ts");
+  assert.deepStrictEqual(walk, { names: ["new.ts", "old.ts"], commits: new Map([[A, "new.ts"], [B, "new.ts"], [C, "old.ts"]]), renamed: true }, "each commit with the file's name in it");
+  assert.deepStrictEqual(parseFollow("", "a.ts"), { names: ["a.ts"], commits: new Map(), renamed: false }, "an untracked file still has its own path");
+  assert.deepStrictEqual(parseFollow(`\x1e${A}\x00\nM\x00a.ts\x00\x1e${B}\x00\nR10`, "a.ts").commits, new Map([[A, "a.ts"]]), "a record cut off by a kill is left out");
+  assert.strictEqual(historyInput(walk), `${A}\n${B}\n${C}\n`);
+  const other = parseFollow(`\x1e${"d".repeat(40)}\x00\nM\x00new.ts\x00\x1e${B}\x00\nR100\x00side.ts\x00new.ts\x00`, "new.ts");
+  const both = followUnion([walk, other], "new.ts", true);
+  assert.deepStrictEqual([both.names, [...both.commits.keys()], both.walkOrder], [["new.ts", "old.ts", "side.ts"], [A, B, C, "d".repeat(40)], false], "every walk's commits once; several walks are sorted by date");
+  assert.strictEqual(followUnion([walk], "new.ts", true).walkOrder, true);
+  console.log("ok - history first learns each commit the file is in and every name it had, then asks for exactly those");
 }
 
 // ── Default range and branch ────────────────────────────────────────────────
@@ -187,7 +202,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   const a = logArgs(ALL, { pageSize: 5, now: NOW, ref: "origin/prod" });
   assert.deepStrictEqual(a.slice(-3), ["--end-of-options", "origin/prod", "--"], "the ref comes after --end-of-options and before --, so a same-named folder is never ambiguous");
   const h = historyArgs({ ...ALL, text: "fix" }, { pageSize: 5, now: NOW, paths: ["b.ts", "a.ts"], ref: "origin/prod" });
-  assert.deepStrictEqual(h.slice(-9), ["--raw", "--numstat", "-z", "-M", "--end-of-options", "origin/prod", "--", ":(literal)b.ts", ":(literal)a.ts"], "history options stay before the ref; every name the file had is a pathspec");
+  assert.deepStrictEqual(h.slice(-9), ["--raw", "--numstat", "-z", "-M", "--no-walk=sorted", "--stdin", "--", ":(literal)b.ts", ":(literal)a.ts"], "history walks no ref: its branch chose the commits on stdin; every name the file had is a pathspec");
   assert.ok(logArgs(ALL, { pageSize: 5, now: NOW }).includes("--branches"), "all local and remote branches by default");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "--output=/tmp/x" }).branch, "", "an invalid persisted branch is dropped");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");
@@ -253,6 +268,26 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(escapeRegex(String.raw`a.b[c]^$|\ `.trim()), String.raw`a\.b\[c\]\^\$\|\\`);
   assert.strictEqual(regexProblem("fix(api|web)"), undefined);
   assert.ok(regexProblem("fix(api"), "an unbalanced group is refused before git sees it");
+  // JavaScript's syntax, as git's POSIX expressions say it everywhere (glibc reads \d as d).
+  assert.strictEqual(gitRegex(String.raw`issue \d+`), "issue [0-9]+");
+  assert.strictEqual(gitRegex(String.raw`\s\S\w\W\D`), "[[:space:]][^[:space:]][[:alnum:]_][^[:alnum:]_][^0-9]");
+  assert.strictEqual(gitRegex(String.raw`[\d\s_-]x`), "[_0-9[:space:]-]x", "inside a class too; - last");
+  assert.strictEqual(gitRegex(String.raw`[^\w.]`), "[^.[:alnum:]_]");
+  assert.strictEqual(gitRegex(String.raw`[\]\\a]`), "[]\\a]", "] first; a backslash in a POSIX class is itself");
+  assert.strictEqual(gitRegex(String.raw`[\^]|[a^]|[\[:x]`), String.raw`\^|[a^]|[:x[]`, "^ never first unless it negates; [ never opens [: [. or [=");
+  assert.strictEqual(gitRegex(String.raw`[a-\d]`), "[a0-9-]", "next to a class, - is itself");
+  assert.deepStrictEqual(["[a-z0-9]", "[[:alpha:]]+", "a{2}b{2,}c{1,3}", "fix(api|web)", "^x$"].map((x) => gitRegex(x)), ["[a-z0-9]", "[[:alpha:]]+", "a{2}b{2,}c{1,3}", "fix(api|web)", "^x$"]);
+  assert.deepStrictEqual(["issue{", "{,2}", "a}", String.raw`\/\-\<\>\.`].map((x) => gitRegex(x)), ["issue\\{", "\\{,2\\}", "a\\}", "/-<>\\."], "what JavaScript reads as characters stays characters ({ is git's interval, \\< its word start)");
+  for (const bad of ["(?:issue)", "fix (?=issue)", "(?!x)", "(?<=a)b", "(?<!a)b", "(?<n>a)", "a+?", "a*?", "a??", "a{2}?", String.raw`(a)\1`, String.raw`\x41`, String.raw`\t`, String.raw`\0`, String.raw`[\D]`, String.raw`[\b]`, "[]", "[^]", "a{256}", "[[:alpha:]", String.raw`[\]-a]`]) {
+    assert.ok(regexProblem(bad), `refused: ${bad}`);
+  }
+  assert.match(regexProblem(String.raw`\bfix\b`, "darwin") ?? "", /Match Whole Word/, "macOS has no \\b: Whole Word works there");
+  for (const platform of ["linux", "win32"] as const) {
+    assert.strictEqual(regexProblem(String.raw`\bfix\b`, platform), undefined, `${platform}: git reads \\b`);
+    assert.deepStrictEqual([String.raw`\bfix\b`, String.raw`\Bix`, String.raw`\b{2}`].map((x) => gitRegex(x, platform)), [String.raw`\bfix\b`, String.raw`\Bix`, String.raw`\b\{2\}`], "kept as written; a { after an edge is a character");
+  }
+  assert.match(regexProblem("(?:issue)") ?? "", /\(\?:/, "the message names what git lacks");
+  assert.strictEqual(regexProblem("a{255}"), undefined);
   assert.deepStrictEqual([sanitizeFilter({ ...ALL, regex: true, matchCase: true }).regex, sanitizeFilter({ ...ALL, regex: "yes" }).regex], [true, undefined]);
   assert.ok(!sameExceptText({ ...ALL, regex: true }, ALL), "toggling regex reloads at once, not debounced");
   assert.ok(sameExceptText({ ...ALL, matchCase: false }, ALL), "absent and false are the same");

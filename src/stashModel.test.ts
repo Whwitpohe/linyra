@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { gitEnv, makeRepo } from "./fixtures";
-import { isStashRef, nothingStashed, parseStashes, stashCommands, stashLabel, stashListArgs, stashStopped } from "./stashModel";
+import { isStashRef, nothingStashed, parseStashes, stashBySha, stashCommands, stashLabel, stashListArgs, stashStopped } from "./stashModel";
 
 const sha = "a".repeat(40);
 {
@@ -57,6 +57,24 @@ const sha = "a".repeat(40);
     git(stashCommands.drop("stash@{0}"));
     assert.ok(!nothingStashed(push("with the new file", true)), "new files included: saved");
     console.log("ok - real git: a push that saves nothing is told apart from one that saves");
+
+    // The row showed "first" as stash@{0}; a stash pushed elsewhere since moves it to stash@{1}.
+    git(["reset", "-q", "--hard"]); git(["clean", "-fdq"]); git(["stash", "clear"]);
+    fs.writeFileSync(path.join(root, "a.txt"), "first\n");
+    git(stashCommands.push("first", false));
+    const [row] = parseStashes(git(stashListArgs()));
+    fs.writeFileSync(path.join(root, "a.txt"), "second\n");
+    git(stashCommands.push("second", false));
+    const now = parseStashes(git(stashListArgs()));
+    const found = stashBySha(now, row.sha);
+    assert.strictEqual(found?.ref, "stash@{1}", "found by its commit, where it is now");
+    git(stashCommands.pop(found!.ref));
+    assert.strictEqual(fs.readFileSync(path.join(root, "a.txt"), "utf8"), "first\n", "the row's own stash came back");
+    assert.deepStrictEqual(parseStashes(git(stashListArgs())).map(stashLabel), ["second"], "the other one stays");
+    assert.strictEqual(stashBySha(parseStashes(git(stashListArgs())), row.sha), undefined, "popped: not there any more");
+    assert.strictEqual(stashBySha(now, undefined), undefined, "no commit named: no stash");
+    assert.strictEqual(stashBySha(now, "stash@{0}"), undefined);
+    console.log("ok - real git: a stash row's action finds its own stash by commit after the list moved");
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

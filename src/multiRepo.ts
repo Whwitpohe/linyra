@@ -4,11 +4,12 @@ import { isValidRef } from "./filterModel";
 import { checkValue, listValue, textValue } from "./formModel";
 import { localize } from "./i18n";
 import type { RunGit } from "./logQuery";
-import { checkoutStep, droppedArgs, forcePushPrompt, forwardReason, headDistance, isProtected, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, pushPlans, sharedBranches, stoppedOnConflicts, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
-import { runPool } from "./pool";
+import { checkoutStep, droppedArgs, forcePushPrompt, forcePushProtected, forwardReason, headDistance, mergePlan, multiReport, otherBranches, parseBranchTracks, parseDropped, type BranchTrack, type ForcePush, multiCommands, parseOutgoing, protectionPatterns, pushPlans, sharedBranches, stoppedOnConflicts, tagPushReason, tagRemote, updateMethodOrder, updateMethodSetting, updateReason, type ReportKind, type UpdateMethod } from "./multiRepoModel";
+import { isAbortError, runPool } from "./pool";
+import { repoBusy } from "./repoBusy";
 import type { Repo } from "./types";
-import { gitMessage, type Ask } from "./uncommittedActions";
-import { gitText } from "./actionErrors";
+import type { Ask } from "./uncommittedActions";
+import { gitText, whyOf } from "./actionErrors";
 import { checkoutBlock, smartCheckout, smartLabel, smartPrompt, smartReport, type CheckoutBlock } from "./smartCheckout";
 import { FETCH_ENV } from "./upstream";
 
@@ -52,6 +53,8 @@ export interface MultiResult {
   /** Update Project: the other branches fast-forwarded, and those left as they were (multiReport). */
   forwarded?: { name: string; branches: string[] }[];
   notForwarded?: { name: string; branch: string; reason: string; failed?: boolean }[];
+  /** Tag Across: tagged, but not pushed (no remote, or its push failed: `failed`). */
+  notPushed?: { name: string; reason: string; failed?: boolean }[];
 }
 
 /**
@@ -137,17 +140,15 @@ export class MultiRepo {
     const all = await this.read(preset?.only);
     const name = preset?.name ?? await this.pickShared(all, localize("Branch to merge into each repository's current branch"));
     if (!name) return undefined;
+    // Each repository's own branch of that name as a full ref: a tag named alike is never what is merged.
     const plans = all.map((x) => {
-      if (!x.data?.current) return { ...x, ref: undefined, why: localize("no branch checked out") };
-      if (x.data.current === name) return { ...x, ref: undefined, why: localize("it is the current branch") };
-      if (x.data.branches.some((b) => b.kind === "local" && b.name === name)) return { ...x, ref: name, why: "" };
-      const remotes = x.data.branches.filter((b) => b.kind === "remote" && b.remoteBranch === name);
-      return remotes.length === 1 ? { ...x, ref: remotes[0].name, why: "" } : { ...x, ref: undefined, why: localize("no such branch") };
+      const plan = x.data ? mergePlan(x.data, name) : { why: localize("no such branch") };
+      return "ref" in plan ? { ...x, ref: plan.ref, label: plan.label, why: "" } : { ...x, ref: undefined, label: "", why: plan.why };
     });
     const act = plans.filter((p) => p.ref);
     if (!act.length) return this.report(localize("Merge {0}", name), "merge", { done: [], unchanged: [], stopped: [], skipped: plans.map((p) => ({ name: p.repo.name, reason: p.why })) });
     if (!preset && !(await this.host.ask.warning(localize("Merge {0} into the current branch of {1} repositories?", name, act.length),
-      act.map((p) => `${p.repo.name}: ${p.ref} → ${p.data!.current}`).join("\n"), localize("Merge")))) return undefined;
+      act.map((p) => `${p.repo.name}: ${p.label} → ${p.data!.current}`).join("\n"), localize("Merge")))) return undefined;
     const result = await this.each(localize("Merging {0}", name), act.map((p) => p.repo), (repo) => this.git(repo, multiCommands.merge(act.find((p) => p.repo.id === repo.id)!.ref!)));
     result.skipped.push(...plans.filter((p) => !p.ref).map((p) => ({ name: p.repo.name, reason: p.why })));
     return this.report(localize("Merge {0}", name), "merge", result);
@@ -163,16 +164,24 @@ export class MultiRepo {
     return this.exclusive(async () => {
       const all = await this.read(only);
       // Every branch with commits to send, the checked-out one first: one log each, only for those ahead.
+      // A branch whose commits cannot be read is named in the report; the repository's others still go.
+      const unread: { name: string; reason: string; failed: true }[] = [];
       const listed = (await runPool(all, WRITE_CONCURRENCY, async (x) => {
-        const guarded = vscode.workspace.getConfiguration("git", vscode.Uri.file(x.repo.root)).get<string[]>("branchProtection", []);
+        const guarded = protectionPatterns(vscode.workspace.getConfiguration("git", vscode.Uri.file(x.repo.root)).get<unknown>("branchProtection", []));
         const rows = await Promise.all((x.data ? pushPlans(x.data) : []).map(async (plan) => {
-          const commits = parseOutgoing(await this.host.run(x.repo.root, plan.current ? multiCommands.outgoing(!plan.setUpstream) : multiCommands.outgoingOf(plan.branch, `${plan.remote}/${plan.destination}`), WRITE_SIGNAL));
-          return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && isProtected(plan.destination, Array.isArray(guarded) ? guarded : []) } : undefined;
+          let commits: ReturnType<typeof parseOutgoing>;
+          try {
+            commits = parseOutgoing(await this.host.run(x.repo.root, plan.current ? multiCommands.outgoing(!plan.setUpstream) : multiCommands.outgoingOf(plan.branch, `${plan.remote}/${plan.destination}`), WRITE_SIGNAL));
+          } catch (e) {
+            unread.push({ name: x.repo.name, reason: localize("{0}: its commits to push could not be read ({1})", plan.branch, whyOf(e)), failed: true });
+            return undefined;
+          }
+          return commits.length ? { repo: x.repo, plan, commits, blocked: plan.lease !== undefined && forcePushProtected(plan.branch, plan.destination, guarded) } : undefined;
         }));
         return rows.filter((r): r is NonNullable<typeof r> => r !== undefined);
       }, WRITE_SIGNAL)).flatMap((s) => (s.status === "fulfilled" ? s.value : []));
       // Diverged on a protected branch: a push would be rejected and a force push is not offered.
-      const blocked = listed.filter((r) => r.blocked).map((r) => ({ name: r.repo.name, reason: localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", r.plan.branch, r.plan.remote, r.plan.destination) }));
+      const blocked = [...listed.filter((r) => r.blocked).map((r) => ({ name: r.repo.name, reason: localize("{0} diverged from {1}/{2}: a protected branch is never force pushed; pull it first", r.plan.branch, r.plan.remote, r.plan.destination) })), ...unread];
       // Ready to push first; diverged ones (ahead and behind) in a section of their own, not ticked: being
       // behind is usually someone else's push (Update Project brings it in). Ticked anyway, a diverged
       // branch is force pushed, after a confirmation naming what the remote loses.
@@ -259,9 +268,18 @@ export class MultiRepo {
 
   /** Update Project's other branches (otherBranches): the fast-forwards, run as one pool; the diverged named. */
   private async forwardOthers(repos: readonly Repo[], tracks: (r: Repo) => BranchTrack[], result: MultiResult): Promise<void> {
-    const plan = repos.flatMap((repo) => { const o = otherBranches(tracks(repo)); return o.forward.map((branch) => ({ repo, branch })); });
+    const planned = repos.flatMap((repo) => { const o = otherBranches(tracks(repo)); return o.forward.map((branch) => ({ repo, branch })); });
     const notForwarded: NonNullable<MultiResult["notForwarded"]> = repos.flatMap((repo) => otherBranches(tracks(repo)).diverged.map((b) => ({ name: repo.name, branch: b.name, reason: localize("it has diverged from its upstream") })));
-    const settled = await runPool(plan, WRITE_CONCURRENCY, ({ repo, branch }) => this.git(repo, multiCommands.fastForward(branch)), WRITE_SIGNAL);
+    // A write running there already (a commit row's, the Repo List's, a Pull): its branches are left, and named.
+    const held = repoBusy.takeEach([...new Set(planned.map((p) => p.repo.id))]);
+    const plan = planned.filter((p) => held.taken.includes(p.repo.id));
+    notForwarded.push(...planned.filter((p) => held.busy.includes(p.repo.id)).map((p) => ({ name: p.repo.name, branch: p.branch.name, reason: localize("busy"), failed: true })));
+    let settled: PromiseSettledResult<string>[];
+    try {
+      settled = await runPool(plan, WRITE_CONCURRENCY, ({ repo, branch }) => this.git(repo, multiCommands.fastForward(branch)), WRITE_SIGNAL);
+    } finally {
+      held.release();
+    }
     const forwarded = new Map<Repo, string[]>();
     settled.forEach((s, i) => {
       const { repo, branch } = plan[i];
@@ -330,26 +348,28 @@ export class MultiRepo {
       const taken = all.filter((x) => x.data?.branches.some((b) => b.kind === "tag" && b.name === name));
       const act = all.filter((x) => x.data && !taken.includes(x));
       if (!act.length) return this.report(localize("Tag {0}", name), "tag", { done: [], unchanged: [], stopped: [], skipped: taken.map((x) => ({ name: x.repo.name, reason: localize("the tag already exists") })) });
-      const noRemote: string[] = [];
+      // Tagged, but not on the remote: no remote to push to, or its push failed (git's reason). The
+      // tag is there either way, so the repository is not "left as it was".
+      const notPushed: NonNullable<MultiResult["notPushed"]> = [];
       const result = await this.each(localize("Tagging {0}", name), act.map((x) => x.repo), async (repo) => {
         const data = act.find((x) => x.repo.id === repo.id)!.data!;
         await this.git(repo, multiCommands.tag(name, message));
         if (!push) return;
         const remote = tagRemote(data);
-        if (!remote) { noRemote.push(repo.name); return; }
+        if (!remote) { notPushed.push({ name: repo.name, reason: localize("no remote to push to") }); return; }
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), PUSH_TIMEOUT_MS);
         try {
           await this.host.run(repo.root, multiCommands.pushTag(remote, name), ctl.signal, { tree: true, env: WRITE_ENV });
         } catch (e) {
-          throw new Error(localize("tagged, but not pushed: {0}", gitMessage(e)));
+          notPushed.push({ name: repo.name, reason: isAbortError(e) ? localize("no answer after {0} s", PUSH_TIMEOUT_MS / 1000) : tagPushReason(gitText(e)), failed: true });
         } finally {
           clearTimeout(timer);
         }
       });
       result.skipped.push(...taken.map((x) => ({ name: x.repo.name, reason: localize("the tag already exists") })));
-      result.skipped.push(...noRemote.map((n) => ({ name: n, reason: localize("tagged, but it has no remote to push to") })));
-      result.done = result.done.filter((n) => !noRemote.includes(n));
+      result.done = result.done.filter((n) => !notPushed.some((x) => x.name === n));
+      result.notPushed = notPushed;
       return this.report(localize("Tag {0}", name), "tag", result);
     });
   }
@@ -423,8 +443,8 @@ export class MultiRepo {
   }
 
   /** `git merge` of a ref into the repository's checked-out branch (no editor, no autostash). */
-  mergeRef(repo: Repo, ref: string): Promise<string> {
-    return this.git(repo, multiCommands.merge(ref));
+  mergeRef(repo: Repo, ref: string, message?: string): Promise<string> {
+    return this.git(repo, multiCommands.merge(ref, message));
   }
 
   /** Each ticked repository's branches and remotes (undefined when they could not be read). */
@@ -443,9 +463,20 @@ export class MultiRepo {
     return i === undefined ? undefined : shared[i]?.name;
   }
 
-  /** Runs one write per repository (a few at a time) under the Log's progress; never stops at the first failure. */
-  private async each(title: string, repos: readonly Repo[], work: (repo: Repo) => Promise<unknown>): Promise<MultiResult> {
-    const settled = await vscode.window.withProgress({ location: { viewId: this.host.viewId }, title }, () => runPool(repos, WRITE_CONCURRENCY, (r) => work(r), WRITE_SIGNAL));
+  /**
+   * Runs one write per repository (a few at a time) under the Log's progress; never stops at the
+   * first failure. Each repository is held while it runs (repoBusy): one a write already runs in (a
+   * commit row's, the Repo List's, a Pull) is left as it was, and named.
+   */
+  private async each(title: string, all: readonly Repo[], work: (repo: Repo) => Promise<unknown>): Promise<MultiResult> {
+    const held = repoBusy.takeEach(all.map((r) => r.id));
+    const repos = all.filter((r) => held.taken.includes(r.id));
+    let settled: PromiseSettledResult<unknown>[];
+    try {
+      settled = await vscode.window.withProgress({ location: { viewId: this.host.viewId }, title }, () => runPool(repos, WRITE_CONCURRENCY, (r) => work(r), WRITE_SIGNAL));
+    } finally {
+      held.release();
+    }
     const result: MultiResult = { done: [], unchanged: [], stopped: [], skipped: [] };
     settled.forEach((s, i) => {
       if (s.status === "fulfilled") { result.done.push(repos[i].name); return; }
@@ -454,6 +485,7 @@ export class MultiRepo {
       if (stoppedOnConflicts(message)) result.stopped.push({ name: repos[i].name, reason: localize(updateReason(message)) });
       else result.skipped.push({ name: repos[i].name, reason: localize(updateReason(message)), failed: true });
     });
+    result.skipped.push(...all.filter((r) => held.busy.includes(r.id)).map((r) => ({ name: r.name, reason: localize("busy"), failed: true })));
     if (repos.length) await this.host.changed(repos.map((r) => r.id));
     return result;
   }

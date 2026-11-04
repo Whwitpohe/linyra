@@ -539,6 +539,14 @@ describe("Linyra panel", () => {
       s = await until("the Commit list again", (x) => x.logMode === "commits");
       assert.deepStrictEqual({ rows: s.rows.map((r) => r.subject), filter: s.filter }, before, "filters and rows exactly as they were");
       assert.ok(!s.changes.items[0]?.includes("not committed"), "the Changes view shows a commit again, not uncommitted work");
+
+      // The summary row's chip: acme-web's work on the Commits side. The Uncommitted side keeps the row it selected.
+      await send({ type: "showWork", repoId: web.id });
+      await until("acme-web's work from the summary row", (x) => x.changes.items[0]?.startsWith("acme-web | ") === true && x.changes.items[0].includes("not committed"));
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("acme-api's files again: the row the Uncommitted side has selected", (x) => x.logMode === "uncommitted" && x.changes.items[0]?.startsWith("acme-api | 2 files · not committed") === true);
+      await send({ type: "logMode", mode: "commits" });
+      await until("the Commit list again", (x) => x.logMode === "commits");
     } finally {
       await closeEditors();
       for (const root of [web.root, api.root]) {
@@ -2054,6 +2062,26 @@ describe("Linyra panel", () => {
     await vscode.commands.executeCommand("linyra.open");
     await sleep(1000);
     assert.strictEqual((await snapshot()).readyCount, before, "the webview was destroyed and re-created");
+  });
+
+  it("Highlight Current Branch survives a re-created webview, without a git process", async () => {
+    await send({ type: "filter", filter: ALL });
+    await until("six rows", (x) => x.rows.length === 6);
+    const offHead = (x: LogSnapshot) => x.posts.offHead?.count ?? 0;
+    const asked = offHead(await snapshot());
+    await send({ type: "layout", highlightHead: true });
+    await until("the rows HEAD does not reach", (x) => offHead(x) > asked);
+    const mark = await waitFor("git to go quiet", async () => {
+      const a = await snapshot();
+      await sleep(1000);
+      const b = await snapshot();
+      return b.spawnLog.length === a.spawnLog.length ? b : undefined;
+    });
+    // The page a new webview gets again comes with them.
+    await send({ type: "ready" });
+    const s = await until("posted again", (x) => offHead(x) > offHead(mark));
+    assert.deepStrictEqual(s.spawnLog.slice(mark.spawnLog.length).filter((x) => x.cmd === "rev-list"), [], "from what was read, not read again");
+    await send({ type: "layout", highlightHead: false });
   });
 
   it("switching git.path takes effect at once, and a path that cannot run falls back", async function () {

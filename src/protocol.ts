@@ -94,7 +94,7 @@ export type HostMessage =
   | { type: "changesView"; message: ChangesPage | { type: "copied" } }
   | { type: "sidebarState"; state: BranchSidebarState }
   | { type: "branchTree"; repoId: string; data?: Branches; loading?: boolean; error?: string }
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; /** Each repository's user.email (Highlight My Commits). */ me?: Record<string, string>; layout: Layout; history: { repoId: string; repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[] }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; /** Each repository's user.email (Highlight My Commits). */ me?: Record<string, string>; layout: Layout; history: { repoId: string; repoName: string; path: string } | null; logMode?: "commits" | "uncommitted"; profiles: ResolvedProfile[]; /** The extension host's platform: git's regular expressions differ on macOS. */ platform?: NodeJS.Platform }
   /** File History: the file's uncommitted change, or null (none, or no File History). */
   | { type: "historyWork"; work: HistoryWork | null }
   | { type: "loading" }

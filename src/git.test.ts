@@ -4,10 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { parseShow, showArgs } from "./commitDetail";
-import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, type FilterState } from "./filterModel";
+import { DEFAULT_FILTER, historyArgs, historyInput, historyPathsArgs, logArgs, parseFollow, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { whyOf } from "./actionErrors";
-import { errorLine, GitError, GitRunner, runGit } from "./git";
+import { errorLine, GitError, GitRunner, matchesPatterns, runGit, utf8Ctype } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
@@ -39,6 +39,17 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   assert.strictEqual(errorLine("hint: only hints\n"), "hint: only hints");
   console.log("ok - a git failure is reported by its fatal:/error: line, not its first hint");
 }
+{
+  assert.deepStrictEqual(utf8Ctype({}, "linux"), { LC_CTYPE: "C.UTF-8" }, "no locale at all: git's expressions would read bytes");
+  assert.deepStrictEqual(utf8Ctype({ LANG: "C" }, "linux"), { LC_CTYPE: "C.UTF-8" });
+  assert.deepStrictEqual(utf8Ctype({}, "darwin"), { LC_CTYPE: "UTF-8" }, "macOS's name for it");
+  assert.deepStrictEqual([utf8Ctype({ LANG: "de_DE.UTF-8" }, "linux"), utf8Ctype({ LC_CTYPE: "en_US.utf8" }, "linux"), utf8Ctype({ LC_ALL: "C" }, "linux"), utf8Ctype({}, "win32")], [{}, {}, {}, {}],
+    "a UTF-8 locale is kept, LC_ALL decides for itself, and Git for Windows picks its own");
+  assert.deepStrictEqual([["log", "--grep=x"], ["-c", "core.x=y", "log"], ["rev-list", "--count", "a...b"], ["--no-pager", "grep", "-e", "x"]].map(matchesPatterns), [true, true, true, true], "the commands that match the user's patterns");
+  assert.deepStrictEqual([["-c", "merge.autoStash=false", "merge", "--", "x"], ["commit", "--only", "--file=-"], ["push", "origin"], ["status", "--porcelain=v2"], ["-C", "log", "status"], []].map(matchesPatterns), [false, false, false, false, false, false],
+    "a write, and the hooks it runs, keep the user's locale; -c and -C take a value");
+  console.log("ok - git runs with a UTF-8 LC_CTYPE where the environment has none, for the commands that match patterns");
+}
 (async () => {
   {
     const cs = await log(ALL);
@@ -67,18 +78,21 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual((await log({ ...ALL, author: "dana@example.com", text: "retry" })).map((c) => c.subject), ["[ACME-7] add retry"]);
     assert.deepStrictEqual(await log({ ...ALL, author: "rin", text: "retry" }), [], "author AND search, never OR");
     console.log("ok - --author matches name or email and combines with --grep as AND");
-    const paths = parseHistoryPaths(await runGit(api, historyPathsArgs("renamed.txt")), "renamed.txt");
+    const follow = parseFollow(await runGit(api, historyPathsArgs("renamed.txt")), "renamed.txt");
+    const paths = follow.names;
     assert.deepStrictEqual(paths, ["renamed.txt", "sp ace é.txt"]);
-    const hist = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 50, now: 10_000, paths })), api, "renamed.txt");
+    const history = async (f: FilterState, o: { pageSize: number; cursor?: { skip: number } }) =>
+      parseHistory(await runGit(api, historyArgs(f, { ...o, now: 10_000, paths }), undefined, { input: historyInput(follow) }), api, "renamed.txt", follow.commits);
+    const hist = await history(ALL, { pageSize: 50 });
     assert.deepStrictEqual(hist.map((c) => [c.subject, c.file?.path, c.file?.status]), [
       ["café: rename", "renamed.txt", "R"],
       ["feat: scaffold api", "sp ace é.txt", "A"],
     ], "history follows the rename back to the file's first name");
     console.log("ok - real git: file history follows a rename");
     // Paging across the rename, and a filter that excludes the rename commit itself (review findings).
-    const page2 = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 1, now: 10_000, cursor: { skip: 1 }, paths })), api, "renamed.txt");
+    const page2 = await history(ALL, { pageSize: 1, cursor: { skip: 1 } });
     assert.deepStrictEqual(page2.map((c) => c.subject), ["feat: scaffold api"], "page 2 continues before the rename");
-    const byDana = parseHistory(await runGit(api, historyArgs({ ...ALL, author: "dana" }, { pageSize: 50, now: 10_000, paths })), api, "renamed.txt");
+    const byDana = await history({ ...ALL, author: "dana" }, { pageSize: 50 });
     assert.deepStrictEqual(byDana.map((c) => c.subject), ["feat: scaffold api"], "dana's pre-rename commit survives a filter that drops rin's rename");
     console.log("ok - real git: history pages across a rename and filters never cut it");
     git(api, ["branch", "release-1.4", "HEAD~2"]);
@@ -136,6 +150,14 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     git(api, ["config", "--unset", "i18n.logOutputEncoding"]);
     git(api, ["config", "--unset", "log.showSignature"]);
     console.log("ok - user git config cannot change the output encoding or add signature lines");
+    git(api, ["config", "log.showRoot", "false"]);
+    const rootSha = (await log(ALL)).at(-1)!.sha;
+    assert.ok(parseShow(await runGit(api, showArgs(rootSha))).files.some((f) => f.path === "upload.go" && f.status === "A"), "the root commit's files");
+    const uploadGo = parseFollow(await runGit(api, historyPathsArgs("upload.go")), "upload.go");
+    const rootRow = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 50, now: 10_000, paths: ["upload.go"] }), undefined, { input: historyInput(uploadGo) }), api, "upload.go").at(-1)!;
+    assert.deepStrictEqual([rootRow.sha, rootRow.file?.status, rootRow.file?.added], [rootSha, "A", 1], "File History's first row adds the file");
+    git(api, ["config", "--unset", "log.showRoot"]);
+    console.log("ok - log.showRoot=false cannot hide a root commit's files");
   }
   {
     const [renameSha, , , rootSha] = (await log(ALL)).map((c) => c.sha);

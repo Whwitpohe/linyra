@@ -1,7 +1,14 @@
 import * as assert from "assert";
-import { branchLine, branchText, checkedLabel, checkOnly, commitFiles, commitPartly, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
+import { execFileSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { branchLine, branchText, checkedLabel, checkOnly, commitFiles, commitPartly, conflictsBlocking, countsLine, commitPlan, describeCommit, fileKey, filesUnder, ignoreLine, pruneChoices, mdText, rowsById, setChecked, withIgnored, type CommitRow } from "./commitModel";
+import { gitEnv, makeRepo } from "./fixtures";
+import { runGit } from "./git";
 import type { FileChange } from "./types";
 import type { RepoWork } from "./uncommittedModel";
+import { gitWithPaths, headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
 
 const f = (path: string, status: FileChange["status"], extra: Partial<FileChange> = {}): FileChange => ({ path, status, added: 1, deleted: 0, ...extra });
 const web: RepoWork = {
@@ -196,3 +203,114 @@ const outline = (rows: readonly CommitRow[], depth = 0): string[] => rows.flatMa
   assert.strictEqual(commitPartly([], [{ name: "acme-api", why: "acme hook says no" }]), "Linyra could not commit: acme-api (acme hook says no). The message is kept: fix that, then Commit again.");
   console.log("ok - Commit… checks one repository's files; a partial commit names who committed, who did not, and that Commit retries");
 }
+
+{
+  // A conflicted file is never committed: in a stopped merge none may be left (the commit takes the index), elsewhere none checked.
+  const plan = { paths: ["src/app.ts", "notes.md"] };
+  assert.strictEqual(conflictsBlocking(plan, ["src/app.ts"], false), 1, "checked and conflicted");
+  assert.strictEqual(conflictsBlocking(plan, ["old.css"], false), 0, "conflicted, not checked: git commit --only leaves it out");
+  assert.strictEqual(conflictsBlocking(plan, ["old.css"], true), 1, "a merge's commit takes the index: any conflict stops it");
+  assert.strictEqual(conflictsBlocking(plan, [], true), 0);
+  console.log("ok - a commit refuses a checked file still conflicted, and in a merge any");
+}
+
+{
+  // A staged rename takes its old name along, to record the move; never a copy's source, nor a new file made at the old name.
+  const renamed: RepoWork = { ...web, staged: [f("b.txt", "R", { oldPath: "a.txt" })], changes: [f("a.txt", "A", { untracked: true })] };
+  assert.strictEqual(commitFiles(renamed).find((x) => x.path === "b.txt")?.oldPath, "a.txt", "still shown as the rename");
+  assert.deepStrictEqual(commitPlan([renamed], new Map())[0].paths, ["b.txt"], "the new a.txt is unchecked: it stays out");
+  assert.deepStrictEqual(commitPlan([renamed], new Map([[fileKey(web.repoId, "a.txt"), true]]))[0].paths, ["a.txt", "b.txt"], "checked, it goes in as itself");
+  const copied: RepoWork = { ...web, staged: [f("copy.txt", "C", { oldPath: "src.txt" }), f("src.txt", "M")], changes: [] };
+  assert.deepStrictEqual(commitPlan([copied], new Map([[fileKey(web.repoId, "src.txt"), false]]))[0].paths, ["copy.txt"], "a copy's source, unchecked, keeps its staged edit out");
+  assert.deepStrictEqual(commitPlan([{ ...copied, staged: [copied.staged[0]] }], new Map())[0].paths, ["copy.txt"], "a copy never takes its source");
+  console.log("ok - a rename's old name goes with it, a copy's source and a new file at the old name only when checked");
+}
+
+void (async () => {
+  // Real git: what the Commit side bar plans, read as the store reads a repository.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "linyra-commit-test-"));
+  Object.assign(process.env, gitEnv(home), { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" });
+  const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: process.env, encoding: "utf8", stdio: "pipe" });
+  const read = async (root: string): Promise<RepoWork> => {
+    const out = await runGit(root, statusArgs([]));
+    const split = splitStatus(out);
+    const head = headOf(out);
+    const staged = workFiles(split.staged, parseNumstat(split.staged.length > 0 ? await runGit(root, stagedNumstatArgs(head, [])) : ""));
+    const changes = workFiles(split.changes, parseNumstat(split.changes.length > 0 ? await runGit(root, unstagedNumstatArgs([])) : ""));
+    return { repoId: root, root, name: path.basename(root), head, staged, changes, editedAt: null, canStage: true };
+  };
+  const unmerged = async (root: string) => (await runGit(root, ["diff", "--name-only", "-z", "--diff-filter=U", "--"])).split("\0").filter(Boolean);
+  try {
+    // A stash pop that conflicted: no merge, cherry-pick or revert, the file checked as any change is.
+    const web = path.join(home, "acme-web");
+    makeRepo(web, [{ time: 1000, author: "dana", message: "feat: base", files: { "f.txt": "base\n", "other.txt": "o\n" } }], home);
+    fs.writeFileSync(path.join(web, "f.txt"), "stashed\n");
+    git(web, ["stash", "-q"]);
+    fs.writeFileSync(path.join(web, "f.txt"), "head\n");
+    git(web, ["commit", "-qam", "feat: head"]);
+    assert.throws(() => git(web, ["stash", "pop"]), "the pop stops on the conflict");
+    fs.writeFileSync(path.join(web, "other.txt"), "o2\n");
+    const w = await read(web);
+    const [plan] = commitPlan([w], new Map());
+    assert.deepStrictEqual(plan.paths, ["f.txt", "other.txt"], "the conflicted file is checked by default");
+    assert.strictEqual(conflictsBlocking(plan, await unmerged(web), false), 1, "so Commit refuses it");
+    const [rest] = commitPlan([w], new Map([[fileKey(web, "f.txt"), false]]));
+    assert.strictEqual(conflictsBlocking(rest, await unmerged(web), false), 0, "unchecked, the other file commits");
+    await gitWithPaths(runGit, web, rest.paths, ["commit", "--only", "--file=-"], { input: "fix: other" });
+    assert.match(git(web, ["show", "HEAD:f.txt"]), /^head\n$/, "no conflict marker committed");
+    console.log("ok - real git: after a stash pop that conflicted, the conflicted file is refused and the others commit");
+
+    const api = path.join(home, "acme-api");
+    const eight = "1\n2\n3\n4\n5\n6\n7\n8\n";
+    const source = eight.replace(/\d/g, "s$&");
+    makeRepo(api, [{ time: 1000, author: "dana", message: "feat: base", files: { "a.txt": eight, "src.txt": source } }], home);
+    const commit = async (paths: readonly string[], message: string) => gitWithPaths(runGit, api, paths, ["commit", "--only", "--file=-"], { input: message });
+    const shown = () => git(api, ["show", "--name-status", "-z", "--format=", "-M", "HEAD"]).split("\0").filter(Boolean);
+    // A rename alone: its old name goes with it, and the commit records the move.
+    git(api, ["mv", "a.txt", "b.txt"]);
+    const [moved] = commitPlan([await read(api)], new Map());
+    assert.deepStrictEqual(moved.paths, ["b.txt", "a.txt"]);
+    await commit(moved.paths, "refactor: b");
+    assert.deepStrictEqual(shown(), ["R100", "a.txt", "b.txt"]);
+    // A rename, then a new file at the old name, unchecked: the new file is not committed.
+    git(api, ["mv", "b.txt", "c.txt"]);
+    fs.writeFileSync(path.join(api, "b.txt"), "new b\n");
+    const [past] = commitPlan([await read(api)], new Map());
+    assert.deepStrictEqual(past.paths, ["c.txt"]);
+    await commit(past.paths, "refactor: c");
+    assert.strictEqual(git(api, ["show", "HEAD:b.txt"]), eight, "b.txt as it was: the unchecked new file stays out");
+    assert.match(git(api, ["status", "--porcelain"]), /^\?\? b\.txt$/m, "and stays on disk, new");
+    // A copy (diff.renames=copies), its source's staged edit unchecked: the copy alone.
+    git(api, ["config", "diff.renames", "copies"]);
+    fs.copyFileSync(path.join(api, "src.txt"), path.join(api, "copy.txt"));
+    fs.writeFileSync(path.join(api, "src.txt"), source.replace("s8\n", "edit\n"));
+    git(api, ["add", "src.txt", "copy.txt"]);
+    const copied = await read(api);
+    assert.strictEqual(copied.staged.find((x) => x.path === "copy.txt")?.status, "C", "git status reports the copy");
+    const [copy] = commitPlan([copied], new Map([[fileKey(api, "src.txt"), false], [fileKey(api, "b.txt"), false]]));
+    assert.deepStrictEqual(copy.paths, ["copy.txt"]);
+    await commit(copy.paths, "feat: copy");
+    assert.strictEqual(git(api, ["show", "HEAD:src.txt"]), source, "the source's edit is not committed");
+    assert.match(git(api, ["status", "--porcelain"]), /^M  src\.txt$/m, "it stays staged");
+    console.log("ok - real git: a rename commits with its old name, never a new file there, nor a copy's source");
+
+    // Renamed in the working tree only (mv, then git add -N): a rename, committed with its old name.
+    const libs = path.join(home, "acme-libs");
+    makeRepo(libs, [{ time: 1000, author: "dana", message: "feat: base", files: { "old.txt": eight } }], home);
+    fs.renameSync(path.join(libs, "old.txt"), path.join(libs, "new.txt"));
+    git(libs, ["add", "-N", "new.txt"]);
+    const ita = await read(libs);
+    assert.deepStrictEqual(commitFiles(ita).map((x) => [x.path, x.status, x.oldPath]), [["new.txt", "R", "old.txt"]], "one row, the rename");
+    const [here] = commitPlan([ita], new Map());
+    assert.deepStrictEqual(here.paths, ["new.txt", "old.txt"]);
+    await gitWithPaths(runGit, libs, here.paths, ["commit", "--only", "--file=-"], { input: "refactor: new" });
+    assert.deepStrictEqual(git(libs, ["show", "--name-status", "-z", "--format=", "-M", "HEAD"]).split("\0").filter(Boolean), ["R100", "old.txt", "new.txt"]);
+    assert.strictEqual(git(libs, ["status", "--porcelain"]), "", "no deletion of old.txt left behind");
+    console.log("ok - real git: a rename in the working tree only commits as a rename");
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

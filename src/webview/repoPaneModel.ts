@@ -98,6 +98,11 @@ export class PaneWidth {
   private wanted = DEFAULT_REPO_PANE_WIDTH;
   shown = DEFAULT_REPO_PANE_WIDTH;
 
+  /** What the layout saves: the width the user chose, not what a narrow panel left of it. */
+  get chosen(): number {
+    return this.wanted;
+  }
+
   /** A drag, a key step or the saved layout: this becomes the user's width. */
   set(width: number, total: number): number {
     this.wanted = clampPaneWidth(width, Number.POSITIVE_INFINITY);
@@ -109,6 +114,27 @@ export class PaneWidth {
     this.shown = clampPaneWidth(this.wanted, total);
     return this.shown;
   }
+}
+
+/**
+ * Where the Repo List's cursor goes when its rows change under it (marks, branches, a search): onto
+ * the row it was on, by key, wherever that row is now. Only when that row left does it move: to the
+ * nearest row above it that stayed (as a collapse moves it to the parent), else below, and never
+ * onto a stopped operation's row, whose Enter runs the next step.
+ */
+export function keptCursor(before: readonly { key: string }[], at: number, after: readonly { key: string; kind: string }[]): number {
+  const index = new Map(after.map((r, i) => [r.key, i]));
+  const key = before[at]?.key;
+  const same = key === undefined ? undefined : index.get(key);
+  if (same !== undefined) return same;
+  if (key === undefined) return Math.max(0, Math.min(at, after.length - 1));
+  const stayed = (j: number) => {
+    const i = index.get(before[j].key);
+    return i !== undefined && after[i].kind !== "operation" ? i : undefined;
+  };
+  for (let j = at - 1; j >= 0; j--) { const i = stayed(j); if (i !== undefined) return i; }
+  for (let j = at + 1; j < before.length; j++) { const i = stayed(j); if (i !== undefined) return i; }
+  return Math.max(0, after.findIndex((r) => r.kind !== "operation"));
 }
 
 export type PaneRow =
