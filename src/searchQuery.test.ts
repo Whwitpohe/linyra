@@ -383,7 +383,9 @@ const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${
     assert.deepStrictEqual(await found(String.raw`^\w+\s\d+$`), ["issue 12"]);
     assert.deepStrictEqual(await found(String.raw`^[a-z]\W[a-z]$`), ["x\\y", "a]b"], "\\W");
     assert.deepStrictEqual(await found("(?:issue)"), [], "refused by the box: nothing runs");
-    console.log("ok - real git: regex mode's \\d, \\s, \\w, [ … ] and { find what they say, in git's own expressions");
+    // \b where git reads it (glibc, Git for Windows); macOS refuses it in the box instead.
+    if (process.platform !== "darwin") assert.deepStrictEqual(await found(String.raw`\bissue\b`), ["fix the issue", "issue{", "issue 12"], "\\b is a word's edge");
+    console.log("ok - real git: regex mode's \\d, \\s, \\w, \\b, [ … ] and { find what they say, in git's own expressions");
     // Whole Word with letters beyond ASCII at a word's ends, in the locale runGit gives git.
     const words = (await found("über", { wholeWord: true })).filter((s) => process.platform === "linux" || s !== "Ääüber x");
     assert.deepStrictEqual(words, ["über merged"], "not Xüber, and (in a UTF-8 locale) not Ääüber");

@@ -154,19 +154,19 @@ export function escapeRegex(text: string): string {
  * reads JavaScript's syntax (its parser checks it), and git's POSIX expressions must say the same
  * (toEre).
  */
-export function regexProblem(text: string): string | undefined {
+export function regexProblem(text: string, platform: NodeJS.Platform = process.platform): string | undefined {
   try {
     new RegExp(text);
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
   }
-  const ere = toEre(text);
+  const ere = toEre(text, platform);
   return "problem" in ere ? ere.problem : undefined;
 }
 
 /** A search box expression as git reads it (toEre); one regexProblem refuses is searched as text. */
-export function gitRegex(text: string): string {
-  const ere = toEre(text);
+export function gitRegex(text: string, platform: NodeJS.Platform = process.platform): string {
+  const ere = toEre(text, platform);
   return "pattern" in ere ? ere.pattern : escapeRegex(text);
 }
 
@@ -188,9 +188,10 @@ const jsOnly = (what: string): Ere => ({ problem: localize("JavaScript's {0} is 
  * [...] class is rebuilt by POSIX's rules, where a backslash is a character. What git's expressions
  * cannot say is a problem, rather than an error from every repository or a search that silently
  * finds nothing: (?...) groups and lookaround, lazy quantifiers, back-references and other letter
- * escapes, and \b and \B, which macOS has not.
+ * escapes. \b and \B stay as written where git reads them (glibc, Git for Windows); macOS' expressions
+ * have neither and would find nothing, so there they are a problem.
  */
-function toEre(text: string): Ere {
+function toEre(text: string, platform: NodeJS.Platform): Ere {
   let out = "";
   // What came last can take a quantifier: a { after it is one, if it reads as one.
   let atom = false;
@@ -198,7 +199,14 @@ function toEre(text: string): Ere {
     const c = text[i];
     if (c === "\\") {
       const d = text[i + 1] ?? "";
-      if (d === "b" || d === "B") return { problem: localize("{0} is not in git's regular expressions on every system: use Match Whole Word", `\\${d}`) };
+      if (d === "b" || d === "B") {
+        if (platform === "darwin") return { problem: localize("{0} is not in git's regular expressions on macOS: use Match Whole Word", `\\${d}`) };
+        // A word's edge takes no quantifier: a { after it is a character.
+        out += `\\${d}`;
+        i += 2;
+        atom = false;
+        continue;
+      }
       if (CLASSES[d]) out += CLASSES[d];
       else if (/[0-9A-Za-z]/.test(d)) return jsOnly(`\\${d}`);
       else out += escapeRegex(d);
