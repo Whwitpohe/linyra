@@ -325,6 +325,8 @@ export interface SearchPlan {
 export interface SearchContext {
   /** Known repository names: a repo: naming none of them is an error. */
   repoNames?: readonly string[];
+  /** The platform git runs on, for a webview that has no process of its own (regexProblem). */
+  platform?: NodeJS.Platform;
 }
 
 /**
@@ -342,7 +344,7 @@ export function planSearch(f: Pick<FilterState, "text" | "path"> & SearchToggles
   if (f.regex) {
     for (const op of ["message:", "-message:", "author:", "committer:", "change:"] as const) {
       for (const t of tokens(op)) {
-        const problem = t.value === "@me" ? undefined : regexProblem(t.value);
+        const problem = t.value === "@me" ? undefined : regexProblem(t.value, ctx.platform);
         if (problem) fail(t, localize("Invalid regular expression: {0}", problem));
       }
     }

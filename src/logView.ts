@@ -516,7 +516,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.toolbarChanged();
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoId: repo.id, repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layoutStore.layout(), history, profiles: this.profiles.resolved(), ...(forceMode ? { logMode: this.logMode } : {}) });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, me: Object.fromEntries(this.meByRepo), layout: this.layoutStore.layout(), history, profiles: this.profiles.resolved(), platform: process.platform, ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**

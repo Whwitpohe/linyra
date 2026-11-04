@@ -150,11 +150,17 @@ export function escapeRegex(text: string): string {
 }
 
 /**
+ * The platform git runs on, read where this module runs beside it (the extension host). A webview
+ * has no process: the host tells it (SearchContext.platform), and until then \b is let through.
+ */
+const HOST_PLATFORM: NodeJS.Platform | undefined = typeof process === "undefined" ? undefined : process.platform;
+
+/**
  * Why a search box expression cannot be sent to git in regex mode; undefined when it can. The box
  * reads JavaScript's syntax (its parser checks it), and git's POSIX expressions must say the same
  * (toEre).
  */
-export function regexProblem(text: string, platform: NodeJS.Platform = process.platform): string | undefined {
+export function regexProblem(text: string, platform: NodeJS.Platform | undefined = HOST_PLATFORM): string | undefined {
   try {
     new RegExp(text);
   } catch (e) {
@@ -165,7 +171,7 @@ export function regexProblem(text: string, platform: NodeJS.Platform = process.p
 }
 
 /** A search box expression as git reads it (toEre); one regexProblem refuses is searched as text. */
-export function gitRegex(text: string, platform: NodeJS.Platform = process.platform): string {
+export function gitRegex(text: string, platform: NodeJS.Platform | undefined = HOST_PLATFORM): string {
   const ere = toEre(text, platform);
   return "pattern" in ere ? ere.pattern : escapeRegex(text);
 }
@@ -191,7 +197,7 @@ const jsOnly = (what: string): Ere => ({ problem: localize("JavaScript's {0} is 
  * escapes. \b and \B stay as written where git reads them (glibc, Git for Windows); macOS' expressions
  * have neither and would find nothing, so there they are a problem.
  */
-function toEre(text: string, platform: NodeJS.Platform): Ere {
+function toEre(text: string, platform: NodeJS.Platform | undefined): Ere {
   let out = "";
   // What came last can take a quantifier: a { after it is one, if it reads as one.
   let atom = false;

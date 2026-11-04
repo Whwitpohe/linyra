@@ -22,6 +22,14 @@ const ops = (text: string) => Object.fromEntries(parseSearch(text).operations);
 const errors = (text: string, f: Partial<FilterState> = {}, repoNames?: string[]) => plan(text, f, repoNames).errors.map((e) => e.message);
 const local = (day: string, time = "00:00:00") => Math.floor(new Date(`${day}T${time}`).getTime() / 1000);
 
+{
+  // The webview has no process: it plans with the platform the host sent, as git there reads it.
+  const on = (platform: NodeJS.Platform) => planSearch({ ...ALL, regex: true, text: String.raw`\bfix\b` }, NOW, { platform }).errors.map((e) => e.message);
+  assert.match(on("darwin").join(), /Match Whole Word/, "macOS: \\b is refused under the box");
+  assert.deepStrictEqual([on("linux"), on("win32")], [[], []], "glibc and Git for Windows read \\b");
+  console.log("ok - the box checks regex mode for the platform git runs on, which the host tells the webview");
+}
+
 // ── Parsing: words, phrases and operators, as GitLens reads them ────────────
 {
   assert.deepStrictEqual(ops("retry uploader"), { "message:": ["retry", "uploader"] }, "each word is its own message: term");

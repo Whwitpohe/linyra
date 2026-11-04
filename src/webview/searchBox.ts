@@ -56,6 +56,7 @@ export class SearchBox {
   private branches: readonly BranchName[] = [];
   private tags: readonly BranchName[] = [];
   private repoNames: readonly string[] = [];
+  private platform: NodeJS.Platform | undefined;
   private readonly asked = new Set<ValueKind>();
   /**
    * The suggestions, made once and kept while what they show holds, so the list builds each row
@@ -116,6 +117,7 @@ export class SearchBox {
   setBranches(items: readonly BranchName[]): void { this.branches = items; this.forget("ref:"); this.suggest.refresh(); }
   setTags(items: readonly BranchName[]): void { this.tags = items; this.forget("ref:"); this.suggest.refresh(); }
   setRepos(names: readonly string[]): void { this.repoNames = names; this.forget("repo:"); }
+  setPlatform(platform: NodeJS.Platform | undefined): void { this.platform = platform; }
 
   /** Whether linyra.ai.translateSearch is there and Linyra AI is set up. */
   setAiAvailable(available: boolean): void {
@@ -243,7 +245,7 @@ export class SearchBox {
 
   /** The query with the toggles and the Path box, checked against the repositories' names once known. */
   private plan(text: string, filter: FilterState = this.filter) {
-    return planSearch({ ...filter, text }, nowSec(), { repoNames: this.repoNames.length ? this.repoNames : undefined });
+    return planSearch({ ...filter, text }, nowSec(), { repoNames: this.repoNames.length ? this.repoNames : undefined, platform: this.platform });
   }
 
   private toggle(key: Toggle): void {

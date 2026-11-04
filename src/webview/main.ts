@@ -304,6 +304,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
       filters.setRepos(m.repos.map((r) => r.name));
+      filters.setPlatform(m.platform);
       filters.setMe(m.hasMe);
       filters.update(m.filter);
       state.profiles = m.profiles;
