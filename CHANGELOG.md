@@ -9,6 +9,80 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-11-04
+
+A review of the whole extension and the fixes it found: what Linyra writes goes only to the
+files, branch, stash and repository you picked; Compare and Release… predict and push what they
+say; search and File History find what git finds; and Linyra AI keeps what you exclude.
+
+### Fixed
+
+- **Only the checked files are committed.** A checked name with `[`, `*`, `?` or a leading `:`
+  (`pages/[id].vue`) no longer brings unchecked files into the commit, a stage or a reset.
+- **A file still conflicted is never committed**, whatever stopped there: a stash pop, a rebase
+  or `git am` as well as a merge, cherry-pick or revert.
+- **A rename commits as a rename**, never with a new file that took its old name nor with a
+  copy's source; a rename made in the working tree only is listed as one; Rollback touches only
+  the files it listed.
+- **A repository inside another is not offered as a new file** (it would have been committed as
+  a bare gitlink), and a submodule whose only changes are its own files is not a change to
+  commit.
+- **Apply Patch… finds the repository** when a hunk removes a `-- ` comment line, and **Stash
+  Changes… says when it stashed nothing**, or why it cannot run yet.
+- **A cherry-pick or revert that conflicts stops as a conflict**, even when its subject says
+  "empty commit": it was skipped, and its changes lost. An empty pick no longer stops the picks
+  after it.
+- **Stash Apply, Pop and Drop act on the stash the row shows**, also after a stash made in
+  Source Control or a terminal, which the Repo List now shows.
+- **`git.branchProtection` protects what VS Code's Git protects**: braces, `[0-9]` classes, `**`
+  and spaces around a pattern. What Linyra cannot read exactly protects more, never less.
+- **Merge into Current merges the branch, not a tag of the same name**; **Pull never
+  autostashes** in a repository VS Code's Git does not watch; **Pull into Current takes a remote
+  branch that was force pushed**; **Push… keeps a repository whose remote branch is gone** and
+  publishes the branch again.
+- **Edit Commit Message, Undo Commit and Reset Current Branch to Here change only the commit
+  they asked about**, even when another was made while they asked; and **one write runs per
+  repository at a time** across Linyra's actions.
+- **Tag Across says which tags were made but not pushed**, and why.
+- **Release… runs only for the pair its form was built for** (swapping ◀ and ▶ or closing Compare
+  meanwhile stops it), **pushes ▶ and its tag together**, so a rejected branch never leaves its
+  tag on the remote, and does not offer a ▶ that is behind its upstream.
+- **Merge ◀ into ▶ waits until every repository is read and checked**, merges ◀ as it was
+  compared, and **a merge check git could not run no longer shows as clean** (a repository under
+  a folder whose name has a `:`).
+- **Compare predicts the conflicts of a side whose own commits are only merges**, and of a file
+  one side renamed, which now shows on both sides and previews; **it reads each name as a
+  branch**, never a tag or a commit hash git would match first; an older read no longer
+  replaces a newer one.
+- **The Repo List's cursor stays on its row when rows arrive above it**: Enter can no longer
+  continue a stopped merge in another repository.
+- **Load More never lists a commit twice or passes one over** when history moved meanwhile, and
+  Fetch All refreshes the Log in every view.
+- **The Uncommitted side shows the repository its list has selected**; **a commit shown from
+  Insights switches the Log to its Commits side**; **Highlight Current Branch survives the view
+  being moved**; **the Repo List keeps the width you chose**.
+- **Me and `author:@me` find only your own address**, not addresses that contain it.
+- **File History lists exactly what `git log --follow` finds**: not a later file that took an
+  old name, and on every branch.
+- **Regex mode finds what it says**: `\d`, `\s`, `\w` and `[…]` mean in git what they mean in
+  JavaScript, and what git's expressions lack is refused under the box (`\b` on macOS only).
+- **Whole Word holds at the ends of words beyond ASCII**, such as über; **a subject with an RS
+  byte keeps its commit**; **a root commit shows its files** whatever `log.showRoot` says.
+- **`linyra.ai.exclude` leaves out files with spaces in their names**, and under any
+  `diff.mnemonicPrefix` or `diff.noprefix`.
+- **An AI error that echoes your API key never logs or shows the key.**
+- **An untracked link is sent to the AI as its target path, never the target's content.**
+- **A model's answer never loads a URL or shows a live command link.**
+- **Resolve Conflicts with AI reads a merged file with code fences whole**, and refuses a
+  proposal that drops text outside the conflicts; **an answer that stalls is reported as a
+  timeout**.
+
+### Changed
+
+- **Run Git Command Across Repositories never stops a command that may write on a timer**: after
+  120 s it says which repositories are still running and offers Stop. Commands that only read
+  keep the limit.
+
 ## [1.7.0] — 2026-10-30
 
 The Log learns GitLens's search and looks, each branch gets a sheet of its own, the Repo List
