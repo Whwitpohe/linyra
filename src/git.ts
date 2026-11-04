@@ -35,6 +35,23 @@ export function utf8Ctype(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = pr
   return { LC_CTYPE: platform === "darwin" ? "UTF-8" : "C.UTF-8" };
 }
 
+/** The git commands Linyra hands the user's patterns to (--grep, --author, -G…): they only read. */
+const PATTERN_COMMANDS = new Set(["log", "rev-list", "grep"]);
+
+/**
+ * Whether git's arguments (before Linyra's CONFIG) run a command that matches the user's patterns:
+ * only those get utf8Ctype. A command that writes keeps the user's environment, as do the hooks it
+ * runs, where a locale the system lacks would make perl and others warn.
+ */
+export function matchesPatterns(args: readonly string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-c" || args[i] === "-C") { i++; continue; }
+    if (args[i].startsWith("-")) continue;
+    return PATTERN_COMMANDS.has(args[i]);
+  }
+  return false;
+}
+
 /** git's message for a failure: its fatal:/error: line (hint: lines come first), else the first line. */
 export function errorLine(stderr: string): string {
   const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l !== "");
@@ -83,7 +100,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       detached: opts.tree === true && process.platform !== "win32",
       windowsHide: true,
       // No credential prompts; no index.lock contention with VS Code's own git.
-      env: { ...process.env, ...utf8Ctype(process.env), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
+      env: { ...process.env, ...(matchesPatterns(args) ? utf8Ctype(process.env) : {}), GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
     });
     const onAbort = () => {
       if (child.pid !== undefined) killTree(child.pid);

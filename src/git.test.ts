@@ -7,7 +7,7 @@ import { parseShow, showArgs } from "./commitDetail";
 import { DEFAULT_FILTER, historyArgs, historyInput, historyPathsArgs, logArgs, parseFollow, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { whyOf } from "./actionErrors";
-import { errorLine, GitError, GitRunner, runGit, utf8Ctype } from "./git";
+import { errorLine, GitError, GitRunner, matchesPatterns, runGit, utf8Ctype } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
@@ -45,7 +45,10 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   assert.deepStrictEqual(utf8Ctype({}, "darwin"), { LC_CTYPE: "UTF-8" }, "macOS's name for it");
   assert.deepStrictEqual([utf8Ctype({ LANG: "de_DE.UTF-8" }, "linux"), utf8Ctype({ LC_CTYPE: "en_US.utf8" }, "linux"), utf8Ctype({ LC_ALL: "C" }, "linux"), utf8Ctype({}, "win32")], [{}, {}, {}, {}],
     "a UTF-8 locale is kept, LC_ALL decides for itself, and Git for Windows picks its own");
-  console.log("ok - git runs with a UTF-8 LC_CTYPE where the environment has none");
+  assert.deepStrictEqual([["log", "--grep=x"], ["-c", "core.x=y", "log"], ["rev-list", "--count", "a...b"], ["--no-pager", "grep", "-e", "x"]].map(matchesPatterns), [true, true, true, true], "the commands that match the user's patterns");
+  assert.deepStrictEqual([["-c", "merge.autoStash=false", "merge", "--", "x"], ["commit", "--only", "--file=-"], ["push", "origin"], ["status", "--porcelain=v2"], ["-C", "log", "status"], []].map(matchesPatterns), [false, false, false, false, false, false],
+    "a write, and the hooks it runs, keep the user's locale; -c and -C take a value");
+  console.log("ok - git runs with a UTF-8 LC_CTYPE where the environment has none, for the commands that match patterns");
 }
 (async () => {
   {
