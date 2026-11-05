@@ -41,9 +41,13 @@ import { LinyraAi } from "./ai/service";
 import { InsightsPanel } from "./insights/panel";
 import { locate } from "./insights/range";
 import { isSha } from "./types";
+import { withSessionState } from "./sessionMemento";
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  await Promise.all([migratePrivateState(context.workspaceState), migratePrivateState(context.globalState)]);
+export async function activate(vsContext: vscode.ExtensionContext): Promise<void> {
+  await Promise.all([migratePrivateState(vsContext.workspaceState), migratePrivateState(vsContext.globalState)]);
+  // globalState read back as this window wrote it: VS Code's answer to an earlier write can arrive
+  // after a later one and put the older value back (sessionMemento.ts).
+  const context = withSessionState(vsContext);
   configureI18n(vscode.env.language, vscode.l10n.bundle);
   // The AI service (aiService() for every AI feature) and Configure / Switch / Remove AI.
   const aiCore = new LinyraAi(context);
