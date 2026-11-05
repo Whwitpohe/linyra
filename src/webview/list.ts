@@ -138,6 +138,19 @@ export class CommitList {
   private expected: number | undefined;
   /** A position set while the list was hidden, so never written: placed when it shows (resized()). */
   private unplaced = false;
+  /** A frame is asked to place an unplaced position, for a list shown again before any resize was seen. */
+  private placing = false;
+  /**
+   * A press on the list, from its pointerdown until the click it ends: the rows are not built anew
+   * meanwhile, or the row pressed would be gone and the click find none (a host message lands any
+   * time, and a press lasts a tenth of a second). A second at most, should its release never come.
+   */
+  private pressed = false;
+  /** The row pressed: kept through the press by the paints a scroll does. */
+  private pressedRow: Element | null = null;
+  private pressEnd: ReturnType<typeof setTimeout> | 0 = 0;
+  /** A full paint asked for during a press: done when it ends. */
+  private paintAfterPress = false;
   /** The scroll position the rows being built go by (renderRow: which row prints its repository's name). */
   private paintTop = 0;
 
@@ -157,15 +170,44 @@ export class CommitList {
       if (this.expected !== undefined) { this.top = this.expected; this.expected = undefined; } else this.top = root.scrollTop;
       // Rows moving under a still pointer do not answer it until the scrolling stops: one hover
       // per frame (a row's tint, its disc growing, its buttons moving in) would cost a layout each.
-      if (!this.scrolling) root.classList.add("scrolling");
-      clearTimeout(this.scrolling);
-      this.scrolling = setTimeout(() => { this.scrolling = 0; root.classList.remove("scrolling"); }, 150);
+      // A pressed pointer is no hover: its release must still find the row.
+      if (!this.pressed) {
+        if (!this.scrolling) root.classList.add("scrolling");
+        clearTimeout(this.scrolling);
+        this.scrolling = setTimeout(() => this.stopScrolling(), 150);
+      }
       if (this.frame) return;
       this.frame = requestAnimationFrame(() => {
         this.frame = 0;
         this.paint(true);
       });
     }, { passive: true });
+    // A press is never a hover: the rows answer it at once, though the list still scrolls. The press
+    // itself found the list (the rows ignored the pointer), so the click it ends is the list's: it
+    // goes on to what is under the pointer, a row, its pill or fold, or the summary row.
+    let pressedWhileScrolling = false;
+    root.addEventListener("pointerdown", (e) => {
+      pressedWhileScrolling = this.scrolling !== 0;
+      if (pressedWhileScrolling) this.stopScrolling();
+      this.pressed = true;
+      this.pressedRow = (e.target as Element).closest?.(".row[data-index]") ?? null;
+      clearTimeout(this.pressEnd);
+      this.pressEnd = setTimeout(() => this.endPress(), 1000);
+    }, { capture: true });
+    // Released anywhere: the press ends once its click (dispatched right after) has been handled.
+    const release = () => { if (this.pressed) { clearTimeout(this.pressEnd); this.pressEnd = setTimeout(() => this.endPress()); } };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    window.addEventListener("blur", () => this.endPress());
+    root.addEventListener("click", (e) => {
+      const forward = pressedWhileScrolling && e.target === root && e.isTrusted;
+      pressedWhileScrolling = false;
+      if (!forward) return;
+      const under = document.elementFromPoint(e.clientX, e.clientY);
+      if (!under || under === root || !root.contains(under)) return;
+      e.stopPropagation();
+      under.dispatchEvent(new MouseEvent("click", e));
+    });
     window.addEventListener("resize", () => {
       this.rowHeight = 0;
       this.resized();
@@ -176,7 +218,7 @@ export class CommitList {
     // VS Code sets the theme's variables (the font, its size) on <html>: a change there resizes the text.
     new MutationObserver(() => {
       this.forgetLayout();
-      this.paint();
+      this.repaint();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
     // Avatars arrive in batches after the rows that show their discs: AvatarFeed (avatars.ts) calls redraw() once per batch.
     root.addEventListener("keydown", (e) => this.onKey(e));
@@ -261,9 +303,27 @@ export class CommitList {
       || next.offHead !== prev.offHead || next.hashColumn !== prev.hashColumn || next.now !== prev.now || next.skeleton !== prev.skeleton
       || next.upstream !== prev.upstream || next.changes !== prev.changes || next.columns !== prev.columns || leadChanged;
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
-    if (drawn) this.paint();
+    // Other rows (a reload): drawn now, though a press is on. A row it pressed would name another
+    // commit by its index, so its click is better lost than given to that commit.
+    if (changed) this.paint();
+    else if (drawn) this.repaint();
     else if (moved || next.selectedKeys !== prev.selectedKeys || next.workSelected !== prev.workSelected) { this.paintSelection(); this.paint(true); }
     if (!drawn) this.renderWork();
+  }
+
+  /** A full paint of the same rows: now, or when a press on the list ends (its row must stay to take the click). */
+  private repaint(): void {
+    if (!this.pressed) { this.paint(); return; }
+    this.paintAfterPress = true;
+    this.paintSelection();
+  }
+
+  private endPress(): void {
+    clearTimeout(this.pressEnd);
+    this.pressEnd = 0;
+    this.pressed = false;
+    this.pressedRow = null;
+    if (this.paintAfterPress) this.paint();
   }
 
   /**
@@ -314,9 +374,38 @@ export class CommitList {
     if (!this.props.skeleton) this.fitBody(this.display.rows.length * this.height());
     this.expected = next;
     this.root.scrollTop = next;
+    // Hidden before a resize could tell (its size is the one last read): the write is lost, and the
+    // page shows the list where it was. Asked after the write, which laid the page out already.
+    if (!this.root.checkVisibility()) {
+      this.expected = undefined;
+      this.unplaced = true;
+      this.placeWhenShown();
+      return;
+    }
     // A position the list already had sends no event: what was expected is not kept past this frame
     // (the frame's scroll events come before its animation frames).
     requestAnimationFrame(() => { this.expected = undefined; });
+  }
+
+  /**
+   * An unplaced position, placed at the next frame if the list shows by then. Still hidden: the
+   * frame's resize sees it, and the resize that shows it again places it (resized()). Shown again
+   * within the task that hid it, no resize is ever seen: this frame is the only one to tell.
+   */
+  private placeWhenShown(): void {
+    if (this.placing) return;
+    this.placing = true;
+    requestAnimationFrame(() => {
+      this.placing = false;
+      if (this.unplaced && this.root.checkVisibility()) this.resized();
+    });
+  }
+
+  /** The scroll is over: the rows answer the pointer again. */
+  private stopScrolling(): void {
+    clearTimeout(this.scrolling);
+    this.scrolling = 0;
+    this.root.classList.remove("scrolling");
   }
 
   /** The rows' full height, which the list scrolls over: written only when it changes. */
@@ -342,7 +431,7 @@ export class CommitList {
       this.headerHeight = this.root.querySelector<HTMLElement>(".column-header")?.offsetHeight ?? 0;
       this.setTop(wanted);
     }
-    this.paint();
+    this.repaint();
   }
 
   private clientHeight(): number {
@@ -352,7 +441,7 @@ export class CommitList {
 
   /** The rows on screen built again from the same props: new avatars arrived (avatars.ts), once per batch. */
   redraw(changed?: ReadonlySet<string>): void {
-    if (!changed) { this.paint(); return; }
+    if (!changed || this.pressed) { this.repaint(); return; }
     // Only the rows whose author's avatar arrived, and only where the graph draws that author's disc
     // (a dense graph draws dots, which show no avatar): the rest of the screen stays as it is.
     let dropped = false;
@@ -474,6 +563,7 @@ export class CommitList {
     const { rows, selected, skeleton } = this.props;
     const rh = this.height();
     if (!scrolled || skeleton) {
+      this.paintAfterPress = false;
       // The columns (and the hash column, File History) set the references cell's room.
       this.refRoom = undefined;
       this.listWidth = this.root.clientWidth;
@@ -507,6 +597,8 @@ export class CommitList {
     this.paintTop = rowTop;
     for (const [i, m] of this.mounted) {
       if (i >= start && i < end && m.top === (i === top)) continue;
+      // The row under a press stays as it is until the press ends: built anew, it would lose the click.
+      if (m.el === this.pressedRow) { this.paintAfterPress = true; continue; }
       m.el.remove();
       this.mounted.delete(i);
     }
