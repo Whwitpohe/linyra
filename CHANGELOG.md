@@ -9,6 +9,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.7.2] — 2026-11-05
+
+A click on a commit always lands, the Log never stays blank, and a choice Linyra remembers stays
+the one you made.
+
+### Fixed
+
+- **A click on a commit right after a scroll selects it.** For 150 ms after a scroll the rows
+  ignored the pointer (so hovering costs nothing while they move), and the click did nothing. A
+  press now ends that at once, and goes to the row, pill, fold or summary row under the pointer.
+- **A click is not lost when the Log refreshes under it.** A refresh arriving between the press
+  and the release (new stats, avatars, uncommitted counts, a scroll) built the row pressed anew,
+  so the click found no row. The rows under a press now wait for it to end; a new list (a
+  reload) still shows at once.
+- **The Log never stays blank after it is hidden and shown again.** A move made in the moment it
+  was hidden (a selection, Home) was dropped by the page, which then showed the list where it
+  was, with no row drawn there.
+- **A choice Linyra remembers is never put back to the one before**: Include new files, Show
+  Changes, Group by Repository, Show Only Conflicts, Hide Files Already on Both, the panes' sizes,
+  Insights' tab, range and colors. VS Code's answer to an earlier save, arriving after a later
+  one, could restore the older value; what this window saved is now what it reads.
+
 ## [1.7.1] — 2026-11-04
 
 A review of the whole extension and the fixes it found: what Linyra writes goes only to the
